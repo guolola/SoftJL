@@ -25,7 +25,6 @@ describe("workspace generation notifications", () => {
 
     notifyGenerationStarted("requirements");
     notifyGenerationStarted("design");
-    notifyGenerationStarted("code");
     notifyGenerationStarted("document", "requirementsSpec");
     notifyGenerationStarted("document", "softwareDesignSpec");
 

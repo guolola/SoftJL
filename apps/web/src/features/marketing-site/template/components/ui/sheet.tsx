@@ -1,6 +1,6 @@
 // Flow 2.0.0 template source; only runtime, content and business integration adaptations.
 'use client'
-import { FlowCopy, flowText } from '@/features/marketing-site/model/flow-copy';
+import { FlowCopy } from '@/features/marketing-site/model/flow-copy';
 
 import * as React from 'react'
 
@@ -15,7 +15,7 @@ function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot='sheet' {...props} />
 }
 
-const SheetTrigger = React.forwardRef(function SheetTrigger({ ...props }: React.ComponentProps<typeof SheetPrimitive.Trigger>, ref: React.ForwardedRef<any>) {
+const SheetTrigger = React.forwardRef(function SheetTrigger({ ...props }: React.ComponentProps<typeof SheetPrimitive.Trigger>, ref: React.ForwardedRef<HTMLButtonElement>) {
   return <SheetPrimitive.Trigger data-slot='sheet-trigger' ref={ref} {...props} />
 });
 

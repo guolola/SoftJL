@@ -2,7 +2,7 @@
 'use client'
 import { useAppI18n } from "@/shared/i18n/i18n-provider";
 import { useTranslation } from 'react-i18next';
-import { FlowCopy, flowText } from '@/features/marketing-site/model/flow-copy';
+import { FlowCopy } from '@/features/marketing-site/model/flow-copy';
 
 import { useEffect, useState } from 'react'
 
@@ -152,7 +152,7 @@ const Header = ({ navigationData, className }: HeaderProps) => {
         className
       )}
     >
-      <div className='flex h-full items-center justify-between gap-4 border-b px-4 sm:px-6 lg:px-8'>
+      <div className='flex h-full items-center justify-between gap-2 border-b px-3 sm:gap-4 sm:px-6 lg:px-8'>
         {/* Logo */}
         <Link href='/#home'>
           <div className='flex items-center gap-3'>
@@ -168,11 +168,11 @@ const Header = ({ navigationData, className }: HeaderProps) => {
         />
 
         {/* Actions */}
-        <div className='flex shrink-0 items-center gap-2 sm:gap-4 lg:gap-6'>
+        <div className='flex shrink-0 items-center gap-1 sm:gap-4 lg:gap-6'>
           {/* Offset the extra visual whitespace between the two unfilled icon buttons. */}
           <a
             className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), '-mr-1 size-10 rounded-lg sm:-mr-2 lg:-mr-3')}
-            href='https://github.com/guolola/ai-capstone'
+            href='https://github.com/guolola/SoftJL'
             target='_blank'
             rel='noopener noreferrer'
             title='GitHub'

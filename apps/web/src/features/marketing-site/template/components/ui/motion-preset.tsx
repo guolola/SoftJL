@@ -13,7 +13,7 @@ import {
   type Variant
 } from 'motion/react'
 
-type MotionComponent = keyof typeof motion
+type MotionComponent = keyof HTMLElementTagNameMap
 
 interface MotionPresetProps {
   children?: React.ReactNode
@@ -38,11 +38,9 @@ interface MotionPresetProps {
         scale?: number
       }
     | boolean
-  motionProps?: Omit<HTMLMotionProps<any>, 'children' | 'className' | 'ref' | 'transition'>
-  ref?: React.Ref<any>
+  motionProps?: Omit<HTMLMotionProps<'div'>, 'children' | 'className' | 'ref'>
+  ref?: React.Ref<HTMLElement>
 }
-
-const motionComponents = motion as any
 
 const MotionPreset = React.forwardRef(function MotionPreset({
   children,
@@ -58,10 +56,10 @@ const MotionPreset = React.forwardRef(function MotionPreset({
   fade = false,
   zoom = false,
   motionProps = {}
-}: MotionPresetProps, ref: React.ForwardedRef<any>) {
-  const localRef = React.useRef<any>(null)
+}: MotionPresetProps, ref: React.ForwardedRef<HTMLElement>) {
+  const localRef = React.useRef<HTMLElement>(null)
 
-  React.useImperativeHandle(ref, () => localRef.current)
+  React.useImperativeHandle(ref, () => localRef.current!)
 
   const inViewResult = useInView(localRef, {
     once: inViewOnce,
@@ -97,7 +95,8 @@ const MotionPreset = React.forwardRef(function MotionPreset({
     visibleVariant.scale = zoom === true ? 1 : (zoom.scale ?? 1)
   }
 
-  const MotionComponent = motionComponents[component] || motion.div
+  // All supported tags expose the same animation contract and an HTMLElement ref.
+  const MotionComponent = motion[component] as React.ComponentType<Omit<HTMLMotionProps<'div'>, 'ref'> & React.RefAttributes<HTMLElement>>
 
   return (
     <AnimatePresence>

@@ -14,7 +14,7 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot='dialog' {...props} />
 }
 
-const DialogTrigger = React.forwardRef(function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props, ref: React.ForwardedRef<any>) {
+const DialogTrigger = React.forwardRef(function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props, ref: React.ForwardedRef<HTMLButtonElement>) {
   return <DialogPrimitive.Trigger data-slot='dialog-trigger' ref={ref} {...props} />
 });
 
@@ -22,7 +22,7 @@ function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
   return <DialogPrimitive.Portal data-slot='dialog-portal' {...props} />
 }
 
-const DialogClose = React.forwardRef(function DialogClose({ ...props }: DialogPrimitive.Close.Props, ref: React.ForwardedRef<any>) {
+const DialogClose = React.forwardRef(function DialogClose({ ...props }: DialogPrimitive.Close.Props, ref: React.ForwardedRef<HTMLButtonElement>) {
   return <DialogPrimitive.Close data-slot='dialog-close' ref={ref} {...props} />
 });
 
@@ -51,7 +51,7 @@ const DialogContent = React.forwardRef(function DialogContent({
   showCloseButton?: boolean
   keepMounted?: boolean
   overlayClassName?: string
-}, ref: React.ForwardedRef<any>) {
+}, ref: React.ForwardedRef<HTMLDivElement>) {
   return (
     <DialogPortal keepMounted={keepMounted}>
       <DialogOverlay className={overlayClassName} />
@@ -104,7 +104,7 @@ function DialogFooter({
   )
 }
 
-const DialogTitle = React.forwardRef(function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props, ref: React.ForwardedRef<any>) {
+const DialogTitle = React.forwardRef(function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props, ref: React.ForwardedRef<HTMLHeadingElement>) {
   return (
     <DialogPrimitive.Title
       data-slot='dialog-title'
@@ -114,7 +114,7 @@ const DialogTitle = React.forwardRef(function DialogTitle({ className, ...props 
   )
 });
 
-const DialogDescription = React.forwardRef(function DialogDescription({ className, ...props }: DialogPrimitive.Description.Props, ref: React.ForwardedRef<any>) {
+const DialogDescription = React.forwardRef(function DialogDescription({ className, ...props }: DialogPrimitive.Description.Props, ref: React.ForwardedRef<HTMLParagraphElement>) {
   return (
     <DialogPrimitive.Description
       data-slot='dialog-description'

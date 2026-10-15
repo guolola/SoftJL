@@ -1,5 +1,6 @@
 // Original Flow homepage frame and navigation; links point to product routes.
 import type { ReactNode } from 'react'
+import { PRODUCT_TUTORIAL_URL } from '@/shared/lib/product-links'
 import { TooltipProvider } from './components/ui/tooltip';
 
 import {
@@ -81,7 +82,7 @@ const navigationData: Navigation[] = [
   },
   {
     title: 'Guide',
-    href: '/tutorial'
+    href: PRODUCT_TUTORIAL_URL
   }
 ]
 

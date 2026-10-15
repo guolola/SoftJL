@@ -1,4 +1,5 @@
 // Verifies design model page generation controls, traceability views, and stale diagram handling.
+import { createDesignRunSnapshot, createRenderMeta } from "../../../test/artifact-fixtures";
 import { createMockWorkspaceRepository } from "../../../services/workspace-repository/mock-repository";
 import { patchUserSettings } from "../../../shared/lib/user-settings";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
@@ -304,7 +305,7 @@ describe("DesignModelPage", () => {
   });
 
   it("keeps downstream design selection separate and confirms missing sequence dependency", async () => {
-    const snapshot: DesignRunSnapshot = {
+    const snapshot: DesignRunSnapshot = createDesignRunSnapshot({
       runId: "design-run",
       requirementText: "生成 UML",
       selectedDiagrams: ["sequence", "navigation"],
@@ -340,7 +341,7 @@ describe("DesignModelPage", () => {
       currentStage: "render_svg",
       status: "completed",
       error: null,
-    };
+    });
     const startDesignRun = vi.fn(async () => ({ runId: "design-run" }));
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
@@ -813,12 +814,12 @@ describe("DesignModelPage", () => {
               diagramKind: "sequence",
               modelId: "sequence:uc_old",
               svg: "<svg><text>旧用例实现设计</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
             class: {
               diagramKind: "class",
               svg: "<svg><text>设计类图</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
           },
         }),
@@ -907,13 +908,13 @@ describe("DesignModelPage", () => {
               diagramKind: "sequence",
               modelId: "sequence:uc_view",
               svg: "<svg><text>查看活动</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
             "sequence:uc_create": {
               diagramKind: "sequence",
               modelId: "sequence:uc_create",
               svg: "<svg><text>创建活动</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
           },
         }),
@@ -1035,7 +1036,7 @@ describe("DesignModelPage", () => {
   });
 
   it("keeps table selection separate and confirms missing sequence and class dependencies", async () => {
-    const snapshot: DesignRunSnapshot = {
+    const snapshot: DesignRunSnapshot = createDesignRunSnapshot({
       runId: "design-run-table",
       requirementText: "生成 UML",
       selectedDiagrams: ["sequence", "class", "table"],
@@ -1050,7 +1051,7 @@ describe("DesignModelPage", () => {
       currentStage: "render_svg",
       status: "completed",
       error: null,
-    };
+    });
     const startDesignRun = vi.fn(async () => ({ runId: "design-run-table" }));
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>

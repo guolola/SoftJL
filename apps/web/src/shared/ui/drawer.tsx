@@ -23,6 +23,7 @@ function Drawer(props: React.ComponentProps<typeof DrawerPrimitive.Root>) {
   }, [props.open])
 
   React.useLayoutEffect(() => {
+    const originalPointerEvents = previousPointerEvents.current
     const observer = new MutationObserver(() => {
       if (document.body.style.pointerEvents !== desiredPointerEvents.current) {
         document.body.style.pointerEvents = desiredPointerEvents.current
@@ -31,9 +32,9 @@ function Drawer(props: React.ComponentProps<typeof DrawerPrimitive.Root>) {
     observer.observe(document.body, { attributes: true, attributeFilter: ['style'] })
     return () => {
       observer.disconnect()
-      document.body.style.pointerEvents = previousPointerEvents.current
+      document.body.style.pointerEvents = originalPointerEvents
       queueMicrotask(() => {
-        document.body.style.pointerEvents = previousPointerEvents.current
+        document.body.style.pointerEvents = originalPointerEvents
       })
     }
   }, [])

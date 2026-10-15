@@ -1,13 +1,14 @@
 // Provides the initial bilingual resource bundle for shared navigation, metadata, and core UI states.
+import { mcpEn, mcpZh } from "./mcp-resources";
 import type { Resource } from "i18next";
 import { dashboardShellEn, dashboardShellZh } from "./dashboard-shell-resources";
-import { examEn, examZh } from "./exam-resources";
 import { feasibilityResourcesEn, feasibilityResourcesZh } from "./feasibility-resources";
 import { onboardingEn, onboardingZh } from "./onboarding-resources";
 
 export const resources = {
   "zh-CN": {
     translation: {
+      mcp: mcpZh,
       ...onboardingZh,
       generationModel: {
         providerRequired: "未选择模型供应商",
@@ -40,7 +41,6 @@ export const resources = {
           traceability: "查看跟踪矩阵",
           taskDetails: "查看任务详情",
           retry: "重试",
-          billing: "查看权益与账单",
           projects: "返回项目列表",
           feasibility: "前往可行性分析",
           documents: "前往说明书",
@@ -50,7 +50,6 @@ export const resources = {
         },
       },
       dashboardShell: dashboardShellZh,
-      examPage: examZh,
       dashboard: {
         title: "仪表盘",
         subtitle: "汇总你所有项目的工作台概览",
@@ -131,9 +130,7 @@ export const resources = {
         projects: "项目",
         workspace: "工作台",
         home: "主页",
-        exam: "考试",
         tutorial: "使用文档",
-        payment: "支付",
         mainNavigation: "主导航",
         openMainNavigation: "打开主导航",
       },
@@ -602,8 +599,7 @@ export const resources = {
         },
         routeDescriptions: {
           workspace: "进入 SoftJL 工作区。",
-          exam: "考试模块正在建设中，后续会承载课程测评、题目生成和评分流程。",
-          tutorial: "查看项目内使用手册、操作路径、截图说明和常见问题。",
+          tutorial: "查看线上使用指南、操作路径和常见问题。",
         },
         tabs: {
           actions: "标签页操作",
@@ -904,154 +900,6 @@ export const resources = {
         errors: { save: "项目设置保存失败。", archive: "项目归档失败。", restore: "项目恢复失败。", ownerRequired: "请输入新所有者用户 ID。", transfer: "项目所有者转移失败。", delete: "项目删除失败。" },
         confirm: { archive: "确定要归档此项目吗？此操作会写入审计日志。", restore: "确定要恢复此项目吗？此操作会写入审计日志。", transfer: "确定要转移项目所有者吗？此操作会写入审计日志。" },
         deleteDialog: { title: "确认删除项目", description: "将删除“{{name}}”，此操作会写入审计日志。删除成功后会返回项目列表。", cancel: "取消", confirm: "确认删除" },
-      },
-      billing: {
-        date: {
-          inactive: "未生效",
-        },
-        units: {
-          credits: "{{count}} 次",
-          items: "{{count}} 条",
-        },
-        loading: {
-          skus: "正在加载套餐...",
-          summary: "正在加载权益...",
-        },
-        errors: {
-          skusLoadFailed: "套餐加载失败",
-          summaryLoadFailed: "权益加载失败",
-          orderCreateFailed: "订单创建失败",
-          resumePaymentFailed: "继续支付失败",
-          missingOrderId: "缺少订单号",
-          orderStatusLoadFailed: "订单状态加载失败",
-        },
-        actions: {
-          cancel: "取消",
-          payNow: "立即支付",
-          creatingOrder: "正在创建订单",
-          buyNow: "立即购买",
-          loginToBuy: "登录后购买",
-          refresh: "刷新",
-          resumePayment: "继续支付",
-        },
-        sku: {
-          recommended: "推荐套餐",
-          catalog: {
-            credits_10: { name: "10 次包", description: "买 10 次送 1 次，到账 11 次" },
-            credits_50: { name: "50 次包", description: "买 50 次送 8 次，到账 58 次" },
-            credits_100: { name: "100 次包", description: "买 100 次送 20 次，到账 120 次" },
-            credits_500: { name: "500 次包", description: "买 500 次送 120 次，到账 620 次" },
-          },
-          groups: {
-            credits: {
-              title: "次数包",
-              subtitle: "永久次数",
-            },
-          },
-          features: {
-            creditArrival: "到账 {{metric}}，所有可选模型统一扣 1 次",
-            noExpiry: "默认不过期，适合持续生成",
-            bonusIncluded: "赠送次数已包含在到账次数内",
-          },
-          selector: {
-            artworkEyebrow: "AI 生成权益",
-            artworkLabel: "{{name}}卡面，到账 {{metric}}，价格 {{price}}",
-            previewGroupLabel: "次数包卡面预览",
-            previewLabel: "预览 {{name}}",
-            groupLabel: "选择次数包",
-            empty: "暂无可购买的次数包。",
-          },
-        },
-        pricing: {
-          badge: "支付权益",
-          title: "开通 AI 生成权益",
-          description: "购买次数包后可用于所有可选模型，每次生成扣 1 次。新用户邮箱验证后自动赠送 30 次，有效期 30 天。",
-        },
-        checkout: {
-          title: "订单结算",
-          creditedAmount: "到账次数",
-          total: "应付总额",
-          validityTitle: "次数有效期",
-          bonusTitle: "赠送次数",
-          usageTitle: "购买后如何使用",
-          payStepTitle: "完成付款",
-          payStepDescription: "点击立即支付，在支付宝完成付款后返回平台。",
-          balanceStepTitle: "核对到账次数",
-          balanceStepDescription: "支付确认后，购买和赠送次数会计入当前账号的可用余额。",
-          generateStepTitle: "开始生成",
-          generateStepDescription: "进入项目，选择平台模型生成，每次生成扣 1 次。",
-          arrivalNote: "暂未到账时，请先刷新余额并核对订单状态；未完成的有效订单可在订单历史中继续支付。",
-        },
-        payment: {
-          confirmTitle: "支付确认",
-          confirmDescription: "请确认套餐内容与支付方式。",
-          purchaseContent: "购买内容",
-          orderAmount: "订单金额",
-          methodLabel: "选择支付方式",
-          alipayDesktop: "使用支付宝完成付款",
-          channels: {
-            alipay: "支付宝",
-          },
-        },
-        summary: {
-          availableCredits: "可用次数",
-          signupBonusIncluded: "邮箱验证赠送会自动计入余额",
-          signupBonus: "邮箱验证赠送",
-          unclaimed: "未领取",
-          validUntil: "有效至 {{date}}",
-          issuedAfterVerification: "邮箱验证后自动发放",
-        },
-        account: {
-          title: "权益与账单",
-          description: "查看次数余额、邮箱验证赠送和最近支付订单。",
-          purchaseTitle: "购买权益",
-          purchaseSubtitle: "次数余额按次抵扣",
-          paymentSuccess: "支付成功，次数已到账",
-        },
-        orders: {
-          history: "订单历史",
-          empty: "暂无订单。",
-          columns: {
-            orderNo: "订单号",
-            sku: "套餐",
-            amount: "金额",
-            status: "状态",
-            createdAt: "创建时间",
-            actions: "操作",
-          },
-        },
-        order: {
-          status: {
-            pending: "待支付",
-            paid: "已支付",
-            expired: "已过期",
-            closed: "已关闭",
-            failed: "支付失败",
-            refund_pending: "退款中",
-            refunded: "已退款",
-          },
-        },
-        return: {
-          title: "支付宝支付处理中",
-          description: "正在确认支付跳转与订单状态，请勿关闭页面。",
-          connecting: "正在连接支付宝",
-          backToBilling: "返回支付页面",
-        },
-      },
-      media: {
-        promo: {
-          title: "产品宣传视频",
-          description: "通过一段视频，了解平台的功能与使用场景",
-          watch: "观看",
-          play: "播放产品宣传视频",
-          close: "关闭视频",
-        },
-        video: {
-          unsupported: "你的浏览器不支持在线播放视频。",
-          notConfigured: "视频地址未配置",
-          configurationHint: "请检查对应的 VITE 视频 URL 配置，或确认 OSS 文件已提供长期可访问地址。",
-        },
-        captionSeparator: "：",
       },
       modelPicker: { notSelected: "未选择模型", noModels: "当前模型供应商没有可用模型", selectProvider: "请先选择模型供应商", switch: "切换模型", modes: { strictJson: "严格 JSON", jsonObject: "JSON 模式", compatible: "兼容" } },
       projectShell: {
@@ -1460,26 +1308,6 @@ export const resources = {
         },
       },
       
-      docs: {
-        badge: "项目内使用文档",
-        title: "SoftJL 使用手册",
-        description:
-          "按操作任务查找指南：创建项目、整理需求、生成模型、连接编程助手、测试与交付。",
-        openProjects: "进入项目",
-        maintainedNotice: "文档内容随项目代码维护，截图和路径以当前版本为准。",
-        backToQuickStart: "回到快速开始",
-        directory: "文档目录",
-        directoryAria: "使用文档目录",
-        searchLabel: "搜索使用文档",
-        searchPlaceholder: "搜索可行性、说明书、权益、模型配置...",
-        searchResults: "搜索结果",
-        resultCount: "{{count}} 条",
-        noResults: "没有找到匹配文档。可以换一个关键词，例如“生成失败”“导出”或“项目成员”。",
-        minutes: "约 {{count}} 分钟",
-        outlineAria: "本页大纲",
-        onThisPage: "本页内容",
-        noOutline: "当前文档没有二级或三级标题。",
-      },
       status: {
         run: {
           idle: "暂无任务",
@@ -1529,6 +1357,7 @@ export const resources = {
   },
   en: {
     translation: {
+      mcp: mcpEn,
       ...onboardingEn,
       generationModel: {
         providerRequired: "No model provider selected",
@@ -1561,7 +1390,6 @@ export const resources = {
           traceability: "View traceability matrix",
           taskDetails: "View task details",
           retry: "Retry",
-          billing: "View credits and billing",
           projects: "Back to projects",
           feasibility: "Go to feasibility analysis",
           documents: "Go to documents",
@@ -1571,7 +1399,6 @@ export const resources = {
         },
       },
       dashboardShell: dashboardShellEn,
-      examPage: examEn,
       dashboard: {
         title: "Dashboard",
         subtitle: "A workbench overview aggregated across all of your projects",
@@ -1652,9 +1479,7 @@ export const resources = {
         projects: "Projects",
         workspace: "Workspace",
         home: "Home",
-        exam: "Exams",
         tutorial: "Docs",
-        payment: "Payment",
         mainNavigation: "Main navigation",
         openMainNavigation: "Open main navigation",
       },
@@ -2126,8 +1951,7 @@ export const resources = {
         },
         routeDescriptions: {
           workspace: "Open the software engineering workspace.",
-          exam: "The exams module is under construction for course assessment, question generation, and grading workflows.",
-          tutorial: "Read the in-product guide, workflows, screenshots, and FAQs.",
+          tutorial: "Read the online user guide, workflows, and FAQs.",
         },
         tabs: {
           actions: "Tab actions",
@@ -2428,154 +2252,6 @@ export const resources = {
         errors: { save: "Project settings could not be saved.", archive: "Project could not be archived.", restore: "Project could not be restored.", ownerRequired: "Enter the new owner user ID.", transfer: "Project ownership could not be transferred.", delete: "Project could not be deleted." },
         confirm: { archive: "Archive this project? This action is recorded in the audit log.", restore: "Restore this project? This action is recorded in the audit log.", transfer: "Transfer project ownership? This action is recorded in the audit log." },
         deleteDialog: { title: "Delete project?", description: "This will delete “{{name}}” and record the action in the audit log. After deletion, you will return to the project list.", cancel: "Cancel", confirm: "Delete" },
-      },
-      billing: {
-        date: {
-          inactive: "Not active",
-        },
-        units: {
-          credits: "{{count}} credits",
-          items: "{{count}} items",
-        },
-        loading: {
-          skus: "Loading plans...",
-          summary: "Loading credits...",
-        },
-        errors: {
-          skusLoadFailed: "Plans failed to load",
-          summaryLoadFailed: "Credits failed to load",
-          orderCreateFailed: "Order creation failed",
-          resumePaymentFailed: "Payment resume failed",
-          missingOrderId: "Missing order number",
-          orderStatusLoadFailed: "Order status failed to load",
-        },
-        actions: {
-          cancel: "Cancel",
-          payNow: "Pay now",
-          creatingOrder: "Creating order",
-          buyNow: "Buy now",
-          loginToBuy: "Log in to buy",
-          refresh: "Refresh",
-          resumePayment: "Resume payment",
-        },
-        sku: {
-          recommended: "Recommended",
-          catalog: {
-            credits_10: { name: "10-credit pack", description: "Buy 10 and get 1 bonus, for 11 credits total" },
-            credits_50: { name: "50-credit pack", description: "Buy 50 and get 8 bonus, for 58 credits total" },
-            credits_100: { name: "100-credit pack", description: "Buy 100 and get 20 bonus, for 120 credits total" },
-            credits_500: { name: "500-credit pack", description: "Buy 500 and get 120 bonus, for 620 credits total" },
-          },
-          groups: {
-            credits: {
-              title: "Credit packs",
-              subtitle: "Permanent credits",
-            },
-          },
-          features: {
-            creditArrival: "{{metric}} credited; every optional model costs 1 credit per generation",
-            noExpiry: "No default expiry, suitable for ongoing generation",
-            bonusIncluded: "Bonus credits are included in the credited amount",
-          },
-          selector: {
-            artworkEyebrow: "AI generation credits",
-            artworkLabel: "{{name}} artwork, {{metric}} credited, priced at {{price}}",
-            previewGroupLabel: "Credit pack artwork previews",
-            previewLabel: "Preview {{name}}",
-            groupLabel: "Select a credit pack",
-            empty: "No credit packs are available for purchase.",
-          },
-        },
-        pricing: {
-          badge: "Payment benefits",
-          title: "Enable AI generation credits",
-          description: "Credit packs can be used with all optional models. Each generation costs 1 credit. New users receive 5 credits after email verification, valid for 30 days.",
-        },
-        checkout: {
-          title: "Checkout",
-          creditedAmount: "Credits added",
-          total: "Total due",
-          validityTitle: "Credit validity",
-          bonusTitle: "Bonus credits",
-          usageTitle: "How to use your credits",
-          payStepTitle: "Complete payment",
-          payStepDescription: "Select Pay now, complete payment in Alipay, and return to the platform.",
-          balanceStepTitle: "Check your balance",
-          balanceStepDescription: "Once payment is confirmed, purchased and bonus credits are added to your current account balance.",
-          generateStepTitle: "Start generating",
-          generateStepDescription: "Open a project and generate with a platform model. Each generation uses 1 credit.",
-          arrivalNote: "If credits have not appeared, refresh your balance and check the order status. Resume valid unpaid orders from order history.",
-        },
-        payment: {
-          confirmTitle: "Confirm payment",
-          confirmDescription: "Confirm the plan and payment method.",
-          purchaseContent: "Purchase",
-          orderAmount: "Order amount",
-          methodLabel: "Select payment method",
-          alipayDesktop: "Complete payment with Alipay",
-          channels: {
-            alipay: "Alipay",
-          },
-        },
-        summary: {
-          availableCredits: "Available credits",
-          signupBonusIncluded: "Email verification bonus is automatically included in the balance",
-          signupBonus: "Email verification bonus",
-          unclaimed: "Unclaimed",
-          validUntil: "Valid until {{date}}",
-          issuedAfterVerification: "Issued automatically after email verification",
-        },
-        account: {
-          title: "Credits and billing",
-          description: "View credit balance, email verification bonus, and recent payment orders.",
-          purchaseTitle: "Buy credits",
-          purchaseSubtitle: "Credit balance is deducted per generation",
-          paymentSuccess: "Payment successful. Credits have been added.",
-        },
-        orders: {
-          history: "Order history",
-          empty: "No orders yet.",
-          columns: {
-            orderNo: "Order no.",
-            sku: "Plan",
-            amount: "Amount",
-            status: "Status",
-            createdAt: "Created at",
-            actions: "Actions",
-          },
-        },
-        order: {
-          status: {
-            pending: "Pending",
-            paid: "Paid",
-            expired: "Expired",
-            closed: "Closed",
-            failed: "Payment failed",
-            refund_pending: "Refund pending",
-            refunded: "Refunded",
-          },
-        },
-        return: {
-          title: "Processing Alipay payment",
-          description: "Confirming the payment redirect and order status. Do not close this page.",
-          connecting: "Connecting to Alipay",
-          backToBilling: "Back to payment page",
-        },
-      },
-      media: {
-        promo: {
-          title: "Product video",
-          description: "Discover the platform’s features and how you can use them.",
-          watch: "Watch",
-          play: "Play product video",
-          close: "Close video",
-        },
-        video: {
-          unsupported: "Your browser does not support inline video playback.",
-          notConfigured: "Video URL is not configured",
-          configurationHint: "Check the corresponding VITE video URL or confirm that the OSS file has a persistent public URL.",
-        },
-        captionSeparator: ": ",
       },
       modelPicker: { notSelected: "No model selected", noModels: "The current model provider has no available models", selectProvider: "Select a model provider first", switch: "Switch model", modes: { strictJson: "Strict JSON", jsonObject: "JSON mode", compatible: "Compatible" } },
       projectShell: {
@@ -2984,26 +2660,6 @@ export const resources = {
         },
       },
       
-      docs: {
-        badge: "In-product docs",
-        title: "SoftJL Guide",
-        description:
-          "Task-based guides for projects, requirements, modeling, coding agents, testing, and delivery.",
-        openProjects: "Open projects",
-        maintainedNotice: "Docs are maintained with the project code. Screenshots and paths reflect the current version.",
-        backToQuickStart: "Back to quick start",
-        directory: "Docs directory",
-        directoryAria: "Documentation directory",
-        searchLabel: "Search docs",
-        searchPlaceholder: "Search feasibility, specifications, billing, model configuration...",
-        searchResults: "Search results",
-        resultCount: "{{count}} results",
-        noResults: "No matching docs. Try another keyword such as generation failure, export, or project members.",
-        minutes: "{{count}} min read",
-        outlineAria: "Page outline",
-        onThisPage: "On this page",
-        noOutline: "This article has no second- or third-level headings.",
-      },
       status: {
         run: {
           idle: "No tasks",

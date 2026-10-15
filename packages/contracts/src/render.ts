@@ -1,8 +1,6 @@
 // Owns render service request and response contracts shared by API and clients.
 import { z } from "zod";
 import {
-  designDiagramModelSpecSchema,
-  diagramModelSpecSchema,
   svgArtifactSchema,
 } from "./models.js";
 import { umlDiagramKindSchema } from "./requirements.js";

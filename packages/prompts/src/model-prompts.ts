@@ -14,8 +14,6 @@ export const JSON_ONLY_SYSTEM_PROMPT =
   "你是一个严谨的软件需求与 UML 建模助手。你必须只返回 JSON，不要输出 Markdown、解释或代码围栏。";
 
 
-
-
 function truncateForPrompt(value: string, maxChars: number) {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, Math.max(0, maxChars - 32))}\n...（内容已截断）`;
@@ -157,10 +155,6 @@ function promptCompactString(value: unknown) {
     : "";
 }
 
-function compactPromptText(value: unknown, maxChars = 180) {
-  const text = promptCompactString(value);
-  return text.length > maxChars ? `${text.slice(0, maxChars)}...` : text;
-}
 
 // Keep model semantics intact in downstream prompts, including nested branches and conditions.
 function formatDesignModelsForPrompt(models: DesignDiagramModelSpec[]) {

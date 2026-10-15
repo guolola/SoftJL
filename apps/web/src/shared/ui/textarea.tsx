@@ -3,7 +3,7 @@ import * as React from 'react'
 
 import { cn } from '@/shared/ui/utils'
 
-const Textarea = React.forwardRef(function Textarea({ className, ...props }: React.ComponentProps<'textarea'>, ref: React.ForwardedRef<any>) {
+const Textarea = React.forwardRef(function Textarea({ className, ...props }: React.ComponentProps<'textarea'>, ref: React.ForwardedRef<HTMLTextAreaElement>) {
   return (
     <textarea
       data-slot='textarea'

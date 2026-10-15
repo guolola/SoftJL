@@ -5,7 +5,7 @@ import {
   projectMemberRolePermissions,
 } from "@uml-platform/contracts";
 import { toProjectDto, toProjectMemberDto } from "../auth/dto.js";
-import { isOfflineDemoProject } from "../runs/demo/offline-demo-runs.js";
+import { isOfflineDemoProject } from "../runs/demo/offline-demo-config.js";
 import type {
   AuthStore,
   ProjectMemberRecord,

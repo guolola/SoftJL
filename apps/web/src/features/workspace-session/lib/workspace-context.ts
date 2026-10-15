@@ -1,7 +1,6 @@
 // Derives workspace fingerprints, scoped snapshot updates, and traceability freshness for session workflows.
 import {
   designDiagramKindFromRecordKey,
-  designRecordBelongsToDiagramKinds,
   designTraceabilityTouchesDiagramKinds,
   modelRecordBelongsToDiagramKinds,
 } from "@uml-platform/contracts";

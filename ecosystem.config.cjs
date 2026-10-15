@@ -1,3 +1,5 @@
+// Pass deployment-specific MCP origins and persistent credentials to the API processes.
+const mcpEnv = Object.fromEntries(["MCP_ENABLED", "MCP_PUBLIC_ORIGIN", "MCP_WEB_ORIGIN", "MCP_SHARED_SECRET", "MCP_JWKS", "MCP_OAUTH_CLIENTS", "MCP_CIMD_ORIGINS"].filter(key => process.env[key]).map(key => [key, process.env[key]]));
 const releaseEnv = {
   ...(process.env.UML_RELEASE_SHA
     ? { UML_RELEASE_SHA: process.env.UML_RELEASE_SHA }
@@ -55,12 +57,6 @@ const providerEnv = {
     : {}),
   ...(process.env.UML_ALLOW_LEGACY_PROVIDER_TEST
     ? { UML_ALLOW_LEGACY_PROVIDER_TEST: process.env.UML_ALLOW_LEGACY_PROVIDER_TEST }
-    : {}),
-  ...(process.env.UML_ALLOW_PROJECT_LEGACY_PROVIDER_SETTINGS
-    ? {
-        UML_ALLOW_PROJECT_LEGACY_PROVIDER_SETTINGS:
-          process.env.UML_ALLOW_PROJECT_LEGACY_PROVIDER_SETTINGS,
-      }
     : {}),
   ...(process.env.UML_TRACE_RAW_OUTPUT_MAX_CHARS
     ? { UML_TRACE_RAW_OUTPUT_MAX_CHARS: process.env.UML_TRACE_RAW_OUTPUT_MAX_CHARS }
@@ -141,21 +137,7 @@ const modelTaskTimeoutEnv = {
           process.env.UML_DESIGN_MODEL_TASK_MAX_RUNTIME_MS,
       }
     : {}),
-  ...(process.env.UML_CODE_MODEL_TASK_TIMEOUT_MS
-    ? { UML_CODE_MODEL_TASK_TIMEOUT_MS: process.env.UML_CODE_MODEL_TASK_TIMEOUT_MS }
-    : {}),
-  ...(process.env.UML_CODE_MODEL_TASK_BLANK_OUTPUT_TIMEOUT_MS
-    ? {
-        UML_CODE_MODEL_TASK_BLANK_OUTPUT_TIMEOUT_MS:
-          process.env.UML_CODE_MODEL_TASK_BLANK_OUTPUT_TIMEOUT_MS,
-      }
-    : {}),
-  ...(process.env.UML_CODE_MODEL_TASK_MAX_RUNTIME_MS
-    ? {
-        UML_CODE_MODEL_TASK_MAX_RUNTIME_MS:
-          process.env.UML_CODE_MODEL_TASK_MAX_RUNTIME_MS,
-      }
-    : {}),
+
 };
 
 
@@ -182,6 +164,7 @@ const apiEnv = {
   ...corsEnv,
   ...documentEnv,
   ...providerEnv,
+  ...mcpEnv,
   ...queueEnv,
   ...modelTaskTimeoutEnv,
 };
@@ -192,6 +175,7 @@ const workerEnv = {
   ...releaseEnv,
   ...documentEnv,
   ...providerEnv,
+  ...mcpEnv,
   ...queueEnv,
   ...modelTaskTimeoutEnv,
 };

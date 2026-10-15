@@ -65,7 +65,7 @@ SoftJL Community is a self-hosted AI software engineering workspace, distributed
 | ⏱️ Generation tasks, history and retries | ✅ | ✅ | Review run records and retry failed tasks |
 | 🤖 Bring your own model service (BYOK) | ✅ | ✅ | OpenAI-compatible providers, model discovery and connection tests; usage billed by the provider |
 | ☁️ Website-managed models | — | ✅ | Subject to account configuration, model availability and generation entitlements |
-| 💻 MCP / Coding Agent integration | — | ✅ | Read-only access to designs, acceptance criteria, engineering constraints and tests; real-client compatibility and generated-code acceptance remain pending |
+| 💻 MCP / Coding Agent integration | ✅ (opt-in) | ✅ | Read-only access to designs, acceptance criteria, engineering constraints and tests; real-client compatibility and generated-code acceptance remain pending |
 | 💳 Platform billing, payments and credits | — | ✅ | Purchases, orders and entitlements; Community does not require platform credits |
 | 🛠️ Operations administration | — | ✅ | Restricted to website operators, unavailable to regular accounts |
 | 📦 Open source and self-hosting | ✅ | — | Community source under Apache-2.0; manage your own services and data |
@@ -73,7 +73,9 @@ SoftJL Community is a self-hosted AI software engineering workspace, distributed
 
 ### Edition boundaries
 
-Platform billing, payments, credit management, the operations administration backend and MCP / Coding Agent integration are excluded. Authentication, project permissions, provider credential protection and generation scheduling remain available. Hosted availability depends on the current deployment, account permissions and service configuration.
+After the initial installation and build, use `npm run dev:mcp` for local MCP access. See [MCP configuration](docs/integrations/coding-agent-mcp.md) for production setup.
+
+Platform billing, payments, credit management, and the operations administration backend are excluded. Read-only MCP access is optional, with explicit project grants and the shared connection page. Authentication, project permissions, provider credential protection and generation scheduling remain available. Hosted availability depends on the current deployment, account permissions and service configuration.
 
 Use an independent database. This distribution is not a downgrade path for an existing full-edition database. Generated models and documents require review, and tests must be executed against your actual system.
 
@@ -91,7 +93,9 @@ The original visual style and historical screenshots are retained. See the capab
 
 ## Quick Start
 
-Install Node.js 22, npm 10, Java 21 and Graphviz. Docker is optional for the local OnlyOffice service.
+Install Node.js 22, npm 10, Java 21 and Graphviz. Docker is optional for the core in-memory experience, and is used by the PostgreSQL and OnlyOffice helpers. The first renderer setup may download PDF CJK fonts.
+
+### 1. Install and start core services
 
 ```bash
 git clone https://github.com/guolola/SoftJL.git
@@ -100,7 +104,23 @@ npm ci
 npm run dev
 ```
 
-The development entry starts Web, API and rendering, and checks local OnlyOffice. Web normally runs on port 3000, API on 4101, renderer on 4002 and OnlyOffice on 8080. Add your provider in account model settings, test the connection and select a model. Configure persistence and encryption secrets for deployment, and disable development guest access and legacy plaintext provider settings.
+The root development command builds contracts and prompts automatically, then starts Web, API and rendering. Run `npm run build:packages` before starting individual applications or running tests.
+
+**Without DATABASE_URL, accounts, projects, provider configurations and run history are temporary and disappear when the server restarts.** Document files use separate local storage and do not replace a database backup.
+
+Web normally runs on port 3000, API on 4101 and rendering on 4002. Wait for Web to report `Ready`; `http://localhost:3000/api/health` and `http://127.0.0.1:4002/health` should return `status: "ok"`.
+
+### 2. Enable persistence and optional editing
+
+With Docker running, use `npm run dev:postgres` for a dedicated development PostgreSQL database stored in a Docker volume. The helper's credentials are for local development only. Use a separate database for Community.
+
+For an existing PostgreSQL server, copy [.env.example](.env.example) to `.env`, configure `DATABASE_URL` and a generated `UML_PROVIDER_CONFIG_SECRET`, then run `npm run dev`. The root command loads this file. Keep the encryption secret stable and private; changing it prevents decryption of saved provider credentials.
+
+Core services support document generation and downloads. For online editing, start Docker and run `npm run dev:full`; the helper checks OnlyOffice on port 8080 and creates or starts its container when needed. The initial image download requires network access. See [production configuration](docs/deployment/production-environment.md) for external services and deployment settings.
+
+### 3. Configure a model provider
+
+Add your provider in account model settings, test the connection and select a model. Configure persistence and encryption secrets for deployment, and disable development guest access and legacy plaintext provider settings.
 
 ## Architecture
 
@@ -115,7 +135,7 @@ The development entry starts Web, API and rendering, and checks local OnlyOffice
 
 ## Common Commands
 
-Use npm scripts: build, test:contracts, test:api, test:web, test:render, typecheck:web and audit:docs. CI is included; the original production deployment workflow is excluded.
+The root `npm run dev` builds shared packages automatically; use `npm run build:packages` before individual application commands and tests. Other npm scripts include build, test:contracts, test:api, test:web, test:render, typecheck:web and audit:docs. CI is included; the original production deployment workflow is excluded.
 
 ## Online Access
 
@@ -123,10 +143,12 @@ Use npm scripts: build, test:contracts, test:api, test:web, test:render, typeche
 
 ## Documentation
 
+- [Contributing](contributing.md)
+- [Security reporting](security.md)
 - [Community maintenance and verification](docs/development/community-edition.md)
 - [Documentation index](docs/README.md)
-- [Quick-start guide](apps/web/src/features/product-docs/content/quick-start.md)
+- [Online user guide](https://jianglisoftware.com/tutorial)
 
 ## License
 
-Copyright © 2026 Software Engineering Practice Platform. Project code and documentation retain the [Apache-2.0 license](LICENSE). Third-party dependencies, fonts, icons and the PlantUML runtime retain their respective licenses; see [NOTICE](NOTICE).
+Copyright © 2026 Software Engineering Practice Platform. Project code and documentation retain the [Apache-2.0 license](LICENSE). Third-party templates, dependencies, fonts, icons and the PlantUML runtime retain their respective licenses; see [NOTICE](NOTICE).

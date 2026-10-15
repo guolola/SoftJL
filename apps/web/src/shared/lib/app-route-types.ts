@@ -1,5 +1,5 @@
 // Shares route path type contracts with features without coupling them to app route matching.
-export type ShellRoutePath = "/workspace" | "/exam";
+export type ShellRoutePath = "/workspace";
 
 export type AuthRoutePath =
   | "/login"
@@ -12,8 +12,8 @@ export type MarketingRoutePath = "/";
 export type ProjectRouteSection = "lineage" | "settings" | "members" | "history" | "documents";
 
 export type AppRoute =
+  | { kind: "mcp-connections"; path: "/projects/connections" | "/account/connections" }
   | { kind: "marketing-home"; path: MarketingRoutePath }
-  | { kind: "product-docs"; path: "/tutorial" }
   | { kind: "shell"; path: ShellRoutePath }
   | { kind: "auth"; path: AuthRoutePath }
   | { kind: "invitation-accept"; path: "/invitations/accept" }

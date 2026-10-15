@@ -82,7 +82,6 @@ apps/web/public/vendor/
 apps/web/public/sandpack/
 apps/web/.next/
 apps/web/next-env.d.ts
-apps/web/src/features/product-docs/model/docs-content.generated.ts
 .local-documents/
 apps/api/.local-documents/
 tmp/

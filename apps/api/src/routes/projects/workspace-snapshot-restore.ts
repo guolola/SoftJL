@@ -1,4 +1,5 @@
 // Restores persisted run snapshots into the project workspace state without browser round-trips.
+import { rebuildRequirementQualityReport } from "@uml-platform/contracts";
 import {
   designDiagramKindFromRecordKey,
   designInputFingerprint,
@@ -13,7 +14,7 @@ import {
 } from "@uml-platform/contracts";
 import type {
   AtomicRequirement,
-  
+
   DesignDiagramKind,
   DesignDiagramModelSpec,
   DesignPlantUmlArtifact,
@@ -25,7 +26,6 @@ import type {
   FeasibilityRunSnapshot,
   PlantUmlArtifact,
   RequirementBaseline,
-  RequirementQualityIssue,
   RequirementModelTraceabilityEntry,
   RunSnapshot,
   SvgArtifact,
@@ -80,16 +80,6 @@ function reviewCandidateStillNeeded(
   });
 }
 
-function requirementStillNeedsReview(requirement: BaselineRequirement) {
-  if (requirement.status !== "accepted") return true;
-  return REVIEWABLE_REQUIREMENT_FIELDS.some((field) => {
-    const provenance = requirement.fieldProvenance[field];
-    return (
-      provenance?.status === "pending-review" ||
-      provenance?.status === "rejected"
-    );
-  });
-}
 
 function acceptedRequirementFromCandidate(
   candidate: Record<string, unknown>,
@@ -124,35 +114,6 @@ function acceptedRequirementFromCandidate(
   };
 }
 
-function rebuildRequirementQualityReport(
-  baseline: RequirementBaseline,
-  requirements: BaselineRequirement[],
-  issues: RequirementQualityIssue[],
-): RequirementBaseline["qualityReport"] {
-  const blockingIssueIds = issues
-    .filter((issue) => issue.blocksDownstream)
-    .map((issue) => issue.id);
-  const reviewRequiredRequirementIds = requirements
-    .filter(requirementStillNeedsReview)
-    .map((requirement) => requirement.id);
-  const status: RequirementBaseline["qualityReport"]["status"] =
-    blockingIssueIds.length > 0
-      ? "blocked"
-      : reviewRequiredRequirementIds.length > 0 || issues.length > 0
-        ? "pending-review"
-        : "passed";
-  return {
-    ...baseline.qualityReport,
-    status,
-    summary:
-      status === "passed"
-        ? `已建立 ${requirements.length} 条原子需求基线。`
-        : `发现 ${issues.length} 个需求质量提示，可继续生成并在当前页面查看。`,
-    issues,
-    blockingIssueIds,
-    reviewRequiredRequirementIds,
-  };
-}
 
 function reconcileAcceptedReviewCandidates(
   baseline: RequirementBaseline,
@@ -189,7 +150,6 @@ function reconcileAcceptedReviewCandidates(
     qualityReport: rebuildRequirementQualityReport(baseline, requirements, issues),
   };
 }
-
 
 
 function pruneRequirementReviewCandidatesForBaseline(
@@ -255,7 +215,7 @@ function applySnapshotToWorkspaceState(
   const currentHasRequirements =
     currentRequirementText.trim().length > 0 || currentRules.length > 0;
 
-  
+
   const isDesignSnapshot = isDesignRunSnapshot(snapshot);
   const isRequirementSnapshot = !isDesignSnapshot;
   {
@@ -323,7 +283,6 @@ function applySnapshotToWorkspaceState(
     applyRequirementBaselineToWorkspaceState(next, snapshot.requirementBaseline);
   }
 
-  
 
   if (isDesignRunSnapshot(snapshot)) {
     const designRecords = mapDesignSnapshotToRecords(snapshot);
@@ -604,7 +563,6 @@ function applySnapshotToWorkspaceState(
 }
 
 
-
 function isDesignRunSnapshot(
   snapshot: RestorableRunSnapshot,
 ): snapshot is DesignRunSnapshot {
@@ -781,20 +739,6 @@ function keepDesignScopedRecords<T>(
   ) as Record<string, T>;
 }
 
-function keepDesignRecordsForModelIds<T>(
-  current: Record<string, T>,
-  modelIds: Set<string>,
-) {
-  return Object.fromEntries(
-    Object.entries(current).filter(([key, value]) => {
-      const modelId =
-        value && typeof value === "object" && "modelId" in value
-          ? String((value as { modelId?: unknown }).modelId ?? "")
-          : "";
-      return modelIds.has(key) || modelIds.has(modelId);
-    }),
-  ) as Record<string, T>;
-}
 
 function repairMissingDesignInputFingerprints(state: WorkspaceState) {
   const generatedDesignDiagrams = stringArrayValue(state.generatedDesignDiagramTypes);

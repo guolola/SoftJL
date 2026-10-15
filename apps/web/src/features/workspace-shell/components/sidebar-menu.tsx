@@ -4,7 +4,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tool
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../shared/ui/collapsible";
 import { SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarMenu as TemplateSidebarMenu, SidebarMenuItem, SidebarMenuSub, SidebarMenuAction, SidebarMenuButton, useSidebar } from '../../../shared/ui/sidebar';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuSeparator, DropdownMenuGroup } from '../../../shared/ui/dropdown-menu';
-import { Button } from '../../../shared/ui/button';
 import {
   useEffect,
   useState,
@@ -18,7 +17,6 @@ import {
   ChevronRight,
   FileText,
   Layers,
-  Code2,
   Palette,
   Network,
   User,
@@ -744,7 +742,7 @@ export function SidebarMenu({
     sequenceSubtaskNodes,
     requirementRootStatus,
     designRootStatus,
-    
+
     documentRootStatus,
   } = deriveSidebarDiagramState({
     generatedDiagrams,
@@ -1162,7 +1160,7 @@ export function SidebarMenu({
         }),
       ],
     },
-    
+
     {
       key: "test",
       label: t("workspace.tabs.labels.tests"),

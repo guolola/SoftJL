@@ -1,4 +1,5 @@
 // Orchestrates design-model generation, PlantUML, and SVG rendering for design runs.
+import { mapWithConcurrency, useCaseModelForSingleUseCase } from "./shared/generation-helpers.js";
 
 import { createStageLifecycle } from "./shared/stage-lifecycle.js";
 import {
@@ -34,7 +35,6 @@ import {
   getGenerateDesignModelsResponseFormat,
   getGenerateDesignTraceabilityResponseFormat,
 } from "../../adapters/llm/response-formats/index.js";
-import { generateDesignPlantUmlArtifacts } from "../../plantuml.js";
 import {
   parseDesignDiagramModelsOnly,
   parseDesignDiagramModelsResult,
@@ -57,7 +57,6 @@ import {
   RunCancelledError,
   throwIfRunCancelled,
 } from "../records/run-cancellation.js";
-import { renderArtifactWithRepair } from "./render/render-artifact-with-repair.js";
 import { DiagramReviewRenderError, reviewRenderedArtifact } from "./render/review-rendered-artifact.js";
 import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
 import { withConversationBranch } from "./shared/conversation-context.js";
@@ -258,26 +257,6 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks;
 }
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T, index: number) => Promise<R>,
-) {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    async () => {
-      while (nextIndex < items.length) {
-        const currentIndex = nextIndex;
-        nextIndex += 1;
-        results[currentIndex] = await mapper(items[currentIndex]!, currentIndex);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return results;
-}
 
 function autoFillDesignTraceability(
   missingSources: ModelElementRef[],
@@ -407,23 +386,6 @@ function useCasesFromModel(useCaseModel: DiagramModelSpec) {
   return useCaseModel.diagramKind === "usecase" ? useCaseModel.useCases : [];
 }
 
-function useCaseModelForSingleUseCase(
-  useCaseModel: DiagramModelSpec,
-  sourceUseCaseId: string,
-) {
-  if (useCaseModel.diagramKind !== "usecase") return useCaseModel;
-  const useCase = useCaseModel.useCases.find((item) => item.id === sourceUseCaseId);
-  if (!useCase) return useCaseModel;
-  return {
-    ...useCaseModel,
-    useCases: [useCase],
-    relationships: useCaseModel.relationships.filter(
-      (relationship) =>
-        relationship.sourceId === sourceUseCaseId ||
-        relationship.targetId === sourceUseCaseId,
-    ),
-  };
-}
 
 type UseCaseForSequence = ReturnType<typeof useCasesFromModel>[number];
 type SequenceDesignModel = Extract<DesignDiagramModelSpec, { diagramKind: "sequence" }>;
@@ -1182,24 +1144,6 @@ function mergeDesignModels(
   return [...merged.values()];
 }
 
-function designArtifactSubtaskLabel(
-  model: DesignDiagramModelSpec | undefined,
-  artifact: Pick<DesignPlantUmlArtifact, "diagramKind" | "modelId">,
-) {
-  const title =
-    typeof (model as { title?: unknown } | undefined)?.title === "string"
-      ? ((model as { title?: string }).title ?? "").trim()
-      : "";
-  if (title) return title;
-  if (
-    model?.diagramKind === "sequence" &&
-    typeof model.sourceUseCaseName === "string" &&
-    model.sourceUseCaseName.trim()
-  ) {
-    return `用例实现设计：${model.sourceUseCaseName.trim()}`;
-  }
-  return designDiagramLabel(artifact.diagramKind);
-}
 
 function designArtifactKey(
   artifact: Pick<DesignPlantUmlArtifact | DesignSvgArtifact, "diagramKind" | "modelId">,

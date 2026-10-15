@@ -1,6 +1,6 @@
 // Owns run history data contracts, local persistence compaction, and snapshot summaries.
 import type {
-  
+
   DesignRunSnapshot,
   DocumentKind,
   DocumentRunSnapshot,
@@ -21,7 +21,6 @@ export const RUN_HISTORY_LIMIT = 12;
 
 const TRACE_TEXT_PREVIEW_LIMIT = 2_000;
 const PARSED_DATA_PREVIEW_LIMIT = 3_000;
-const SKILL_OUTPUT_PREVIEW_LIMIT = 1_500;
 const DIAGNOSTIC_TEXT_PREVIEW_LIMIT = 1_000;
 
 export type RunHistorySnapshot =
@@ -61,9 +60,8 @@ export interface RunHistoryItem {
   partialFailure?: boolean | null;
   missingArtifactCount?: number | null;
   missingArtifactSummary?: string[] | null;
-  
-  
-  
+
+
   canRestore?: boolean | null;
   snapshotAvailable?: boolean | null;
   documentDownloadAvailable?: boolean | null;
@@ -82,7 +80,6 @@ export class RunHistoryStorageError extends Error {
     this.name = "RunHistoryStorageError";
   }
 }
-
 
 
 export function isDesignRunSnapshot(
@@ -180,11 +177,10 @@ function compactTraceEntries<T extends Record<string, unknown>>(entries: T[]) {
 }
 
 
-
 export function compactRunHistorySnapshot(
   snapshot: RunHistorySnapshot,
 ): RunHistorySnapshot {
-  
+
   if (isDesignRunSnapshot(snapshot)) {
     return {
       ...snapshot,
@@ -276,7 +272,7 @@ export function clearRunHistoryItems() {
 
 export function getRunHistorySnapshotLabel(snapshot: RunHistorySnapshot) {
   if (isDocumentRunSnapshot(snapshot)) return "说明书";
-  
+
   if (isDesignRunSnapshot(snapshot)) return "设计阶段";
   return "需求阶段";
 }
@@ -367,7 +363,6 @@ export function getRunHistorySnapshotSummary(snapshot: RunHistorySnapshot) {
     ].filter(Boolean).join(" · ");
   }
 
-  
 
   if (isDesignRunSnapshot(snapshot)) {
     const labels = snapshot.selectedDiagrams

@@ -102,6 +102,8 @@ describe("api-client", () => {
     await expect(requestJson("/api/runs")).rejects.toMatchObject({
       name: "ApiClientError",
       apiError: {
+        category: "conflict",
+        retryable: false,
         code: "REQUIREMENT_REVIEWS_PENDING",
         params: { count: 2 },
         details: { ruleIds: ["r1", "r2"] },

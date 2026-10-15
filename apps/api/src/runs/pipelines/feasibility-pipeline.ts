@@ -45,13 +45,11 @@ import {
   normalizeFeasibilityImplementationDetailed,
 } from "../../normalizers/feasibility/implementation-normalizer.js";
 import { formatParseError, parseJson } from "../../normalizers/json/parse-json.js";
-import { generatePlantUmlArtifacts } from "../../plantuml.js";
 import { emitEvent, type RunRecord } from "../records/run-record-store.js";
 import { isRunCancelled, throwIfRunCancelled } from "../records/run-cancellation.js";
 import { collectTextResult, logFailedStructuredOutput } from "./shared/structured-output.js";
 import { stageProgressValue } from "./shared/pipeline-events.js";
 import { createRunError, throwRunError } from "./shared/errors.js";
-import { renderArtifactWithRepair } from "./render/render-artifact-with-repair.js";
 import { DiagramReviewRenderError, reviewRenderedArtifact } from "./render/review-rendered-artifact.js";
 import { withConversationBranch } from "./shared/conversation-context.js";
 import type { PngRenderClient } from "../../adapters/render/png-render-client.js";

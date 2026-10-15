@@ -59,14 +59,13 @@ describe('sidebar user dropdown', () => {
     let menu = await openMenu(user);
     expect(within(menu).getByText(profile.user.displayName)).toBeInTheDocument();
     expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual([
-      i18n.t('auth.account'), i18n.t('nav.dashboard'), i18n.t('nav.projects'),
-      i18n.t('nav.exam'), i18n.t('nav.tutorial'), i18n.t('account.logout'),
+      i18n.t('auth.account'), i18n.t('nav.dashboard'), i18n.t('nav.projects'), i18n.t('mcp.title'),
+      i18n.t('nav.tutorial'), i18n.t('account.logout'),
     ]);
     await user.click(within(menu).getByRole('menuitem', { name: '账号' }));
     expect(onOpenAccount).toHaveBeenCalledOnce();
     for (const [label, path] of [
-      ['nav.dashboard', '/dashboard'], ['nav.projects', '/projects'],
-      ['nav.exam', '/exam'], ['nav.tutorial', '/tutorial'],
+      ['nav.dashboard', '/dashboard'], ['nav.projects', '/projects'], ['mcp.title', '/projects/connections'],
     ]) {
       menu = await openMenu(user);
       await user.click(within(menu).getByRole('menuitem', { name: i18n.t(label) }));
@@ -87,14 +86,18 @@ describe('sidebar user dropdown', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('closes the mobile sidebar before navigating to documentation', async () => {
+  it('closes the mobile sidebar and opens the online guide without using the app router', async () => {
     window.innerWidth = 390;
     const { user, onNavigate } = renderSidebar();
     await user.click(screen.getByRole('button', { name: '打开手机侧栏' }));
     expect(screen.getByTestId('mobile-open')).toHaveTextContent('true');
     const menu = await openMenu(user);
-    await user.click(within(menu).getByRole('menuitem', { name: '使用文档' }));
-    expect(onNavigate).toHaveBeenCalledWith('/tutorial');
+    const guide = within(menu).getByRole('menuitem', { name: '使用文档' });
+    expect(guide).toHaveAttribute('href', 'https://jianglisoftware.com/tutorial');
+    expect(guide).toHaveAttribute('target', '_blank');
+    expect(guide).toHaveAttribute('rel', 'noopener noreferrer');
+    await user.click(guide);
+    expect(onNavigate).not.toHaveBeenCalled();
     expect(screen.getByTestId('mobile-open')).toHaveTextContent('false');
   });
 

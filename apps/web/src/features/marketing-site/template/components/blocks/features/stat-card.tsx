@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback } from '@/features/marketing-site/template/compo
 import { Button } from '@/features/marketing-site/template/components/ui/button'
 import { Badge } from '@/features/marketing-site/template/components/ui/badge'
 import { cn } from '@/shared/ui/utils'
+import { PRODUCT_TUTORIAL_URL } from '@/shared/lib/product-links'
 
 type Props = {
   className?: string
@@ -23,7 +24,7 @@ const StatCard = ({ className, avatarIcon, title, statNumber, percentage }: Prop
           </Avatar>
           <span className='text-base'>{flowText(title)}</span>
         </div>
-        <Button variant='outline' size='xs' asChild><a href="/tutorial">
+        <Button variant='outline' size='xs' asChild><a href={PRODUCT_TUTORIAL_URL}>
           <FlowCopy text="Details" /></a></Button>
       </div>
       <div className='flex items-center gap-2'>

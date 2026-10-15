@@ -5,7 +5,7 @@ import { mockProjectApi, projectId } from "./fixtures/project-workspace";
 
 const widths = [360, 375, 768, 1440] as const;
 
-test("template page scroll keeps the header and documentation rails visible", async ({ page }) => {
+test("template page scroll keeps the workspace header visible", async ({ page }) => {
   await mockProjectApi(page);
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
@@ -51,35 +51,6 @@ test("template page scroll keeps the header and documentation rails visible", as
   expect(sidebarRange).toBeLessThanOrEqual(0);
   expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1);
   await expectNoPageOverflow(page, "empty projects");
-
-  await page.setViewportSize({ width: 1440, height: 620 });
-  await page.goto("/tutorial");
-  const directory = page.locator("#product-docs-directory");
-  const outline = page.getByRole("complementary", { name: "本页大纲" });
-  await expect(directory).toBeVisible();
-  await expect(outline).toBeVisible();
-  await expectNoPageOverflow(page, "desktop docs");
-  // Public documentation owns its reading and directory viewports independently of the application shell.
-  const docsViewport = page.getByTestId("docs-content-scroll-area").locator(':scope > [data-slot="scroll-area-viewport"]');
-  const directoryViewport = page.getByTestId("docs-directory-scroll-area").locator(':scope > [data-slot="scroll-area-viewport"]');
-  await docsViewport.evaluate((element) => { element.scrollTop = 500; });
-  await expect.poll(() => docsViewport.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-  const stickyTop = await docsViewport.evaluate((element) => Math.round(element.getBoundingClientRect().top) + 32);
-  await expect.poll(() => directory.evaluate((element) => Math.round(element.getBoundingClientRect().top))).toBe(stickyTop);
-  await expect.poll(() => outline.evaluate((element) => Math.round(element.getBoundingClientRect().top))).toBe(stickyTop);
-  await expect.poll(() => page.getByTestId("docs-header").evaluate((element) => Math.round(element.getBoundingClientRect().top))).toBe(0);
-  const directoryScrollRange = await directoryViewport.evaluate((element) => element.scrollHeight - element.clientHeight);
-  expect(directoryScrollRange).toBeGreaterThan(0);
-  await directoryViewport.evaluate((element) => { element.scrollTop = 100; });
-  expect(await directoryViewport.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-
-  await page.setViewportSize({ width: 390, height: 720 });
-  await expect(outline).toBeHidden();
-  const directoryToggle = page.getByRole("button", { name: "文档目录" });
-  await expect(directoryToggle).toBeVisible();
-  await directoryToggle.click();
-  await expect(directory).toBeVisible();
-  await expectNoPageOverflow(page, "mobile docs");
 });
 
 async function expectNoPageOverflow(page: Page, label: string) {
@@ -134,6 +105,9 @@ test("public home, dashboard, projects, and MFA fit the mobile viewport", async 
 
   await page.goto("/dashboard");
   await expect(page.getByText("协作与任务活动", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("welcome-stage")).toHaveAttribute("data-welcome-phase", "floating");
+  await page.getByRole("button", { name: "确认，进入工作台", exact: true }).click();
+  await expect(page.getByTestId("welcome-stage")).toHaveAttribute("data-welcome-phase", "settled");
   await checkViewportMatrix(page, "dashboard");
   for (const width of [360, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -182,9 +156,10 @@ test("public home, dashboard, projects, and MFA fit the mobile viewport", async 
   await page.setViewportSize({ width: 360, height: 844 });
   const mfaSlots = page.locator('[data-slot="input-otp-slot"]');
   await expect(mfaSlots).toHaveCount(6);
-  for (const box of await mfaSlots.evaluateAll((slots) => slots.map((slot) => slot.getBoundingClientRect()))) {
-    expect(Math.abs(box.width - 36)).toBeLessThan(1);
-  }
+  // OTP slots animate their responsive size; measure after the 40px -> 36px transition settles.
+  await expect.poll(async () => mfaSlots.evaluateAll((slots) =>
+    Math.max(...slots.map((slot) => Math.abs(slot.getBoundingClientRect().width - 36))),
+  )).toBeLessThan(1);
 });
 
 test("workspace stages, details, tests, and account dialog fit the responsive viewport matrix", async ({ page }, info) => {
@@ -263,7 +238,7 @@ test("workspace stages, details, tests, and account dialog fit the responsive vi
   await checkViewportMatrix(page, "account settings");
   await page.setViewportSize({ width: 360, height: 844 });
   await expect(dialog.getByRole("tablist", { name: "设置" })).toBeVisible();
-  await expect(dialog.getByRole("tab")).toHaveCount(4);
+  await expect(dialog.getByRole("tablist", { name: "设置", exact: true }).getByRole("tab")).toHaveCount(7);
   await expectNoPageOverflow(page, "account settings at 360px");
   await page.screenshot({ path: info.outputPath("workspace-account-360.png"), fullPage: true });
 });

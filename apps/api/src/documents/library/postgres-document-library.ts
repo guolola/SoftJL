@@ -1,4 +1,5 @@
 // Stores document metadata in PostgreSQL while delegating DOCX blobs to a storage backend.
+import { versionItemFromDocument } from "./document-versions.js";
 import {
   documentLibraryItemSchema,
   documentLibraryVersionItemSchema,
@@ -130,22 +131,6 @@ function rowToVersionItem(row: DocumentVersionRow) {
   });
 }
 
-function versionItemFromDocument(
-  item: DocumentLibraryItem,
-): DocumentLibraryVersionItem {
-  return documentLibraryVersionItemSchema.parse({
-    documentId: item.id,
-    workspaceId: item.workspaceId,
-    projectId: item.projectId ?? null,
-    createdByUserId: item.createdByUserId ?? null,
-    version: item.version,
-    fileName: item.fileName,
-    mimeType: item.mimeType,
-    byteLength: item.byteLength,
-    sourceRunId: item.sourceRunId,
-    createdAt: item.updatedAt,
-  });
-}
 
 function metadataForDocument(item: DocumentLibraryItem) {
   return {

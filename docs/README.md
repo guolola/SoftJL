@@ -10,7 +10,7 @@
 
 ## 概述
 
-这里收录仍然有效的架构、部署、开发与集成文档。面向最终用户的操作手册由 Web 应用的 `/tutorial` 页面提供，并与当前页面入口同步维护。
+这里收录仍然有效的架构、部署、开发与集成文档。面向最终用户的操作手册统一使用[线上使用指南](https://jianglisoftware.com/tutorial)，社区版不再维护本地教程页面；旧 `/tutorial` 地址及其子路径会跳转到线上对应地址。
 
 ## 当前设计或配置
 
@@ -29,6 +29,7 @@
 ### 开发与集成
 
 - [仓库治理规范](development/repository-hygiene.md)
+- [编程助手 MCP 接入](integrations/coding-agent-mcp.md)
 - [OpenAI 兼容供应商](integrations/openai-compatible-provider.md)
 
 ## 操作与维护
@@ -47,4 +48,4 @@ npm run audit:docs
 
 - [仓库首页（简体中文）](../README.md)
 - [项目协作规范](../AGENTS.md)
-- [应用内使用手册](../apps/web/src/features/product-docs/content/quick-start.md)
+- [线上使用指南](https://jianglisoftware.com/tutorial)

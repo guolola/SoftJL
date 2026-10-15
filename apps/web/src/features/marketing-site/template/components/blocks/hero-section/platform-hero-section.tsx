@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import { ArrowRightIcon, ArrowUpRightIcon, BracesIcon, NetworkIcon } from 'lucide-react'
 
 import Link from '@/shared/lib/template-link'
+import { PRODUCT_TUTORIAL_URL } from '@/shared/lib/product-links'
 import { FlowCopy, flowText } from '@/features/marketing-site/model/flow-copy'
 import { orbitLogos } from '@/features/marketing-site/template/content/trusted-brands'
 import FlowLogo from '@/features/marketing-site/template/assets/svg/flow-logo'
@@ -105,10 +106,7 @@ const HeroSection = () => {
             <Link href='/projects'><FlowCopy text='Start building now' /><ArrowUpRightIcon /></Link>
           </Button>
           <Button asChild size='lg' variant='secondary' className='rounded-full px-5'>
-            <Link href='/tutorial'><FlowCopy text='Read the guide' /><ArrowRightIcon /></Link>
-          </Button>
-          <Button asChild size='lg' variant='outline' className='rounded-full px-5'>
-            <Link href='/projects'><FlowCopy text='Start your project' /><ArrowUpRightIcon /></Link>
+            <Link href={PRODUCT_TUTORIAL_URL}><FlowCopy text='Read the guide' /><ArrowRightIcon /></Link>
           </Button>
         </div>
 

@@ -1,4 +1,5 @@
 // Owns project settings, provider policy, retention, and high-risk project actions.
+import Link from "../../../shared/lib/template-link";
 import { Alert } from '../../../shared/ui/alert';
 import {
   Card,
@@ -196,6 +197,15 @@ export function ProjectSettings({
         />
       )}
       <div className={settingGridClass}>
+        <Card as="section" className={cn("gap-6 shadow-none", sectionClass)}>
+          <CardHeader>
+            <CardTitle>{t("mcp.title")}</CardTitle>
+            <CardDescription>{t("mcp.connectProjectHelp")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button nativeButton={false} render={<Link href={`/projects/connections?projectId=${encodeURIComponent(project.id)}`} />}>{t("mcp.connectProject")}</Button>
+          </CardContent>
+        </Card>
         <Card as="section" className={cn("gap-6 shadow-none", sectionClass)}>
           {layout === "drawer" && (
             <CardHeader>

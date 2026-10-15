@@ -25,7 +25,7 @@ const BackgroundRippleEffect = ({
   const [rippleKey, setRippleKey] = useState(0)
 
   // Hooks
-  const ref = useRef<any>(null)
+  const ref = useRef<HTMLDivElement>(null)
 
   return (
     <div

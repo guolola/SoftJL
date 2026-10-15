@@ -46,7 +46,6 @@ import {
   type DesignDiagramType,
   type DiagramType,
 } from "../../../entities/diagram/model";
-import { getProviderModelDisplayName } from "../../../shared/lib/provider-model-display";
 import {
   designInputFingerprint,
   normalizeDesignInputFingerprint,
@@ -125,16 +124,6 @@ const DESIGN_DIAGRAM_ICON = {
   table: Database,
 } satisfies Record<DesignDiagramType, typeof GitBranch>;
 
-const REQUIREMENT_SOURCE_ICON = {
-  context: Network,
-  function: BookOpen,
-  usecase: Network,
-  activity: Activity,
-  class: Box,
-  deployment: Server,
-  prototype: Eye,
-  analysis: GitBranch,
-} satisfies Record<DiagramType, typeof Network>;
 
 type RequirementSourceStatus = Record<DiagramType, boolean>;
 type RequirementSourceDetails = RequirementSourceStatus & {
@@ -326,26 +315,7 @@ export function DesignModelPage() {
     },
     [models],
   );
-  const staleRequirementSourceLabels = useMemo(
-    () =>
-      (["function", "usecase", "class", "activity", "prototype", "deployment", "analysis"] as DiagramType[])
-        .filter((diagram) => sourceStatus[diagram] && staleDiagrams.includes(diagram))
-        .map((diagram) => getDiagramLabel(diagram, t)),
-    [sourceStatus, staleDiagrams, t],
-  );
-  const missingRequirementSourceLabels = useMemo(
-    () =>
-      (["function", "usecase", "class", "activity", "prototype", "deployment", "analysis"] as DiagramType[])
-        .filter((diagram) => !sourceStatus[diagram])
-        .map((diagram) => getDiagramLabel(diagram, t)),
-    [sourceStatus, t],
-  );
-  const requirementDependencyGuideText =
-    staleRequirementSourceLabels.length > 0
-      ? t("designPage.guide.staleDependencies", { labels: staleRequirementSourceLabels.join(t("traceability.refSeparator")) })
-      : missingRequirementSourceLabels.length > 0
-        ? t("designPage.guide.missingDependencies", { labels: missingRequirementSourceLabels.join(t("traceability.refSeparator")) })
-        : t("designPage.guide.readyDependencies");
+
 
   const selectableDesignDiagramSet = useMemo(
     () =>
@@ -654,7 +624,7 @@ export function DesignModelPage() {
                     const localizedLabel = getDesignDiagramLabel(diagram, t);
                     const localizedDescription = getDesignDiagramDescription(diagram, t);
                     const checked = effectiveSelected.includes(diagram);
-                    const sourceLabel = t(`designPage.sources.${diagram}`);
+
                     const blockReason = getDesignDiagramBlockReason(
                       diagram,
                       sourceStatus,

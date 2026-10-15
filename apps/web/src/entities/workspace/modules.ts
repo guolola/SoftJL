@@ -85,11 +85,6 @@ export const SHELL_ROUTE_MODULES = [
     route: "/workspace" as const,
     description: "进入 SoftJL 工作区。",
   },
-  {
-    label: "考试",
-    route: "/exam" as const,
-    description: "考试模块正在建设中，后续会承载课程测评、题目生成和评分流程。",
-  },
 ];
 
 export function findShellRouteModule(route: ShellRoutePath) {

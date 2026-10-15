@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch --import tsx src/index.ts",
-    "workspace:fingerprints": "node scripts/normalize-workspace-fingerprints.mjs",
     "workspace:cleanup-design-records": "node scripts/cleanup-stale-design-records.mjs",
     "build": "tsc -p tsconfig.json",
     "test": "tsx --test \"src/**/*.test.ts\""
@@ -14,24 +13,28 @@
   "dependencies": {
     "@fastify/cors": "10.1.0",
     "@fastify/multipart": "^10.0.0",
-    "@types/nodemailer": "^6.4.17",
     "@uml-platform/contracts": "0.0.1",
     "@uml-platform/prompts": "0.0.1",
     "bullmq": "^5.79.0",
     "docx": "^9.6.1",
-    "fastify": "5.2.1",
+    "fastify": "5.12.7",
     "ioredis": "^5.11.1",
     "ip2region": "^2.3.0",
-    "jszip": "^3.10.1",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "10.1.1",
     "openai": "^6.44.0",
     "pg": "^8.21.0",
     "saxes": "^6.0.0",
     "zod": "3.24.4",
-    "zod-to-json-schema": "3.24.6"
+    "zod-to-json-schema": "3.24.6",
+    "@modelcontextprotocol/node": "2.1.1",
+    "@modelcontextprotocol/server": "2.3.1",
+    "oidc-provider": "9.12.2"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
-    "@types/pg": "^8.20.0"
+    "@types/pg": "^8.20.0",
+    "@modelcontextprotocol/client": "2.3.1",
+    "@types/oidc-provider": "9.12.1",
+    "@types/nodemailer": "8.0.2"
   }
 }

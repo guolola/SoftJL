@@ -10,7 +10,6 @@ type SnapshotDiagramErrorSummary = {
 };
 
 const MISSING_ARTIFACT_SUMMARY_LIMIT = 3;
-const CODE_DIAGNOSTIC_SUMMARY_LIMIT = 3;
 
 export function queryValue(query: unknown, key: string) {
   if (!query || typeof query !== "object" || !(key in query)) return undefined;
@@ -39,7 +38,7 @@ function displayRunStatus(record: RunRecord) {
 function inferRunKind(snapshot: RunRecord["snapshot"]) {
   if ("selectedArtifacts" in snapshot) return "feasibility";
   if ("documentKind" in snapshot) return "document";
-  
+
   if ("designModelTraceability" in snapshot) return "design";
   return "requirements";
 }
@@ -79,7 +78,6 @@ function readMissingArtifactSummary(snapshot: RunRecord["snapshot"]) {
 }
 
 
-
 function readSelectedDiagrams(snapshot: RunRecord["snapshot"]) {
   return "selectedDiagrams" in snapshot && Array.isArray(snapshot.selectedDiagrams)
     ? snapshot.selectedDiagrams
@@ -115,7 +113,7 @@ export function summarizeRunRecord(record: RunRecord) {
     : false;
   const diagramErrorSummary = readDiagramErrorSummary(snapshot);
   const missingArtifactSummary = readMissingArtifactSummary(snapshot);
-  
+
   const actions = runActionEvents(record);
   const latestAction = actions.at(-1) ?? null;
   return {
@@ -136,9 +134,8 @@ export function summarizeRunRecord(record: RunRecord) {
         ? snapshot.missingArtifacts.filter((artifact) => artifact.trim()).length
         : 0,
     missingArtifactSummary,
-    
-    
-    
+
+
     model: readSnapshotModel(snapshot) ?? null,
     runKind: inferRunKind(snapshot),
     documentKind:

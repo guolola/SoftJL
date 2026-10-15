@@ -56,7 +56,7 @@ describe('marketing header theme controls', () => {
     const githubLink = screen.getByRole('link', { name: 'GitHub' })
     const paletteButton = await screen.findByRole('button', { name: '主题色板' })
 
-    expect(githubLink).toHaveAttribute('href', 'https://github.com/guolola/ai-capstone')
+    expect(githubLink).toHaveAttribute('href', 'https://github.com/guolola/SoftJL')
     expect(githubLink).toHaveAttribute('target', '_blank')
     expect(githubLink).toHaveAttribute('rel', 'noopener noreferrer')
     expect(githubLink).toHaveAttribute('title', 'GitHub')
@@ -66,7 +66,7 @@ describe('marketing header theme controls', () => {
     }
     expect(githubLink).toHaveClass('size-10', 'rounded-lg', '-mr-1', 'sm:-mr-2', 'lg:-mr-3')
     expect(githubLink.nextElementSibling).toBe(paletteButton)
-    expect(githubLink.parentElement).toHaveClass('items-center', 'gap-2', 'sm:gap-4', 'lg:gap-6')
+    expect(githubLink.parentElement).toHaveClass('items-center', 'gap-1', 'sm:gap-4', 'lg:gap-6')
     expect(githubLink.querySelector('svg')).toHaveClass('size-5')
     expect(paletteButton.querySelector('svg')).toHaveClass('size-5')
   })

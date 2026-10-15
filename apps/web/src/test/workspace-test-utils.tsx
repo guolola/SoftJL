@@ -6,7 +6,6 @@ import { ThemeProvider } from "../shared/ui/theme-provider";
 import type {
   AtomicRequirement,
   RequirementBaseline,
-  RunSnapshot,
   UseCaseDiagramSpec,
   RequirementModelTraceabilityEntry,
 } from "@uml-platform/contracts";
@@ -69,18 +68,8 @@ export function createWorkspaceRecord(
     designSvgArtifacts: {},
     designDiagramErrors: {},
     manualModelEditStatus: {},
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
+
     testGenerationResult: null,
     requirementInputFingerprint: null,
     diagramInputFingerprints: {},
@@ -157,31 +146,7 @@ export function createRequirementBaseline(
   };
 }
 
-export function createRunSnapshot(
-  overrides: Partial<RunSnapshot> = {},
-): RunSnapshot {
-  return {
-    runId: "run-test",
-    requirementText: "",
-    selectedDiagrams: [],
-    analysisTargetUseCaseIds: [],
-    rules: [],
-    requirementBaseline: null,
-    coverageMatrix: null,
-    traceabilityMatrix: null,
-    models: [],
-    requirementModelTraceability: [],
-    plantUml: [],
-    svgArtifacts: [],
-    diagramErrors: {},
-    requirementTrace: [],
-    visualReviews: {},
-    currentStage: "render_svg",
-    status: "completed",
-    error: null,
-    ...overrides,
-  };
-}
+export { createRunSnapshot } from "./artifact-fixtures";
 
 export function withWorkspaceProviders(
   children: ReactNode,

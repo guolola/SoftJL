@@ -41,7 +41,7 @@ const SelectTrigger = React.forwardRef(function SelectTrigger({
   ...props
 }: SelectPrimitive.Trigger.Props & {
   size?: 'sm' | 'default'
-}, ref: React.ForwardedRef<any>) {
+}, ref: React.ForwardedRef<HTMLButtonElement>) {
   return (
     <SelectPrimitive.Trigger
       data-slot='select-trigger'

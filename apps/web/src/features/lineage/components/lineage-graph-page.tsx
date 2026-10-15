@@ -73,10 +73,10 @@ const EMPTY_RUNS: PlatformRunSummary[] = [];
 const EMPTY_MEMBERS: PlatformProjectMember[] = [];
 const EMPTY_DOCUMENTS: PlatformDocument[] = [];
 export function LineageGraphPage({ onViewArtifact, projectId, projectRuns = EMPTY_RUNS, members = EMPTY_MEMBERS, documents = EMPTY_DOCUMENTS }: { onViewArtifact?: () => void; projectId?: string; projectRuns?: PlatformRunSummary[]; members?: PlatformProjectMember[]; documents?: PlatformDocument[] }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const session = useWorkspaceSession();
   const workspaceShell = useWorkspaceShell();
-  const graph = useMemo(() => localizeLineageGraph(buildLineageGraph({ ...session, projectRuns }), t), [i18n.resolvedLanguage, projectRuns, session, t]);
+  const graph = useMemo(() => localizeLineageGraph(buildLineageGraph({ ...session, projectRuns }), t), [projectRuns, session, t]);
   const generation = useLineageGeneration(projectId, graph, session, projectRuns, members, documents);
   const [canvasHeight, setCanvasHeight] = useState<number>();
   const canvasFrameRef = useRef<HTMLDivElement>(null);

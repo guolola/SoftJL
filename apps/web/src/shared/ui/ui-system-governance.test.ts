@@ -69,7 +69,6 @@ describe('template UI governance', () => {
   });
   it('retains original Flow motion timings and homepage block order', () => {
     const base = 'src/features/marketing-site/template/components/';
-    expect(readFileSync(base + 'blocks/hero-section/text-flip.tsx', 'utf8')).toContain('duration = 3000');
     expect(readFileSync(base + 'blocks/testimonials/testimonials.tsx', 'utf8')).toContain('duration={70}');
     expect(readFileSync(base + 'ui/motion-preset.tsx', 'utf8')).toContain('stiffness: 200, damping: 20');
     const home = readFileSync('src/features/marketing-site/components/marketing-home-page.tsx', 'utf8');

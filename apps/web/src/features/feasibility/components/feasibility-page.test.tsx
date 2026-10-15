@@ -1,4 +1,5 @@
 // Verifies feasibility overview status and persistence of user-supplied research facts.
+import { feasibilityCandidateImplementationSchema } from "@uml-platform/contracts";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -52,7 +53,7 @@ function createContextWorkspace() {
 }
 
 function createImplementationWorkspace() {
-  const baseImplementation = {
+  const baseImplementation = feasibilityCandidateImplementationSchema.parse({
     architecture: { summary: "以模块化单体承载核心业务。", modules: [
       { id: "orders", name: "预约工单", responsibility: "创建和管理维修工单", sourceRequirementIds: ["r1"] },
       { id: "inventory", name: "库存协同", responsibility: "检查零件并准备物料", sourceRequirementIds: ["r1"] },
@@ -72,7 +73,7 @@ function createImplementationWorkspace() {
       { category: "legal" as const, verdict: "feasible" as const, rationale: "符合当前约束" },
     ],
     decision: "conditional-go" as const, preconditions: ["确认库存接口"],
-  };
+  });
   return {
     ...createContextWorkspace(),
     feasibilityInputs: {
@@ -81,7 +82,7 @@ function createImplementationWorkspace() {
       budgetLimit: 300000, teamSize: 5, teamSkills: "React、Node.js", availableResources: "测试环境", legalConstraints: "个人信息保护", references: "需求基线",
       costItems: [], benefitItems: [], analysisYears: 3,
     },
-    feasibilityImplementationPlan: {
+    feasibilityImplementationPlan: feasibilityImplementationPlanSchema.parse({
       overview: "采用模块化单体逐步实施。",
       candidates: [
         { id: "option-a", name: "模块化单体", summary: "分层模块化实现", advantages: ["部署简单"], disadvantages: ["扩展需规划"], estimatedCost: "150000", estimatedSchedule: "8周", sourceRequirementIds: ["r1"], implementation: baseImplementation },
@@ -95,7 +96,7 @@ function createImplementationWorkspace() {
         } },
       ],
       reducedCandidateReason: "", recommendedCandidateId: "option-a", recommendationRationale: "满足当前规模并降低初期复杂度。",
-    },
+    }),
   };
 }
 
@@ -156,7 +157,9 @@ describe("FeasibilityPage", () => {
       rules: [createRule()],
       feasibilityBusinessFlow: {
         model: { diagramKind: "activity", modelId: "feasibility-business-flow", title: "业务与系统流程图", summary: "登录处理", notes: ["仅覆盖登录流程"],
-          swimlanes: [{ id: "system", name: "系统" }], nodes: [{ id: "start", type: "start" }, { id: "process", type: "activity", name: "处理登录", actorOrLane: "system", input: [], output: [] }, { id: "end", type: "end" }],
+          swimlanes: [{ id: "system", name: "系统" }], nodes: [{
+          name: "开始", id: "start", type: "start" }, { id: "process", type: "activity", name: "处理登录", actorOrLane: "system", input: [], output: [] }, {
+          name: "结束", id: "end", type: "end" }],
           relationships: [{ id: "first", type: "control_flow", sourceId: "start", targetId: "process" }, { id: "last", type: "control_flow", sourceId: "process", targetId: "end" }] },
         traceability: [{ requirementId: "r1", targetKind: "node", targetId: "process" }],
         plantUml: { modelId: "feasibility-business-flow", diagramKind: "activity", source: "@startuml\nstart\n:处理登录;\nstop\n@enduml" },

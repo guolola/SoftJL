@@ -1,9 +1,8 @@
 // Registers public read and admin configuration routes for system notices.
 import type { FastifyInstance } from "fastify";
-import { systemNoticeCreateRequestSchema, systemNoticeDtoSchema, systemNoticeListResponseSchema, systemNoticeReadRequestSchema, systemNoticeUpdateRequestSchema, } from "@uml-platform/contracts";
+import { systemNoticeDtoSchema, systemNoticeListResponseSchema, systemNoticeReadRequestSchema, } from "@uml-platform/contracts";
 import { isAuthError, requireAuth } from "../../auth/guards.js";
 import type { AuthStore } from "../../auth/in-memory-auth-store.js";
-import {} from "../../security/admin-guard.js";
 import type { SystemNoticeRecord, SystemNoticeStore, } from "../../system-notices/records/system-notice-store.js";
 function noticeDto(notice: SystemNoticeRecord, readIds?: Set<string>) {
     return systemNoticeDtoSchema.parse({
@@ -22,22 +21,6 @@ function noticeListResponse({ notices, readIds, }: {
         unreadCount: readIds
             ? dtoNotices.filter((notice) => notice.unread).length
             : 0,
-    });
-}
-async function recordSystemNoticeAudit(authStore: AuthStore, input: {
-    actorUserId: string;
-    action: string;
-    targetId: string | null;
-    outcome: "success" | "failure";
-    message: string;
-}) {
-    await authStore.recordAuditLog({
-        actorUserId: input.actorUserId,
-        action: input.action,
-        targetType: "system_notice",
-        targetId: input.targetId,
-        outcome: input.outcome,
-        message: input.message,
     });
 }
 export function registerSystemNoticeRoutes({ app, authStore, systemNotices, }: {

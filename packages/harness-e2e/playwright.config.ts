@@ -24,8 +24,10 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   webServer: {
-    command:
-      "npm run build:web:production && npm run start --workspace @uml-platform/web -- --port 4175 --hostname 127.0.0.1",
+    // Browser tests build against an isolated canonical origin, never the hosted production site.
+    env: { PUBLIC_WEB_BASE_URL: 'https://community.example.test' },
+    // CI prepares the same isolated production bundle before running browser checks.
+    command: `${process.env.PLAYWRIGHT_SKIP_BUILD === "1" ? "" : "npm run build:web:production && "}npm run start --workspace @uml-platform/web -- --port 4175 --hostname 127.0.0.1`,
     cwd: repoRoot,
     url: "http://127.0.0.1:4175",
     reuseExistingServer: false,

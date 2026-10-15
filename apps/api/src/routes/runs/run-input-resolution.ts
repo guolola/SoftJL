@@ -6,7 +6,6 @@ import {
   designInputFingerprint,
   normalizeSnapshotFingerprint,
   normalizeDesignInputFingerprint,
-  requirementBaselineSchema,
   snapshotInputFingerprint,
   designRecordBelongsToDiagramKinds,
   findModelByDiagramKind,
@@ -14,8 +13,8 @@ import {
   validateModelInput,
   type ModelingStage,
   designTraceabilityTouchesDiagramKinds,
-  
-  
+
+
   startDesignRunCommandSchema,
   startDesignRunRequestSchema,
   startDocumentRunCommandSchema,
@@ -24,15 +23,14 @@ import {
   startRunRequestSchema,
   type DesignDiagramKind,
   type DiagramKind,
-  
-  
+
+
   type StartDesignRunCommand,
   type StartDesignRunRequest,
   type StartDocumentRunCommand,
   type StartDocumentRunRequest,
   type StartRunCommand,
   type StartRunRequest,
-  type RequirementBaseline,
   apiErrorResponseSchema,
   type ApiErrorCategory,
   type ApiErrorResponse,
@@ -711,7 +709,6 @@ function rejectProjectGenerationPreflight(input: {
     }
   }
 
-  
 
   if (input.kind === "softwareDesignSpec") {
     return rejectIncompleteDesignChain({
@@ -812,7 +809,6 @@ function designPlantUmlArtifactsFromWorkspace(state: Record<string, unknown>) {
     }),
   );
 }
-
 
 
 async function loadWorkspaceStateForCommand({
@@ -1023,7 +1019,6 @@ function filterReplacingDesignContext(
     ),
   };
 }
-
 
 
 export async function resolveDocumentRunInput(

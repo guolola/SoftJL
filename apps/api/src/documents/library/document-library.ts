@@ -1,4 +1,5 @@
 // Persists generated DOCX files so editor services can load and save them by URL.
+import { versionItemFromDocument } from "./document-versions.js";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -299,22 +300,6 @@ async function readDocumentMetadata(
   }
 }
 
-function versionItemFromDocument(
-  item: DocumentLibraryItem,
-): DocumentLibraryVersionItem {
-  return documentLibraryVersionItemSchema.parse({
-    documentId: item.id,
-    workspaceId: item.workspaceId,
-    projectId: item.projectId ?? null,
-    createdByUserId: item.createdByUserId ?? null,
-    version: item.version,
-    fileName: item.fileName,
-    mimeType: item.mimeType,
-    byteLength: item.byteLength,
-    sourceRunId: item.sourceRunId,
-    createdAt: item.updatedAt,
-  });
-}
 
 async function writeDocumentMetadata(rootDir: string, item: DocumentLibraryItem) {
   const folder = documentFolder(rootDir, item.workspaceId, item.id);

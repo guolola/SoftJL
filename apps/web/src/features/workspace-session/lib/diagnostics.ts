@@ -292,7 +292,6 @@ export function getProgressFromEvent(event: RunEvent) {
       return 100;
     case "llm_chunk":
     case "artifact_ready":
-    
     case "stage_finished":
       return null;
   }

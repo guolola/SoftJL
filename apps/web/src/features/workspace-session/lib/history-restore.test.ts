@@ -1,7 +1,8 @@
 // Verifies saved run history snapshots restore partial design artifacts consistently.
+import { createDesignRunSnapshot, createDocumentRunSnapshot } from "../../../test/artifact-fixtures";
 import { describe, expect, it } from "vitest";
 import type {
-  
+
   DesignDiagramModelSpec,
   DesignRunSnapshot,
   DocumentRunSnapshot,
@@ -40,7 +41,7 @@ function tableDesignModel(): DesignDiagramModelSpec {
 
 function failedPartialDesignSnapshot(): DesignRunSnapshot {
   const table = tableDesignModel();
-  return {
+  return createDesignRunSnapshot({
     runId: "design-partial-history",
     requirementText: "简单社交软件",
     selectedDiagrams: ["table", "component"],
@@ -93,11 +94,11 @@ function failedPartialDesignSnapshot(): DesignRunSnapshot {
       category: "render",
       retryable: true,
     },
-  };
+  });
 }
 
 function completedDocumentSnapshot(): DocumentRunSnapshot {
-  return {
+  return createDocumentRunSnapshot({
     runId: "document-history",
     documentKind: "requirementsSpec",
     requirementText: "说明书历史中的旧需求",
@@ -111,69 +112,9 @@ function completedDocumentSnapshot(): DocumentRunSnapshot {
     currentStage: "render_document_file",
     status: "completed",
     error: null,
-  };
+  });
 }
 
-function completedCodeSnapshot(): CodeRunSnapshot {
-  const table = tableDesignModel();
-  return {
-    runId: "code-history",
-    requirementText: "简单社交软件",
-    rules: [],
-    requirementBaseline: null,
-    coverageMatrix: null,
-    traceabilityMatrix: null,
-    designModels: [table],
-    designPlantUml: [
-      {
-        diagramKind: "table",
-        modelId: "table",
-        source: "@startuml\nclass users\n@enduml",
-      },
-    ],
-    spec: null,
-    businessLogic: null,
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    filePlan: null,
-    
-    
-    
-    
-    
-    
-    files: {
-      "/src/App.tsx": "export default function App() { return null; }",
-    },
-    entryFile: "/src/App.tsx",
-    dependencies: {},
-    agentPlan: [],
-    generationMode: "continue",
-    changedFileCount: 1,
-    diagnostics: [],
-    
-    currentStage: "verify_code_preview",
-    status: "completed",
-    error: null,
-  };
-}
 
 describe("createRestoredSnapshotPlan", () => {
   it("restores successful design artifacts from failed partial snapshots", () => {
@@ -204,5 +145,5 @@ describe("createRestoredSnapshotPlan", () => {
     ).toThrow("说明书快照不能恢复为项目工作台。");
   });
 
-  
+
 });

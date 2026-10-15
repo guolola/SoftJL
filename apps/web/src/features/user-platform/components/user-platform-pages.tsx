@@ -22,29 +22,16 @@ import {
   Activity,
   BookOpen,
   Clock3,
-  GitBranch,
   Loader2,
-  MoreHorizontal,
   Settings,
-  ShieldCheck,
   Users,
   X,
 } from "lucide-react";
-import { Badge } from "../../../shared/ui/badge";
 import { Button } from "../../../shared/ui/button";
 import { PageHeader } from "../../../shared/template/layout/page";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../../../shared/ui/dropdown-menu";
 import { cn } from "../../../shared/ui/utils";
 import {
   ProjectGenerationTasksDrawerContent,
-  ProjectWorkspaceActions,
 } from "../../workspace-shell/components/top-bar";
 import {
   AUTH_SESSION_CHANGED_EVENT,
@@ -530,7 +517,7 @@ function ProjectDrawerShell({
   open,
   kind,
   projectName,
-  accessLabel,
+  accessLabel: _accessLabel,
   onClose,
   children,
 }: {
@@ -607,9 +594,6 @@ function ProjectDrawerShell({
   );
 }
 
-function CheckStatusDot() {
-  return <span className="size-2 rounded-full bg-primary" aria-hidden="true" />;
-}
 
 export function ProjectWorkspaceDrawer({
   projectId,

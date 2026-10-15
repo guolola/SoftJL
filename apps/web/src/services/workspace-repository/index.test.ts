@@ -1,18 +1,18 @@
 // Verifies workspace repository persistence, remote API mapping, history compaction, and subscription behavior.
+import { createRenderMeta } from "../../test/artifact-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   AtomicRequirement,
-  
+
   DiagramModelSpec,
   RequirementBaseline,
-  RepairRequirementRulesRequest,
 } from "@uml-platform/contracts";
 import {
   buildApiUrl,
   createHttpWorkspaceRepository,
   createMockWorkspaceRepository,
   type StartDocumentRunInput,
-  
+
   createStartRunInput,
 } from "./index";
 import {
@@ -44,7 +44,6 @@ function storeManagedUserSettings() {
     }),
   );
 }
-
 
 
 function createAtomicRequirement(
@@ -155,7 +154,7 @@ describe("createStartRunInput", () => {
     });
   });
 
-  
+
 });
 
 describe("createHttpWorkspaceRepository", () => {
@@ -271,9 +270,6 @@ describe("createHttpWorkspaceRepository", () => {
     );
   });
 
-  
-
-  
 
   it("rejects document operations when no project scope is available", async () => {
     localStorage.setItem(
@@ -601,7 +597,6 @@ describe("createHttpWorkspaceRepository", () => {
     expect(body.state.requirementText).toBe("团队成员更新的需求");
   });
 
-  
 
   it("persists requirement rule freshness metadata through project conflict retries", async () => {
     const requirementText = "订单需求";
@@ -808,7 +803,6 @@ describe("createHttpWorkspaceRepository", () => {
     expect(workspace.rulesVersion).toBe(1);
   });
 
-  
 
   it("does not start a project run when the pending workspace save failed", async () => {
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
@@ -1071,7 +1065,6 @@ describe("createHttpWorkspaceRepository", () => {
     );
   });
 
-  
 
   it("persists pruned traceability with manual requirement model edits", async () => {
     const savedBodies: Array<Record<string, unknown>> = [];
@@ -1614,7 +1607,7 @@ describe("createHttpWorkspaceRepository", () => {
   });
 
   it("rejects project document run restore before calling workspace restore", async () => {
-    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+    const fetchMock = vi.fn(async (url: string, _options?: RequestInit) => {
       if (url.endsWith("/api/projects/library-booking/runs/run-doc")) {
         return new Response(
           JSON.stringify({
@@ -1980,9 +1973,9 @@ describe("createHttpWorkspaceRepository", () => {
         {
           diagramKind: "class",
           svg: "<svg />",
-          renderMeta: {
+          renderMeta: createRenderMeta({
             generatedAt: "2026-05-24T00:00:00.000Z",
-          },
+          }),
         },
       ],
     });
@@ -2085,9 +2078,9 @@ describe("createHttpWorkspaceRepository", () => {
         {
           diagramKind: "class",
           svg: "<svg />",
-          renderMeta: {
+          renderMeta: createRenderMeta({
             generatedAt: "2026-05-24T00:00:00.000Z",
-          },
+          }),
         },
       ],
     });
@@ -2206,9 +2199,9 @@ describe("createHttpWorkspaceRepository", () => {
         {
           diagramKind: "activity",
           svg: "<svg />",
-          renderMeta: {
+          renderMeta: createRenderMeta({
             generatedAt: "2026-05-24T00:00:00.000Z",
-          },
+          }),
         },
       ],
       diagramErrors: {
@@ -2529,9 +2522,9 @@ describe("createHttpWorkspaceRepository", () => {
           diagramKind: "analysis",
           modelId: "analysis:uc_view",
           svg: "<svg>analysis</svg>",
-          renderMeta: {
+          renderMeta: createRenderMeta({
             generatedAt: "2026-06-08T00:00:00.000Z",
-          },
+          }),
         },
       ],
     });
@@ -3701,7 +3694,6 @@ describe("createHttpWorkspaceRepository", () => {
     expect(localStorage.getItem(RUN_HISTORY_STORAGE_KEY)).toContain("gpt-5.5");
   });
 
-  
 
   it("prunes older mock history items when localStorage quota is exceeded", async () => {
     const originalSetItem = Storage.prototype.setItem;

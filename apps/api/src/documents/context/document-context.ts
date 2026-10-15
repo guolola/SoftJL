@@ -650,21 +650,6 @@ function sequenceBody(
   ];
 }
 
-function requirementUseCaseClassRows(input: StartDocumentRunRequest) {
-  const classes = requirementClasses(input);
-  return requirementUseCases(input).map((useCase, index) => [
-    String(index + 1),
-    useCase.name,
-    compactJoin(requirementActors(input, useCaseActorIds(useCase)), "主要用户"),
-    compactJoin(classes.map((item) => item.name), "由领域概念模型承接的业务对象"),
-    compactJoin(
-      input.rules
-        .filter((rule) => rule.relatedDiagrams.includes("usecase"))
-        .map((rule) => rule.id),
-      "由用例目标和事件流推导",
-    ),
-  ]);
-}
 
 function designUseCaseInterfaceRows(input: StartDocumentRunRequest) {
   const prototype = requirementModel(input, "prototype");
@@ -681,36 +666,6 @@ function designUseCaseInterfaceRows(input: StartDocumentRunRequest) {
   });
 }
 
-function designUseCaseObjectClassRows(input: StartDocumentRunRequest) {
-  const classes = designClasses(input);
-  return requirementUseCases(input).map((useCase, index) => {
-    const participants = sequenceModelForUseCase(input, useCase)?.participants ?? [];
-    return [
-      String(index + 1),
-      useCase.name,
-      compactJoin(participants.map((item) => item.name), "边界对象、控制对象、服务对象和实体对象"),
-      compactJoin(classes.map((item) => item.name), "由设计类图承接的设计类"),
-      "用例实现设计通过对象协作映射到设计类职责",
-    ];
-  });
-}
-
-function classTableRows(input: StartDocumentRunRequest) {
-  const tables = designTables(input);
-  const classes = designClasses(input).filter((item) =>
-    ["entity", "aggregate"].includes(item.classKind ?? ""),
-  );
-  const persistentClasses = classes.length > 0 ? classes : designClasses(input);
-  const sourceClasses = persistentClasses.length > 0
-    ? persistentClasses
-    : [{ name: "核心业务对象" }];
-  return sourceClasses.map((item, index) => [
-    String(index + 1),
-    item.name,
-    tables[index]?.name ?? `${item.name}数据表`,
-    "表结构依据持久化类的标识、属性和关联关系组织",
-  ]);
-}
 
 function tableDesignBody(input: StartDocumentRunRequest) {
   const tables = designTables(input);

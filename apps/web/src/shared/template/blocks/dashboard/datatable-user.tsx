@@ -201,7 +201,7 @@ const UserDatatable = ({ data }: { data: Item[] }) => {
   const hasProviderResources = activeI18n.exists?.('dashboard.table.user') ?? false
   const t = useMemo<TableTranslation>(
     () => (key, options) => String(hasProviderResources ? translate(key, options) : appI18n.t(key, options)),
-    [activeI18n.language, hasProviderResources, translate]
+    [hasProviderResources, translate]
   )
   const columns = useMemo(() => createColumns(t), [t])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -319,7 +319,7 @@ const UserDatatable = ({ data }: { data: Item[] }) => {
 
 export default UserDatatable
 
-function Filter({ column, t }: { column: Column<any, unknown>; t: TableTranslation }) {
+function Filter<TData>({ column, t }: { column: Column<TData, unknown>; t: TableTranslation }) {
   const id = useId()
   const columnFilterValue = column.getFilterValue()
   const { filterVariant } = column.columnDef.meta ?? {}

@@ -1,8 +1,7 @@
 // Builds deterministic workspace state slices when restoring saved run history snapshots.
 import { designTraceabilityTouchesDiagramKinds } from "@uml-platform/contracts";
-import type {  } from "@uml-platform/contracts";
 import {
-  
+
   isDesignRunSnapshot,
   isDocumentRunSnapshot,
   runHistorySnapshotRequirementText,
@@ -10,8 +9,6 @@ import {
   type RunHistorySnapshot,
 } from "../../../entities/run-history";
 import {
-  getDesignArtifactId,
-  getDesignModelId,
   getRequirementModelId,
   type DesignDiagramType,
   type DiagramType,
@@ -56,8 +53,8 @@ export type RestoredWorkspaceArtifacts = {
   designDiagramErrors: WorkspaceRecord["designDiagramErrors"];
   generatedDesignDiagrams: DesignDiagramType[];
   designInputFingerprints: WorkspaceRecord["designInputFingerprints"];
-  
-  
+
+
 };
 
 export type RestoredSnapshotPlan = {
@@ -106,15 +103,8 @@ function restoredRunDiagnostics(snapshot: RunHistorySnapshot): RunDiagnostics {
     finishedAt:
       terminalProgress(snapshot) === 100 ? new Date().toISOString() : null,
     streamText: runErrorMessage(snapshot) ?? "",
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
+
     requirementTrace: restoredRequirementTrace(snapshot),
     designTrace: isDesignRunSnapshot(snapshot)
       ? (snapshot.designTrace ?? [])
@@ -122,20 +112,6 @@ function restoredRunDiagnostics(snapshot: RunHistorySnapshot): RunDiagnostics {
   };
 }
 
-function emptyRequirementArtifacts() {
-  return {
-    models: {} as WorkspaceRecord["models"],
-    requirementModelTraceability:
-      [] as WorkspaceRecord["requirementModelTraceability"],
-    plantUml: {} as WorkspaceRecord["plantUml"],
-    svgArtifacts: {} as WorkspaceRecord["svgArtifacts"],
-    diagramErrors: {} as WorkspaceRecord["diagramErrors"],
-    generatedDiagrams: [] as DiagramType[],
-    diagramVersions: {} as WorkspaceRecord["diagramVersions"],
-    diagramInputFingerprints:
-      {} as WorkspaceRecord["diagramInputFingerprints"],
-  };
-}
 
 function emptyDesignArtifacts() {
   return {
@@ -150,7 +126,6 @@ function emptyDesignArtifacts() {
       {} as WorkspaceRecord["designInputFingerprints"],
   };
 }
-
 
 
 function restoredDesignArtifacts(input: {
@@ -224,8 +199,8 @@ function restoredDesignArtifacts(input: {
         currentDesignFingerprint,
       ]),
     ) as WorkspaceRecord["designInputFingerprints"],
-    
-    
+
+
   };
 }
 
@@ -257,8 +232,8 @@ function restoredRequirementArtifacts(input: {
       ]),
     ) as WorkspaceRecord["diagramInputFingerprints"],
     ...emptyDesignArtifacts(),
-    
-    
+
+
   };
 }
 
@@ -269,7 +244,7 @@ function restoredArtifacts(input: {
 }): RestoredWorkspaceArtifacts | null {
   const { snapshot } = input;
   if (isDocumentRunSnapshot(snapshot)) return null;
-  
+
   if (isDesignRunSnapshot(snapshot)) return restoredDesignArtifacts(input);
   return restoredRequirementArtifacts({
     snapshot: snapshot as WorkspaceRunSnapshot,

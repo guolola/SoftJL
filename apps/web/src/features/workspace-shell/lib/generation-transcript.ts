@@ -252,7 +252,7 @@ export function projectGenerationTranscript(events: RunEvent[], fallbackStatus =
       const call = getCall(getStep(event.stage), `${event.stage}:legacy`, at);
       if (includeContent) {
         call.output += event.chunk;
-        call.technical = /^[\s]*[\[{`]/.test(call.output);
+        call.technical = /^[\s]*[[{`]/.test(call.output);
       }
     } else if (event.type === "artifact_ready") {
       const step = getStep(event.stage);

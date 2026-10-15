@@ -1,8 +1,8 @@
 // Builds run-level CoverageMatrix and TraceabilityMatrix artifacts from generated outputs.
 import type {
   AtomicRequirement,
-  
-  
+
+
   CoverageMatrix,
   CoverageMatrixRow,
   DesignDiagramModelSpec,
@@ -40,15 +40,11 @@ type DesignStageInput = RequirementStageInput & {
 };
 
 
-
 type MutableTraceState = {
   links: TraceabilityLink[];
   diagnostics: TraceabilityDiagnostic[];
 };
 
-function artifactId(type: TraceabilityArtifactType, id: string) {
-  return `${type}:${id}`;
-}
 
 function modelRefId(ref: ModelElementRef) {
   return `${ref.modelId ? `${ref.modelId}:` : ""}${ref.diagramKind}:${ref.elementId}`;
@@ -99,11 +95,6 @@ function addBidirectionalLink(
   });
 }
 
-function acceptedRequirements(baseline: RequirementBaseline) {
-  return baseline.requirements.filter(
-    (requirement) => requirement.status === "accepted",
-  );
-}
 
 function requirementByRuleId(baseline: RequirementBaseline) {
   const byRule = new Map<string, AtomicRequirement>();
@@ -490,21 +481,11 @@ function shouldCheckDesignSourceSemantics(
 }
 
 
-
-
-
-function codeMatchesRequirement(path: string, content: string, requirement: AtomicRequirement) {
-  const text = `${path}\n${content}`.toLowerCase();
-  return normalizedTokens(requirement).some((token) =>
-    text.includes(token.toLowerCase()),
-  );
-}
-
 function coverageStatusForRequirement(
   requirement: AtomicRequirement,
   modelElements: string[],
   designElements: string[],
-  
+
 ): CoverageMatrixRow["status"] {
   if (requirement.status === "conflict") return "conflict";
   if (requirement.status === "pending-review" || requirement.status === "ambiguous") {
@@ -530,7 +511,7 @@ function buildCoverageRows(
     {
       modelElements: Set<string>;
       designElements: Set<string>;
-      
+
       tests: Set<string>;
       reviewItems: Set<string>;
     }
@@ -540,18 +521,18 @@ function buildCoverageRows(
     const traced = tracedArtifacts.get(requirement.id) ?? {
       modelElements: new Set<string>(),
       designElements: new Set<string>(),
-      
+
       tests: new Set<string>(),
       reviewItems: new Set<string>(),
     };
     const modelElements = Array.from(traced.modelElements);
     const designElements = Array.from(traced.designElements);
-    
+
     const status = coverageStatusForRequirement(
       requirement,
       modelElements,
       designElements,
-      
+
     );
     return {
       requirementId: requirement.id,
@@ -564,7 +545,7 @@ function buildCoverageRows(
           : "Requirement needs review or an alternative evidence path before completion.",
       modelElements,
       designElements,
-      
+
       tests: Array.from(traced.tests),
       reviewItems:
         status === "not-modelable"
@@ -580,7 +561,7 @@ function addTracedArtifact(
     {
       modelElements: Set<string>;
       designElements: Set<string>;
-      
+
       tests: Set<string>;
       reviewItems: Set<string>;
     }
@@ -592,7 +573,7 @@ function addTracedArtifact(
   const current = tracedArtifacts.get(requirementId) ?? {
     modelElements: new Set<string>(),
     designElements: new Set<string>(),
-    
+
     tests: new Set<string>(),
     reviewItems: new Set<string>(),
   };
@@ -613,7 +594,7 @@ export function buildRequirementStageTrustedChain({
     {
       modelElements: Set<string>;
       designElements: Set<string>;
-      
+
       tests: Set<string>;
       reviewItems: Set<string>;
     }
@@ -844,7 +825,6 @@ export function buildDesignStageTrustedChain(input: DesignStageInput): TrustedCh
 }
 
 
-
 export function assertTrustedChainAllowsCompletion(_artifacts: TrustedChainArtifacts) {
   // Trusted-chain gaps are now audit hints in the interactive workflow. Pipeline
   // stages should continue unless the underlying generation/parsing step fails.
@@ -886,7 +866,7 @@ function coverageRowsToTraceMap(rows: CoverageMatrix["rows"]) {
     {
       modelElements: Set<string>;
       designElements: Set<string>;
-      
+
       tests: Set<string>;
       reviewItems: Set<string>;
     }
@@ -895,7 +875,7 @@ function coverageRowsToTraceMap(rows: CoverageMatrix["rows"]) {
     tracedArtifacts.set(row.requirementId, {
       modelElements: new Set(row.modelElements),
       designElements: new Set(row.designElements),
-      
+
       tests: new Set(row.tests),
       reviewItems: new Set(row.reviewItems),
     });

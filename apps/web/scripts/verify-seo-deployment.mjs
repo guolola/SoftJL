@@ -1,6 +1,7 @@
 // Runs post-release HTTP assertions for canonical pages, crawler files, private routes, and real 404s.
-const baseUrl = new URL(process.env.PUBLIC_WEB_BASE_URL?.trim() || "https://jianglisoftware.com");
-const canonicalBaseUrl = new URL(process.env.PUBLIC_CANONICAL_URL?.trim() || "https://jianglisoftware.com");
+if (!process.env.PUBLIC_WEB_BASE_URL?.trim()) throw new Error("Set PUBLIC_WEB_BASE_URL to the deployment to verify.");
+const baseUrl = new URL(process.env.PUBLIC_WEB_BASE_URL.trim());
+const canonicalBaseUrl = new URL(process.env.PUBLIC_CANONICAL_URL?.trim() || baseUrl.origin);
 const publicRoutes = ["/"];
 
 async function request(pathname, init) {

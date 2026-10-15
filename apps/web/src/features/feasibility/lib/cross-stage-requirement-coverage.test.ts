@@ -21,6 +21,7 @@ describe("buildCrossStageRequirementCoverage", () => {
       requirementModelTraceability: [{
         ruleId: "r1",
         target: {
+          diagramKind: "usecase",
           modelId: "usecase",
           elementId: "uc-1",
           elementKind: "usecase",
@@ -29,12 +30,14 @@ describe("buildCrossStageRequirementCoverage", () => {
       }],
       designModelTraceability: [{
         source: {
+          diagramKind: "usecase",
           modelId: "usecase",
           elementId: "uc-1",
           elementKind: "usecase",
           label: "登录",
         },
         targets: [{
+          diagramKind: "architecture",
           modelId: "architecture",
           elementId: "service-1",
           elementKind: "component",
@@ -61,6 +64,7 @@ describe("buildCrossStageRequirementCoverage", () => {
       requirementModelTraceability: [{
         ruleId: "r1",
         target: {
+          diagramKind: "usecase",
           modelId: "usecase",
           elementId: "uc-1",
           elementKind: "usecase",

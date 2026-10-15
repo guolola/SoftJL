@@ -1,0 +1,37 @@
+# Collects reproducible, sanitized community bug reports.
+name: 问题反馈 / Bug report
+description: 提供可以复现的行为、环境和脱敏诊断信息。
+body:
+  - type: markdown
+    attributes:
+      value: "安全漏洞请先阅读 security.md，不要公开密钥、Cookie、数据库或私人需求。"
+  - type: input
+    id: version
+    attributes:
+      label: 版本或提交号
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 操作系统、Node 版本、浏览器、启动方式及是否使用 PostgreSQL / OnlyOffice。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 最短复现步骤
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 预期结果与实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 已脱敏的错误编号或日志
+      description: 不要上传环境配置、认证信息或模型密钥。

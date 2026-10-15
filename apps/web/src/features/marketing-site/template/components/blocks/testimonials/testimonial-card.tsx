@@ -1,5 +1,5 @@
 // Flow 2.0.0 template source; only runtime, content and business integration adaptations.
-import { FlowCopy, flowText } from '@/features/marketing-site/model/flow-copy';
+import { flowText } from '@/features/marketing-site/model/flow-copy';
 import { Avatar, AvatarFallback, AvatarImage } from '@/features/marketing-site/template/components/ui/avatar'
 import { Card, CardContent, CardDescription, CardTitle } from '@/features/marketing-site/template/components/ui/card'
 

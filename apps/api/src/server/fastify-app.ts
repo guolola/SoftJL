@@ -88,6 +88,8 @@ export async function createConfiguredFastifyApp() {
   });
   await app.register(multipart);
   app.addHook("preSerialization", async (request, reply, payload) => {
+    // OAuth discovery and JSON-RPC errors must retain their protocol response shape.
+    if (request.routeOptions.config.mcpProtocol) return payload;
     if (reply.statusCode < 400 || typeof payload !== "object" || payload === null) {
       return payload;
     }

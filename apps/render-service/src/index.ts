@@ -1,6 +1,6 @@
 // Exposes PlantUML rendering helpers and the standalone render-service HTTP entrypoint.
 import cors from "@fastify/cors";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify from "fastify";
 import { realpathSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { spawn } from "node:child_process";

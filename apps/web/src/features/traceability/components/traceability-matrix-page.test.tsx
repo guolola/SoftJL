@@ -58,6 +58,7 @@ const usecaseModel = {
   ],
   useCases: [
     {
+      eventFlows: [],
       id: "submit-order",
       name: "提交订单",
       goal: "完成订单提交",
@@ -78,6 +79,7 @@ const classModel = {
   notes: [],
   classes: [
     {
+      constraints: [],
       id: "domain-user",
       name: "UserDomain",
       attributes: [],
@@ -314,6 +316,7 @@ describe("TraceabilityMatrixPage", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "class-user-auth",
                 name: "Class_UserAuth",
                 attributes: [],
@@ -434,6 +437,7 @@ describe("TraceabilityMatrixPage", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "class-user-auth",
                 name: "Class_UserAuth",
                 attributes: [],
@@ -558,6 +562,7 @@ describe("TraceabilityMatrixPage", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "class-user-auth",
                 name: "Class_UserAuth",
                 attributes: [],
@@ -593,6 +598,7 @@ describe("TraceabilityMatrixPage", () => {
   it("paginates model element rows and resets pagination after page size changes", async () => {
     const user = userEvent.setup();
     const useCases = Array.from({ length: 26 }, (_, index) => ({
+      eventFlows: [],
       id: `usecase-${index + 1}`,
       name: `用例 ${index + 1}`,
       goal: `目标 ${index + 1}`,

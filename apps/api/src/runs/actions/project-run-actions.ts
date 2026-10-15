@@ -5,7 +5,7 @@ import { apiErrorResponseSchema, type ProviderSettings, type RunAction, } from "
 import type { GenerationUsageService } from "../../generation/generation-usage.js";
 import type { ProviderConfigStore } from "../../provider-configs/provider-config-store.js";
 import type { ProviderRateLimitPolicy, ProviderUsageTracker, } from "../../provider-configs/provider-usage-tracker.js";
-import { offlineDemoProviderSettings } from "../demo/offline-demo-runs.js";
+import { offlineDemoProviderSettings } from "../demo/offline-demo-config.js";
 import { checkGenerationUsageLimit, checkProviderUsageLimit, isActiveRun, recordGenerationUsage, recordProviderUsage, rememberProviderSettings, providerResolutionFailureResponse, resolveProviderConfigIdForRun, resolveProviderSettingsForRun, snapshotProviderSettings, taskTypeForRun, } from "../providers/run-provider-gates.js";
 import { createQueuedRunFromSource, isRetryableRun, } from "../records/run-actions.js";
 import { refreshRunRecordIfAvailable, type RunRecord, type RunRecordMetadata, type RunRecordStore, } from "../records/run-record-store.js";
@@ -103,9 +103,7 @@ export async function createProjectRunAction({ request, reply, action, projectId
     if (limitCheck !== true)
         return limitCheck;
     const newRunId = randomUUID();
-    const providerConfig = providerConfigId && providerConfigs
-        ? await providerConfigs.get(providerConfigId)
-        : null;
+
     await recordProviderUsage({
         usageTracker: providerUsageTracker,
         providerConfigId,
@@ -141,7 +139,6 @@ export async function createProjectRunAction({ request, reply, action, projectId
       providerSettings,
       providerConfigId,    });
   }
-
 
 
     reply.code(202);

@@ -20,18 +20,25 @@ describe('header profile dropdown', () => {
     };
     let menu = await openMenu();
     expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual([
-      i18n.t('auth.account'), i18n.t('nav.dashboard'), i18n.t('nav.projects'),
-      i18n.t('nav.exam'), i18n.t('nav.tutorial'),
+      i18n.t('auth.account'), i18n.t('nav.dashboard'), i18n.t('nav.projects'), i18n.t('mcp.title'),
+      i18n.t('nav.tutorial'),
     ]);
     await user.click(within(menu).getByRole('menuitem', { name: i18n.t('auth.account') }));
     expect(onAccount).toHaveBeenCalledOnce();
     for (const [label, path] of [
-      ['nav.dashboard', '/dashboard'], ['nav.projects', '/projects'],
-      ['nav.exam', '/exam'], ['nav.tutorial', '/tutorial'],
+      ['nav.dashboard', '/dashboard'], ['nav.projects', '/projects'], ['mcp.title', '/projects/connections'],
     ]) {
       menu = await openMenu();
       await user.click(within(menu).getByRole('menuitem', { name: i18n.t(label) }));
       expect(onNavigate).toHaveBeenLastCalledWith(path);
     }
+    menu = await openMenu();
+    const guide = within(menu).getByRole('menuitem', { name: i18n.t('nav.tutorial') });
+    expect(guide).toHaveAttribute('href', 'https://jianglisoftware.com/tutorial');
+    expect(guide).toHaveAttribute('target', '_blank');
+    expect(guide).toHaveAttribute('rel', 'noopener noreferrer');
+    onNavigate.mockClear();
+    await user.click(guide);
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 });

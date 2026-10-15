@@ -21,7 +21,7 @@ const revenueChartConfig = {
   }
 } satisfies ChartConfig
 
-const StatisticsTotalRevenueCard = ({ className, title, description, changePercentage, value, chartData: revenueChartData }: { className?: string; title: string; description: string; changePercentage: string; value?: string; chartData: { month: string; desktop: number; mobile: number }[] }) => {
+const StatisticsTotalRevenueCard = ({ className, title, description, changePercentage, value: _value, chartData: revenueChartData }: { className?: string; title: string; description: string; changePercentage: string; value?: string; chartData: { month: string; desktop: number; mobile: number }[] }) => {
   const { t } = useDashboardLabels()
   const StatisticsCardData = {
   title,

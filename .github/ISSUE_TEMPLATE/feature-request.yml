@@ -1,0 +1,20 @@
+# Collects concrete user needs and acceptance criteria before implementation.
+name: 改进建议 / Feature request
+description: 说明使用场景、当前障碍与可验证的期望行为。
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景与当前障碍
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 期望行为与验收方式
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 已尝试的方法

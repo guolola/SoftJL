@@ -88,7 +88,7 @@ export function SidebarUserDropdown({
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <AccountMenuItems onAccount={() => select(onOpenAccount)} onNavigate={path => select(() => onNavigate(path))} />
+            <AccountMenuItems onAccount={() => select(onOpenAccount)} onNavigate={path => select(() => onNavigate(path))} onGuideSelect={() => setOpenMobile(false)} />
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled={loggingOut} onClick={() => void logout()}><LogOut />{t('account.logout')}</DropdownMenuItem>
           </DropdownMenuContent>

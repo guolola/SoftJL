@@ -2,11 +2,10 @@
 'use client'
 
 import { Area, AreaChart } from 'recharts'
-import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader } from '@/shared/ui/card'
-import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@/shared/ui/chart'
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/shared/ui/chart'
 import { cn } from '@/shared/ui/utils'
-import { EllipsisVerticalIcon, ChevronUpIcon, ChevronDownIcon, ArrowUpIcon, ArrowDownIcon } from 'lucide-react'
+import { ChevronUpIcon, ChevronDownIcon, ArrowUpIcon, ArrowDownIcon } from 'lucide-react'
 
 import { DashboardBlockMenu, type DashboardBlockActions } from './dashboard-block-menu'
 import { useDashboardLabels } from './dashboard-shell-labels'
@@ -30,11 +29,6 @@ type Props = DashboardBlockActions & {
   className?: string
 }
 
-const conversionRateChartConfig = {
-  conversion: {
-    label: 'Conversion'
-  }
-} satisfies ChartConfig
 
 const ConversionRateCard = ({
   title,

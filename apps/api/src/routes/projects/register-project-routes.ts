@@ -24,7 +24,7 @@ import {
   requireAuth,
   requireProjectPermission,
 } from "../../auth/guards.js";
-import { toProjectDto, toProjectMemberDto } from "../../auth/dto.js";
+import { toProjectMemberDto } from "../../auth/dto.js";
 import type { AuthStore } from "../../auth/in-memory-auth-store.js";
 import {
   buildTokenMail,

@@ -31,7 +31,7 @@ const Magnetic = React.forwardRef(function Magnetic({
   onMouseMove,
   asChild = false,
   ...props
-}: MagneticProps, ref: React.ForwardedRef<any>) {
+}: MagneticProps, ref: React.ForwardedRef<HTMLDivElement>) {
   const localRef = React.useRef<HTMLDivElement>(null)
 
   React.useImperativeHandle(ref, () => localRef.current as HTMLDivElement)

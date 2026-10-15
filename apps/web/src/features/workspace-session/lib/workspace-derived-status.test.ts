@@ -84,6 +84,7 @@ describe("deriveWorkspaceStatus", () => {
     );
 
     const status = deriveWorkspaceStatus({
+      hasUncommittedRequirementDraft: false,
       currentRunDiagnostics: createEmptyDiagnostics(),
       designInputFingerprints: {
         "design-class": designFingerprint,
@@ -141,6 +142,7 @@ describe("deriveWorkspaceStatus", () => {
     );
 
     const status = deriveWorkspaceStatus({
+      hasUncommittedRequirementDraft: false,
       currentRunDiagnostics: createEmptyDiagnostics(),
       designInputFingerprints: {
         "design-class": designFingerprint,

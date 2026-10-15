@@ -103,14 +103,14 @@ interface RequirementRulesTableProps {
 
 export function RequirementRulesTable({
   canEditRequirements,
-  currentRulePage,
+  currentRulePage: _currentRulePage,
   deleteRequirementRule,
   editBlockedReason,
   emptyRuleSlots,
   filteredRules,
-  firstRuleIndex,
+  firstRuleIndex: _firstRuleIndex,
   generating,
-  lastRuleIndex,
+  lastRuleIndex: _lastRuleIndex,
   onAddRule,
   onOpenHintDetail,
   pagedRules,

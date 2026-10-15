@@ -36,7 +36,6 @@ import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
 import {
   PROJECT_SCOPE_OPTIONS,
   projectFromApi,
-  type StaticProject,
 } from "../lib/project-presentation";
 import {
   PlatformApiError,
@@ -51,12 +50,16 @@ type Navigate = (path: string) => void;
 
 const STABLE_PLATFORM_SCROLL_CLASS =
   "min-h-0 min-w-0 w-full overflow-x-clip bg-background";
+// Keep the provider-free translation fallback stable across loading state updates.
+const fallbackTranslate = appI18n.t.bind(appI18n);
 
 export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
   const { t: translate, i18n: activeI18n } = useTranslation();
   const hasProviderResources =
     typeof activeI18n.exists === "function" && activeI18n.exists("projects.openProject");
-  const t = hasProviderResources ? translate : appI18n.t.bind(appI18n);
+  const t = hasProviderResources ? translate : fallbackTranslate;
+  const failureTranslation = useRef(t);
+  failureTranslation.current = t;
   const language = hasProviderResources
     ? activeI18n.resolvedLanguage || activeI18n.language
     : appI18n.resolvedLanguage || appI18n.language;
@@ -108,7 +111,7 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
           setStatusErrorMessage("");
         } else {
           setStatusKind("loadFailed");
-          setStatusErrorMessage(localizeCaughtFailure(error, t("projects.status.loadFailed")));
+          setStatusErrorMessage(localizeCaughtFailure(error, failureTranslation.current("projects.status.loadFailed")));
         }
       })
       .finally(() => {
@@ -141,7 +144,7 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
       projectRecords.map((project) =>
         projectFromApi(project, authSession?.user ?? null, locale, t("projects.noDescription")),
       ),
-    [authSession?.user, locale, projectRecords],
+    [authSession?.user, locale, projectRecords, t],
   );
 
   const status = useMemo(() => {

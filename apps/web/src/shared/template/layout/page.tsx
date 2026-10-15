@@ -8,7 +8,6 @@ import { ChevronDownIcon, ChevronUpIcon, SearchIcon } from 'lucide-react'
 
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar'
 import { Badge } from '@/shared/ui/badge'
-import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader } from '@/shared/ui/card'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/shared/ui/input-group'
 import { Label } from '@/shared/ui/label'

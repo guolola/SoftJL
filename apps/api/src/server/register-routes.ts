@@ -1,7 +1,6 @@
 // Wires assembled server dependencies into HTTP route modules without owning route behavior.
 import { join } from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { ProviderSettings, ProviderSettingsInput } from "@uml-platform/contracts";
 import { readSessionCookie } from "../auth/session-cookie.js";
 import { hasProjectPermission, type AuthStore } from "../auth/in-memory-auth-store.js";
 import { registerAccountRoutes } from "../routes/account/register-account-routes.js";
@@ -20,9 +19,8 @@ import type { RunAccessContext } from "../routes/runs/run-access.js";
 import type { DocumentLibrary } from "../documents/library/document-library.js";
 import type { MailAdapter } from "../mail/mail-adapter.js";
 import type { ProviderConfigStore } from "../provider-configs/provider-config-store.js";
-import { resolveProviderCircuitAccess } from "../provider-configs/provider-circuit-recovery.js";
 import type { ProviderUsageTracker } from "../provider-configs/provider-usage-tracker.js";
-import type { RunRecord, RunRecordStore } from "../runs/records/run-record-store.js";
+import type { RunRecordStore } from "../runs/records/run-record-store.js";
 import type { RenderClient } from "../adapters/render/render-client.js";
 import type { PngRenderClient } from "../adapters/render/png-render-client.js";
 import type { PdfRenderClient } from "../adapters/render/pdf-render-client.js";
@@ -32,7 +30,6 @@ import type { RunQueue } from "../runs/queue/run-queue.js";
 import { runDesignStagePipeline } from "../runs/pipelines/design-pipeline.js";
 import { runDocumentStagePipeline } from "../runs/pipelines/document-pipeline.js";
 import { runStagePipeline } from "../runs/pipelines/requirements-pipeline.js";
-import { handleRunPipelineError, startRunRecordPipeline, } from "../runs/pipelines/run-record-pipeline-starter.js";
 import { createProjectWorkspaceSync } from "../routes/runs/project-workspace-sync.js";
 import type { GenerationUsageService } from "../generation/generation-usage.js";
 import type { AcademicAdminRepository } from "../db/academic-admin-repository.js";
@@ -67,19 +64,6 @@ export type RegisterApiRoutesOptions = {
     databaseProbe?: () => Promise<void>;
     testRunAccessContext?: RunAccessContext;
 };
-function isManagedProviderSettings(settings: ProviderSettingsInput | undefined): settings is Extract<ProviderSettingsInput, {
-    providerConfigId: string;
-}> {
-    return Boolean(settings && "providerConfigId" in settings);
-}
-function readSnapshotProviderSettings(record: RunRecord) {
-    const settings = (record.snapshot as {
-        providerSettings?: unknown;
-    }).providerSettings;
-    return settings && typeof settings === "object"
-        ? (settings as ProviderSettingsInput)
-        : undefined;
-}
 export function registerApiRoutes({ app, healthPayload, versionPayload, authStore, mailAdapter, generationUsage, nodeEnv, academicStore, runs, documentLibrary, providerConfigs, providerUsageTracker, llmScheduler, runQueue, llmTransport, renderClient, pngRenderClient, pdfRenderClient, systemNoticeStore, analyticsStore, databaseProbe, testRunAccessContext, }: RegisterApiRoutesOptions) {
     const activeUserIdFromRequest = async (request: FastifyRequest) => {
         const sessionId = readSessionCookie(request);

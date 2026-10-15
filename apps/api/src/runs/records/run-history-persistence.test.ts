@@ -7,7 +7,6 @@ import { createPostgresRunRecordStore } from "./postgres-run-record-store.js";
 import { createEmptySnapshot } from "./snapshots.js";
 import { emitEvent, type RunRecord } from "./run-record-store.js";
 import { summarizeRunRecord } from "./run-record-summaries.js";
-import { buildRunArtifactItems, buildRunArtifactSummary, taskTypeForSnapshot } from "./admin-run-summaries.js";
 
 test("persisted history remains complete without a process-wide snapshot/log cache", async t => {
   const previousMode = process.env.UML_RUN_QUEUE_MODE;
@@ -73,11 +72,6 @@ test("persisted history remains complete without a process-wide snapshot/log cac
     assert.equal(record.persist, undefined);
     assert.ok(JSON.stringify(record.snapshot).length < 3000);
     assert.doesNotMatch(JSON.stringify(records), /private-key|private-prompt|private-image|private-body/);
-    assert.deepEqual(buildRunArtifactSummary(record.snapshot), buildRunArtifactSummary(snapshot as unknown as RunRecord["snapshot"]));
-    assert.deepEqual(buildRunArtifactItems(record.snapshot), buildRunArtifactItems(snapshot as unknown as RunRecord["snapshot"]));
-    assert.equal(taskTypeForSnapshot(records.find(record => record.snapshot.runId === "design")!.snapshot), "design_modeling");
-    assert.equal(taskTypeForSnapshot(records.find(record => record.snapshot.runId === "document")!.snapshot), "document_generation");
-    assert.equal(taskTypeForSnapshot(records.find(record => record.snapshot.runId === "feasibility")!.snapshot), "feasibility_analysis");
     assert.deepEqual(await store.listRecords!([]), []);
   });
   await t.test("snapshot-only and filtered replay preserve total counts and terminal cursors", async () => {

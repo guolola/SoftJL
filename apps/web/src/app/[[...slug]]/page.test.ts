@@ -29,7 +29,7 @@ describe('server route metadata', () => {
     },
   );
 
-  it.each(['login', 'projects', 'tutorial'])('keeps /%s excluded from indexing', async (path) => {
+  it.each(['login', 'projects'])('keeps /%s excluded from indexing', async (path) => {
     const metadata = await generateMetadata({ params: Promise.resolve({ slug: [path] }) });
 
     expect(metadata.title).toBe('SoftJL');

@@ -5,12 +5,11 @@ import type { ReactNode } from 'react'
 
 import { Bar, BarChart, XAxis } from 'recharts'
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar'
-import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader } from '@/shared/ui/card'
-import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@/shared/ui/chart'
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/shared/ui/chart'
 
 import { cn } from '@/shared/ui/utils'
-import { EllipsisVerticalIcon, ChevronUpIcon, ChevronDownIcon } from 'lucide-react'
+import { ChevronUpIcon, ChevronDownIcon } from 'lucide-react'
 
 import { DashboardBlockMenu, type DashboardBlockActions } from './dashboard-block-menu'
 import { useDashboardLabels } from './dashboard-shell-labels'
@@ -35,11 +34,6 @@ type Props = DashboardBlockActions & {
   className?: string
 }
 
-const earningReportChartConfig = {
-  earning: {
-    label: 'Earning'
-  }
-} satisfies ChartConfig
 
 const EarningReportCard = ({ title, subTitle, statData, chartData, className, ...actions }: Props) => {
   const { t } = useDashboardLabels()

@@ -1,6 +1,6 @@
 // Flow 2.0.0 template source; only runtime, content and business integration adaptations.
 'use client'
-import { FlowCopy, flowText } from '@/features/marketing-site/model/flow-copy';
+import { FlowCopy } from '@/features/marketing-site/model/flow-copy';
 
 import { GlobeIcon, StoreIcon, TrendingUpIcon } from 'lucide-react'
 

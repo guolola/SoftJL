@@ -1,11 +1,9 @@
 // Direct port of dashboard-shell-06 from the supplied block; presentation classes are retained.
 import { ActivityIcon, FileTextIcon, ShapesIcon } from 'lucide-react'
-import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader } from '@/shared/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table'
 
 import { cn } from '@/shared/ui/utils'
-import { EllipsisVerticalIcon } from 'lucide-react'
 
 import { DashboardBlockMenu, type DashboardBlockActions } from './dashboard-block-menu'
 import { useDashboardLabels } from './dashboard-shell-labels'
@@ -34,7 +32,7 @@ const PaymentHistoryCard = ({ title, paymentData, className, ...actions }: Props
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paymentData.map((payment, index) => (
+            {paymentData.map((payment, _index) => (
               <TableRow key={payment.id} className='border-none hover:bg-transparent'>
                 <TableCell className='pl-6 first:pt-4'>
                   <div className='flex items-center gap-2'>

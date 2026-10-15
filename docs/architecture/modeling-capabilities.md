@@ -131,6 +131,4 @@
 
 - [可信生成链路](trusted-generation.md)
 - [平台架构](platform-overview.md)
-- [需求模型指南](../../apps/web/src/features/product-docs/content/uml-models.md)
-- [设计模型指南](../../apps/web/src/features/product-docs/content/design-models.md)
-- [模型详情与编辑](../../apps/web/src/features/product-docs/content/uml-model-detail.md)
+- [线上使用指南：需求模型、设计模型与详情编辑](https://jianglisoftware.com/tutorial)

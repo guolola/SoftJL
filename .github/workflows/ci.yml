@@ -1,4 +1,4 @@
-# Runs non-deploying validation for branch and PR changes before the main deploy workflow.
+# Validates the community workspace without publishing or deploying a release.
 name: CI
 
 on:
@@ -72,22 +72,41 @@ jobs:
       - name: Audit documentation
         run: npm run audit:docs
 
+      - name: Check dependency advisories and lint
+        run: |
+          npm audit --audit-level=high
+          npm run lint:web
+
       - name: Test
         env:
           UML_MIGRATION_TEST_DATABASE_URL: postgres://uml_user:uml_ci_password@127.0.0.1:5432/uml_platform_ci
         run: |
           npm run test:contracts
+          npm run test:prompts
           npm run test:api
           npm run test:render
           npm run test:web
           npm run test:harness-eval
           npm run test:deploy
+          npm run test:scripts
 
-      - name: Build
-        run: npm run build
+      - name: Typecheck
+        run: |
+          npm run typecheck:web
+          npm run typecheck:harness-eval
 
-      - name: Install Chromium for generation performance regression
+      - name: Build production apps
+        env:
+          PUBLIC_WEB_BASE_URL: https://community.example.test
+        run: |
+          npm run build:api
+          npm run build:render
+          npm run build:web:production:prepared
+
+      - name: Install Chromium for browser regression
         run: npx playwright install --with-deps chromium
 
-      - name: Check generation UI response under 30000 events
-        run: npm run test --workspace @uml-platform/harness-e2e -- generation-performance.spec.ts --workers=1
+      - name: Check browser workflows, mobile layout and generation performance
+        env:
+          PLAYWRIGHT_SKIP_BUILD: "1"
+        run: npm run test:harness-e2e

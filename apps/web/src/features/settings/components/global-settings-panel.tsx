@@ -475,7 +475,7 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
             setProviderDialogOpen(false);
             resetProviderCreationForm();
         }
-        catch (error) {
+        catch (_error) {
             setTestFeedback(t("providerSettings.saveProviderFailed"));
             floatingAlert.error(t("providerSettings.saveProviderFailed"));
         }
@@ -495,7 +495,7 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
             await refreshProviderConfigs();
             floatingAlert.success(t("providerSettings.providerDeleted"));
         }
-        catch (error) {
+        catch (_error) {
             floatingAlert.error(t("providerSettings.deleteFailed"));
         }
         finally {

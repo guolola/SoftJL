@@ -102,7 +102,7 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
         rulesVersion: nextRulesVersion,
       });
     },
-    [repository, requirementText, rulesVersion, textVersion],
+    [repository, requirementText, rulesVersion, setRules, textVersion],
   );
 
   const getNextRequirementRuleId = useCallback(() => {

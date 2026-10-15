@@ -40,7 +40,7 @@ export function ModelElementListSection({
   elementKindFilter,
   onElementKindFilterChange,
   detailGroups,
-  detailItemCount,
+  detailItemCount: _detailItemCount,
   collections,
   filteredElements,
   editableItemsById,

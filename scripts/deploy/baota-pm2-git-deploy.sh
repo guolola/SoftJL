@@ -446,7 +446,7 @@ echo "Building production bundles from $SOURCE_DIR ..."
   run_timed "build prompts" npm run build:prompts
   run_timed "build api" npm run build:api
   run_timed "build render service" npm run build:render
-  run_timed "build production web" npm run build:web:production
+  run_timed "build production web" npm run build:web:production:prepared
 )
 verify_web_bundle "$SOURCE_DIR/apps/web"
 

@@ -1,4 +1,5 @@
 // Verifies workspace session state transitions, generation flows, persistence sync, and UI feedback contracts.
+import { createRenderMeta, createDocumentRunSnapshot, createDesignRunSnapshot } from "../../test/artifact-fixtures";
 import {
   act,
   render,
@@ -11,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AtomicRequirement,
-  
+
   DesignDiagramModelSpec,
   DesignRunSnapshot,
   DiagramModelSpec,
@@ -129,7 +130,6 @@ beforeEach(() => {
 afterEach(() => {
   localStorage.clear();
 });
-
 
 
 function deferred<T>() {
@@ -755,6 +755,7 @@ describe("WorkspaceSessionProvider", () => {
               ],
               useCases: [
                 {
+                  eventFlows: [],
                   id: "usecase_submit_order",
                   name: "提交订单",
                   goal: "完成订单创建",
@@ -1341,7 +1342,8 @@ describe("WorkspaceSessionProvider", () => {
         },
       ],
       useCases: [
-        { systemBoundaryId: "system",
+        {
+        eventFlows: [], systemBoundaryId: "system",
           id: "uc_submit",
           name: "提交订单",
           goal: "创建订单",
@@ -1491,7 +1493,8 @@ describe("WorkspaceSessionProvider", () => {
         },
       ],
       useCases: [
-        { systemBoundaryId: "system",
+        {
+        eventFlows: [], systemBoundaryId: "system",
           id: "uc_submit",
           name: "提交订单",
           goal: "创建订单",
@@ -1599,7 +1602,8 @@ describe("WorkspaceSessionProvider", () => {
         },
       ],
       useCases: [
-        { systemBoundaryId: "system",
+        {
+        eventFlows: [], systemBoundaryId: "system",
           id: "uc_submit",
           name: "提交订单",
           goal: "创建订单",
@@ -2122,7 +2126,8 @@ describe("WorkspaceSessionProvider", () => {
         },
       ],
       useCases: [
-        { systemBoundaryId: "system",
+        {
+        eventFlows: [], systemBoundaryId: "system",
           id: "uc_submit",
           name: "提交订单",
           goal: "创建订单",
@@ -2141,6 +2146,7 @@ describe("WorkspaceSessionProvider", () => {
       notes: [],
       classes: [
         {
+          constraints: [],
           id: "order",
           name: "Order",
           stereotype: "entity",
@@ -2158,7 +2164,11 @@ describe("WorkspaceSessionProvider", () => {
       summary: "订单界面流转。",
       notes: [],
       swimlanes: [],
-      nodes: [{ id: "start", type: "start" }, { id: "submit", type: "activity", name: "提交订单" }, { id: "end", type: "end" }],
+      nodes: [{
+      name: "开始", id: "start", type: "start" }, {
+      input: [],
+      output: [], id: "submit", type: "activity", name: "提交订单" }, {
+      name: "结束", id: "end", type: "end" }],
       relationships: [{ id: "begin", type: "control_flow", sourceId: "start", targetId: "submit" }, { id: "done", type: "control_flow", sourceId: "submit", targetId: "end" }],
     };
     const snapshots = new Map([
@@ -2353,6 +2363,10 @@ describe("WorkspaceSessionProvider", () => {
         relationships: [],
       },
       deployment: {
+        relationships: [],
+        databases: [],
+        components: [],
+        externalSystems: [],
         diagramKind: "deployment",
         title: "部署需求模型",
         summary: "部署节点。",
@@ -2362,6 +2376,7 @@ describe("WorkspaceSessionProvider", () => {
         links: [],
       } as DiagramModelSpec,
       "proto-1": {
+        nodes: [],
         diagramKind: "prototype",
         title: "原型界面关系",
         summary: "界面流转。",
@@ -2729,7 +2744,8 @@ describe("WorkspaceSessionProvider", () => {
         },
       ],
       useCases: [
-        { systemBoundaryId: "system",
+        {
+        eventFlows: [], systemBoundaryId: "system",
           id: "uc_view",
           name: "查看活动",
           goal: "查看公开活动日历",
@@ -3054,9 +3070,6 @@ describe("WorkspaceSessionProvider", () => {
     ).toBeInTheDocument();
   });
 
-  
-
-  
 
   it("labels completed requirement snapshots with diagram errors as partially generated", async () => {
     const activityRule = createRule({
@@ -3093,7 +3106,7 @@ describe("WorkspaceSessionProvider", () => {
         {
           diagramKind: "deployment",
           svg: "<svg><text>deployment</text></svg>",
-          renderMeta: { generatedAt: "2026-06-08T00:00:00.000Z" },
+          renderMeta: createRenderMeta({ generatedAt: "2026-06-08T00:00:00.000Z" }),
         },
       ],
       diagramErrors: {
@@ -3196,7 +3209,7 @@ describe("WorkspaceSessionProvider", () => {
         {
           diagramKind: "deployment",
           svg: "<svg><text>deployment</text></svg>",
-          renderMeta: { generatedAt: "2026-06-08T00:00:00.000Z" },
+          renderMeta: createRenderMeta({ generatedAt: "2026-06-08T00:00:00.000Z" }),
         },
       ],
       diagramErrors: {
@@ -3773,7 +3786,8 @@ describe("WorkspaceSessionProvider", () => {
         },
       ],
       useCases: [
-        { systemBoundaryId: "system",
+        {
+        eventFlows: [], systemBoundaryId: "system",
           id: "uc_view",
           name: "查看订单",
           goal: "查看订单",
@@ -3781,7 +3795,8 @@ describe("WorkspaceSessionProvider", () => {
           postconditions: [],
           supportingActorIds: [],
         },
-        { systemBoundaryId: "system",
+        {
+        eventFlows: [], systemBoundaryId: "system",
           id: "uc_submit",
           name: "提交订单",
           goal: "提交订单",
@@ -3800,6 +3815,7 @@ describe("WorkspaceSessionProvider", () => {
       notes: [],
       classes: [
         {
+          constraints: [],
           id: "order",
           name: "Order",
           stereotype: "entity",
@@ -3951,6 +3967,7 @@ describe("WorkspaceSessionProvider", () => {
       ],
       useCases: [
         {
+          eventFlows: [],
           id: "uc_login",
           systemBoundaryId: "system",
           name: "登录",
@@ -3977,6 +3994,7 @@ describe("WorkspaceSessionProvider", () => {
       useCases: [
         ...originalUseCaseModel.useCases,
         {
+          eventFlows: [],
           id: "uc_logout",
           systemBoundaryId: "system",
           name: "退出登录",
@@ -4365,7 +4383,7 @@ describe("WorkspaceSessionProvider", () => {
     const snapshots = new Map<string, DocumentRunSnapshot>([
       [
         "doc-req",
-        {
+        createDocumentRunSnapshot({
           runId: "doc-req",
           documentKind: "requirementsSpec",
           requirementText: "订单系统需求",
@@ -4379,11 +4397,11 @@ describe("WorkspaceSessionProvider", () => {
           currentStage: "render_document_file",
           status: "completed",
           error: null,
-        },
+        }),
       ],
       [
         "doc-design",
-        {
+        createDocumentRunSnapshot({
           runId: "doc-design",
           documentKind: "softwareDesignSpec",
           requirementText: "订单系统需求",
@@ -4397,7 +4415,7 @@ describe("WorkspaceSessionProvider", () => {
           currentStage: "render_document_file",
           status: "completed",
           error: null,
-        },
+        }),
       ],
     ]);
     const subscribers = new Map<
@@ -4551,7 +4569,7 @@ describe("WorkspaceSessionProvider", () => {
       systemBoundaries: [],
       relationships: [],
     };
-    const snapshot: DocumentRunSnapshot = {
+    const snapshot: DocumentRunSnapshot = createDocumentRunSnapshot({
       runId: "doc-warning",
       documentKind: "requirementsSpec",
       requirementText: "订单系统需求",
@@ -4565,7 +4583,7 @@ describe("WorkspaceSessionProvider", () => {
       currentStage: "render_document_file",
       status: "completed",
       error: null,
-    };
+    });
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
         createWorkspaceRecord({
@@ -4637,7 +4655,7 @@ describe("WorkspaceSessionProvider", () => {
       systemBoundaries: [],
       relationships: [],
     };
-    const snapshot: DocumentRunSnapshot = {
+    const snapshot: DocumentRunSnapshot = createDocumentRunSnapshot({
       runId: "doc-stale",
       documentKind: "requirementsSpec",
       requirementText: "订单系统需求",
@@ -4651,7 +4669,7 @@ describe("WorkspaceSessionProvider", () => {
       currentStage: "render_document_file",
       status: "completed",
       error: null,
-    };
+    });
     const subscription = deferred<void>();
     let onDocumentEvent:
       | Parameters<NonNullable<WorkspaceRepository["subscribeToDocumentRun"]>>[1]
@@ -4739,6 +4757,7 @@ describe("WorkspaceSessionProvider", () => {
       actors: [],
       useCases: [
         {
+          eventFlows: [],
           id: "uc_view",
           name: "查看订单",
           goal: "查看订单",
@@ -4747,6 +4766,7 @@ describe("WorkspaceSessionProvider", () => {
           supportingActorIds: [],
         },
         {
+          eventFlows: [],
           id: "uc_submit",
           name: "提交订单",
           goal: "提交订单",
@@ -4836,7 +4856,8 @@ describe("WorkspaceSessionProvider", () => {
         },
       ],
       useCases: [
-        { systemBoundaryId: "boundary_library",
+        {
+        eventFlows: [], systemBoundaryId: "boundary_library",
           id: "uc_borrow",
           name: "借书",
           goal: "登记图书借阅",
@@ -4856,10 +4877,12 @@ describe("WorkspaceSessionProvider", () => {
       notes: [],
       classes: [
         {
+          constraints: [],
           id: "class_book",
           name: "图书",
           classKind: "entity",
-          attributes: [{ name: "id", type: "string", visibility: "private" }],
+          attributes: [{
+          constraints: [], name: "id", type: "string", visibility: "private" }],
           operations: [],
         },
       ],
@@ -4887,10 +4910,12 @@ describe("WorkspaceSessionProvider", () => {
       notes: [],
       classes: [
         {
+          constraints: [],
           id: "class_book",
           name: "图书",
           classKind: "entity",
-          attributes: [{ name: "id", type: "string", visibility: "private" }],
+          attributes: [{
+          constraints: [], name: "id", type: "string", visibility: "private" }],
           operations: [],
         },
       ],
@@ -4905,10 +4930,13 @@ describe("WorkspaceSessionProvider", () => {
       notes: [],
       tables: [
         {
+          constraints: [],
+          relationalConstraints: [{"id":"pk-test","type":"primary-key","columnIds":["id"]}],
           id: "book",
           name: "book",
           columns: [
             {
+              constraints: [],
               id: "id",
               name: "id",
               dataType: "VARCHAR",
@@ -4921,7 +4949,7 @@ describe("WorkspaceSessionProvider", () => {
       ],
       relationships: [],
     };
-    const snapshot: DesignRunSnapshot = {
+    const snapshot: DesignRunSnapshot = createDesignRunSnapshot({
       runId: "design-table-run",
       requirementText: "图书馆管理系统",
       selectedDiagrams: ["table"],
@@ -5004,7 +5032,7 @@ describe("WorkspaceSessionProvider", () => {
       currentStage: "render_svg",
       status: "completed",
       error: null,
-    };
+    });
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
         createWorkspaceRecord({
@@ -5140,6 +5168,7 @@ describe("WorkspaceSessionProvider", () => {
       actors: [],
       useCases: [
         {
+          eventFlows: [],
           id: "uc-1",
           name: "查看座位",
           goal: "查看可预约座位",
@@ -5186,7 +5215,7 @@ describe("WorkspaceSessionProvider", () => {
       enums: [],
       relationships: [],
     };
-    const snapshot: DesignRunSnapshot = {
+    const snapshot: DesignRunSnapshot = createDesignRunSnapshot({
       runId: "design-sequence-run",
       requirementText: "座位预约系统",
       selectedDiagrams: ["sequence"],
@@ -5258,7 +5287,7 @@ describe("WorkspaceSessionProvider", () => {
       currentStage: "render_svg",
       status: "completed",
       error: null,
-    };
+    });
     const requirementFingerprint = snapshotInputFingerprint({
       requirementText: "座位预约系统",
       rules: snapshot.rules,
@@ -5395,7 +5424,7 @@ describe("WorkspaceSessionProvider", () => {
       id: "current-rule",
       text: "当前需求规则保持不变。",
     });
-    const documentSnapshot: DocumentRunSnapshot = {
+    const documentSnapshot: DocumentRunSnapshot = createDocumentRunSnapshot({
       runId: "history-document",
       documentKind: "requirementsSpec",
       requirementText: "说明书历史里的旧需求文本",
@@ -5409,7 +5438,7 @@ describe("WorkspaceSessionProvider", () => {
       currentStage: "render_document_file",
       status: "completed",
       error: null,
-    };
+    });
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
         createWorkspaceRecord({

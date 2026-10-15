@@ -11,7 +11,6 @@ const explicitlyLocalizedUiFiles = [
   "features/lineage/components/lineage-graph-page.tsx",
   "features/lineage/components/lineage-workflow-canvas.tsx",
   "features/lineage/components/lineage-generation-info.tsx",
-  "features/lineage/components/lineage-node.tsx",
   "features/diagrams/components/inline-svg.tsx",
   "features/documents/components/document-style-dialog.tsx",
   "features/user-platform/components/account-avatar-preview.tsx",

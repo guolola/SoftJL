@@ -46,7 +46,7 @@ const Button = React.forwardRef(function Button({
   variant = 'default',
   size = 'default',
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>, ref: React.ForwardedRef<any>) {
+}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>, ref: React.ForwardedRef<HTMLButtonElement>) {
   return <ButtonPrimitive data-slot='button' className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
 });
 

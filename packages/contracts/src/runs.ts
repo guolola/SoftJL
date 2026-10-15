@@ -28,7 +28,6 @@ import {
 } from "./requirements.js";
 
 import {
-  imageProviderSettingsSchema,
   providerSettingsSchema,
 } from "./provider-configs.js";
 import {
@@ -182,11 +181,6 @@ export const startDesignRunCommandSchema = z
 export type StartDesignRunCommand = z.infer<typeof startDesignRunCommandSchema>;
 
 
-
-
-
-
-
 export const startDocumentRunRequestSchema = z.object({
   projectId: z.string().min(1).optional(),
   documentKind: documentKindSchema,
@@ -230,21 +224,8 @@ export const runStageSchema = z.enum([
   "generate_design_sequence",
   "generate_design_models",
   "generate_tests",
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+
+
   "generate_document_text",
   "render_document_file",
   "generate_plantuml",
@@ -374,8 +355,6 @@ export const requirementTraceEntrySchema = z.object({
 export type RequirementTraceEntry = z.infer<typeof requirementTraceEntrySchema>;
 
 
-
-
 export const requirementInputScreeningSchema = z.object({
   ignoredSpans: z.array(z.object({
     startOffset: z.number().int().min(0),
@@ -434,8 +413,6 @@ export const designRunSnapshotSchema = z.object({
   error: runErrorSchema.nullable(),
 });
 export type DesignRunSnapshot = z.infer<typeof designRunSnapshotSchema>;
-
-
 
 
 export const documentRunSnapshotSchema = z.object({
@@ -528,14 +505,8 @@ export const artifactReadyRunEventSchema = z.object({
     "plantuml",
     "svg",
     "testCases",
-    
-    
-    
-    
-    
-    
-    
-    
+
+
     "document",
     "feasibilityContext",
     "feasibilityBusinessFlow",
@@ -557,24 +528,8 @@ export const artifactReadyRunEventSchema = z.object({
     ])
     .optional(),
   parallelGroup: z.string().min(1).optional(),
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+
+
   coverageMatrix: coverageMatrixSchema.optional(),
   traceabilityMatrix: traceabilityMatrixSchema.optional(),
 });
@@ -675,7 +630,7 @@ export const runEventSchema: z.ZodType<RunEvent, z.ZodTypeDef, unknown> = z.disc
   llmChunkRunEventSchema,
   stageProgressRunEventSchema,
   artifactReadyRunEventSchema,
-  
+
   completedRunEventSchema,
   failedRunEventSchema,
   cancelledRunEventSchema,

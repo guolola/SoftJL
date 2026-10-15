@@ -4,11 +4,12 @@ import { FlowCopy, flowText } from '@/features/marketing-site/model/flow-copy';
 
 import { useRef, type ReactNode } from 'react'
 
-import { motion, useScroll, useSpring, useTransform } from 'motion/react'
+import { motion, useScroll, useSpring, useTransform, type MotionValue } from 'motion/react'
 
 import { ArrowUpRightIcon } from 'lucide-react'
 
 import Link from '@/shared/lib/template-link'
+import { PRODUCT_TUTORIAL_URL } from '@/shared/lib/product-links'
 
 import { MotionPreset } from '@/features/marketing-site/template/components/ui/motion-preset'
 import { cn } from '@/shared/ui/utils'
@@ -30,7 +31,7 @@ const FeatureItem = ({
   feature: Features[number]
   index: number
   totalFeatures: number
-  scrollYProgress: any
+  scrollYProgress: MotionValue<number>
 }) => {
   const start = index / totalFeatures
   const middle = (index + 0.5) / totalFeatures
@@ -76,7 +77,7 @@ const VisualItem = ({
   feature: Features[number]
   index: number
   totalFeatures: number
-  scrollYProgress: any
+  scrollYProgress: MotionValue<number>
 }) => {
   const start = index / totalFeatures
   const middle = (index + 0.5) / totalFeatures
@@ -148,7 +149,7 @@ const Benefits = ({ featuresList }: { featuresList: Features }) => {
             </Link>
           </PrimaryFlowButton>
           <SecondaryFlowButton asChild>
-            <Link href='/tutorial'><FlowCopy text="Learn more" /></Link>
+            <Link href={PRODUCT_TUTORIAL_URL}><FlowCopy text="Learn more" /></Link>
           </SecondaryFlowButton>
         </div>
       </MotionPreset>

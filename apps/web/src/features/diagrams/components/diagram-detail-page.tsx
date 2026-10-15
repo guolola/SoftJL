@@ -409,7 +409,7 @@ function DiagramDetailView({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [commitDraftAndRerender, draft, saving, readOnly, canUpdateWorkspace]);
+  }, [commitDraftAndRerender, draft, saving, readOnly, canUpdateWorkspace, isFeasibility, isDesign]);
   const saveMetadata = useCallback(async (title: string, summary: string) => {
     if (!draft || saving || readOnly || !canUpdateWorkspace) return false;
     return commitDraftAndRerender({ ...draft, title, summary }, true);

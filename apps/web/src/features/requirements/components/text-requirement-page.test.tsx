@@ -10,7 +10,6 @@ import type {
   RequirementBaseline,
 } from "@uml-platform/contracts";
 import type { WorkspaceRepository } from "../../../services/workspace-repository";
-import { ApiClientError } from "../../../services/api-client";
 import {
   createRule,
   createRunSnapshot,
@@ -433,6 +432,7 @@ describe("TextRequirementView", () => {
           ],
           useCases: [
             {
+              eventFlows: [],
               id: "usecase_submit_order",
               name: "提交订单",
               goal: "完成订单创建",
@@ -550,6 +550,7 @@ describe("TextRequirementView", () => {
               ],
               useCases: [
                 {
+                  eventFlows: [],
                   id: "uc_find_own_loans",
                   name: "查询自己借出的书目",
                   goal: "返回当前读者借阅清单",

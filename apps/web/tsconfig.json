@@ -32,7 +32,8 @@
       {
         "name": "next"
       }
-    ]
+    ],
+    "noUnusedLocals": true
   },
   "include": [
     "src",
@@ -40,6 +41,6 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "src/assets/data"
+    "node_modules"
   ]
 }

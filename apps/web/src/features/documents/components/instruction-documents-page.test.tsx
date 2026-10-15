@@ -1,4 +1,5 @@
 // Verifies the instruction document library keeps each generated DOCX visible.
+import { createDocumentRunSnapshot } from "../../../test/artifact-fixtures";
 import { patchUserSettings } from "../../../shared/lib/user-settings";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -108,6 +109,7 @@ function createDocument(
   updatedAt: string,
 ): DocumentLibraryItem {
   return {
+    status: "active",
     id,
     workspaceId: "workspace-test",
     documentKind,
@@ -156,7 +158,7 @@ function createControlledDocumentRepository() {
   const snapshots = new Map<string, DocumentRunSnapshot>([
     [
       "run-requirements",
-      {
+      createDocumentRunSnapshot({
         runId: "run-requirements",
         documentKind: "requirementsSpec" as const,
         requirementText: "订单系统需求",
@@ -170,11 +172,11 @@ function createControlledDocumentRepository() {
         currentStage: "render_document_file" as const,
         status: "completed" as const,
         error: null,
-      },
+      }),
     ],
     [
       "run-design",
-      {
+      createDocumentRunSnapshot({
         runId: "run-design",
         documentKind: "softwareDesignSpec" as const,
         requirementText: "订单系统需求",
@@ -188,7 +190,7 @@ function createControlledDocumentRepository() {
         currentStage: "render_document_file" as const,
         status: "completed" as const,
         error: null,
-      },
+      }),
     ],
   ]);
   const subscribers = new Map<

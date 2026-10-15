@@ -3,7 +3,6 @@ import {
   requirementBaselineSchema,
   type AtomicRequirement,
   type AtomicRequirementField,
-  type AtomicRequirementStatus,
   type AtomicRequirementType,
   type RequirementFieldProvenance,
   type RequirementBaseline,

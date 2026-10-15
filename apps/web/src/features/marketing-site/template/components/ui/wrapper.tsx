@@ -7,8 +7,7 @@ import { motion, isMotionComponent, type HTMLMotionProps } from 'motion/react'
 
 import { cn } from '@/shared/ui/utils'
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-interface AnyProps extends Record<string, unknown> {}
+type AnyProps = Record<string, unknown>
 
 interface DOMMotionProps<T extends HTMLElement = HTMLElement> extends Omit<
   HTMLMotionProps<keyof HTMLElementTagNameMap>,
@@ -22,7 +21,7 @@ type WithAsChild<Base extends object> =
   | (Base & { asChild?: false | undefined })
 
 interface SlotProps<T extends HTMLElement = HTMLElement> extends DOMMotionProps<T> {
-  children?: any
+  children?: React.ReactNode
 }
 
 function mergeRefs<T>(...refs: (React.Ref<T> | undefined)[]): React.RefCallback<T> {
@@ -57,23 +56,21 @@ function mergeProps<T extends HTMLElement>(childProps: AnyProps, slotProps: DOMM
 }
 
 const Slot = React.forwardRef<HTMLElement, SlotProps<HTMLElement>>(function Slot({ children, ...props }, ref) {
-  const isAlreadyMotion =
-    typeof children.type === 'object' && children.type !== null && isMotionComponent(children.type)
-
+  const child = React.isValidElement<AnyProps>(children) ? children : null
+  const childType = child?.type ?? 'div'
+  const isAlreadyMotion = typeof childType === 'object' && isMotionComponent(childType)
   const Base = React.useMemo(
-    () => (isAlreadyMotion ? (children.type as React.ElementType) : motion.create(children.type as React.ElementType)),
-    [isAlreadyMotion, children.type]
-  )
+    () => (isAlreadyMotion ? childType : motion.create(childType as React.ElementType)),
+    [isAlreadyMotion, childType]
+  ) as React.ComponentType<AnyProps & React.RefAttributes<HTMLElement>>
 
-  if (!React.isValidElement(children)) return null
+  if (!child) return null
 
-  const childRef = (children as React.ReactElement & { ref?: React.Ref<HTMLElement> }).ref
-  const childProps = children.props as AnyProps
+  const childRef = child.props.ref as React.Ref<HTMLElement> | undefined
+  const childProps = child.props
 
   const mergedProps = mergeProps(childProps, props)
 
-  // @ts-ignore
-  // eslint-disable-next-line react-hooks/static-components
   return <Base {...mergedProps} ref={mergeRefs(childRef, ref)} />
 });
 

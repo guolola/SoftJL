@@ -15,12 +15,23 @@ This notice does not relicense them. In particular:
   licensing, including the notices and licenses embedded in the JAR.
   Upstream project and source: https://github.com/plantuml/plantuml
   Upstream license information: https://plantuml.com/license
+- Shadcn Studio / CleVision Technologies Private Limited owns the upstream
+  Flow 2.0.0 and AdminCN full-navbar-layout 1.0.0 templates and Studio blocks.
+  Adapted Flow sources: apps/web/src/features/marketing-site/template/.
+  Adapted AdminCN sources: apps/web/src/shared/ui/ and apps/web/src/shared/template/.
+  Source URLs and original hashes: apps/web/src/shared/ui/template-sources.json.
+  Applicable upstream terms: https://shadcnstudio.com/license
+  These templates and blocks are not relicensed under Apache-2.0. Upstream paid
+  resource terms permit qualifying open-source end products and restrict separate
+  redistribution of resources or derived templates/UI libraries. A source hash
+  records origin, not proof of a purchased license; maintainers must retain the
+  applicable acquisition/license records and upstream notices for redistribution.
 - Package dependencies retain the licenses distributed by their respective
   authors. Consult each dependency's license and notices when redistributing.
 
 These entries identify licensing boundaries and are not an exhaustive inventory
 of third-party components or their redistribution obligations.
 
-Community distribution: platform billing, operations administration and MCP
-integration have been removed. The engineering workflow and original notices
+Community distribution: platform billing and operations administration have
+been removed. Read-only MCP integration is optional and disabled by default. The engineering workflow and original notices
 are retained; community documentation and navigation describe this scope.

@@ -16,7 +16,7 @@ import { registerRunEventsRoute } from "../../runs/records/run-events.js";
 import { flushRunStoreIfAvailable, type RunQueue } from "../../runs/queue/run-queue.js";
 import { checkGenerationUsageLimit, checkProviderUsageLimit, recordGenerationUsage, recordProviderUsage, providerResolutionFailureResponse, resolveProviderConfigIdForRun, resolveProviderSettingsForRun, } from "../../runs/providers/run-provider-gates.js";
 import { startFeasibilityRecordPipeline } from "../../runs/pipelines/run-record-pipeline-starter.js";
-import { isOfflineDemoProject, offlineDemoProviderSettings } from "../../runs/demo/offline-demo-runs.js";
+import { isOfflineDemoProject, offlineDemoProviderSettings } from "../../runs/demo/offline-demo-config.js";
 import type { RunTelemetryStore } from "../../runs/records/run-telemetry-store.js";
 import { attachProjectWorkspaceSync, type ProjectWorkspaceSync, } from "../runs/project-workspace-sync.js";
 type ProjectWorkspace = {

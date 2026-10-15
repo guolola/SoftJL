@@ -117,7 +117,7 @@ function TourCard({ step, currentStep, totalSteps }: CardComponentProps) {
 }
 
 function TourRuntime({ children }: { children: ReactNode }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { closeOnborda, setCurrentStep, startOnborda } = useOnborda();
   const sessionRef = useRef<TourSession | null>(null);
   const startingRef = useRef(false);
@@ -135,7 +135,7 @@ function TourRuntime({ children }: { children: ReactNode }) {
         pointerPadding: 8,
         pointerRadius: 10,
       })),
-    })), [i18n.resolvedLanguage, t]);
+    })), [t]);
 
   const finishTour = useCallback((outcome: OnboardingTourOutcome) => {
     const session = sessionRef.current;

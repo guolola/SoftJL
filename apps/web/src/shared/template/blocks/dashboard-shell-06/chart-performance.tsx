@@ -10,13 +10,12 @@ import { Card, CardContent, CardHeader } from '@/shared/ui/card'
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@/shared/ui/chart'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip'
-import { ChartColumnBigIcon, EllipsisVerticalIcon, ActivityIcon, ArrowRightIcon, UsersIcon } from 'lucide-react'
+import { ChartColumnBigIcon, ActivityIcon, ArrowRightIcon, UsersIcon } from 'lucide-react'
 
 import { DashboardBlockMenu, type DashboardBlockActions } from './dashboard-block-menu'
-import { useDashboardLabels } from './dashboard-shell-labels'
 
 const PerformanceCard = ({ className, title, members, area, bar, ...actions }: PerformanceProps & DashboardBlockActions) => {
-  const { t } = useDashboardLabels()
+
   const avatars = members.members.map(member => ({ src: member.src, fallback: member.initials, name: member.name }))
   const physicalProductsChartData = area.chartData.map(point => ({ month: point.label, sales: point.value }))
   const dailySalesChartData = bar.chartData.map(point => ({ day: point.label, sales: point.value }))

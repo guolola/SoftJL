@@ -1,17 +1,18 @@
 // Verifies top-level app routing, provider composition, shell layout behavior, and account/project entry flows.
-import { useReactFlowTestLayout } from '../test/react-flow-test-layout';
+import { createDocumentRunSnapshot } from "../test/artifact-fixtures";
+import { installReactFlowTestLayout } from '../test/react-flow-test-layout';
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceRepository } from "../services/workspace-repository";
-import type { RunHistoryItem } from "../features/history";
+import type { RunHistoryItem } from "../entities/run-history";
 import {
   createRunSnapshot,
   createWorkspaceRecord,
   withWorkspaceProviders,
 } from "../test/workspace-test-utils";
 import { loadUserSettings, USER_SETTINGS_STORAGE_KEY } from "../shared/lib/user-settings";
-import App, { Shell } from "./App";
+import { Shell } from "./App";
 import { matchAppRoute } from "./app-routes";
 import {
   ProjectWorkspaceAccessBoundary,
@@ -32,74 +33,9 @@ let loginApiMode: "failure" | "success" | "mfa-challenge" | "email-unverified";
 let authSessionMode: "authenticated" | "unauthenticated" | "offline";
 let accountMfaEnabled: boolean;
 let providerConfigFixtures: Array<Record<string, unknown>>;
-useReactFlowTestLayout();
+installReactFlowTestLayout();
 
 const projectUpdatedAt = "2026-05-22T02:00:00.000Z";
-const billingTestSkus = [
-  {
-    code: "credits_10",
-    name: "10 次包",
-    kind: "credit_pack",
-    description: "买 10 次送 1 次，到账 11 次",
-    durationDays: null,
-    creditAmount: 11,
-    amountCents: 990,
-    currency: "CNY",
-    active: true,
-    sortOrder: 110,
-  },
-  {
-    code: "credits_50",
-    name: "50 次包",
-    kind: "credit_pack",
-    description: "买 50 次送 8 次，到账 58 次",
-    durationDays: null,
-    creditAmount: 58,
-    amountCents: 4900,
-    currency: "CNY",
-    active: true,
-    sortOrder: 120,
-  },
-  {
-    code: "credits_100",
-    name: "100 次包",
-    kind: "credit_pack",
-    description: "买 100 次送 20 次，到账 120 次",
-    durationDays: null,
-    creditAmount: 120,
-    amountCents: 9900,
-    currency: "CNY",
-    active: true,
-    sortOrder: 130,
-  },
-  {
-    code: "credits_500",
-    name: "500 次包",
-    kind: "credit_pack",
-    description: "买 500 次送 120 次，到账 620 次",
-    durationDays: null,
-    creditAmount: 620,
-    amountCents: 39900,
-    currency: "CNY",
-    active: true,
-    sortOrder: 140,
-  },
-] as const;
-
-const billingPrimarySku = billingTestSkus.find((sku) => sku.code === "credits_100") ?? billingTestSkus[0]!;
-
-const billingTestOrder = {
-  orderId: "order-test-1",
-  merchantOrderNo: "UML202606050001",
-  sku: billingPrimarySku,
-  amountCents: billingPrimarySku.amountCents,
-  currency: "CNY",
-  channel: "alipay",
-  status: "pending",
-  createdAt: "2026-06-05T04:00:00.000Z",
-  expiresAt: "2026-06-05T04:15:00.000Z",
-  paidAt: null,
-} as const;
 
 function createRepository(): WorkspaceRepository {
   return {
@@ -597,64 +533,6 @@ describe("App shell routes", () => {
               headers: { "Content-Type": "application/json" },
             },
           );
-        }
-        if (pathname === "/api/billing/skus") {
-          return new Response(JSON.stringify({ skus: billingTestSkus }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        if (pathname === "/api/billing/summary") {
-          return new Response(
-            JSON.stringify({
-              creditBalance: 10,
-              signupBonus: {
-                granted: true,
-                creditAmount: 5,
-                validUntil: "2026-07-05T04:00:00.000Z",
-              },
-              recentOrders: [billingTestOrder],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        if (pathname === "/api/billing/orders" && method === "POST") {
-          const body = JSON.parse(String(init?.body ?? "{}")) as {
-            skuCode?: string;
-            channel?: "alipay";
-          };
-          const sku = billingTestSkus.find((candidate) => candidate.code === body.skuCode) ?? billingPrimarySku;
-          const order = {
-            ...billingTestOrder,
-            sku,
-            amountCents: sku.amountCents,
-            channel: body.channel ?? "alipay",
-          };
-          return new Response(
-            JSON.stringify({
-              orderId: order.orderId,
-              merchantOrderNo: order.merchantOrderNo,
-              status: order.status,
-              amountCents: order.amountCents,
-              currency: order.currency,
-              expiresAt: order.expiresAt,
-              channel: order.channel,
-              paymentFormHtml: "<form action=\"https://zpayz.cn/submit.php\"><button>pay</button></form>",
-            }),
-            {
-              status: 201,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        if (pathname.startsWith("/api/billing/orders/") && method === "GET") {
-          return new Response(JSON.stringify(billingTestOrder), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
         }
         if (pathname === "/api/invitations/course-token-123/accept") {
           return new Response(
@@ -1485,7 +1363,7 @@ describe("App shell routes", () => {
   });
 
   it("redirects unauthenticated top-level feature pages to login", async () => {
-    for (const path of ["/exam"] as const) {
+    for (const path of ["/projects"] as const) {
       authSessionMode = "unauthenticated";
       window.history.pushState({}, "", path);
       const view = render(withWorkspaceProviders(<Shell />, createRepository()));
@@ -1494,7 +1372,7 @@ describe("App shell routes", () => {
         expect(window.location.pathname).toBe("/login");
       });
       expect(window.location.search).toBe(`?redirect=${encodeURIComponent(path)}&reason=login-required`);
-      expect(screen.queryByRole("heading", { name: "准备好迎接" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "项目首页" })).not.toBeInTheDocument();
       expect(screen.queryByText("项目导航")).not.toBeInTheDocument();
 
       view.unmount();
@@ -1505,7 +1383,7 @@ describe("App shell routes", () => {
     const user = userEvent.setup();
     authSessionMode = "authenticated";
     projectApiMode = "authenticated";
-    window.history.pushState({}, "", "/exam");
+    window.history.pushState({}, "", "/projects");
     render(withWorkspaceProviders(<Shell />, createRepository()));
     const banner = (await screen.findAllByRole("banner"))[0];
     const navButtons = within(within(banner).getByRole("navigation")).getAllByRole("button");
@@ -1550,7 +1428,6 @@ describe("App shell routes", () => {
       const sidebar = container.querySelector('[data-slot="sidebar"]')!;
       const destinations = [
         { path: "/projects", heading: "项目首页" },
-        { path: "/exam", heading: "准备好迎接" },
         { path: "/dashboard", heading: null },
       ];
       // Hold each server check so even a slow network cannot hide a shell remount.
@@ -1641,83 +1518,6 @@ describe("App shell routes", () => {
     expect(screen.queryByTestId("projects-index-shell")).not.toBeInTheDocument();
   });
 
-  it("renders the supplied waitlist block without background artwork or workspace tools on the exam page", async () => {
-    authSessionMode = "authenticated";
-    window.history.pushState({}, "", "/exam");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-
-    expect(await screen.findByRole("heading", { name: "准备好迎接" })).toBeInTheDocument();
-    const exam = screen.getByRole("main", { name: "考试" });
-    expect(within(exam).getByRole("heading", { name: "创新体验" })).toBeInTheDocument();
-    expect(within(exam).queryByRole("textbox")).not.toBeInTheDocument();
-    expect(within(exam).queryByRole("button")).not.toBeInTheDocument();
-    expect(within(exam).queryByText(/2K\+/)).not.toBeInTheDocument();
-    expect(within(exam).getByText("考试模块正在建设中，后续将支持课程测评、题目生成与评分，帮助你检验学习成果。")).toBeInTheDocument();
-    expect(within(exam).queryAllByRole("img")).toHaveLength(0);
-    expect(within(exam).queryByRole("navigation")).not.toBeInTheDocument();
-    expect(within(exam).queryByText("shadcn/studio")).not.toBeInTheDocument();
-    expect(within(exam).queryByAltText("Background Image")).not.toBeInTheDocument();
-    expect(exam.querySelector('section')).not.toHaveClass("min-h-screen");
-    expect(within(exam).getByText("天")).toBeInTheDocument();
-    expect(within(exam).getByText("秒")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "生成任务" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "导出" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "历史" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "模型配置" })).not.toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "账号" })).toBeInTheDocument();
-  });
-
-  it.each(["unauthenticated", "offline"] as const)("opens public documentation when the session is %s", async (sessionMode) => {
-    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
-    const user = userEvent.setup();
-    authSessionMode = sessionMode;
-    window.history.pushState({}, "", "/tutorial");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-
-    expect(screen.getByRole("heading", { name: "快速开始" })).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/tutorial");
-    expect(screen.queryByTestId("auth-check-placeholder")).not.toBeInTheDocument();
-    expect(document.querySelector('[data-slot="sidebar-container"]')).not.toBeInTheDocument();
-    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("/api/auth/me"))).toBe(false);
-
-    await user.click(screen.getByRole("button", { name: "创建与进入项目" }));
-    expect(screen.getByRole("heading", { name: "创建与进入项目" })).toHaveFocus();
-    await user.click(screen.getByRole("link", { name: "主页" }));
-    await waitFor(() => expect(window.location.pathname).toBe("/"));
-  });
-
-  it("renders the product documentation page for signed-in users", async () => {
-    authSessionMode = "authenticated";
-    window.history.pushState({}, "", "/tutorial");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-
-    expect(
-      await screen.findByRole("heading", {
-        name: "快速开始",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "普通用户完整操作路径" }),
-    ).not.toBeInTheDocument();
-    expect(document.querySelector('[data-slot="sidebar-container"]')).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Toggle Sidebar" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "主页" })).toHaveAttribute("href", "/");
-    expect(screen.queryByRole("link", { name: "使用文档" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "账号" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "文档目录" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "快速开始" })).toBeInTheDocument();
-    expect(screen.getByLabelText("搜索使用文档")).toBeInTheDocument();
-    expect(screen.queryByText("完整飞书文档整理中")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "模型配置" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "创建与进入项目" })).toHaveAttribute("href", "/tutorial?article=project-basics");
-    expect(screen.getAllByRole("button", { name: /创建与进入项目/u }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: /查看与编辑模型详情/u }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: /说明书生成与下载/u }).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: /Coding Agent 接入与授权/u })).not.toBeInTheDocument();
-    expect(screen.queryByText("项目导航")).not.toBeInTheDocument();
-    expect(document.querySelector('[data-slot="sidebar-inset"] > footer')).not.toBeInTheDocument();
-  });
-
   it("omits the copyright footer from the dashboard", async () => {
     authSessionMode = "authenticated";
     projectApiMode = "authenticated";
@@ -1736,11 +1536,11 @@ describe("App shell routes", () => {
     expect(await screen.findByText("项目导航")).toBeInTheDocument();
     expect(screen.getByRole("separator", { name: "拖拽调整项目菜单宽度" })).toBeInTheDocument();
 
-    window.history.pushState({}, "", "/tutorial");
+    window.history.pushState({}, "", "/projects");
     window.dispatchEvent(new PopStateEvent("popstate"));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "快速开始" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "项目首页" })).toBeInTheDocument();
     });
     expect(screen.queryByText("项目导航")).not.toBeInTheDocument();
     expect(screen.queryByRole("separator", { name: "拖拽调整项目菜单宽度" })).not.toBeInTheDocument();
@@ -2198,7 +1998,7 @@ describe("App shell routes", () => {
   });
 
   it.each([
-    { path: "/exam", readyTestId: null },
+    { path: "/projects", readyTestId: null },
     { path: "/dashboard", readyTestId: "dashboard-shell" },
   ])("blocks $path content without an intermediate loading page while verifying the session", async ({ path, readyTestId }) => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
@@ -2223,7 +2023,7 @@ describe("App shell routes", () => {
 
       expect(screen.getByTestId("auth-check-placeholder")).toHaveAttribute("aria-busy", "true");
       expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: "准备好迎接" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "项目首页" })).not.toBeInTheDocument();
 
       await act(async () => {
         authDeferred.resolve(createAuthMeResponse());
@@ -2233,7 +2033,7 @@ describe("App shell routes", () => {
       if (readyTestId) {
         expect(screen.getByTestId(readyTestId)).toBeInTheDocument();
       } else {
-        expect(screen.getByRole("heading", { name: "准备好迎接" })).toBeInTheDocument();
+        expect(screen.getByRole("heading", { name: "项目首页" })).toBeInTheDocument();
       }
       expect(screen.queryByTestId("auth-check-placeholder")).not.toBeInTheDocument();
       expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
@@ -2731,7 +2531,6 @@ describe("App shell routes", () => {
 
     expect(window.location.pathname).toBe("/projects/library-booking");
     expect(await screen.findByText("项目导航")).toBeInTheDocument();
-    const projectFooter = document.querySelector('[data-slot="sidebar-footer"]');
     expect(document.querySelector('[data-slot="sidebar-inset"] > footer')).not.toBeInTheDocument();
     const workspaceLayoutMain = document.querySelector('[data-slot="sidebar-inset"] > main');
     expect(workspaceLayoutMain).not.toHaveClass("overflow-hidden");
@@ -3214,7 +3013,7 @@ describe("App shell routes", () => {
         createdAt: "2026-05-22T00:05:00.000Z",
         title: "需求规格说明书",
         providerModel: "gpt-5-mini",
-        snapshot: {
+        snapshot: createDocumentRunSnapshot({
           runId: "run-doc",
           documentKind: "requirementsSpec",
           requirementText: "生成图书馆预约系统 UML",
@@ -3227,14 +3026,14 @@ describe("App shell routes", () => {
           currentStage: "generate_document_text",
           status: "completed",
           error: null,
-        },
+        }),
       },
       {
         id: "run-doc-failed",
         createdAt: "2026-05-21T23:05:00.000Z",
         title: "失败的需求规格说明书",
         providerModel: "gpt-5-mini",
-        snapshot: {
+        snapshot: createDocumentRunSnapshot({
           runId: "run-doc-failed",
           documentKind: "requirementsSpec",
           requirementText: "生成图书馆预约系统 UML",
@@ -3252,7 +3051,7 @@ describe("App shell routes", () => {
             category: "internal",
             retryable: true,
           },
-        },
+        }),
       },
     ]);
     repository.downloadDocumentRun = vi.fn(async () => ({

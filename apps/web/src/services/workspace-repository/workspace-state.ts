@@ -1,6 +1,7 @@
 // Normalizes workspace records and merges saved run snapshots into repository state.
+import { rebuildRequirementQualityReport } from "@uml-platform/contracts";
 import {
-  useCaseScopedSourceId,
+  useCaseScopedSourceId as getUseCaseScopedSourceId,
   currentUseCaseSourceIds,
   isLegacyCodeSnapshot,
   stripRetiredCodeData,
@@ -10,10 +11,9 @@ import {
   designRecordBelongsToDiagramKinds,
   designTraceabilityTouchesDiagramKinds,
   modelRecordBelongsToDiagramKinds,
-  
+
   type DesignRunSnapshot,
   type RequirementBaseline,
-  type RequirementQualityIssue,
   type RunSnapshot,
   feasibilityInputsSchema,
 } from "@uml-platform/contracts";
@@ -22,12 +22,11 @@ import {
   getDesignModelId,
   getRequirementArtifactId,
   getRequirementModelId,
-  findRequirementModelByKind,
   type DesignDiagramType,
   type DiagramType,
 } from "../../entities/diagram/model";
 import {
-  
+
   isDesignRunSnapshot,
   isDocumentRunSnapshot,
   runHistorySnapshotRequirementText,
@@ -55,7 +54,6 @@ function fingerprintMatches(
 ) {
   return normalizeSnapshotFingerprint(storedFingerprint) === currentFingerprint;
 }
-
 
 
 function hasWholeDesignDiagramError(
@@ -119,16 +117,6 @@ const REVIEWABLE_REQUIREMENT_FIELDS = [
   "acceptanceCriteria",
 ] as const;
 
-function requirementStillNeedsReview(requirement: BaselineRequirement) {
-  if (requirement.status !== "accepted") return true;
-  return REVIEWABLE_REQUIREMENT_FIELDS.some((field) => {
-    const provenance = requirement.fieldProvenance[field];
-    return (
-      provenance?.status === "pending-review" ||
-      provenance?.status === "rejected"
-    );
-  });
-}
 
 function acceptedRequirementFromCandidate(
   candidate: RequirementReviewCandidate,
@@ -166,35 +154,6 @@ function acceptedRequirementFromCandidate(
   };
 }
 
-function rebuildRequirementQualityReport(
-  baseline: RequirementBaseline,
-  requirements: BaselineRequirement[],
-  issues: RequirementQualityIssue[],
-): RequirementBaseline["qualityReport"] {
-  const blockingIssueIds = issues
-    .filter((issue) => issue.blocksDownstream)
-    .map((issue) => issue.id);
-  const reviewRequiredRequirementIds = requirements
-    .filter(requirementStillNeedsReview)
-    .map((requirement) => requirement.id);
-  const status: RequirementBaseline["qualityReport"]["status"] =
-    blockingIssueIds.length > 0
-      ? "blocked"
-      : reviewRequiredRequirementIds.length > 0 || issues.length > 0
-        ? "pending-review"
-        : "passed";
-  return {
-    ...baseline.qualityReport,
-    status,
-    summary:
-      status === "passed"
-        ? `已建立 ${requirements.length} 条原子需求基线。`
-        : `发现 ${issues.length} 个需求质量提示，可继续生成并在当前页面查看。`,
-    issues,
-    blockingIssueIds,
-    reviewRequiredRequirementIds,
-  };
-}
 
 function reconcileAcceptedReviewCandidates(
   baseline: RequirementBaseline,
@@ -315,18 +274,8 @@ export function createEmptyWorkspace(): WorkspaceRecord {
     designSvgArtifacts: {},
     designDiagramErrors: {},
     manualModelEditStatus: {},
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
+
     testGenerationResult: null,
     requirementInputFingerprint: null,
     diagramInputFingerprints: {},
@@ -395,7 +344,7 @@ function scopedSourceUseCaseId(
   model: unknown,
   prefix: UseCaseScopedDiagram,
 ) {
-  return useCaseScopedSourceId(model, prefix, recordKey);
+  return getUseCaseScopedSourceId(model, prefix, recordKey);
 }
 
 function isOrphanUseCaseScopedRecord(
@@ -426,17 +375,6 @@ function omitRecordKeys<T extends Record<string, unknown>>(
   return next as T;
 }
 
-function keepDesignRecordsForModelIds<T extends Record<string, unknown>>(
-  record: T,
-  modelIds: Set<string>,
-) {
-  return Object.fromEntries(
-    Object.entries(record).filter(
-      ([key, value]) =>
-        modelIds.has(key) || modelIds.has(stringProperty(value, "modelId")),
-    ),
-  ) as T;
-}
 
 function repairMissingDesignInputFingerprints(workspace: WorkspaceRecord) {
   if (
@@ -780,7 +718,6 @@ export function applySnapshotToWorkspace(
     applyRequirementBaselineToWorkspace(next, snapshot.requirementBaseline);
   }
 
-  
 
   if (isDesignRunSnapshot(snapshot)) {
     const designRecords = mapDesignSnapshotToRecords(snapshot);

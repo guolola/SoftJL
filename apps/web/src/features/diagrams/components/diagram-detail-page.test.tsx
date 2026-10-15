@@ -1,4 +1,5 @@
 // Verifies diagram detail editing, rerendering, trace highlighting, and export interactions.
+import { createRenderMeta } from "../../../test/artifact-fixtures";
 import { tableDiagramSpecSchema } from "@uml-platform/contracts";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -305,7 +306,8 @@ describe("DiagramView", () => {
             title: "用例模型",
             summary: "公开活动日历用例",
             notes: [],
-            actors: [{ id: "visitor", name: "未注册用户", actorType: "human" }],
+            actors: [{
+            responsibilities: [], id: "visitor", name: "未注册用户", actorType: "human" }],
             useCases: [
               {
                 id: "uc_view_events",
@@ -316,6 +318,7 @@ describe("DiagramView", () => {
                 supportingActorIds: [],
                 eventFlows: [
                   {
+                    flowType: "main",
                     id: "flow-main",
                     name: "基本事件流",
                     steps: [
@@ -361,7 +364,8 @@ describe("DiagramView", () => {
             title: "用例模型",
             summary: "注册用户维护公开活动",
             notes: [],
-            actors: [{ id: "registered_user", name: "注册用户", actorType: "human" }],
+            actors: [{
+            responsibilities: [], id: "registered_user", name: "注册用户", actorType: "human" }],
             useCases: [
               {
                 id: "uc_edit_event",
@@ -456,6 +460,7 @@ describe("DiagramView", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "cls_order",
                 name: "Order",
                 description: "订单聚合",
@@ -599,7 +604,7 @@ describe("DiagramView", () => {
           class: {
             diagramKind: "class",
             svg: "<svg><text>class</text></svg>",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -637,7 +642,7 @@ describe("DiagramView", () => {
             diagramKind: "sequence",
             modelId: "sequence:borrow",
             svg: "<svg><text>borrow</text></svg>",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -676,7 +681,7 @@ describe("DiagramView", () => {
             diagramKind: "sequence",
             modelId: "sequence:uc_only",
             svg: "<svg><text>sequence</text></svg>",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -711,7 +716,7 @@ describe("DiagramView", () => {
           sequence: {
             diagramKind: "sequence",
             svg: "<svg><text>sequence</text></svg>",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -742,7 +747,7 @@ describe("DiagramView", () => {
           navigation: {
             diagramKind: "navigation",
             svg: "<svg><text>navigation</text></svg>",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -774,7 +779,7 @@ describe("DiagramView", () => {
           class: {
             diagramKind: "class",
             svg: "<svg><text>class</text></svg>",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -871,7 +876,7 @@ describe("DiagramView", () => {
           navigation: {
             diagramKind: "navigation",
             svg: "<svg><text>navigation</text></svg>",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -1074,6 +1079,7 @@ describe("DiagramView", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "book",
                 name: "Book",
                 description: "图书",
@@ -1099,7 +1105,7 @@ describe("DiagramView", () => {
           class: {
             diagramKind: "class",
             svg: "<svg><text>Book</text></svg>",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -1132,11 +1138,13 @@ describe("DiagramView", () => {
         generatedDiagramTypes: ["class"],
         models: {
           class: {
+            notes: [],
             diagramKind: "class",
             title: "领域概念模型",
             summary: "公开日历领域对象",
             classes: [
               {
+                constraints: [],
                 id: "book",
                 name: "Book",
                 description: "图书",
@@ -1154,7 +1162,7 @@ describe("DiagramView", () => {
           class: {
             diagramKind: "class",
             svg: '<svg width="200" height="120"><text>Book</text></svg>',
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -1444,6 +1452,7 @@ describe("DiagramView", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "cls_event",
                 name: "Event",
                 description: "公开活动",
@@ -1453,6 +1462,7 @@ describe("DiagramView", () => {
                 operations: [],
               },
               {
+                constraints: [],
                 id: "cls_reminder",
                 name: "Reminder",
                 description: "提醒记录",
@@ -1591,6 +1601,7 @@ describe("DiagramView", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "cls_event",
                 name: "Event",
                 classKind: "entity",
@@ -1598,6 +1609,7 @@ describe("DiagramView", () => {
                 operations: [],
               },
               {
+                constraints: [],
                 id: "cls_reminder",
                 name: "Reminder",
                 classKind: "entity",
@@ -1665,6 +1677,7 @@ describe("DiagramView", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "cls_customer",
                 name: "Customer",
                 classKind: "entity",
@@ -1752,6 +1765,7 @@ describe("DiagramView", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "cls_customer",
                 name: "Customer",
                 classKind: "entity",
@@ -1768,7 +1782,7 @@ describe("DiagramView", () => {
           class: {
             diagramKind: "class",
             svg: "<svg><text>Customer</text></svg>",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -1813,6 +1827,7 @@ describe("DiagramView", () => {
             ],
             useCases: [
               {
+                eventFlows: [],
                 id: "uc_login",
                 systemBoundaryId: "system",
                 name: "登录",
@@ -1939,6 +1954,7 @@ describe("DiagramView", () => {
             notes: ["旧备注"],
             classes: [
               {
+                constraints: [],
                 id: "cls_order",
                 name: "Order",
                 classKind: "entity",
@@ -1946,6 +1962,7 @@ describe("DiagramView", () => {
                 description: "订单",
                 attributes: [
                   {
+                    constraints: [],
                     name: "amount",
                     type: "number",
                     visibility: "private",
@@ -1968,6 +1985,7 @@ describe("DiagramView", () => {
                 ],
               },
               {
+                constraints: [],
                 id: "cls_user",
                 name: "User",
                 classKind: "entity",
@@ -1977,6 +1995,7 @@ describe("DiagramView", () => {
             ],
             interfaces: [
               {
+                constraints: [],
                 id: "if_payable",
                 name: "Payable",
                 operations: [{ name: "pay", visibility: "public", parameters: [] }],
@@ -2087,7 +2106,7 @@ describe("DiagramView", () => {
       { id: "orders", name: "orders", columns: [{ id: "id", name: "id", dataType: "bigint", nullable: false }], relationalConstraints: [{ id: "pk", type: "primary-key", columnIds: ["id"] }] },
       { id: "items", name: "items", columns: [{ id: "id", name: "id", dataType: "bigint", nullable: false }, { id: "order", name: "order_id", dataType: "bigint", nullable: false }], relationalConstraints: [{ id: "pk", type: "primary-key", columnIds: ["id"] }, { id: "fk", type: "foreign-key", columnIds: ["order"], referenceTableId: "orders", referenceColumnIds: ["id"] }] },
     ], relationships: [] });
-    const repository = createRepository(createWorkspaceRecord({ generatedDesignDiagramTypes: ["table"], designModels: { table: model as any } }));
+    const repository = createRepository(createWorkspaceRecord({ generatedDesignDiagramTypes: ["table"], designModels: { table: model } }));
     render(withWorkspaceProviders(<DesignDiagramView type="table" />, repository));
     await userEvent.click(await screen.findByRole("button", { name: "编辑数据表：items" }));
     const dialog = await screen.findByRole("dialog", { name: /编辑数据表/ });
@@ -2367,6 +2386,7 @@ describe("DiagramView", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "cls_event",
                 name: "Event",
                 description: "公开活动",
@@ -2376,6 +2396,7 @@ describe("DiagramView", () => {
                 operations: [],
               },
               {
+                constraints: [],
                 id: "cls_reminder",
                 name: "Reminder",
                 description: "提醒记录",
@@ -2385,6 +2406,7 @@ describe("DiagramView", () => {
                 operations: [],
               },
               {
+                constraints: [],
                 id: "cls_user",
                 name: "User",
                 description: "用户",

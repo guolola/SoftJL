@@ -550,7 +550,7 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<'ul'>) {
   )
 }
 
-const SidebarMenuItem = React.forwardRef(function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>, ref: React.ForwardedRef<any>) {
+const SidebarMenuItem = React.forwardRef(function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>, ref: React.ForwardedRef<HTMLLIElement>) {
   return (
     <li
       ref={ref} data-slot='sidebar-menu-item'
@@ -595,7 +595,7 @@ const SidebarMenuButton = React.forwardRef(function SidebarMenuButton({
   React.ComponentProps<'button'> & {
     isActive?: boolean
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
-  } & VariantProps<typeof sidebarMenuButtonVariants>, ref: React.ForwardedRef<any>) {
+  } & VariantProps<typeof sidebarMenuButtonVariants>, ref: React.ForwardedRef<HTMLButtonElement>) {
   const { isMobile, state } = useSidebar()
 
   const comp = useRender({
@@ -642,7 +642,7 @@ const SidebarMenuAction = React.forwardRef(function SidebarMenuAction({
 }: useRender.ComponentProps<'button'> &
   React.ComponentProps<'button'> & {
     showOnHover?: boolean
-  }, ref: React.ForwardedRef<any>) {
+  }, ref: React.ForwardedRef<HTMLButtonElement>) {
   return useRender({
     ref,
     defaultTagName: 'button',
@@ -747,7 +747,7 @@ const SidebarMenuSubButton = React.forwardRef(function SidebarMenuSubButton({
   React.ComponentProps<'a'> & {
     size?: 'sm' | 'md'
     isActive?: boolean
-  }, ref: React.ForwardedRef<any>) {
+  }, ref: React.ForwardedRef<HTMLAnchorElement>) {
   return useRender({
     ref,
     defaultTagName: 'a',

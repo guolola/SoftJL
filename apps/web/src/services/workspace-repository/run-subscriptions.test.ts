@@ -422,7 +422,7 @@ describe("run subscriptions", () => {
     },
   ])(
     "polls $label snapshots after a legacy EventSource disconnect without project scope",
-    async ({ runId, eventPath, snapshotPath, subscribe, snapshot }) => {
+    async ({ runId, eventPath: _eventPath, snapshotPath, subscribe, snapshot }) => {
       const eventSourceUrls: string[] = [];
       const snapshotFetches: Array<{
         url: string;

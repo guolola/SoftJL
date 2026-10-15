@@ -29,7 +29,7 @@ export function DashboardWelcome({ userId, children }: {
     // Focus after layout unlock so the browser has cleared inert/hidden controls and the new card geometry.
     else if (enabled) focusFrame = requestAnimationFrame(() => stageRef.current?.focus({ preventScroll: true }))
     return () => cancelAnimationFrame(focusFrame)
-  }, [phase, enabled])
+  }, [phase, enabled, locked, stageRef])
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape' && phase === 'floating') {

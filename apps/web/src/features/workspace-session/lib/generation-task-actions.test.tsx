@@ -73,7 +73,7 @@ describe("workspace-session generation task actions", () => {
         ],
       });
       activeId = result.current.enqueueGenerationTask({
-        kind: "code",
+        kind: "requirements",
         title: "运行中任务",
         providerModel: "fake-model",
         message: "排队中",
@@ -339,8 +339,8 @@ describe("workspace-session generation task actions", () => {
 
     act(() => {
       taskId = result.current.enqueueGenerationTask({
-        kind: "code",
-        title: "代码生成",
+        kind: "requirements",
+        title: "需求生成",
         providerModel: "fake-model",
         message: "排队中",
         startedAtMs: 1,

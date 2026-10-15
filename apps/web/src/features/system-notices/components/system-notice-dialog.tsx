@@ -1,5 +1,5 @@
 // Renders the Figma-inspired system notice timeline and top-bar trigger.
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SystemNoticeDto, SystemNoticeType } from "@uml-platform/contracts";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -290,8 +290,10 @@ export function SystemNoticeButton({
   const [error, setError] = useState("");
 
   const noticeIds = useMemo(() => notices.map((notice) => notice.id), [notices]);
+  const loadFailureLabel = useRef(t("notices.loadFailed"));
+  loadFailureLabel.current = t("notices.loadFailed");
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -299,15 +301,15 @@ export function SystemNoticeButton({
       setNotices(response.notices);
       setUnreadCount(response.unreadCount);
     } catch (loadError) {
-      setError(localizeCaughtFailure(loadError, t("notices.loadFailed")));
+      setError(localizeCaughtFailure(loadError, loadFailureLabel.current));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   const openDialog = () => {
     setOpen(true);

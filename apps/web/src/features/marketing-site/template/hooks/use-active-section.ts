@@ -11,7 +11,6 @@ export const useActiveSection = (sectionIds: string[]) => {
 
   // Reset active section when pathname changes (route navigation)
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Resetting state on route change is intentional
     setActiveSection('')
   }, [pathname])
 

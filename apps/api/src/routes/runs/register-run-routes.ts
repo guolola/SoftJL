@@ -2,7 +2,7 @@
 import { getPromptRuntimeStore, withPinnedPrompts } from "../../prompt-runtime/store.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { apiErrorResponseSchema, documentRunSnapshotSchema, designRunSnapshotSchema, queuedRunEventSchema, runSnapshotSchema, repairRequirementRulesRequestSchema, repairRequirementRuleRequestSchema, startDesignRunRequestSchema, startDesignRunResponseSchema, startDocumentRunRequestSchema, startDocumentRunResponseSchema, startRunRequestSchema, startRunResponseSchema, type DocumentLibraryItem, type ProviderSettings, type RunStage, type StartDesignRunRequest, type StartDocumentRunRequest, type StartRunRequest, } from "@uml-platform/contracts";
+import { apiErrorResponseSchema, documentRunSnapshotSchema, designRunSnapshotSchema, queuedRunEventSchema, runSnapshotSchema, repairRequirementRulesRequestSchema, repairRequirementRuleRequestSchema, startDesignRunResponseSchema, startDocumentRunResponseSchema, startRunResponseSchema, type DocumentLibraryItem, type ProviderSettings, type RunStage, type StartDesignRunRequest, type StartDocumentRunRequest, } from "@uml-platform/contracts";
 import type { LlmTransport } from "../../llm.js";
 import type { DocumentLibrary } from "../../documents/library/document-library.js";
 import type { RenderClient } from "../../adapters/render/render-client.js";
@@ -10,19 +10,18 @@ import type { PngRenderClient } from "../../adapters/render/png-render-client.js
 import type { LlmScheduler } from "../../adapters/llm/llm-scheduler.js";
 import { projectDocumentWorkspaceId } from "../../documents/library/project-document-workspace.js";
 import { createEmptyDesignSnapshot, createEmptyDocumentSnapshot, createEmptySnapshot, } from "../../runs/records/snapshots.js";
-import { emitEvent, listRunRecordsIfAvailable, releaseRunRecordIfAvailable, refreshRunRecordIfAvailable, type RunRecord, type RunRecordMetadata, type RunRecordStore, } from "../../runs/records/run-record-store.js";
+import { emitEvent, listRunRecordsIfAvailable, releaseRunRecordIfAvailable, refreshRunRecordIfAvailable, type RunRecord, type RunRecordStore, } from "../../runs/records/run-record-store.js";
 import { cancelRunRecord } from "../../runs/records/run-actions.js";
 import { projectRunProgressEvents } from "../../runs/records/run-progress-transcript.js";
 import { projectRecordMatchesFilters, queryValue, summarizeRunRecord, } from "../../runs/records/run-record-summaries.js";
 import { registerRunEventsRoute } from "../../runs/records/run-events.js";
 import { assertRequirementBaselineAllowsDownstream } from "../../runs/baselines/requirement-baseline.js";
-import { stageProgressValue } from "../../runs/pipelines/shared/pipeline-events.js";
 import { createContextualLlmTransport, withConversationBranch } from "../../runs/pipelines/shared/conversation-context.js";
 import { normalizeRunError } from "../../runs/pipelines/shared/errors.js";
 import { handleRunPipelineError, startRunRecordPipeline, } from "../../runs/pipelines/run-record-pipeline-starter.js";
 import { checkGenerationUsageLimit, checkProviderUsageLimit, recordGenerationUsage, recordProviderUsage, rememberProviderSettings, providerResolutionFailureResponse, resolveProviderConfigIdForRun, resolveProviderSettingsForRun, } from "../../runs/providers/run-provider-gates.js";
 import type { ProviderConfigStore } from "../../provider-configs/provider-config-store.js";
-import type { ProviderTaskType, ProviderRateLimitPolicy, ProviderUsageTracker, } from "../../provider-configs/provider-usage-tracker.js";
+import type { ProviderRateLimitPolicy, ProviderUsageTracker, } from "../../provider-configs/provider-usage-tracker.js";
 import { resolveProviderRateLimitPolicy } from "../../provider-configs/provider-usage-tracker.js";
 import type { GenerationUsageService } from "../../generation/generation-usage.js";
 import { RUN_ROUTE_CONFIG } from "./run-route-config.js";
@@ -33,8 +32,7 @@ import { collectTextResult } from "../../runs/pipelines/shared/structured-output
 import { getRepairRequirementRuleResponseFormat, getRepairRequirementRulesResponseFormat, } from "../../adapters/llm/response-formats/index.js";
 import { canReadProjectRuns, canReadRunRecord, defaultRunAccessGuard, metadataForStartedRun, resolveProjectRunPermission, runAccessDeniedMessage, type RunAccessGuard, } from "./run-access.js";
 import { createProjectRunAction } from "../../runs/actions/project-run-actions.js";
-import { completeOfflineDemoDesignRun, completeOfflineDemoRequirementRun, createOfflineDemoDocumentInput, createOfflineDemoRequirementRuleRepair, createOfflineDemoRequirementRulesRepair, isOfflineDemoProject, offlineDemoLlmTransport, offlineDemoProviderSettings, } from "../../runs/demo/offline-demo-runs.js";
-import { emitOfflineDemoActivity } from "../../runs/demo/offline-demo-activity.js";
+import { isOfflineDemoProject, offlineDemoLlmTransport, offlineDemoProviderSettings } from "../../runs/demo/offline-demo-config.js";
 import { attachProjectWorkspaceSync, type ProjectWorkspaceSync, } from "./project-workspace-sync.js";
 import { flushRunStoreIfAvailable, type RunQueue, } from "../../runs/queue/run-queue.js";
 export type { RunAccessContext, RunAccessGuard } from "./run-access.js";
@@ -206,6 +204,7 @@ export function registerRunRoutes({ app, runs, documentLibrary, llmTransport, re
             return runAccessDeniedMessage(reply);
         const input = repairRequirementRuleRequestSchema.parse(request.body);
         if (await isOfflineDemoRun(input.projectId ?? metadata?.projectId)) {
+            const { createOfflineDemoRequirementRuleRepair } = await import("../../runs/demo/offline-demo-runs.js");
             return createOfflineDemoRequirementRuleRepair(input);
         }
         const providerResolution = await resolveProviderSettingsForRun({
@@ -260,6 +259,7 @@ export function registerRunRoutes({ app, runs, documentLibrary, llmTransport, re
             return runAccessDeniedMessage(reply);
         const input = repairRequirementRulesRequestSchema.parse(request.body);
         if (await isOfflineDemoRun(input.projectId ?? metadata?.projectId)) {
+            const { createOfflineDemoRequirementRulesRepair } = await import("../../runs/demo/offline-demo-runs.js");
             return createOfflineDemoRequirementRulesRepair(input);
         }
         const providerResolution = await resolveProviderSettingsForRun({
@@ -364,6 +364,7 @@ export function registerRunRoutes({ app, runs, documentLibrary, llmTransport, re
         }
         const input = resolvedInput.input;
         if (await isOfflineDemoRun(input.projectId ?? metadata?.projectId)) {
+            const { completeOfflineDemoRequirementRun } = await import("../../runs/demo/offline-demo-runs.js");
             const runId = randomUUID();
             const record: RunRecord = {
                 snapshot: createEmptySnapshot(runId, input.requirementText, input.selectedDiagrams, input.rules, {
@@ -473,6 +474,7 @@ export function registerRunRoutes({ app, runs, documentLibrary, llmTransport, re
         }
         const input = resolvedInput.input;
         if (await isOfflineDemoRun(input.projectId ?? metadata?.projectId)) {
+            const { completeOfflineDemoDesignRun } = await import("../../runs/demo/offline-demo-runs.js");
             const runId = randomUUID();
             const record: RunRecord = {
                 snapshot: createEmptyDesignSnapshot(runId, input),
@@ -588,6 +590,9 @@ export function registerRunRoutes({ app, runs, documentLibrary, llmTransport, re
         if (blockedBaseline)
             return blockedBaseline;
         if (await isOfflineDemoRun(input.projectId ?? metadata.projectId)) {
+            // Load recording fixtures only after the project has opted into demo mode.
+            const { createOfflineDemoDocumentInput } = await import("../../runs/demo/offline-demo-runs.js");
+            const { emitOfflineDemoActivity } = await import("../../runs/demo/offline-demo-activity.js");
             const demoInput = createOfflineDemoDocumentInput(input);
             const runId = randomUUID();
             const record: RunRecord = {

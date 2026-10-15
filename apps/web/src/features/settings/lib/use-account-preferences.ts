@@ -1,5 +1,5 @@
 // Owns block37 drafts and applies only the active preference page to existing platform contexts.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppI18n } from "../../../shared/i18n/i18n-provider";
 import { useSidebar } from "../../../shared/ui/sidebar";
 import { useTheme } from "../../../shared/ui/theme-provider";
@@ -9,12 +9,12 @@ export function useAccountPreferences(open: boolean) {
   const theme = useTheme();
   const language = useAppI18n();
   const sidebar = useSidebar();
-  const snapshot: PreferencesDraft = {
+  const snapshot = useMemo<PreferencesDraft>(() => ({
     mode: theme.mode,
     preset: theme.themePreset,
     language: language.preference,
     sidebar: sidebar.open ? "expanded" : "collapsed",
-  };
+  }), [theme.mode, theme.themePreset, language.preference, sidebar.open]);
   const [draft, setDraft] = useState(snapshot);
   const [saved, setSaved] = useState(false);
   const previous = useRef({ open, snapshot });
@@ -42,7 +42,7 @@ export function useAccountPreferences(open: boolean) {
       });
     }
     previous.current = { open, snapshot };
-  }, [open, theme.mode, theme.themePreset, language.preference, sidebar.open]);
+  }, [open, snapshot]);
 
   const update = <K extends keyof PreferencesDraft>(key: K, value: PreferencesDraft[K]) => {
     setSaved(false);

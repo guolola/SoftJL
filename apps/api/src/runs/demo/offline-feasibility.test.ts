@@ -5,7 +5,8 @@ import { buildAcceptedRequirementSnapshot, buildFeasibilityImplementationFingerp
 import { librarySeatDemoFixture } from "./fixtures/library-seat-demo-fixture.js";
 import { librarySeatFeasibilityFlow } from "./fixtures/library-seat-feasibility-fixture.js";
 import { offlineFeasibilityAdapters } from "./offline-feasibility.js";
-import { offlineDemoProviderSettings, createOfflineDemoDocumentInput } from "./offline-demo-runs.js";
+import { offlineDemoProviderSettings } from "./offline-demo-config.js";
+import { createOfflineDemoDocumentInput } from "./offline-demo-runs.js";
 import { createEmptyFeasibilitySnapshot } from "../records/snapshots.js";
 import { createRunRecordStore, type RunRecord } from "../records/run-record-store.js";
 import { runFeasibilityStagePipeline } from "../pipelines/feasibility-pipeline.js";

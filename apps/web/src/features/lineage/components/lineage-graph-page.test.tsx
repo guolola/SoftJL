@@ -4,10 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
 import { i18n } from '../../../shared/i18n';
-import { useReactFlowTestLayout } from '../../../test/react-flow-test-layout';
+import { installReactFlowTestLayout } from '../../../test/react-flow-test-layout';
 import { LineageGraphPage } from './lineage-graph-page';
 import { platformApi } from '../../user-platform/services/platform-api';
-useReactFlowTestLayout();
+installReactFlowTestLayout();
 const { session, shell, graph } = vi.hoisted(() => ({
   session: { generateRules: vi.fn(), generateDiagrams: vi.fn(), generateDesignDiagrams: vi.fn(), generateRequirementsSpec: vi.fn(), generateSoftwareDesignSpec: vi.fn(), generateFeasibilityStudy: vi.fn() },
   shell: { openSystemRequirements: vi.fn(), openRequirementsText: vi.fn(), openDiagram: vi.fn(), openDesignDiagram: vi.fn(), openDocumentsHome: vi.fn() },

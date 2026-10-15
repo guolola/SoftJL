@@ -51,7 +51,7 @@ const Button = React.forwardRef(function Button({
 }: React.ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
-  }, ref: React.ForwardedRef<any>) {
+  }, ref: React.ForwardedRef<HTMLButtonElement>) {
   const Comp = asChild ? Slot.Root : 'button'
 
   return (

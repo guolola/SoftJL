@@ -103,7 +103,6 @@ const englishReadmeSections = [
   "License",
 ];
 const technicalSections = ["概述", "当前设计或配置", "操作与维护", "验证", "相关文档"];
-const guideSections = ["适用场景", "入口位置", "前置条件", "操作步骤", "结果与产物", "映射关系", "常见问题"];
 const componentSections = ["职责", "边界", "使用或常用命令", "配置", "验证", "相关文档"];
 const componentReadmes = new Set([
   "apps/api/README.md",
@@ -128,9 +127,6 @@ for (const file of markdownFiles) {
     for (const field of ["维护状态", "目标读者", "事实来源"]) {
       if (!content.includes(field)) report(file, `缺少元信息：${field}`);
     }
-  }
-  if (file.startsWith("apps/web/src/features/product-docs/content/")) {
-    requireSections(file, h2s, guideSections);
   }
   if (componentReadmes.has(file)) requireSections(file, h2s, componentSections);
 
@@ -159,11 +155,6 @@ const expectedTechnicalDocs = [
 ];
 for (const file of expectedTechnicalDocs) {
   if (!markdownFiles.includes(file)) report(file, "技术文档索引缺失");
-}
-
-const manifest = readFileSync(path.join(root, "apps/web/src/features/product-docs/model/docs-content.ts"), "utf8");
-for (const file of markdownFiles.filter((item) => item.startsWith("apps/web/src/features/product-docs/content/"))) {
-  if (!manifest.includes(`../content/${path.basename(file)}`)) report(file, "未登记到应用内文档清单");
 }
 
 if (errors.length) {

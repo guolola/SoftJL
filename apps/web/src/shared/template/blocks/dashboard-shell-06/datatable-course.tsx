@@ -300,11 +300,10 @@ const ProjectDatatable = ({ data, onProject }: { data: Item[]; onProject: (id: s
 
 export default ProjectDatatable
 
-function Filter({ column, label }: { column: Column<any, unknown>; label: string }) {
+function Filter<TData>({ column, label }: { column: Column<TData, unknown>; label: string }) {
   const id = useId()
   const columnFilterValue = column.getFilterValue()
 
-  const columnHeader = typeof column.columnDef.header === 'string' ? column.columnDef.header : ''
 
   return (
     <div>

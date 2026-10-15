@@ -8,9 +8,6 @@
     "test": "playwright test",
     "test:headed": "playwright test --headed"
   },
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "devDependencies": {
     "@playwright/test": "^1.60.0"
   }

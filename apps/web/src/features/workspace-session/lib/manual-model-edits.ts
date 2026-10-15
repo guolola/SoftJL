@@ -219,17 +219,7 @@ export function useManualModelEditActions({
         floatingAlert.message(options?.toastMessage ?? t("diagrams.detail.rerendered"));
       }
     },
-    [
-      createManualEditStatus,
-      models,
-      repository,
-      setDiagramErrors,
-      setGeneratedDiagrams,
-      setManualModelEditStatus,
-      setPlantUml,
-      setSvgArtifacts,
-      setVisualReviews,
-    ],
+    [createManualEditStatus, models, repository, setDiagramErrors, setGeneratedDiagrams, setManualModelEditStatus, setPlantUml, setSvgArtifacts, setVisualReviews, t],
   );
 
   const rerenderDesignModel = useCallback(
@@ -288,17 +278,7 @@ export function useManualModelEditActions({
         floatingAlert.message(options?.toastMessage ?? t("diagrams.detail.rerendered"));
       }
     },
-    [
-      createManualEditStatus,
-      designModels,
-      repository,
-      setDesignDiagramErrors,
-      setDesignPlantUml,
-      setDesignSvgArtifacts,
-      setVisualReviews,
-      setGeneratedDesignDiagrams,
-      setManualModelEditStatus,
-    ],
+    [designModels, repository, createManualEditStatus, setDesignPlantUml, setDesignSvgArtifacts, setDesignDiagramErrors, setGeneratedDesignDiagrams, setManualModelEditStatus, setVisualReviews, t],
   );
 
   return {

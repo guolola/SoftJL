@@ -234,13 +234,10 @@ export function ProjectMembers({
     return true;
   });
 
-  const activeCount = currentMembers.filter((member) => member.status === "active").length;
-  const invitedCount = currentMembers.filter(
-    (member) => member.status === "invited" || member.status === "expired",
-  ).length;
+
   const ownerCount = currentMembers.filter((member) => member.status === "active" && member.role === "owner").length;
-  const editorCount = currentMembers.filter((member) => member.status === "active" && member.role === "editor").length;
-  const viewerCount = currentMembers.filter((member) => member.status === "active" && member.role === "viewer").length;
+
+
   const roleOptions = [
     { value: "viewer", label: t("projectShell.membersUi.roles.viewer") },
     { value: "editor", label: t("projectShell.membersUi.roles.editor") },

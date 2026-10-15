@@ -363,9 +363,7 @@ const HeaderNavigationSmallScreen = ({
   }
 
   useEffect(() => {
-    if (!isMobile) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setOpen(false)
+    if (!isMobile) {      setOpen(false)
     }
   }, [isMobile])
 

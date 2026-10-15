@@ -1,4 +1,5 @@
 // Orchestrates requirement extraction, model generation, PlantUML, and SVG rendering.
+import { mapWithConcurrency, useCaseModelForSingleUseCase } from "./shared/generation-helpers.js";
 import { getStageModelSchema, contractResponseSchema } from "@uml-platform/contracts";
 
 import { createStageLifecycle } from "./shared/stage-lifecycle.js";
@@ -8,7 +9,6 @@ import {
   artifactReadyRunEventSchema,
   completedRunEventSchema,
   diagramErrorSchema,
-  diagramModelsResultSchema,
   stageProgressRunEventSchema,
   stageStartedRunEventSchema,
   type DiagramError,
@@ -37,7 +37,6 @@ import {
   getGenerateModelsResponseFormat,
   getGenerateRequirementTraceabilityResponseFormat,
 } from "../../adapters/llm/response-formats/index.js";
-import { generatePlantUmlArtifacts } from "../../plantuml.js";
 import {
   parseRequirementDiagramModelsOnly,
   parseRequirementDiagramModelsResult,
@@ -51,7 +50,7 @@ import {
   mergeRequirementTraceability,
   normalizeRequirementTraceabilityWithCoverage,
 } from "../../normalizers/traceability/traceability-normalizer.js";
-import { formatParseError, parseJson } from "../../normalizers/json/parse-json.js";
+import { formatParseError } from "../../normalizers/json/parse-json.js";
 import { emitEvent, type RunRecord } from "../records/run-record-store.js";
 import { readDiagramReviewCounters } from "../records/diagram-review-record.js";
 import {
@@ -59,7 +58,6 @@ import {
   RunCancelledError,
   throwIfRunCancelled,
 } from "../records/run-cancellation.js";
-import { renderArtifactWithRepair } from "./render/render-artifact-with-repair.js";
 import { DiagramReviewRenderError, reviewRenderedArtifact } from "./render/review-rendered-artifact.js";
 import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
 import { withConversationBranch } from "./shared/conversation-context.js";
@@ -103,26 +101,6 @@ function compactText(value: unknown) {
     : "";
 }
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T, index: number) => Promise<R>,
-) {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    async () => {
-      while (nextIndex < items.length) {
-        const currentIndex = nextIndex;
-        nextIndex += 1;
-        results[currentIndex] = await mapper(items[currentIndex]!, currentIndex);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return results;
-}
 
 function readRequirementAnalysisConcurrency() {
   const runConcurrency = positiveIntegerEnv(
@@ -171,23 +149,6 @@ function useCaseHasEventFlows(useCase: UseCaseForAnalysis) {
   return Array.isArray(useCase.eventFlows) && useCase.eventFlows.length > 0;
 }
 
-function useCaseModelForSingleUseCase(
-  useCaseModel: DiagramModelSpec,
-  sourceUseCaseId: string,
-) {
-  if (useCaseModel.diagramKind !== "usecase") return useCaseModel;
-  const useCase = useCaseModel.useCases.find((item) => item.id === sourceUseCaseId);
-  if (!useCase) return useCaseModel;
-  return {
-    ...useCaseModel,
-    useCases: [useCase],
-    relationships: useCaseModel.relationships.filter(
-      (relationship) =>
-        relationship.sourceId === sourceUseCaseId ||
-        relationship.targetId === sourceUseCaseId,
-    ),
-  };
-}
 
 type UseCaseForAnalysis = ReturnType<typeof useCasesFromModel>[number];
 type AnalysisRequirementModel = Extract<DiagramModelSpec, { diagramKind: "analysis" }>;
@@ -196,37 +157,6 @@ function requirementModelId(model: DiagramModelSpec) {
   return compactText((model as unknown as { modelId?: string }).modelId) || model.diagramKind;
 }
 
-const REQUIREMENT_DIAGRAM_LABELS: Record<DiagramKind, string> = {
-  context: "系统上下文图（系统环境图）",
-  function: "功能结构图",
-  usecase: "用例模型",
-  class: "领域概念模型",
-  activity: "总体业务流程",
-  deployment: "部署需求模型",
-  prototype: "原型界面关系",
-  analysis: "需求分析模型",
-};
-
-function requirementDiagramLabel(diagram: DiagramKind) {
-  return REQUIREMENT_DIAGRAM_LABELS[diagram];
-}
-
-function requirementArtifactSubtaskLabel(
-  model: DiagramModelSpec | undefined,
-  artifact: Pick<PlantUmlArtifact, "diagramKind" | "modelId">,
-) {
-  const title = compactText((model as { title?: unknown } | undefined)?.title);
-  if (title) return title;
-  if (
-    model?.diagramKind === "analysis" &&
-    compactText((model as AnalysisRequirementModel).sourceUseCaseName)
-  ) {
-    return `需求分析模型：${compactText(
-      (model as AnalysisRequirementModel).sourceUseCaseName,
-    )}`;
-  }
-  return requirementDiagramLabel(artifact.diagramKind);
-}
 
 function requirementArtifactKey(
   artifact: Pick<PlantUmlArtifact | SvgArtifact, "diagramKind" | "modelId">,
@@ -469,15 +399,6 @@ function analysisModelMatchesTarget(
   return targetUseCaseIds.has(analysisSourceUseCaseId(model));
 }
 
-function analysisTraceabilityMatchesTarget(
-  entry: RequirementModelTraceabilityEntry,
-  targetUseCaseIds: Set<string>,
-) {
-  if (entry.target.diagramKind !== "analysis") return false;
-  const modelId = compactText(entry.target.modelId);
-  if (!modelId.startsWith("analysis:")) return false;
-  return targetUseCaseIds.has(modelId.slice("analysis:".length));
-}
 
 function validateUseCaseAnalysisCoverage(
   analysisModels: AnalysisRequirementModel[],

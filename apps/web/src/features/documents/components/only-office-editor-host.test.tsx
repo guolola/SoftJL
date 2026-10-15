@@ -13,9 +13,8 @@ describe("OnlyOfficeEditorHost", () => {
     const firstDestroy = vi.fn();
     const secondDestroy = vi.fn();
     const docEditor = vi
-      .fn()
-      .mockReturnValueOnce({ destroyEditor: firstDestroy })
-      .mockReturnValueOnce({ destroyEditor: secondDestroy });
+      .fn(function () { return { destroyEditor: secondDestroy }; })
+      .mockImplementationOnce(function () { return { destroyEditor: firstDestroy }; });
     window.DocsAPI = { DocEditor: docEditor };
 
     const lightConfig = {
@@ -49,6 +48,7 @@ describe("OnlyOfficeEditorHost", () => {
       expect(firstDestroy).toHaveBeenCalledTimes(1);
       expect(docEditor).toHaveBeenCalledTimes(2);
     });
+    expect(firstDestroy.mock.invocationCallOrder[0]).toBeLessThan(docEditor.mock.invocationCallOrder[1]!);
 
     unmount();
 
@@ -60,7 +60,7 @@ describe("OnlyOfficeEditorHost", () => {
       const target = document.querySelector("[id^='onlyoffice-editor-']");
       target?.remove();
     });
-    const docEditor = vi.fn().mockReturnValue({ destroyEditor });
+    const docEditor = vi.fn(function () { return { destroyEditor }; });
     window.DocsAPI = { DocEditor: docEditor };
 
     const { unmount } = render(
@@ -80,7 +80,7 @@ describe("OnlyOfficeEditorHost", () => {
 
   it("does not recreate the editor when only the load-error callback changes", async () => {
     const destroyEditor = vi.fn();
-    const docEditor = vi.fn().mockReturnValue({ destroyEditor });
+    const docEditor = vi.fn(function () { return { destroyEditor }; });
     window.DocsAPI = { DocEditor: docEditor };
     const config = { documentType: "word" };
 

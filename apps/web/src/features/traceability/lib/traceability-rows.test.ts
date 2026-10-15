@@ -67,6 +67,7 @@ describe("traceability row builders", () => {
           notes: [],
           classes: [
             {
+              constraints: [],
               id: "Book",
               name: "Book",
               attributes: [],
@@ -132,6 +133,7 @@ describe("traceability row builders", () => {
           actors: [],
           useCases: [
             {
+              eventFlows: [],
               id: "login",
               name: "登录",
               goal: "进入系统",
@@ -140,6 +142,7 @@ describe("traceability row builders", () => {
               supportingActorIds: [],
             },
             {
+              eventFlows: [],
               id: "search",
               name: "搜索课程",
               goal: "找到课程",
@@ -183,7 +186,6 @@ describe("traceability row builders", () => {
             rationale: "搜索课程由搜索用例说明。",
             modelElements: ["usecase:search"],
             designElements: [],
-            codeArtifacts: [],
             tests: [],
             reviewItems: [],
           },
@@ -216,6 +218,7 @@ describe("traceability row builders", () => {
           actors: [],
           useCases: [
             {
+              eventFlows: [],
               id: "borrow-book",
               name: "借书",
               goal: "完成借书",
@@ -236,6 +239,7 @@ describe("traceability row builders", () => {
           notes: [],
           classes: [
             {
+              constraints: [],
               id: "BorrowingService",
               name: "BorrowingService",
               attributes: [],

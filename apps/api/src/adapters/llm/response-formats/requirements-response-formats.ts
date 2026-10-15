@@ -11,7 +11,6 @@ import { toOpenAiStrictJsonSchema } from "./openai-strict-schema.js";
 
 import {
   GENERATE_MODELS_RESPONSE_FORMAT,
-  modelElementRefResponseSchema,
   requirementTraceabilityEntryResponseSchema,
 } from "./requirement-model-response-format.js";
 export {

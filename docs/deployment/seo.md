@@ -10,7 +10,7 @@
 
 ## 概述
 
-SEO 配置由 Next.js 页面元信息、规范链接、结构化数据、站点地图与 robots 规则共同组成。生产规范地址由 Web 路由配置维护。
+SEO 配置由 Next.js 页面元信息、规范链接、结构化数据、站点地图与 robots 规则共同组成。生产规范地址由构建时的 `PUBLIC_WEB_BASE_URL` 统一提供给页面元信息、客户端导航、站点地图和 robots。
 
 ## 当前设计或配置
 
@@ -18,6 +18,16 @@ SEO 配置由 Next.js 页面元信息、规范链接、结构化数据、站点�
 - Next.js 的 `robots.ts` 与 `sitemap.ts` 输出爬虫文件，首页由服务端输出元信息和结构化数据。
 - 登录与业务路由使用不索引元信息；旧营销子页返回真实 404。
 - 部署后 HTTP 校验会检查规范链接、爬虫文件、私有页面与 404。
+
+### 部署者配置
+
+以下变量在 Web 构建前设置；变更后需要重新构建前端。
+
+| 变量 | 用途 | 未配置时 |
+| --- | --- | --- |
+| `PUBLIC_WEB_BASE_URL` | 本次部署的 HTTPS 根地址，不带路径、查询或片段 | 开发使用本机地址；生产 SEO 构建拒绝缺省值 |
+
+页脚保留导航、项目与线上指南入口，移除原站点介绍、联系方式及版权备案展示区。
 
 ## 操作与维护
 
@@ -29,10 +39,10 @@ SEO 配置由 Next.js 页面元信息、规范链接、结构化数据、站点�
 ## 验证
 
 ```bash
-npm run build:web:production
+PUBLIC_WEB_BASE_URL=https://community.example.org npm run build:web:production
 ```
 
-检查生产 HTML 中的标题、描述、规范链接和结构化数据，并确认 `robots.txt`、站点地图、首页与 `/tutorial` 返回成功且没有本地地址。运行 `node apps/web/scripts/verify-seo-deployment.mjs` 可复查公开站点。
+检查生产 HTML 中的标题、描述、规范链接和结构化数据，并确认 `robots.txt`、站点地图与首页返回成功且没有本地地址；旧 `/tutorial` 地址应跳转到线上使用指南。设置部署目标 `PUBLIC_WEB_BASE_URL` 后运行 `node apps/web/scripts/verify-seo-deployment.mjs` 可复查公开站点。
 
 ## 相关文档
 

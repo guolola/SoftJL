@@ -1,6 +1,8 @@
+// Scores generated requirement artifacts against deterministic fixtures or a configured API.
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { dirname, join, basename } from "node:path";
+import { join, basename } from "node:path";
+import { assertEvaluationApiConfig, createEvaluationApiClient } from "./api-client.js";
 import {
   extractProtectedRequirementFacts,
   unsupportedRequirementFacts,
@@ -37,8 +39,6 @@ export interface EvalCaseResult {
   effectiveTraceTotal: number;
   effectiveTraceCoverageRate: number | null;
   terminalStateConsistent: boolean;
-  prototypeBuildPassed: boolean | null;
-  documentUsable: boolean | null;
   qualityScore: number;
   automaticVerdict: "pass" | "fail";
 }
@@ -133,17 +133,7 @@ export async function loadFixtures(): Promise<EvalFixture[]> {
 }
 
 export function assertProviderConfig(env: NodeJS.ProcessEnv) {
-  if (env.UML_EVAL_MOCK === "1") return;
-  const missing = [
-    ["UML_EVAL_PROVIDER_API_BASE_URL", env.UML_EVAL_PROVIDER_API_BASE_URL],
-    ["UML_EVAL_API_KEY", env.UML_EVAL_API_KEY],
-    ["UML_EVAL_MODEL", env.UML_EVAL_MODEL],
-  ]
-    .filter(([, value]) => !value)
-    .map(([name]) => name);
-  if (missing.length > 0) {
-    throw new Error(`缺少评测配置：${missing.join(", ")}`);
-  }
+  if (env.UML_EVAL_MOCK !== "1") assertEvaluationApiConfig(env);
 }
 
 function createMockSnapshot(fixture: EvalFixture): RunSnapshot {
@@ -157,6 +147,12 @@ function createMockSnapshot(fixture: EvalFixture): RunSnapshot {
     runId: `mock-${fixture.id}`,
     requirementText: fixture.requirementText,
     selectedDiagrams: fixture.selectedDiagrams,
+    analysisTargetUseCaseIds: [],
+    requirementBaseline: null,
+    coverageMatrix: null,
+    traceabilityMatrix: null,
+    requirementModelTraceability: [],
+    visualReviews: {},
     rules: expectedRules.length > 0 ? expectedRules : [
       {
         id: "r1",
@@ -189,42 +185,6 @@ function createMockSnapshot(fixture: EvalFixture): RunSnapshot {
     status: "completed",
     error: null,
   };
-}
-
-async function runViaApi(fixture: EvalFixture, env: NodeJS.ProcessEnv) {
-  const apiBaseUrl = env.UML_EVAL_API_BASE_URL ?? "http://127.0.0.1:4101";
-  const start = await fetch(`${apiBaseUrl}/api/runs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      requirementText: fixture.requirementText,
-      selectedDiagrams: fixture.selectedDiagrams,
-      providerSettings: {
-        apiBaseUrl: env.UML_EVAL_PROVIDER_API_BASE_URL,
-        apiKey: env.UML_EVAL_API_KEY,
-        model: env.UML_EVAL_MODEL,
-      },
-    }),
-  });
-  if (!start.ok) {
-    throw new Error(`启动评测运行失败：HTTP ${start.status} ${await start.text()}`);
-  }
-  const { runId } = (await start.json()) as { runId: string };
-  const deadline = Date.now() + Number(env.UML_EVAL_TIMEOUT_MS ?? 180000);
-
-  while (Date.now() < deadline) {
-    const response = await fetch(`${apiBaseUrl}/api/runs/${runId}`);
-    if (!response.ok) {
-      throw new Error(`读取评测运行失败：HTTP ${response.status}`);
-    }
-    const snapshot = (await response.json()) as RunSnapshot;
-    if (snapshot.status === "completed" || snapshot.status === "failed") {
-      return snapshot;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-
-  throw new Error(`评测运行超时：${runId}`);
 }
 
 function semanticCarrier(text: string): Pick<
@@ -309,8 +269,6 @@ function summarizeQuality(fixture: EvalFixture, snapshot: RunSnapshot) {
         ? effectiveTraceCovered / effectiveTraceTotal
         : null,
     terminalStateConsistent,
-    prototypeBuildPassed: null,
-    documentUsable: null,
   };
 }
 
@@ -379,47 +337,51 @@ export async function runEval(env: NodeJS.ProcessEnv = process.env): Promise<Eva
   assertProviderConfig(env);
   const fixtures = await loadFixtures();
   const mode = env.UML_EVAL_MOCK === "1" ? "mock" : "api";
+  const apiClient = mode === "api" ? await createEvaluationApiClient(env) : null;
   const results: EvalCaseResult[] = [];
   const attemptsPerFixture = Math.max(1, Math.min(100, Number.parseInt(env.UML_EVAL_ATTEMPTS ?? "5", 10) || 5));
   const startedAt = Date.now();
 
-  for (const fixture of fixtures) {
-    for (let attempt = 1; attempt <= attemptsPerFixture; attempt += 1) {
-      const caseStartedAt = Date.now();
-      try {
-        const snapshot =
-          mode === "mock" ? createMockSnapshot(fixture) : await runViaApi(fixture, env);
-        results.push(
-          summarizeSnapshot(fixture, snapshot, Date.now() - caseStartedAt, attempt),
-        );
-      } catch (error) {
-        results.push({
-        fixtureId: fixture.id,
-        taskType: fixture.taskType,
-        attempt,
-        status: "configuration_error",
-        rulesCount: 0,
-        modelsCount: 0,
-        svgSuccessCount: 0,
-        diagramErrorCount: 0,
-        durationMs: Date.now() - caseStartedAt,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        semanticFactsTotal: 0,
-        semanticFactsPreserved: 0,
-        semanticAccuracyRate: null,
-        harmfulRepairCount: 0,
-        unfoundedAdditionCount: 0,
-        effectiveTraceCovered: 0,
-        effectiveTraceTotal: 0,
-        effectiveTraceCoverageRate: null,
-        terminalStateConsistent: false,
-        prototypeBuildPassed: null,
-        documentUsable: null,
-        qualityScore: 0,
-        automaticVerdict: "fail",
-        });
+  try {
+    for (const fixture of fixtures) {
+      for (let attempt = 1; attempt <= attemptsPerFixture; attempt += 1) {
+        const caseStartedAt = Date.now();
+        try {
+          const snapshot =
+            mode === "mock" ? createMockSnapshot(fixture) : await apiClient!.run(fixture);
+          results.push(
+            summarizeSnapshot(fixture, snapshot, Date.now() - caseStartedAt, attempt),
+          );
+        } catch (error) {
+          results.push({
+            fixtureId: fixture.id,
+            taskType: fixture.taskType,
+            attempt,
+            status: "configuration_error",
+            rulesCount: 0,
+            modelsCount: 0,
+            svgSuccessCount: 0,
+            diagramErrorCount: 0,
+            durationMs: Date.now() - caseStartedAt,
+            errorMessage: error instanceof Error ? error.message : String(error),
+            semanticFactsTotal: 0,
+            semanticFactsPreserved: 0,
+            semanticAccuracyRate: null,
+            harmfulRepairCount: 0,
+            unfoundedAdditionCount: 0,
+            effectiveTraceCovered: 0,
+            effectiveTraceTotal: 0,
+            effectiveTraceCoverageRate: null,
+            terminalStateConsistent: false,
+            qualityScore: 0,
+            automaticVerdict: "fail",
+          });
+        }
       }
     }
+
+  } finally {
+    await apiClient?.close();
   }
 
   const semanticFactsTotal = results.reduce(

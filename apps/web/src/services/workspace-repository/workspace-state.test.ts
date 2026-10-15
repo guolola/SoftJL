@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   AtomicRequirement,
-  
+
   DesignDiagramModelSpec,
   DesignRunSnapshot,
   DiagramModelSpec,
@@ -74,7 +74,7 @@ function createBaseline(
   };
 }
 
-function useCaseModel(): DiagramModelSpec {
+function createUseCaseModel(): DiagramModelSpec {
   return {
     diagramKind: "usecase",
     title: "需求用例模型",
@@ -99,10 +99,11 @@ function createSnapshot(
     requirementBaseline: null,
     coverageMatrix: null,
     traceabilityMatrix: null,
-    models: [useCaseModel()],
+    models: [createUseCaseModel()],
     requirementModelTraceability: [],
     plantUml: [],
     svgArtifacts: [],
+    visualReviews: {},
     diagramErrors: {},
     requirementTrace: [],
     currentStage: "render_svg",
@@ -130,6 +131,7 @@ function createDesignSnapshot(
     designModelTraceability: [],
     plantUml: [],
     svgArtifacts: [],
+    visualReviews: {},
     diagramErrors: {},
     designTrace: [],
     currentStage: "render_svg",
@@ -138,7 +140,6 @@ function createDesignSnapshot(
     ...overrides,
   };
 }
-
 
 
 function tableDesignModel(): DesignDiagramModelSpec {
@@ -191,7 +192,7 @@ function createPendingCandidate(
 describe("applySnapshotToWorkspace", () => {
   it.each(["requirements", "design"])("replaces custom-ID sources with their models during %s snapshot recovery", (stage) => {
     const design = stage === "design";
-    const oldModel = { ...(design ? tableDesignModel() : useCaseModel()), modelId: "custom-old" };
+    const oldModel = { ...(design ? tableDesignModel() : createUseCaseModel()), modelId: "custom-old" };
     const newModel = { ...oldModel, modelId: "custom-new" };
     const workspace = createEmptyWorkspace();
     const modelField = design ? "designModels" : "models";
@@ -221,7 +222,7 @@ describe("applySnapshotToWorkspace", () => {
       workspace,
       createSnapshot({
         selectedDiagrams: ["usecase"],
-        models: [useCaseModel()],
+        models: [createUseCaseModel()],
         plantUml: [{ diagramKind: "usecase", source: "@startuml\n@enduml" }],
       }),
     );
@@ -255,7 +256,7 @@ describe("applySnapshotToWorkspace", () => {
         requirementText: "座位预约系统 v1",
         rules: rulesV1,
         selectedDiagrams: ["usecase"],
-        models: [useCaseModel()],
+        models: [createUseCaseModel()],
         plantUml: [{ diagramKind: "usecase", source: "@startuml\n@enduml" }],
       }),
     );
@@ -298,7 +299,7 @@ describe("applySnapshotToWorkspace", () => {
       requirementText,
       rules,
     });
-    const existingUseCaseModel = useCaseModel();
+    const existingUseCaseModel = createUseCaseModel();
     const merged = applySnapshotToWorkspace(
       {
         ...createEmptyWorkspace(),
@@ -317,7 +318,7 @@ describe("applySnapshotToWorkspace", () => {
         rules: [],
         requirementModels: [
           {
-            ...useCaseModel(),
+            ...createUseCaseModel(),
             title: "空输入设计快照中的旧用例模型",
           },
         ],
@@ -338,13 +339,6 @@ describe("applySnapshotToWorkspace", () => {
     expect(merged.generatedDesignDiagramTypes).toEqual([]);
   });
 
-  
-
-  
-
-  
-
-  
 
   it("applies requirement baseline from model snapshots when requirement input matches", () => {
     const requirementText = "用户通过邮箱注册账号，联系方式在认领通过前隐藏。";

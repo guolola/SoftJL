@@ -1,0 +1,90 @@
+// Verifies visible-only polling, request ordering, permission refresh and in-memory credentials.
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "../../../shared/i18n/i18n";
+import { useMcpConnections } from "./use-mcp-connections";
+import { mcpApi, type ConnectionInfo } from "../services/mcp-api";
+vi.mock("../services/mcp-api", async (original) => ({ ...await original<typeof import("../services/mcp-api")>(), mcpApi: { connections: vi.fn(), interaction: vi.fn(), createToken: vi.fn(), revoke: vi.fn(), consent: vi.fn(), deny: vi.fn() } }));
+const info: ConnectionInfo = { enabled: true, serverUrl: "https://platform.example/api/mcp", csrf: "csrf", projects: [{ id: "one", name: "One" }, { id: "two", name: "Two" }], connections: [] };
+let visible = true;
+const navigate = vi.fn();
+const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; };
+beforeEach(async () => {
+  vi.clearAllMocks();
+  visible = true;
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visible ? "visible" : "hidden" });
+  await i18n.changeLanguage("zh-CN");
+  vi.useFakeTimers();
+  vi.mocked(mcpApi.connections).mockResolvedValue(info);
+});
+afterEach(() => vi.useRealTimers());
+describe("connection refresh lifecycle", () => {
+  it("polls every ten seconds, stops while hidden and after unmount, and refreshes on return", async () => {
+    const { result, unmount } = renderHook(() => useMcpConnections(null, navigate));
+    await act(async () => {});
+    expect(result.current.info).toEqual(info);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(mcpApi.connections).toHaveBeenCalledTimes(2);
+    visible = false;
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(mcpApi.connections).toHaveBeenCalledTimes(2);
+    visible = true;
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(mcpApi.connections).toHaveBeenCalledTimes(3);
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); window.dispatchEvent(new Event("focus")); });
+    expect(mcpApi.connections).toHaveBeenCalledTimes(3);
+  });
+  it("does not overlap reads and ignores aborted responses after a newer refresh", async () => {
+    const old = deferred<ConnectionInfo>();
+    vi.mocked(mcpApi.connections).mockReturnValueOnce(old.promise);
+    const { result } = renderHook(() => useMcpConnections(null, navigate));
+    act(() => result.current.retry());
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(mcpApi.connections).toHaveBeenCalledTimes(1);
+    visible = false;
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    visible = true;
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    await act(async () => old.resolve({ enabled: false }));
+    expect(result.current.info).toEqual(info);
+  });
+  it("marks refresh failure, recovers on retry and removes projects that lost permission", async () => {
+    const { result } = renderHook(() => useMcpConnections(null, navigate));
+    await act(async () => {});
+    vi.mocked(mcpApi.connections).mockRejectedValueOnce(new Error("network"));
+    await act(async () => result.current.retry());
+    expect(result.current.error).not.toBe("");
+    expect(result.current.info).toEqual(info);
+    act(() => result.current.setSelection({ projectScope: "selected", projectIds: ["one"] }));
+    vi.mocked(mcpApi.connections).mockResolvedValueOnce({ ...info, projects: [{ id: "two", name: "Two" }] });
+    await act(async () => result.current.retry());
+    expect(result.current.info?.projects).toEqual([{ id: "two", name: "Two" }]);
+    expect(result.current.selection).toEqual({ projectScope: "selected", projectIds: [] });
+    expect(result.current.selectionValid).toBe(false);
+    expect(result.current.error).toBe("");
+  });
+  it("guards empty names and creates account-wide tokens without persisting credentials", async () => {
+    const storage = vi.spyOn(Storage.prototype, "setItem");
+    vi.mocked(mcpApi.createToken).mockResolvedValue({ token: "single-use-display" });
+    const { result, unmount } = renderHook(() => useMcpConnections(null, navigate));
+    await act(async () => {});
+    await act(async () => result.current.create(" "));
+    expect(mcpApi.createToken).not.toHaveBeenCalled();
+    // A valid name must still not grant access with an empty project selection.
+    await act(async () => result.current.retry());
+    await act(async () => result.current.create("Laptop"));
+    expect(mcpApi.createToken).not.toHaveBeenCalled();
+    await act(async () => result.current.retry());
+    act(() => result.current.setSelection({ projectScope: "account", projectIds: [] }));
+    await act(async () => result.current.create("Laptop"));
+    expect(mcpApi.createToken).toHaveBeenCalledWith("Laptop", "csrf", { projectScope: "account", projectIds: [] });
+    expect(result.current.token).toBe("single-use-display");
+    expect(storage).not.toHaveBeenCalled();
+    act(() => result.current.setToken(""));
+    expect(result.current.token).toBe("");
+    unmount();
+    storage.mockRestore();
+  });
+});

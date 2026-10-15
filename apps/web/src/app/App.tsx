@@ -1,6 +1,7 @@
 // Composes application providers, route matching, workspace shell layout, and top-level page selection.
 'use client';
-import { PageContainer } from "../shared/template/layout/page";
+import { McpConnectionsPage } from "../features/mcp-connections/components/mcp-connections-panel";
+import { McpConsentPage } from "../features/mcp-connections/components/mcp-consent-page";
 import { DefaultPagesLayout } from '../shared/template/layout/default-pages-layout';
 import { DefaultSidebar } from '../shared/template/layout/default-sidebar';
 import { PlatformSidebar } from '../features/workspace-shell/components/platform-sidebar';
@@ -23,7 +24,6 @@ import { TraceabilityMatrixPage } from "../features/traceability/components/trac
 import { TestModelPage } from "../features/testing/components/test-model-page";
 import { MarketingHomePage } from "../features/marketing-site/components/marketing-home-page";
 import { applyRouteMetadata } from "../features/marketing-site/model/seo";
-import { ProductDocsPage } from "../features/product-docs/components/product-docs-page";
 import { SidebarMenu } from "../features/workspace-shell/components/sidebar-menu";
 import { SidebarUserDropdown } from "../features/workspace-shell/components/sidebar-user-dropdown";
 import { TopBar, type TopBarProps, } from "../features/workspace-shell/components/top-bar";
@@ -33,7 +33,6 @@ import { WorkspaceRepositoryProvider } from "../services/workspace-repository";
 import { WorkspaceShellProvider, useWorkspaceShell } from "../features/workspace-shell/state";
 import { WorkspaceSessionProvider, useWorkspaceSession, } from "../features/workspace-session/state";
 import { AuthenticatedRoute, AuthPage, InvitationAcceptPage, ProjectNewPage, ProjectWorkspaceDrawer, ProjectSectionPage, type ProjectDrawerKind, ProjectWorkspaceAccessBoundary, ProjectsIndexPage, useProjectOverview, } from "../features/user-platform/components/user-platform-pages";
-import { ExamPage } from "../features/exam/components/exam-page";
 import { DashboardPage } from "../features/dashboard/components/dashboard-page";
 import { OnboardingTourProvider } from "../features/onboarding/components/onboarding-tour-provider";
 import { clearLegacyRememberedLoginPassword } from "../features/user-platform/lib/remembered-login";
@@ -48,6 +47,7 @@ function getProtectedRoutePath(route: AppRoute) {
         route.kind === "dashboard" ||
         route.kind === "projects-index" ||
         route.kind === "projects-new" ||
+        route.kind === "mcp-connections" ||
         route.kind === "legacy-account") {
         return route.path;
     }
@@ -226,7 +226,7 @@ function ProjectWorkspaceShell({ header, projectId, projectSection, activeProjec
         body = <ProjectSectionPage projectId={projectId} section={projectSection} onNavigate={onNavigate}/>;
     }
     return (<DefaultPagesLayout sidebar={<DefaultSidebar resizeLabel={t("workspace.sidebar.resize")} footer={<>
-          
+
           <SidebarUserDropdown onOpenAccount={onOpenAccount} onNavigate={onNavigate}/>
         </>}>
         <SidebarMenu projectRuns={projectRuns} activeProjectSection={projectSection} onOpenProjectSection={section => onNavigate(`${projectPath}/${section}`)} onNavigateItemSelect={returnToWorkspace}/>
@@ -332,18 +332,14 @@ export function Shell({ initialPath }: {
         }
         setRoute(nextRoute);
     }, []);
+    const consentInteractionId = route.kind === "mcp-connections" && typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("interaction") : null;
     const renderRoute = () => {
+        if (route.kind === "mcp-connections") return consentInteractionId ? <McpConsentPage interactionId={consentInteractionId} onNavigate={navigate} /> : <McpConnectionsPage onNavigate={navigate} />;
         if (route.kind === "marketing-home") {
             return <MarketingHomePage path={route.path} onNavigate={navigate}/>;
         }
-        if (route.kind === "product-docs") {
-            return <ProductDocsPage onNavigate={navigate}/>;
-        }
         if (route.kind === "shell") {
-            if (route.path === "/workspace") {
-                return <RedirectRoute to="/projects" onNavigate={navigate}/>;
-            }
-            return <ExamPage />;
+            return <RedirectRoute to="/projects" onNavigate={navigate}/>;
         }
         if (route.kind === "auth") {
             return <AuthPage key={route.path} path={route.path} onNavigate={navigate}/>;
@@ -377,9 +373,8 @@ export function Shell({ initialPath }: {
     };
     const protectedRoutePath = getProtectedRoutePath(route);
     const routeContent = renderRoute();
-    const showWorkspaceTopBar = route.kind !== "project-workspace" &&
+    const showWorkspaceTopBar = !consentInteractionId && route.kind !== "project-workspace" &&
         route.kind !== "marketing-home" &&
-        route.kind !== "product-docs" &&
         route.kind !== "auth" &&
         route.kind !== "invitation-accept" &&
         route.kind !== "legacy-redirect" &&

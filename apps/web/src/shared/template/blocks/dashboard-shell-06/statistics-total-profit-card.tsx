@@ -21,7 +21,7 @@ const profitChartConfig = {
   }
 } satisfies ChartConfig
 
-const StatisticsTotalProfitCard = ({ className, title, description, changePercentage, value, chartData: profitChartData }: { className?: string; title: string; description: string; changePercentage: string; value?: string; chartData: { name: string; cy: number; py: number }[] }) => {
+const StatisticsTotalProfitCard = ({ className, title, description, changePercentage, value: _value, chartData: profitChartData }: { className?: string; title: string; description: string; changePercentage: string; value?: string; chartData: { name: string; cy: number; py: number }[] }) => {
   const { t } = useDashboardLabels()
   const StatisticsCardData = {
   title,

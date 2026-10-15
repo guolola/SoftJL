@@ -2,7 +2,7 @@
 import type { AppRoute, MarketingRoutePath } from "../../../shared/lib/app-route-types";
 import { LOCALE_OG_LOCALE, type AppLocale } from "../../../shared/i18n/types";
 
-export const PUBLIC_SITE_URL = "https://jianglisoftware.com";
+export const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 export const SEO_JSON_LD_ID = "marketing-seo-json-ld";
 
 type LocalizedMarketingSeoMetadata = {

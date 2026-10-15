@@ -7,7 +7,12 @@ import { test } from 'node:test';
 import { applyNextRouting, checkNextRouting, migrateNextRouting, restoreNextRouting } from './nginx-next-routing.mjs';
 
 const deployPath = '/www/wwwroot/uml-platform';
-const viteConfig = readFileSync(new URL('./nginx-jianglisoftware.com.conf', import.meta.url), 'utf8');
+const viteConfig = readFileSync(new URL('./fixtures/nginx-vite-site.conf', import.meta.url), 'utf8');
+
+test('accepts the shipped Next template without a production-specific server name', () => {
+  const config = readFileSync(new URL('./nginx-uml-platform.conf', import.meta.url), 'utf8');
+  assert.equal(migrateNextRouting(config, deployPath), config);
+});
 
 test('moves the known site to Next while retaining API, OnlyOffice, and TLS routes', () => {
   const nextConfig = migrateNextRouting(viteConfig, deployPath);

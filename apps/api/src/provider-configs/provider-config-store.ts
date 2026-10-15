@@ -1,9 +1,6 @@
 // Owns secure model provider configuration storage and no-readback API key views.
+import { createSecretKey, encryptSecret, decryptSecret, hashSecret } from "./provider-secret.js";
 import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
   randomUUID,
 } from "node:crypto";
 import {
@@ -11,7 +8,7 @@ import {
   type ProviderModelCapability,
   type ProviderModelCapabilityMap,
 } from "@uml-platform/contracts";
-import { normalizeProviderAllowedModels } from "./default-provider-models.js";
+import { requireAllowedModels } from "./default-provider-models.js";
 import {
   inferOpenAiCompatibleProvider,
   normalizeManagedProviderBaseUrl,
@@ -151,7 +148,7 @@ export interface ProviderConfigStore {
   listAuditLogs(): ProviderAuditLog[];
 }
 
-export class ProviderConfigSecretError extends Error {}
+export { ProviderConfigSecretError } from "./provider-secret.js";
 
 export function createUnverifiedModelCapability(
   modelId: string,
@@ -197,43 +194,6 @@ export function normalizeProviderModelCapabilities(
   return normalized;
 }
 
-function createSecretKey(secret: string) {
-  return createHash("sha256").update(secret).digest();
-}
-
-function encryptSecret(apiKey: string, secretKey: Buffer) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", secretKey, iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(apiKey, "utf8"),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-  return `${iv.toString("base64")}.${tag.toString("base64")}.${ciphertext.toString(
-    "base64",
-  )}`;
-}
-
-function decryptSecret(payload: string, secretKey: Buffer) {
-  const [ivBase64, tagBase64, ciphertextBase64] = payload.split(".");
-  if (!ivBase64 || !tagBase64 || !ciphertextBase64) {
-    throw new ProviderConfigSecretError("Provider secret payload is invalid");
-  }
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    secretKey,
-    Buffer.from(ivBase64, "base64"),
-  );
-  decipher.setAuthTag(Buffer.from(tagBase64, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(ciphertextBase64, "base64")),
-    decipher.final(),
-  ]).toString("utf8");
-}
-
-function hashSecret(apiKey: string) {
-  return createHash("sha256").update(apiKey).digest("hex");
-}
 
 export function maskApiKey(apiKey: string) {
   const trimmed = apiKey.trim();
@@ -315,24 +275,6 @@ export function createProviderConfigStore({
     return Math.max(0, startedAt + durationMs - now.getTime());
   }
 
-  function requireAllowedModels(
-    defaultModel: string,
-    allowedModels: string[] | undefined,
-    context: { baseUrl: string; provider: string },
-  ) {
-    const normalized = normalizeProviderAllowedModels(defaultModel, allowedModels, context);
-    if (normalized.length === 0) {
-      throw new ProviderConfigPolicyError(
-        "Provider config requires at least one allowed model",
-      );
-    }
-    if (!normalized.includes(defaultModel)) {
-      throw new ProviderConfigPolicyError(
-        "Provider default model must be included in allowed models",
-      );
-    }
-    return normalized;
-  }
 
   return {
     create(input) {

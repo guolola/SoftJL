@@ -1,14 +1,13 @@
 // Creates initial snapshots for each run kind before pipelines start mutating them.
 import {
   activeRequirementModels,
-  
+
   designRunSnapshotSchema,
   documentRunSnapshotSchema,
   feasibilityRunSnapshotSchema,
   runSnapshotSchema,
-  
+
   type DesignDiagramKind,
-  type DesignDiagramModelSpec,
   type DesignRunSnapshot,
   type DiagramKind,
   type DiagramModelSpec,
@@ -44,9 +43,6 @@ const DESIGN_DIAGRAM_ORDER: DesignDiagramKind[] = [
   "deployment",
 ];
 
-function normalizeSnapshotFilePath(path: string) {
-  return path.startsWith("/") ? path : `/${path}`;
-}
 
 function formatDocumentTimestamp(date = new Date()) {
   const pad = (value: number, length = 2) => String(value).padStart(length, "0");
@@ -139,7 +135,6 @@ export function createEmptyDesignSnapshot(
     error: null,
   });
 }
-
 
 
 export function createEmptyDocumentSnapshot(

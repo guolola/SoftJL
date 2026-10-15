@@ -46,5 +46,4 @@
 
 - [平台架构](../architecture/platform-overview.md)
 - [生产环境配置](../deployment/production-environment.md)
-- [应用内供应商配置](../../apps/web/src/features/product-docs/content/provider-configuration.md)
-- [应用内模型选择指南](../../apps/web/src/features/product-docs/content/recommended-models.md)
+- [线上使用指南：供应商配置与模型选择](https://jianglisoftware.com/tutorial)

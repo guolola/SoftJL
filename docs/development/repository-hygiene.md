@@ -24,7 +24,7 @@
 
 ### 跟踪边界
 
-- `apps/web/public/sandpack/` 由 Web 的预开发和预构建脚本生成，不跟踪。
+- `apps/web/public/sandpack/` 和 `public/vendor/` 属于已退役预览链路的本地产物，不跟踪；当前 Web 构建不再生成它们。
 - `apps/web/.next*/`、根目录 `.tmp-*.json` 与 `apps/web/.tmp-*.png` 是本地构建或视觉验证产物，不跟踪。
 - `apps/api/.local-documents/`、`tmp/`、日志、测试证据和本地密钥不跟踪。
 - `plantuml/build/libs/plantuml-1.2026.3beta8.jar` 是 CI 与生产渲染的明确运行时例外，继续跟踪。

@@ -67,7 +67,7 @@ SoftJL Community 是可独立部署的 AI 软件工程工作台，保留从需�
 | ⏱️ 生成任务、历史与重试 | ✅ | ✅ | 查看运行记录并重试失败任务 |
 | 🤖 自带模型服务（BYOK） | ✅ | ✅ | OpenAI 兼容供应商、模型发现与连接测试；调用费用由模型供应商结算 |
 | ☁️ 官网托管模型 | — | ✅ | 按账号可用配置、模型目录与生成权益使用 |
-| 💻 MCP / Coding Agent 接入 | — | ✅ | 只读提供设计、验收条件、工程约束与测试；真实客户端兼容性与生成代码验收仍待完成 |
+| 💻 MCP / Coding Agent 接入 | ✅（自行启用） | ✅ | 只读提供设计、验收条件、工程约束与测试；真实客户端兼容性与生成代码验收仍待完成 |
 | 💳 平台账单、支付与生成次数 | — | ✅ | 购买、订单与权益管理；社区版无需购买平台生成次数 |
 | 🛠️ 运营管理后台 | — | ✅ | 官网运营人员使用，普通账号不开放 |
 | 📦 开源源码与自行部署 | ✅ | — | 社区版按 Apache-2.0 提供源码，自行管理服务与数据 |
@@ -75,7 +75,9 @@ SoftJL Community 是可独立部署的 AI 软件工程工作台，保留从需�
 
 ### 社区版范围
 
-社区版不提供平台计费、支付、充值与额度系统，不包含运营后台以及 MCP / Coding Agent 接入服务。项目成员权限、账号认证、模型密钥保护和生成调度继续保留。移除的能力同时从页面入口、服务接口与对应实现中裁剪。
+MCP 本地体验使用 `npm run dev:mcp`（先完成下方首次安装与构建），入口为侧栏“编程助手”或项目设置“连接此项目”。默认关闭，生产配置见 [MCP 接入](docs/integrations/coding-agent-mcp.md)。
+
+社区版不提供平台计费、支付、充值与额度系统，不包含运营后台。MCP / Coding Agent 只读接入可由部署者启用，复用连接页并提供项目范围授权。项目成员权限、账号认证、模型密钥保护和生成调度继续保留。移除的能力同时从页面入口、服务接口与对应实现中裁剪。
 
 官网版能力以当前部署、账号权限与服务配置为准。请使用独立数据库部署社区版，不要将它作为完整版数据库的降级替代。
 
@@ -134,7 +136,7 @@ flowchart LR
 
 | 目录 | 职责 |
 | --- | --- |
-| apps/web | React、Next.js 工作区与应用内教程 |
+| apps/web | React、Next.js 工作区与官网页面 |
 | apps/api | Fastify、认证、生成流水线、记录与文档组装 |
 | apps/render-service | PlantUML 图形渲染 |
 | packages/contracts、packages/prompts | 共享契约与生成提示 |
@@ -144,36 +146,36 @@ flowchart LR
 
 ### 1. 准备环境
 
-| 依赖 | 建议版本 | 用途 |
-| --- | --- | --- |
-| Node.js | 22 | 应用与工具链运行时 |
-| npm | 10 | Monorepo 依赖与脚本 |
-| Java | 21 | PlantUML 运行时 |
-| Graphviz | 当前稳定版 | PlantUML 图布局 |
-| Docker Desktop | 可选 | 本地 OnlyOffice 在线编辑 |
+安装 Node.js 22、npm 10、Java 21 和 Graphviz。Docker 用于可选的 PostgreSQL 与 OnlyOffice，本地临时体验无需 Docker。首次渲染服务安装可能下载 PDF 中文字体，需要网络。
 
-### 2. 获取并安装
+### 2. 安装并启动核心服务
 
 ```bash
 git clone https://github.com/guolola/SoftJL.git
 cd SoftJL
 npm ci
-```
-
-### 3. 启动完整开发环境
-
-```bash
 npm run dev
 ```
 
-启动脚本会检查本地 OnlyOffice，并并行启动 Web、API 和渲染服务。
+`npm run dev` 自动构建 contracts 和 prompts，再并行启动 Web、API 与渲染服务。单独启动应用或运行测试前，使用 `npm run build:packages` 构建共享包。
+
+**默认是临时内存模式：服务重启后，账号、项目、模型服务配置与运行历史会丢失。** 文档文件单独保存在本地目录，不能替代数据库备份。准备长期使用时先完成下一步的持久化配置。
 
 | 服务 | 本地地址或端口 |
 | --- | --- |
 | Web | Next.js 输出地址，通常为 `http://localhost:3000` |
-| API | 安全开发配置使用 `4101` |
+| API | `4101` |
 | Render Service | `4002` |
-| OnlyOffice | `8080` |
+
+Web 输出 `Ready` 后打开首页；`http://localhost:3000/api/health` 和 `http://127.0.0.1:4002/health` 应返回 `status: "ok"`。核心服务支持生成与下载文档，在线编辑需另行启用 OnlyOffice。
+
+### 3. 选择持久化与在线编辑
+
+本机安装 Docker 后，运行 `npm run dev:postgres` 启动专用开发数据库和核心服务，数据库保存在 Docker 数据卷。脚本中的数据库凭据仅适用于本机开发，生产环境必须替换。不要把已有完整版数据库用于社区版。
+
+已有 PostgreSQL 时，将根目录 [.env.example](.env.example) 复制为 `.env`，设置 `DATABASE_URL` 和自己生成的 `UML_PROVIDER_CONFIG_SECRET`，再运行 `npm run dev`。根目录启动入口加载该文件；密钥与数据库连接配置不要提交。保管加密密钥，随意更换会使已保存的供应商凭据无法解密。
+
+需要 OnlyOffice 在线编辑时，先启动 Docker 引擎，再运行 `npm run dev:full`。脚本检查本机 `8080` 端口的 OnlyOffice，不可用时创建或启动对应容器；首次运行会下载镜像。外部文档服务和生产配置见 [生产环境配置](docs/deployment/production-environment.md)。
 
 ### 4. 配置模型服务
 
@@ -185,11 +187,14 @@ npm run dev
 
 | 命令 | 用途 |
 | --- | --- |
-| `npm run dev` | 启动完整本地开发环境 |
+| `npm run dev` | 自动构建共享包并启动核心服务，默认使用临时内存 |
+| `npm run dev:postgres` | 使用本机 PostgreSQL 开发数据库持久化数据 |
+| `npm run dev:full` | 检查 OnlyOffice 并启动支持在线编辑的环境 |
 | `npm run dev:postgres:demo` | 启动带就绪检查的 PostgreSQL 演示环境 |
 | `npm run dev:api:safe` | 以安全开发配置单独启动 API |
 | `npm run dev:render` | 单独启动 PlantUML 渲染服务 |
 | `npm run dev:web:safe` | 以安全开发配置单独启动 Web |
+| `npm run build:packages` | 首次启动前或共享包变更后，构建 contracts 和 prompts |
 | `npm run build` | 构建共享包和全部应用 |
 | `npm run build:web:production` | 按生产站点配置构建 Web |
 
@@ -203,11 +208,13 @@ npm run dev
 | `npm run test:web` | 运行完整 Web 测试 |
 | `npm run test:harness-e2e` | 构建生产 Web 产物并运行本地浏览器验收 |
 | `npm run typecheck:web` | 检查 Web 类型 |
+| `npm run lint:web` | 静态检查，警告也阻止通过 |
+| `npm audit --audit-level=high` | 检查依赖安全公告 |
 | `npm run test:deploy` | 验证部署辅助程序 |
 | `npm run audit:architecture` | 检查架构边界 |
 | `npm run audit:docs` | 检查文档命名、结构、链接和杂物 |
 
-> 构建输出、生成的文档模块、根目录 `.local-*` 临时文件、环境配置、私钥、日志和本地运行数据保持 Git 忽略。
+> 构建输出、根目录 `.local-*` 临时文件、环境配置、私钥、日志和本地运行数据保持 Git 忽略。
 
 ## 在线访问
 
@@ -217,9 +224,11 @@ npm run dev
 
 保留持续集成测试，社区版不附带原站点的自动生产发布工作流。部署前将服务域名、数据库、邮件与模型配置替换成自己的环境；开发启动配置仅供本机使用。
 
+- [贡献指南](contributing.md)
+- [安全问题披露](security.md)
 - [社区版维护与验证](docs/development/community-edition.md)
 - [文档索引](docs/README.md)
-- [快速开始教程](apps/web/src/features/product-docs/content/quick-start.md)
+- [线上使用指南](https://jianglisoftware.com/tutorial)
 - [模型服务接入](docs/integrations/openai-compatible-provider.md)
 
 ## 授权
@@ -230,6 +239,6 @@ npm run dev
 
 本项目自有代码与文档采用 [Apache License 2.0](LICENSE)，允许商业使用、修改和再分发，也允许闭源修改与分发，但须遵守保留许可与相关声明、标明修改等协议条件。
 
-第三方依赖、字体、图标及 PlantUML 运行时保留各自的版权与许可，不因本项目协议变更而重新授权。相关声明与许可位置见 [NOTICE](NOTICE)；再分发时还须遵守对应组件的许可条件。
+第三方模板、依赖、字体、图标及 PlantUML 运行时保留各自的版权与许可，不因本项目协议变更而重新授权。相关声明与许可位置见 [NOTICE](NOTICE)；再分发时还须遵守对应组件的许可条件。
 
 </div>

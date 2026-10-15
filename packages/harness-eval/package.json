@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "eval": "tsx src/index.ts",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@uml-platform/contracts": "0.0.1"

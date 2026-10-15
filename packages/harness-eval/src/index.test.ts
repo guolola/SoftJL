@@ -5,7 +5,7 @@ import { assertProviderConfig, calculatePassMetrics, createEvaluationImport, loa
 test("harness reports missing provider configuration outside mock mode", () => {
   assert.throws(
     () => assertProviderConfig({}),
-    /UML_EVAL_PROVIDER_API_BASE_URL.*UML_EVAL_API_KEY.*UML_EVAL_MODEL/,
+    /UML_EVAL_PROJECT_ID.*UML_EVAL_PROVIDER_CONFIG_ID.*UML_EVAL_MODEL.*UML_EVAL_SESSION_COOKIE/,
   );
 });
 
@@ -51,7 +51,6 @@ test("Pass metrics distinguish at-1, at-k, power-k, and best-k", () => {
     semanticFactsTotal: 1, semanticFactsPreserved: 1, semanticAccuracyRate: 1,
     harmfulRepairCount: 0, unfoundedAdditionCount: 0, effectiveTraceCovered: 1,
     effectiveTraceTotal: 1, effectiveTraceCoverageRate: 1, terminalStateConsistent: true,
-    prototypeBuildPassed: null, documentUsable: null,
   } satisfies Omit<EvalCaseResult, "fixtureId" | "attempt" | "qualityScore" | "automaticVerdict">;
   const results: EvalCaseResult[] = [
     { ...base, fixtureId: "a", attempt: 1, qualityScore: 40, automaticVerdict: "fail" },

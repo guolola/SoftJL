@@ -1,6 +1,6 @@
 import type { AppRoute, AuthRoutePath, MarketingRoutePath, ProjectRouteSection, ShellRoutePath, } from "../shared/lib/app-route-types";
 export type { AppRoute, AuthRoutePath, MarketingRoutePath, ProjectRouteSection, ShellRoutePath, } from "../shared/lib/app-route-types";
-const SHELL_PATHS = new Set<ShellRoutePath>(["/workspace", "/exam"]);
+const SHELL_PATHS = new Set<ShellRoutePath>(["/workspace"]);
 const MARKETING_PATHS = new Set<MarketingRoutePath>(["/"]);
 const AUTH_PATHS = new Set<AuthRoutePath>([
     "/login",
@@ -10,11 +10,8 @@ const AUTH_PATHS = new Set<AuthRoutePath>([
     "/reset-password",
 ]);
 export function matchAppRoute(pathname: string): AppRoute {
-    if (["/projects/connections", "/account/connections", "/account/billing", "/billing/alipay/return"].includes(pathname))
+    if (["/account/billing", "/billing/alipay/return"].includes(pathname))
         return { kind: "not-found", path: pathname };
-    // Public documentation is independent of the authenticated workspace routes.
-    if (pathname === "/tutorial")
-        return { kind: "product-docs", path: "/tutorial" };
     if (MARKETING_PATHS.has(pathname as MarketingRoutePath)) {
         return { kind: "marketing-home", path: pathname as MarketingRoutePath };
     }
@@ -37,6 +34,7 @@ export function matchAppRoute(pathname: string): AppRoute {
         return { kind: "dashboard", path: "/dashboard" };
     if (pathname === "/projects")
         return { kind: "projects-index", path: "/projects" };
+    if (pathname === "/projects/connections" || pathname === "/account/connections") return { kind: "mcp-connections", path: pathname };
     if (pathname === "/projects/new")
         return { kind: "projects-new", path: "/projects/new" };
     const projectMatch = pathname.match(/^\/projects\/([^/]+)(?:\/(lineage|settings|members|history|documents))?$/u);

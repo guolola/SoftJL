@@ -9,7 +9,6 @@ import type { LlmTransport } from "./llm.js";
 import type { MailAdapter, MailMessage } from "./mail/mail-adapter.js";
 import { createApiServer } from "./index.js";
 import { createInMemoryAuthStore } from "./auth/in-memory-auth-store.js";
-import { createPaymentProviderRegistry } from "./adapters/payments/payment-adapter-registry.js";
 import type { DocumentLibrary } from "./documents/library/document-library.js";
 import { createProviderConfigStore } from "./provider-configs/provider-config-store.js";
 import { createRunRecordStore } from "./runs/records/run-record-store.js";
@@ -686,7 +685,7 @@ const DESIGN_SEQUENCE_MODEL = {
 
 function createCodeAppBlueprintJson(appName = "校园活动运营台") {
   return JSON.stringify({
-    
+
   });
 }
 
@@ -784,19 +783,19 @@ function createCodeBusinessLogicJson(appName = "UML 生成工作台") {
 
 function createCodeSkillResourcePlanJson() {
   return JSON.stringify({
-    
+
   });
 }
 
 function createCodeVisualDirectionJson() {
   return JSON.stringify({
-    
+
   });
 }
 
 function createCodeSkillResourceDiscoveryPlanJson() {
   return JSON.stringify({
-    
+
   });
 }
 
@@ -905,13 +904,13 @@ function createCodeBusinessLogicObjectArrayJson(appName = "UML 生成工作台")
 
 function createCodeUiBlueprintJson() {
   return JSON.stringify({
-    
+
   });
 }
 
 function createCodeUiIrJson() {
   return JSON.stringify({
-    
+
   });
 }
 
@@ -2986,23 +2985,6 @@ test("api auto-fills missing table design traceability after repair attempts", a
 
   await app.close();
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 test("api document run embeds PlantUML diagrams as PNG files in DOCX", async () => {

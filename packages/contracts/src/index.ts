@@ -40,3 +40,8 @@ export * from "./system-notices.js";
 
 export * from "./model-json-schema.js";
 export * from "./legacy-code-retirement.js";
+
+export * from "./mcp/index.js";
+export * from "./mcp/implementation.js";
+
+export { rebuildRequirementQualityReport } from "./requirement-quality.js";

@@ -1,4 +1,4 @@
-// Guards the fixed workspace header against body-scrollbar compensation from modal drawers.
+// Guards workspace header geometry while the desktop task drawer preserves the page scrollbar.
 import { expect, test } from "@playwright/test";
 import { mockProjectApi, projectId } from "./fixtures/project-workspace";
 
@@ -12,9 +12,9 @@ test("opening a project drawer keeps the top bar in place", async ({ page }) => 
   await expect(header).toBeVisible();
   const before = await header.boundingBox();
 
-  await header.getByRole("button", { name: "项目设置", exact: true }).click();
+  await header.getByRole("button", { name: "生成任务", exact: true }).click();
   await expect(page.getByTestId("project-workspace-drawer")).toBeVisible();
-  await expect(page.locator("body")).toHaveAttribute("data-scroll-locked");
+  await expect(page.locator("body")).not.toHaveAttribute("data-scroll-locked");
   const after = await header.boundingBox();
 
   expect(after).not.toBeNull();

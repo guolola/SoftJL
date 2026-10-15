@@ -15,7 +15,6 @@ import {
   type DesignDiagramKind,
   type DesignRunSnapshot,
   type DiagramKind,
-  type ProviderSettings,
   type RepairRequirementRuleRequest,
   type RepairRequirementRulesRequest,
   type RequirementBaseline,
@@ -26,7 +25,6 @@ import {
   type StartDocumentRunRequest,
   type StartRunRequest,
 } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../llm.js";
 import {
   generateDesignPlantUmlArtifacts,
   generatePlantUmlArtifacts,
@@ -53,48 +51,6 @@ const fixture = {
   ),
   
 };
-
-export const offlineDemoProviderSettings: ProviderSettings = {
-  apiBaseUrl: "https://offline-demo.local",
-  apiKey: "offline-demo",
-  model: "offline-demo-fixed-artifacts",
-};
-
-export const offlineDemoLlmTransport: LlmTransport = {
-  async *streamChatCompletion() {
-    throw new Error("Offline demo mode must not call an LLM provider.");
-  },
-};
-
-function configuredOfflineDemoProjectIds() {
-  return new Set(
-    (process.env.UML_DEMO_OFFLINE_PROJECT_IDS ?? "")
-      .split(",")
-      .map((projectId) => projectId.trim())
-      .filter(Boolean),
-  );
-}
-
-function configuredOfflineDemoProjectNamePatterns() {
-  return (process.env.UML_DEMO_OFFLINE_PROJECT_NAME_PATTERNS ?? "")
-    .split(",")
-    .map((pattern) => pattern.trim().toLocaleLowerCase())
-    .filter(Boolean);
-}
-
-export function isOfflineDemoProject(
-  projectId: string | null | undefined,
-  projectName?: string | null,
-) {
-  if (projectId && configuredOfflineDemoProjectIds().has(projectId)) {
-    return true;
-  }
-  const name = projectName?.trim().toLocaleLowerCase();
-  if (!name) return false;
-  return configuredOfflineDemoProjectNamePatterns().some((pattern) =>
-    name.includes(pattern),
-  );
-}
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;

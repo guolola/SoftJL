@@ -11,7 +11,6 @@ export default defineConfig({
     css: true,
     // Portal- and preview-heavy jsdom suites share browser-like globals; run files serially in CI.
     maxWorkers: 1,
-    minWorkers: 1,
     fileParallelism: false,
     testTimeout: 20_000,
   },

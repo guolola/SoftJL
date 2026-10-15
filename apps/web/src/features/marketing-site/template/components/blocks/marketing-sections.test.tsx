@@ -68,7 +68,7 @@ describe('marketing homepage sections', () => {
     const { container } = render(<Benefits featuresList={benefits} />)
 
     expect(screen.getByRole('heading', { name: flowText('How Flow Helps You') })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '查看使用指南' })).toHaveAttribute('href', '/tutorial')
+    expect(screen.getByRole('link', { name: '查看使用指南' })).toHaveAttribute('href', 'https://jianglisoftware.com/tutorial')
     for (const title of ['需求改了，哪些设计要更新？', '提交前，还有哪些需求没覆盖？', '图表和说明书，怎样一起核对？', '答辩时，怎么讲清设计依据？']) {
       expect(screen.getAllByText(title).length).toBeGreaterThan(0)
     }
@@ -98,26 +98,14 @@ describe('marketing homepage sections', () => {
     expect(images[1]).toHaveClass('scale-90', 'group-hover:scale-100')
   })
 
-  it('shows the personal-site statement, contact and regulatory filing links', () => {
-    render(<Footer />)
-
-    expect(screen.getByText(/本站为个人技术分享网站/u)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '672250123@qq.com' })).toHaveAttribute(
-      'href',
-      'mailto:672250123@qq.com'
-    )
-    expect(screen.getByRole('link', { name: '闽ICP备2026024395号' })).toHaveAttribute(
-      'href',
-      'https://beian.miit.gov.cn/'
-    )
-    expect(screen.getByRole('link', { name: '闽公网安备35010402351938号' })).toHaveAttribute(
-      'href',
-      'https://beian.mps.gov.cn/#/query/webSearch?code=35010402351938'
-    )
-    expect(screen.queryByLabelText('Github Link')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Instagram Link')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Twitter Link')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Youtube Link')).not.toBeInTheDocument()
+  it.each(['zh-CN', 'en'] as const)('keeps useful footer links without the removed identity blocks in %s', async locale => {
+    await i18n.changeLanguage(locale)
+    const { container } = render(<Footer />)
+    expect(container.textContent).not.toMatch(/©|ICP备|公网安备|个人技术分享|联系维护者|洪老师|All rights reserved|Contact the maintainer/i)
+    expect(container.querySelector('a[href^="mailto:"], a[href*="beian."]')).toBeNull()
+    expect(screen.getByRole('link', { name: flowText('Blog') })).toHaveAttribute('href', 'https://jianglisoftware.com/tutorial')
+    expect(screen.getByRole('link', { name: flowText('Start your project') })).toHaveAttribute('href', '/projects')
+    expect(container.querySelectorAll('a[href="/projects"]')).toHaveLength(1)
     for (const logo of logos) {
       const footerLogo = screen.getAllByAltText(flowText(logo.name)).at(-1)
       expect(footerLogo).toHaveAttribute('src', logo.image)
@@ -144,8 +132,9 @@ describe('marketing homepage sections', () => {
 
     await user.click(screen.getByRole('button', { name: flowText('Is my data safe with Flow?') }))
     expect(screen.getByText(flowText(faqItems[4].answer))).toBeVisible()
+    expect(screen.getByText(flowText(faqItems[4].answer))).toHaveTextContent(/MCP/)
     expect(screen.getByText(flowText(faqItems[4].answer))).toHaveTextContent(
-      locale === 'en' ? 'External coding assistant integration is not included' : '社区版不提供外部编程助手连接服务'
+      locale === 'en' ? 'implement the system in your own repository' : '在自己的代码仓库中完成实现'
     )
   })
 })

@@ -1,6 +1,5 @@
 // Starts the first-project tour and restores the user's prior workspace on exit.
 import { useCallback, useEffect, useRef } from "react";
-import { useTranslation } from "react-i18next";
 import { useSidebar } from "../../../shared/ui/sidebar";
 import { useWorkspaceShell } from "../../workspace-shell/state";
 import { platformApi } from "../../user-platform/services/platform-api";
@@ -34,7 +33,6 @@ function waitForStage(stage: TourStage, currentKind: () => string, timeoutMs = 4
 }
 
 export function useProjectOnboarding(projectId: string) {
-  const { t } = useTranslation();
   const tours = useOnboardingTours();
   const workspace = useWorkspaceShell();
   const { isMobile, state, openMobile, setOpen, setOpenMobile } = useSidebar();
@@ -76,7 +74,7 @@ export function useProjectOnboarding(projectId: string) {
         else setOpen(sidebarWasExpanded);
       },
     });
-  }, [isMobile, openMobile, setOpen, setOpenMobile, state, t, tours, workspace]);
+  }, [isMobile, openMobile, setOpen, setOpenMobile, state, tours, workspace]);
 
   startRef.current = startProjectTour;
 

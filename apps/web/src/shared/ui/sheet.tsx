@@ -14,7 +14,7 @@ function Sheet({ ...props }: SheetPrimitive.Root.Props) {
   return <SheetPrimitive.Root data-slot='sheet' {...props} />
 }
 
-const SheetTrigger = React.forwardRef(function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props, ref: React.ForwardedRef<any>) {
+const SheetTrigger = React.forwardRef(function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props, ref: React.ForwardedRef<HTMLButtonElement>) {
   return <SheetPrimitive.Trigger data-slot='sheet-trigger' ref={ref} {...props} />
 });
 

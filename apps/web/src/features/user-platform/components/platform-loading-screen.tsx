@@ -12,7 +12,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Grid3X3 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../../shared/ui/utils";
 

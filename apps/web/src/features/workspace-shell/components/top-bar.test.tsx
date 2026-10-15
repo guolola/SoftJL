@@ -1,11 +1,12 @@
 // Verifies top bar navigation, run controls, theme toggles, and account/project menus.
-import { useReactFlowTestLayout } from '../../../test/react-flow-test-layout';
+import { createDesignRunSnapshot } from "../../../test/artifact-fixtures";
+import { installReactFlowTestLayout } from '../../../test/react-flow-test-layout';
 import { useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
-  
+
   DesignRunSnapshot,
 } from "@uml-platform/contracts";
 import type { WorkspaceRepository } from "../../../services/workspace-repository";
@@ -24,7 +25,7 @@ import {
   TopBar,
 } from "./top-bar";
 
-useReactFlowTestLayout();
+installReactFlowTestLayout();
 
 const { toastMessage, toastSuccess, toastError } = vi.hoisted(() => ({
   toastMessage: vi.fn(),
@@ -188,18 +189,6 @@ function TopBarRestoreHarness() {
   );
 }
 
-function TopBarRestoreCodeSkillHarness() {
-  const { restoreRunHistory } = useWorkspaceSession();
-  return (
-    <>
-      <ProjectWorkspaceActions projectId="library-booking" onOpenDrawer={() => {}} />
-      <ProjectGenerationTasksDrawerContent />
-      <button type="button" onClick={() => void restoreRunHistory("history-code-skill")}>
-        恢复代码资源
-      </button>
-    </>
-  );
-}
 
 describe("TopBar", () => {
   beforeEach(() => {
@@ -443,7 +432,7 @@ describe("TopBar", () => {
     expect(
       within(dialog).getByTestId("lineage-node-document:requirementsSpec"),
     ).toHaveAttribute("data-lineage-kind", "document");
-    
+
 
     const usecaseNode = within(dialog).getByTestId(
       "lineage-node-requirement-model:usecase",
@@ -1556,7 +1545,6 @@ describe("TopBar", () => {
     expect(screen.getByText("失败")).toBeInTheDocument();
   });
 
-  
 
   it("shows interrupted server runs instead of falling back to idle", async () => {
     const repository: WorkspaceRepository = {
@@ -1811,8 +1799,19 @@ describe("TopBar", () => {
         },
       ],
       models: [
-        { diagramKind: "usecase", actors: [], useCases: [] },
-        { diagramKind: "class", classes: [] },
+        {
+        summary: "测试模型",
+        title: "测试模型",
+        notes: [],
+        systemBoundaries: [],
+        relationships: [], diagramKind: "usecase", actors: [], useCases: [] },
+        {
+        summary: "测试模型",
+        title: "测试模型",
+        notes: [],
+        relationships: [],
+        interfaces: [],
+        enums: [], diagramKind: "class", classes: [] },
       ],
       plantUml: [],
       svgArtifacts: [],
@@ -2145,7 +2144,7 @@ describe("TopBar", () => {
   });
 
   it("shows design debug trace from restored design history", async () => {
-    const designSnapshot: DesignRunSnapshot = {
+    const designSnapshot: DesignRunSnapshot = createDesignRunSnapshot({
       runId: "design-trace-run",
       requirementText: "生成设计模型",
       selectedDiagrams: ["sequence"],
@@ -2174,7 +2173,7 @@ describe("TopBar", () => {
         category: "render",
         retryable: true,
       },
-    };
+    });
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
       updateRequirementText: vi.fn(async () => {}),
@@ -2207,5 +2206,5 @@ describe("TopBar", () => {
     expect(screen.queryByRole("button", { name: "复制追踪内容" })).not.toBeInTheDocument();
   });
 
-  
+
 });

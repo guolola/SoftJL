@@ -9,22 +9,17 @@ import Testimonials from '@/features/marketing-site/template/components/blocks/t
 import FAQ from '@/features/marketing-site/template/components/blocks/faq/faq';
 import CTA from '@/features/marketing-site/template/components/blocks/cta/cta';
 import { logos } from '@/features/marketing-site/template/content/trusted-brands';
-import { PromotionalVideoSection } from './promotional-video-section';
 import { testimonials } from '@/features/marketing-site/template/content/testimonials';
 import { faqItems } from '@/features/marketing-site/template/content/faqs';
 import { benefits } from '@/features/marketing-site/template/content/benefits';
 import SectionSeparator from '@/features/marketing-site/template/components/section-separator';
-export function MarketingHomePage({ onNavigate }: {
+export function MarketingHomePage({ onNavigate: _onNavigate }: {
     path?: '/';
     onNavigate: (path: string) => void;
 }) {
     const { i18n } = useTranslation();
     return (<FlowLayout key={i18n.resolvedLanguage}>
       <Hero />
-
-      <SectionSeparator />
-
-      <PromotionalVideoSection />
 
       <SectionSeparator />
 

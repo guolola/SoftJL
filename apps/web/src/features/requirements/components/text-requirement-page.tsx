@@ -2,7 +2,7 @@
 import { Textarea } from '../../../shared/ui/textarea';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Wand2, Loader2, AlertTriangle, RefreshCw, ArrowUp, FileText, Network, Box, Server, GitBranch, Activity, Eye, X, } from "lucide-react";
+import { Wand2, Loader2, AlertTriangle, RefreshCw, ArrowUp, FileText, Network, Box, Server, GitBranch, Activity, Eye, } from "lucide-react";
 import { Button } from "../../../shared/ui/button";
 import { FeedbackReopenButton, type FeedbackDialogState } from "../../../shared/ui/feedback-dialog";
 import { Badge } from "../../../shared/ui/badge";
@@ -421,7 +421,7 @@ export function TextRequirementView({ view = "all", }: {
               <AlertTriangle className="size-3.5"/>
               {editBlockedReason}
             </p>)}
-          
+
           {view !== "models" && <div className="grid min-w-0 max-w-full grid-cols-1 gap-4 overflow-x-hidden">
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
               {renderRequirementInput(hasGeneratedRules ? "generated" : "empty")}

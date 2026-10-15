@@ -236,17 +236,16 @@ export function AccountDialog({
     };
   }, [avatarPreviewUrl]);
 
-  const selectAvatarFile = (file: File | null) => {
+  const clearPendingAvatar = useCallback(() => {
     setAvatarError("");
-    const clearPendingAvatar = () => {
-      setAvatarFile(null);
-      setAvatarPreviewUrl((current) => {
-        if (current && typeof URL.revokeObjectURL === "function") {
-          URL.revokeObjectURL(current);
-        }
-        return "";
-      });
-    };
+    setAvatarFile(null);
+    setAvatarPreviewUrl((current) => {
+      if (current && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(current);
+      return "";
+    });
+  }, []);
+  const selectAvatarFile = useCallback((file: File | null) => {
+    setAvatarError("");
 
     if (!file) {
       clearPendingAvatar();
@@ -273,7 +272,7 @@ export function AccountDialog({
       return objectUrl;
     });
     setAvatarFile(file);
-  };
+  }, [t, clearPendingAvatar]);
 
   const closeAccountDialog = () => {
     setDialogOpen(false);
@@ -312,7 +311,7 @@ export function AccountDialog({
       }
       setAvatarPreviewUrl("");
       floatingAlert.success(t("account.profileSaved"));
-    } catch (error) {
+    } catch (_error) {
       floatingAlert.error(t("account.profileSaveFailed"));
     } finally {
       profileSaveInFlight.current = false;
@@ -339,7 +338,7 @@ export function AccountDialog({
       const refreshed = await platformApi.listAccountSessions().catch(() => null);
       if (refreshed) setSessions(refreshed.sessions);
       floatingAlert.success(t("account.passwordChanged"));
-    } catch (error) {
+    } catch (_error) {
       floatingAlert.error(t("account.passwordChangeFailed"));
     } finally {
       setPasswordSubmitting(false);
@@ -352,7 +351,7 @@ export function AccountDialog({
       const refreshed = await platformApi.listAccountSessions();
       setSessions(refreshed.sessions);
       floatingAlert.success(t("account.revokedOthers", { count: result.revokedCount }));
-    } catch (error) {
+    } catch (_error) {
       floatingAlert.error(t("account.revokeFailed"));
     }
   };
@@ -362,7 +361,7 @@ export function AccountDialog({
       const setup = await platformApi.setupMfa();
       setMfaSetup(setup);
       floatingAlert.success(t("account.mfaSetupReady"));
-    } catch (error) {
+    } catch (_error) {
       floatingAlert.error(t("account.mfaSetupFailed"));
     }
   };
@@ -375,7 +374,7 @@ export function AccountDialog({
       setMfaSetup(null);
       setMfaCode("");
       floatingAlert.success(t("account.mfaEnabledSuccess"));
-    } catch (error) {
+    } catch (_error) {
       floatingAlert.error(t("account.mfaEnableFailed"));
     }
   };
@@ -393,7 +392,7 @@ export function AccountDialog({
       setMfaEnabled(response.mfa.enabled);
       setDisableCode("");
       floatingAlert.success(t("account.mfaDisabledSuccess"));
-    } catch (error) {
+    } catch (_error) {
       floatingAlert.error(t("account.mfaDisableFailed"));
     }
   };
@@ -412,7 +411,7 @@ export function AccountDialog({
   const instantPage = activeTab === 'security' || activeTab === 'sessions';
   const profileDirty = displayName !== (user?.displayName ?? '') || avatarUrl !== (user?.avatarUrl ?? '') || Boolean(avatarFile);
   const dirty = activeTab === 'profile' ? profileDirty : activeTab === 'global' ? modelDirty : preferences.dirty(activeTab);
-  const resetProfile = () => { setDisplayName(user?.displayName ?? ''); setAvatarUrl(user?.avatarUrl ?? ''); selectAvatarFile(null); if (avatarInputRef.current) avatarInputRef.current.value = ''; };
+  const resetProfile = useCallback(() => { setDisplayName(user?.displayName ?? ''); setAvatarUrl(user?.avatarUrl ?? ''); clearPendingAvatar(); if (avatarInputRef.current) avatarInputRef.current.value = ''; }, [user?.displayName, user?.avatarUrl, clearPendingAvatar]);
   const resetActivePage = () => { if (activeTab === 'profile') resetProfile(); else if (activeTab === 'global') modelActions.current?.reset(); else preferences.reset(activeTab); };
   const saveActivePage = () => { if (activeTab === 'profile') void saveProfile(); else if (activeTab === 'global') modelActions.current?.save(); else preferences.save(activeTab); };
   // Discard pending uploads and security input when the modal closes by any entry point.
@@ -421,7 +420,7 @@ export function AccountDialog({
     resetProfile();
     setCurrentPassword(''); setNewPassword(''); setMfaCode(''); setDisableCode(''); setMfaSetup(null);
     setActiveTab('theme');
-  }, [open]);
+  }, [open, resetProfile]);
 
   return (
     <Dialog

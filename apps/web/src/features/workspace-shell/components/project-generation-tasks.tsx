@@ -14,7 +14,6 @@ import { projectGenerationTranscript, readableTaskText } from "../lib/generation
 import { useFrameValue } from "../lib/use-frame-value";
 import { useRunTranscript } from "../lib/use-run-transcript";
 import { GenerationTranscript, type GenerationQueueDetails } from "./generation-transcript";
-import { useOptionalWorkspaceShell } from "../state";
 import { operationFailurePresentation } from "../../workspace-session/lib/operation-failure";
 import { useFloatingAlert } from "../../../shared/ui/floating-alert";
 
@@ -30,7 +29,7 @@ function legacyDiagnostics(diagnostics: RunDiagnostics): RunEvent[] {
   return events;
 }
 
-export function ProjectGenerationTasksDrawerContent({ projectRuns = emptyRuns, preferredRunId, projectId, onViewResult }: {
+export function ProjectGenerationTasksDrawerContent({ projectRuns = emptyRuns, preferredRunId, projectId, onViewResult: _onViewResult }: {
   projectRuns?: PlatformRunSummary[];
   preferredRunId?: string | null;
   projectId?: string;
@@ -40,7 +39,7 @@ export function ProjectGenerationTasksDrawerContent({ projectRuns = emptyRuns, p
   const { showAlert } = useFloatingAlert();
   const session = useWorkspaceSession();
   const repository = useWorkspaceRepository();
-  const shell = useOptionalWorkspaceShell();
+
   const [actionBusy, setActionBusy] = useState(false);
   const [previewRunId, setPreviewRunId] = useState<string | null>(null);
   const [actionRun, setActionRun] = useState<PlatformRunSummary | null>(null);
@@ -125,8 +124,8 @@ export function ProjectGenerationTasksDrawerContent({ projectRuns = emptyRuns, p
     {restored.disconnected && <p role="status" className="text-sm text-muted-foreground">连接中断，正在恢复。已收到的内容会保留。</p>}
     {restored.unavailable && <p role="status" className="text-xs text-destructive">无法读取任务过程，任务可能已移除或你没有访问权限。</p>}
     {!restored.loading && runId && !events.some((event) => event.type === "run_activity") && <p className="text-xs text-muted-foreground">此任务未保存完整回复，当前仅展示可用的执行记录。</p>}
-    
-    
+
+
     <div className="flex flex-wrap items-center gap-3">
       {active && scopedProjectId && runId && <Button size="sm" variant="ghost" disabled={actionBusy} onClick={() => void perform(async () => {
         if (!active) return;
@@ -140,12 +139,12 @@ export function ProjectGenerationTasksDrawerContent({ projectRuns = emptyRuns, p
         if (nextId) { setActionRun({ ...response.run, runId: nextId, sourceRunId: runId, runKind: kind, status: response.status ?? response.run?.status ?? "queued" }); requestOpenGenerationTask({ runId: nextId }); }
       })}>重试任务</Button>}
       {completed && <Button size="sm" variant="link" className="h-auto p-0" onClick={() => setPreviewRunId(previewRunId === runId ? null : runId ?? null)}>{previewRunId === runId ? "收起结果" : kind === "document" ? "查看文档正文" : "查看生成结果"}</Button>}
-      
+
       {completed && "documentKind" in completed && (completed.documentId || completed.byteLength > 0) && selectedRemote?.documentDownloadAvailable !== false && repository.downloadDocumentRun && runId && <Button size="sm" variant="link" className="h-auto p-0" disabled={actionBusy} onClick={() => void perform(async () => {
         const result = await repository.downloadDocumentRun!(runId, completed.fileName ?? undefined);
         downloadBlobFile(result.fileName, result.blob);
       })}>下载文档</Button>}
     </div>
-    
+
   </GenerationTranscript>;
 }

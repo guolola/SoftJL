@@ -24,12 +24,14 @@ export function useRunController() {
   }, []);
 
   useEffect(() => {
-    subscriptionController.current = new AbortController();
+    const controller = new AbortController();
+    subscriptionController.current = controller;
+    const activeRequests = activeRunRequestIdRef.current;
     return () => {
-      subscriptionController.current.abort();
+      controller.abort();
       // Leaving the page stops observation, while server-side generation continues.
-      for (const scope of Object.keys(activeRunRequestIdRef.current) as RunScope[]) {
-        activeRunRequestIdRef.current[scope] = -1;
+      for (const scope of Object.keys(activeRequests) as RunScope[]) {
+        activeRequests[scope] = -1;
       }
     };
   }, []);

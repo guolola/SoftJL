@@ -2,7 +2,7 @@
 // Source constraint: the API exposes listProjects() globally but runs/documents/members only per
 // project, so activity widgets are built from a bounded fan-out over the most recently updated
 // projects, with project-derived fallbacks when that fan-out is skipped or fails (runsLoaded=false).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
 
@@ -43,7 +43,6 @@ const LIST_ICONS: WorkbenchProjectListItem["iconKind"][] = ["web", "mobile", "ca
 
 const WEEKDAY_KEYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
-const RUN_KIND_STAGES = ["requirements", "design",  "document"] as const;
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -415,6 +414,9 @@ export function usePlatformWorkbench(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
+  // Language updates affect labels without refetching all project activity.
+  const loadFailureLabel = useRef(t("errors.http.unknown"));
+  loadFailureLabel.current = t("errors.http.unknown");
 
   useEffect(() => {
     if (!enabled) {
@@ -449,7 +451,7 @@ export function usePlatformWorkbench(
         setProjects([]);
         setRunsByProject([]);
         setRunsLoaded(false);
-        setError(localizeCaughtFailure(err, t("errors.http.unknown")));
+        setError(localizeCaughtFailure(err, loadFailureLabel.current));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -462,7 +464,7 @@ export function usePlatformWorkbench(
   const data = useMemo(() => {
     if (loading || error) return null;
     return buildWorkbenchData(projects, runsByProject, runsLoaded, t);
-  }, [loading, error, projects, runsByProject, runsLoaded, t, locale]);
+  }, [loading, error, projects, runsByProject, runsLoaded, t]);
 
   return {
     data,

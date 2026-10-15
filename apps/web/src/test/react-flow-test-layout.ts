@@ -1,6 +1,6 @@
 // Supplies measured DOM geometry for the real React Flow canvas in JSDOM tests.
 import { beforeEach, afterEach, vi } from 'vitest';
-export function useReactFlowTestLayout() {
+export function installReactFlowTestLayout() {
   const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
   const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
   const originalObserver = globalThis.ResizeObserver;

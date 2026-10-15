@@ -187,7 +187,6 @@ function designNodeId(diagram: DesignDiagramType) {
 }
 
 
-
 function documentNodeId(kind: DocumentKind) {
   return nodeId("document", kind);
 }
@@ -273,7 +272,7 @@ function historyRunKind(item: LineageGraphInput["historyItems"][number]) {
   }
   if (item.snapshot) {
     if ("documentKind" in item.snapshot) return "document";
-    
+
     if ("requirementModels" in item.snapshot) return "design";
     return "requirements";
   }
@@ -323,9 +322,6 @@ function interruptedRunSummary(
 }
 
 
-
-
-
 function failedRulesHistory(input: LineageGraphInput) {
   return input.historyItems.find((item) => {
     if (
@@ -356,7 +352,6 @@ function failedRulesSummary(item: LineageGraphInput["historyItems"][number] | un
 }
 
 
-
 function historyDocumentMissingArtifacts(
   item: LineageGraphInput["historyItems"][number],
 ) {
@@ -382,11 +377,6 @@ function documentHistoryIsDeleted(
   return item?.documentStatus === "deleted" || item?.documentDownloadAvailable === false;
 }
 
-function failedTaskForKind(input: LineageGraphInput, kind: GenerationTask["kind"]) {
-  return input.generationTasks.find(
-    (task) => task.kind === kind && task.status === "failed",
-  );
-}
 
 function subtaskActiveFor(
   input: LineageGraphInput,
@@ -788,9 +778,6 @@ function designReason(
 }
 
 
-
-
-
 function documentStatus(input: LineageGraphInput, documentKind: DocumentKind): LineageNodeStatus {
   if (documentTaskActive(input, documentKind)) return "running";
   const failed = input.generationTasks.find(
@@ -1015,7 +1002,7 @@ function buildDesignNodes(input: LineageGraphInput): LineageNode[] {
 }
 
 function buildProductNodes(input: LineageGraphInput): LineageNode[] {
-  
+
   const requirementsDoc = documentStatus(input, "requirementsSpec");
   const designDoc = documentStatus(input, "softwareDesignSpec");
   const requirementsDocHistory = documentHistoryFor(input, "requirementsSpec");
@@ -1065,7 +1052,7 @@ function buildProductNodes(input: LineageGraphInput): LineageNode[] {
       ),
       payload: { documentKind: "softwareDesignSpec" as const },
     },
-    
+
   ];
 }
 
@@ -1109,7 +1096,7 @@ function buildEdges(nodes: LineageNode[], input: LineageGraphInput) {
   }
 
   for (const designDiagram of designDiagramsFor(input)) {
-    
+
     addEdge(
       edges,
       nodesById,

@@ -204,7 +204,7 @@ function analysisUseCaseNodes(useCaseModel: WorkspaceRecord["models"]["usecase"]
   }));
 }
 
-function useCaseIdsFromModel(useCaseModel: WorkspaceRecord["models"]["usecase"]) {
+function sourceUseCaseIdsFromModel(useCaseModel: WorkspaceRecord["models"]["usecase"]) {
   if (!useCaseModel || !("useCases" in useCaseModel)) return new Set<string>();
   return new Set(useCaseModel.useCases.map((useCase) => useCase.id));
 }
@@ -231,7 +231,7 @@ function scopedModelMatchesCurrentUseCases(
 
 export function deriveSidebarDiagramState(input: SidebarDiagramStateInput) {
   const useCaseModel = findRequirementModelByKind(input.models, "usecase");
-  const currentUseCaseIds = useCaseIdsFromModel(useCaseModel);
+  const currentUseCaseIds = sourceUseCaseIdsFromModel(useCaseModel);
   const requirementModelViewable = (diagram: DiagramType, modelId?: string) =>
     Boolean((modelId ? input.svgArtifacts[modelId] : undefined) ?? input.svgArtifacts[diagram]);
   const designModelViewable = (diagram: DesignDiagramType, modelId?: string) =>

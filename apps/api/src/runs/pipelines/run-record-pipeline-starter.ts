@@ -1,5 +1,5 @@
 // Starts the correct pipeline for an existing queued run record and owns shared failure handling.
-import { failedRunEventSchema, stageProgressRunEventSchema, type DiagramKind, type ProviderSettings, type RunError, type RunStage, type StartDocumentRunRequest, } from "@uml-platform/contracts";
+import { failedRunEventSchema, stageProgressRunEventSchema, type DiagramKind, type ProviderSettings, type RunStage, type StartDocumentRunRequest, } from "@uml-platform/contracts";
 import type { LlmTransport, StreamChatCompletionInput } from "../../llm.js";
 import { createScheduledLlmTransport, type LlmScheduler, type LlmScheduleStatus, } from "../../adapters/llm/llm-scheduler.js";
 import type { RenderClient } from "../../adapters/render/render-client.js";
@@ -14,7 +14,6 @@ import { createContextualLlmTransport } from "./shared/conversation-context.js";
 import { getPromptRuntimeStore, pinPromptRuntimeSnapshot, withPinnedPrompts } from "../../prompt-runtime/store.js";
 import { normalizeRunError, } from "./shared/errors.js";
 import { runFeasibilityStagePipeline } from "./feasibility-pipeline.js";
-import { offlineFeasibilityAdapters } from "../demo/offline-feasibility.js";
 import type { RunTelemetryStore } from "../../runs/records/run-telemetry-store.js";
 type RequirementPipeline = (record: RunRecord, providerSettings: ProviderSettings, llmTransport: LlmTransport, renderClient: RenderClient, pngRenderClient?: PngRenderClient) => Promise<void>;
 type DesignPipeline = (record: RunRecord, providerSettings: ProviderSettings, llmTransport: LlmTransport, renderClient: RenderClient, pngRenderClient?: PngRenderClient) => Promise<void>;
@@ -197,6 +196,7 @@ function createRunLlmTransport({ record, providerSettings, providerConfigId, tas
         analyticsStore,
     });
 }
+// Always retain this call at failure boundaries: it updates state and publishes the terminal event.
 export function handleRunPipelineError(record: RunRecord, error: unknown) {
     if (isRunCancelledError(error) || isRunCancelled(record))
         return null;
@@ -262,16 +262,17 @@ export function startFeasibilityRecordPipeline({ record, providerSettings, provi
     });
     const entitlementTransport = scheduledTransport;
     void (async () => {
-        let terminalError: RunError | null = null;
         try {
-            const demo = offlineFeasibilityAdapters(record);
+            const demo = record.metadata?.offlineDemoFixture === "library-seat"
+                ? (await import("../demo/offline-feasibility.js")).offlineFeasibilityAdapters(record)
+                : null;
             const promptVersions = await getPromptRuntimeStore().publishedSnapshot();
             const conversation = createContextualLlmTransport(demo?.llmTransport ?? withPinnedPrompts(entitlementTransport, promptVersions));
             record.conversationContext = conversation;
             await runFeasibilityStagePipeline(record, providerSettings, conversation.transport, demo?.renderClient ?? renderClient, demo?.pngRenderClient ?? pngRenderClient);
         }
         catch (error) {
-            terminalError = handleRunPipelineError(record, error);
+            handleRunPipelineError(record, error);
         }
     })();
 }
@@ -301,9 +302,11 @@ export async function runRunRecordPipeline({ record, providerSettings, providerC
         analyticsStore,
     });
     const entitlementTransport = scheduledTransport;
-    let terminalError: RunError | null = null;
     try {
-        const demo = taskType === "feasibility_analysis" ? offlineFeasibilityAdapters(record) : null;
+        // Persisted demo runs can resume without eagerly loading fixtures for provider runs.
+        const demo = taskType === "feasibility_analysis" && record.metadata?.offlineDemoFixture === "library-seat"
+            ? (await import("../demo/offline-feasibility.js")).offlineFeasibilityAdapters(record)
+            : null;
         const promptVersions = await getPromptRuntimeStore().publishedSnapshot();
         pinPromptRuntimeSnapshot(record, promptVersions);
         const promptTransport = withPinnedPrompts(entitlementTransport, promptVersions);
@@ -319,6 +322,6 @@ export async function runRunRecordPipeline({ record, providerSettings, providerC
         await runPromise;
     }
     catch (error) {
-        terminalError = handleRunPipelineError(record, error);
+        handleRunPipelineError(record, error);
     }
 }

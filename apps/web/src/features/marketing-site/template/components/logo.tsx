@@ -1,5 +1,5 @@
 // Flow 2.0.0 template source; only runtime, content and business integration adaptations.
-import { FlowCopy, flowText } from '@/features/marketing-site/model/flow-copy';
+import { FlowCopy } from '@/features/marketing-site/model/flow-copy';
 import FlowLogo from '@/features/marketing-site/template/assets/svg/flow-logo'
 
 import { cn } from '@/shared/ui/utils'

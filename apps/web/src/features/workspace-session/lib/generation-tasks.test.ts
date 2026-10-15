@@ -1,4 +1,6 @@
 // Verifies model-level task summaries remain accurate when a run partially succeeds.
+import { createDesignRunSnapshot } from "../../../test/artifact-fixtures";
+import { createRenderMeta } from "../../../test/artifact-fixtures";
 import { describe, expect, it } from "vitest";
 import type { RunEvent } from "@uml-platform/contracts";
 import {
@@ -161,13 +163,19 @@ describe("workspace-session generation task helpers", () => {
 
     const event = {
       type: "completed",
-      snapshot: {
+      snapshot: createRunSnapshot({
         runId: "run-1",
         requirementText: "一个小型图书馆管理系统",
         selectedDiagrams: ["usecase", "activity"],
         rules: [],
         models: [
           {
+            useCases: [],
+            summary: "测试模型",
+            notes: [],
+            actors: [],
+            systemBoundaries: [],
+            relationships: [],
             diagramKind: "usecase",
             title: "用例模型",
           },
@@ -178,7 +186,7 @@ describe("workspace-session generation task helpers", () => {
           {
             diagramKind: "usecase",
             svg: "<svg />",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         ],
         diagramErrors: {
@@ -196,7 +204,7 @@ describe("workspace-session generation task helpers", () => {
         currentStage: null,
         status: "completed",
         error: null,
-      },
+      }),
     } satisfies RunEvent;
 
     const next = updateTaskFromEvent(task, event, {
@@ -276,7 +284,7 @@ describe("workspace-session generation task helpers", () => {
       queued,
       {
         type: "completed",
-        snapshot: {
+        snapshot: createDesignRunSnapshot({
           runId: "run-design-1",
           requirementText: "图书馆系统",
           selectedDiagrams: ["class"],
@@ -285,6 +293,10 @@ describe("workspace-session generation task helpers", () => {
           requirementModelTraceability: [],
           models: [
             {
+              summary: "测试模型",
+              notes: [],
+              interfaces: [],
+              enums: [],
               diagramKind: "class",
               title: "设计类图",
               classes: [],
@@ -317,7 +329,7 @@ describe("workspace-session generation task helpers", () => {
             {
               diagramKind: "class",
               svg: "<svg />",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
           ],
           diagramErrors: {},
@@ -325,7 +337,7 @@ describe("workspace-session generation task helpers", () => {
           currentStage: null,
           status: "completed",
           error: null,
-        },
+        }),
       } satisfies RunEvent,
       {
         queued: "设计生成任务已进入队列",
@@ -618,7 +630,7 @@ describe("workspace-session generation task helpers", () => {
       task,
       {
         type: "completed",
-        snapshot: {
+        snapshot: createDesignRunSnapshot({
           runId: "run-design-sequence-partial",
           requirementText: "共享自习室座位预约系统",
           selectedDiagrams: ["sequence"],
@@ -662,7 +674,7 @@ describe("workspace-session generation task helpers", () => {
             category: "generation",
             retryable: true,
           },
-        },
+        }),
       } satisfies RunEvent,
       {
         queued: "设计生成任务已进入队列",
@@ -971,12 +983,20 @@ describe("workspace-session generation task helpers", () => {
       task,
       {
         type: "completed",
-        snapshot: {
+        snapshot: createRunSnapshot({
           runId: "run-segmented-terminal",
           requirementText: "部署到 Web 和数据库服务器",
           selectedDiagrams: ["deployment"],
           rules: [],
-          models: [{ diagramKind: "deployment", title: "部署需求模型" }],
+          models: [{
+              summary: "测试模型",
+              notes: [],
+              nodes: [],
+              databases: [],
+              components: [],
+              externalSystems: [],
+              artifacts: [],
+              relationships: [], diagramKind: "deployment", title: "部署需求模型" }],
           requirementModelTraceability: [],
           plantUml: [
             {
@@ -1000,7 +1020,7 @@ describe("workspace-session generation task helpers", () => {
           currentStage: "render_svg",
           status: "completed",
           error: null,
-        },
+        }),
       } satisfies RunEvent,
       {
         queued: "任务已进入队列",

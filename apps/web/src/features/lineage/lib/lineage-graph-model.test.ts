@@ -1,3 +1,4 @@
+import { createRunSnapshot } from "../../../test/artifact-fixtures";
 import { describe, expect, it } from "vitest";
 import type {
   DiagramError,
@@ -67,17 +68,11 @@ function task(overrides: Partial<GenerationTask>): GenerationTask {
       stageStartedAt: {},
       stageMessages: {},
       events: [],
-      
-      
-      
-      
-      
-      
-      
-      
+
+
       requirementTrace: [],
       designTrace: [],
-      
+
     },
     subtasks: [],
     startedAt: "2026-06-16T10:00:00.000Z",
@@ -108,10 +103,8 @@ function input(overrides: Partial<LineageGraphInput> = {}): LineageGraphInput {
     designStaleReasons: {},
     designTraceabilityStale: false,
     designGenerationBlockedReason: null,
-    
-    
-    
-    
+
+
     generationTasks: [],
     historyItems: [],
     ...overrides,
@@ -125,7 +118,7 @@ describe("buildLineageGraph", () => {
     expect(graph.nodes.find((node) => node.id === "rule:empty")?.status).toBe(
       "not-generated",
     );
-    
+
     expect(
       graph.nodes.find((node) => node.id === "document:requirementsSpec")?.status,
     ).toBe("not-generated");
@@ -146,7 +139,7 @@ describe("buildLineageGraph", () => {
           sequence: designModel("sequence"),
         },
         generatedDesignDiagrams: ["class", "sequence"],
-        
+
       }),
     );
 
@@ -195,8 +188,8 @@ describe("buildLineageGraph", () => {
           sequence: { diagramKind: "sequence", svg: "<svg>sequence</svg>" } as never,
           class: { diagramKind: "class", svg: "<svg>class</svg>" } as never,
         },
-        
-        
+
+
       }),
     );
 
@@ -209,12 +202,9 @@ describe("buildLineageGraph", () => {
     expect(
       graph.nodes.find((node) => node.id === "design-model:sequence")?.status,
     ).toBe("current");
-    
+
   });
 
-  
-
-  
 
   it("marks old artifacts stale when the requirement source text is cleared", () => {
     const graph = buildLineageGraph(
@@ -242,8 +232,8 @@ describe("buildLineageGraph", () => {
         designStaleReasons: {
           sequence: "需求源头已删除，此设计模型为旧产物，需重新输入需求并重跑。",
         },
-        
-        
+
+
         historyItems: [
           {
             id: "run-doc",
@@ -262,7 +252,7 @@ describe("buildLineageGraph", () => {
     const ruleNode = graph.nodes.find((node) => node.id === "rule:REQ-001");
     const useCaseNode = graph.nodes.find((node) => node.id === "requirement-model:usecase");
     const designNode = graph.nodes.find((node) => node.id === "design-model:sequence");
-    
+
     const documentNode = graph.nodes.find(
       (node) => node.id === "document:requirementsSpec",
     );
@@ -273,9 +263,8 @@ describe("buildLineageGraph", () => {
     expect(useCaseNode?.hasViewableArtifact).toBe(true);
     expect(designNode?.status).toBe("stale");
     expect(designNode?.reason).toContain("需求源头已删除");
-    
-    
-    
+
+
     expect(documentNode?.status).toBe("stale");
     expect(documentNode?.reason).toContain("需求源头");
   });
@@ -338,9 +327,6 @@ describe("buildLineageGraph", () => {
     expect(documentNode?.reason).toContain("已在文档中心删除");
   });
 
-  
-
-  
 
   it("keeps retry and rerun lineage visible in node recent events", () => {
     const graph = buildLineageGraph(
@@ -440,7 +426,7 @@ describe("buildLineageGraph", () => {
   });
 
   it("projects failed rules-only history as a retryable rule extraction error", () => {
-    const failedRulesSnapshot: RunSnapshot = {
+    const failedRulesSnapshot: RunSnapshot = createRunSnapshot({
       runId: "run-rules-failed",
       requirementText: "订单系统需求",
       selectedDiagrams: [],
@@ -463,7 +449,7 @@ describe("buildLineageGraph", () => {
         category: "generation",
         retryable: true,
       },
-    };
+    });
     const graph = buildLineageGraph(
       input({
         historyItems: [

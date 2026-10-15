@@ -2,30 +2,6 @@
 import { useTranslation } from 'react-i18next';
 import { i18n } from '../../../shared/i18n';
 const copy: Record<string, Record<string, string>> = {
-  "Watch promotional video": {
-    "zh-CN": "观看宣传视频",
-    "en": "Watch promotional video"
-  },
-  "Close video": {
-    "zh-CN": "关闭视频",
-    "en": "Close video"
-  },
-  "Product video": {
-    "zh-CN": "产品宣传视频",
-    "en": "Product video"
-  },
-  "See the platform in action": {
-    "zh-CN": "看看平台如何助力工程实践",
-    "en": "See the platform in action"
-  },
-  "Watch our promotional video to get to know the platform.": {
-    "zh-CN": "通过一段宣传视频，了解平台的功能与使用场景。",
-    "en": "Watch our promotional video to get to know the platform."
-  },
-  "Platform promotional video": {
-    "zh-CN": "平台宣传视频",
-    "en": "Platform promotional video"
-  },
   "Benefits": {
     "zh-CN": "检查与修改",
     "en": "Review and revise"
@@ -410,14 +386,6 @@ const copy: Record<string, Record<string, string>> = {
     "zh-CN": "SoftJL 工作台看板预览",
     "en": "Engineering platform workbench dashboard preview"
   },
-  "Flow helps you centralize your product, sales, and user data - all in one simple, real-time dashboard built for growing businesses.": {
-    "zh-CN": "本站为个人技术分享网站，由几位长期从事软件工程学科教学的高校老师共同打造。作为软件工程领域前沿技术的探索空间，本站致力于传播软件工程知识，探索前沿理论与技术，期望以此培养行业技术人才，助力国家软件技术发展。如果您对本站有任何意见或建议，欢迎联系我们。",
-    "en": "This personal technology-sharing website is jointly maintained by university teachers with long-term experience in software engineering education. It shares software engineering knowledge, explores emerging theories and technologies, and supports the development of future software professionals. We welcome your feedback and suggestions."
-  },
-  "Contact: Professor Hong": {
-    "zh-CN": "联系人：洪老师",
-    "en": "Contact: Professor Hong"
-  },
   "Company": {
     "zh-CN": "平台",
     "en": "Platform"
@@ -430,22 +398,6 @@ const copy: Record<string, Record<string, string>> = {
     "zh-CN": "帮助",
     "en": "Help"
   },
-  "Customer Support": {
-    "zh-CN": "使用帮助",
-    "en": "Product help"
-  },
-  "Delivery Details": {
-    "zh-CN": "产物与导出",
-    "en": "Artifacts and export"
-  },
-  "Terms & Conditions": {
-    "zh-CN": "使用说明",
-    "en": "Usage guide"
-  },
-  "Privacy Policy": {
-    "zh-CN": "账户安全",
-    "en": "Account security"
-  },
   "Subscribe to newsletter": {
     "zh-CN": "注册并开始实践",
     "en": "Register to get started"
@@ -453,10 +405,6 @@ const copy: Record<string, Record<string, string>> = {
   "Flow": {
     "zh-CN": "SoftJL",
     "en": "SoftJL"
-  },
-  "All rights reserved | Built to empower product teams worldwide.": {
-    "zh-CN": "保留所有权利 · 面向软件工程教学与实践",
-    "en": "All rights reserved · Software engineering education and practice"
   },
   "Menu": {
     "zh-CN": "菜单",
@@ -528,7 +476,7 @@ const copy: Record<string, Record<string, string>> = {
   },
   "Flow helps your business by providing clear insights into user behavior, sales performance, and engagement metrics, enabling you to make data-driven decisions and optimize growth.": {
     "zh-CN": "先保存并确认修改后的需求，再在阶段页面或链路图查看关联产物的需更新状态，按依赖顺序核对并重新生成。继续编码前，检查来源更新，并在本地修改代码、执行测试。",
-    "en": "Save and confirm revised requirements, then review linked artifacts and update statuses in stage pages or the lineage graph. Review and regenerate them in dependency order. Before continuing with code, have the external coding assistant check source updates, revise the local implementation and run tests."
+    "en": "Save and confirm revised requirements, then review linked artifacts and update statuses in stage pages or the lineage graph. Review and regenerate them in dependency order. Before continuing with code, check source updates, revise the local implementation and run tests."
   },
   "Can I track multiple products at once?": {
     "zh-CN": "可以导出哪些毕设材料？",
@@ -551,8 +499,8 @@ const copy: Record<string, Record<string, string>> = {
     "en": "How do I move from system design to code?"
   },
   "Yes, your data is secure with Flow. We use industry-standard security practices to ensure your information is protected and handled safely.": {
-    "zh-CN": "导出已保存的设计、验收条件和测试，在自己的代码仓库中实现与验证。社区版不提供外部编程助手连接服务。",
-    "en": "Export saved designs, acceptance criteria and tests for implementation and verification in your repository. External coding assistant integration is not included."
+    "zh-CN": "导出 UML 图表和工程说明书，结合项目中已保存的设计、验收条件与测试用例，在自己的代码仓库中完成实现。部署者启用 MCP 后，也可从“编程助手”连接外部工具，授权读取项目资料并在本地运行测试。",
+    "en": "Export UML diagrams and engineering specifications. Use the saved designs, acceptance criteria and test cases to implement the system in your own repository, then run tests to verify that it meets the requirements. If MCP is enabled for this deployment, connect your coding assistant and authorize it to read selected project materials."
   },
   "Does Flow offer a free trial?": {
     "zh-CN": "如何配置自己的模型？",

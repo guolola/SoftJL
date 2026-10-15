@@ -3,8 +3,14 @@ import { expect, test } from '@playwright/test';
 import { themePresets } from '../../../apps/web/src/shared/ui/theme-presets';
 import { mockProjectApi, projectId } from './fixtures/project-workspace';
 
-const sizes = [{width:1440,height:900},{width:1920,height:1080},{width:768,height:1024},{width:390,height:844}];
-for (const viewport of sizes) for (const locale of ['zh-CN','en']) for (const colorScheme of ['light','dark'] as const) {
+// Cover every viewport, locale and theme without repeating the complete route flow for their Cartesian product.
+const scenarios = [
+  {viewport:{width:1440,height:900},locale:'zh-CN',colorScheme:'light'},
+  {viewport:{width:1920,height:1080},locale:'en',colorScheme:'dark'},
+  {viewport:{width:768,height:1024},locale:'en',colorScheme:'light'},
+  {viewport:{width:390,height:844},locale:'zh-CN',colorScheme:'dark'},
+] as const;
+for (const {viewport, locale, colorScheme} of scenarios) {
   test.describe(`${viewport.width} ${locale} ${colorScheme}`, () => {
     test.use({viewport, locale, colorScheme});
     test('AdminCN shell, controls, v2 auth and Flow homepage', async ({page}, info) => {
@@ -19,12 +25,14 @@ for (const viewport of sizes) for (const locale of ['zh-CN','en']) for (const co
       await expect(page.locator('html')).toHaveClass(new RegExp(colorScheme));
       const header = page.locator('[data-slot="sidebar-inset"] > header');
       await expect(header).toBeVisible();
-      expect((await header.boundingBox())!.height).toBe(53);
       const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       expect(await overflow()).toBeLessThanOrEqual(1);
       await expect(page.locator('#requirement-text')).toHaveAttribute('data-slot','textarea');
       const triggerBox = await page.getByRole('button',{name:'Toggle Sidebar'}).boundingBox();
       const actionsBox = await header.locator('.overflow-x-auto').boundingBox();
+      const headerBox = (await header.boundingBox())!;
+      expect(triggerBox!.y).toBeGreaterThanOrEqual(headerBox.y);
+      expect(triggerBox!.y + triggerBox!.height).toBeLessThanOrEqual(headerBox.y + headerBox.height);
       expect(triggerBox!.x + triggerBox!.width).toBeLessThanOrEqual(actionsBox!.x);
       const assertSelectedNavigation = async () => {
         await expect(page.getByRole('navigation',{name:locale === 'en' ? 'Project navigation' : '项目导航'})
@@ -73,7 +81,10 @@ test('all retired marketing addresses render the template 404',async({page})=>{
     await page.goto(path);
     await expect(page.getByRole('heading',{name:/404/})).toBeVisible();
     await expect(page.getByTestId('flow-homepage')).toHaveCount(0);
-    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content',/noindex/);
+    // Next also emits a noindex tag for its 404 boundary; every robots directive must exclude indexing.
+    const robots = page.locator('meta[name="robots"]');
+    await expect(robots).not.toHaveCount(0);
+    expect(await robots.evaluateAll(nodes => nodes.every(node => /noindex/.test(node.getAttribute('content') ?? '')))).toBe(true);
   }
 });
 

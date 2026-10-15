@@ -374,6 +374,11 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
       return;
     }
 
+    if (pathname === "/api/account/onboarding") {
+      await route.fulfill(json({ emptyWorkspace: "completed", firstProject: "completed", firstProjectId: projectId }));
+      return;
+    }
+
     if (pathname === "/api/provider-configs") {
       await route.fulfill(json({ generatedAt: now, providerConfigs: [] }));
       return;

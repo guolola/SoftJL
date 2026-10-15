@@ -161,7 +161,7 @@ export function normalizeProjectBackgroundText(value: string) {
   return value
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[\s_./\\|()[\]{}:：,，;；'"`~!！?？\-]+/gu, "");
+    .replace(/[\s_./\\|()[\]{}:：,，;；'"`~!！?？-]+/gu, "");
 }
 
 export function matchProjectBackground(name: string) {

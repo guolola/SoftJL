@@ -1,3 +1,4 @@
+import { feasibilityImplementationPlanSchema } from "@uml-platform/contracts";
 import { describe, expect, it } from "vitest";
 import type { FeasibilityCandidateImplementation, FeasibilityImplementationPlan, FeasibilityInputs } from "@uml-platform/contracts";
 import { buildCostBenefitMetrics, buildImplementationStats, buildInputCompleteness, filterApplicableAbsenceDeclarations, validateImplementationDraft } from "./implementation-plan-view-model";
@@ -11,29 +12,48 @@ const inputs = {
 } satisfies FeasibilityInputs;
 
 const implementation = {
-    architecture: { summary: "模块化", modules: [{ id: "m1", name: "模块", responsibility: "处理", sourceRequirementIds: ["r1"] }] },
-    dataStrategy: { summary: "数据", sourceRequirementIds: ["r1"] }, integrations: [], integrationRationale: "无需外部集成",
-    deploymentAndOperations: { summary: "部署", sourceRequirementIds: ["r1"] },
-    securityAndCompliance: { summary: "安全", sourceRequirementIds: ["r1"] },
-    milestones: [{ id: "ms1", name: "阶段", timeframe: "1周", deliverables: ["系统"], roles: ["开发者"], dependencies: [], dependencyRationale: "无外部依赖", acceptanceCriteria: ["通过"], sourceRequirementIds: ["r1"] }],
+    provenance: "legacy",
+    architecture: { summary: "模块化", modules: [{
+    assumption: "",
+    provenance: "legacy", id: "m1", name: "模块", responsibility: "处理", sourceRequirementIds: ["r1"] }] },
+    dataStrategy: {
+    assumption: "",
+    provenance: "legacy", summary: "数据", sourceRequirementIds: ["r1"] }, integrations: [], integrationRationale: "无需外部集成",
+    deploymentAndOperations: {
+    assumption: "",
+    provenance: "legacy", summary: "部署", sourceRequirementIds: ["r1"] },
+    securityAndCompliance: {
+    assumption: "",
+    provenance: "legacy", summary: "安全", sourceRequirementIds: ["r1"] },
+    milestones: [{
+    assumption: "",
+    provenance: "legacy", id: "ms1", name: "阶段", timeframe: "1周", deliverables: ["系统"], roles: ["开发者"], dependencies: [], dependencyRationale: "无外部依赖", acceptanceCriteria: ["通过"], sourceRequirementIds: ["r1"] }],
     analysisPeriodAssumption: { years: 2, basis: "教学项目周期", provenance: "ai-estimate" as const },
-    costEstimates: [{ id: "ce1", name: "开发", category: "other-one-time" as const, frequency: "one-time" as const, range: { minimum: 100, maximum: 120, currency: "CNY", basis: "人工时", confidence: "medium" as const }, sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const }],
-    benefitEstimates: [{ id: "be1", name: "节省", category: "recurring" as const, frequency: "annual" as const, range: { minimum: 200, maximum: 240, currency: "CNY", basis: "人工时", confidence: "medium" as const }, outcome: "节省时间", sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const }],
+    costEstimates: [{
+    note: "",
+    assumption: "", id: "ce1", name: "开发", category: "other-one-time" as const, frequency: "one-time" as const, range: { minimum: 100, maximum: 120, currency: "CNY", basis: "人工时", confidence: "medium" as const }, sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const }],
+    benefitEstimates: [{
+    assumption: "", id: "be1", name: "节省", category: "recurring" as const, frequency: "annual" as const, range: { minimum: 200, maximum: 240, currency: "CNY", basis: "人工时", confidence: "medium" as const }, outcome: "节省时间", sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const }],
     absenceDeclarations: [],
     oneTimeCosts: [], recurringCosts: [], quantitativeBenefits: [], qualitativeBenefits: [],
-    risks: ["延期", "质量", "运维"].map((risk, index) => ({ id: `risk-${index}`, risk, probability: "medium" as const, impact: index === 0 ? "high" as const : "medium" as const, mitigation: "缓冲", owner: "PM", sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const })),
+    risks: ["延期", "质量", "运维"].map((risk, index) => ({ id: `risk-${index}`, assumption: "", risk, probability: "medium" as const, impact: index === 0 ? "high" as const : "medium" as const, mitigation: "缓冲", owner: "PM", sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const })),
     verdicts: ["technical", "operational", "schedule", "economic", "legal"].map((category) => ({ category, verdict: "feasible", rationale: "可行" })) as FeasibilityCandidateImplementation["verdicts"],
     decision: "conditional-go" as const, preconditions: [],
   } satisfies FeasibilityCandidateImplementation;
 
-const plan = {
+const plan = feasibilityImplementationPlanSchema.parse({
   overview: "概述",
   candidates: [
-    { id: "a", name: "A", summary: "A", advantages: ["快"], disadvantages: ["限制"], estimatedCost: "100", estimatedSchedule: "2周", sourceRequirementIds: ["r1"], implementation },
-    { id: "b", name: "B", summary: "B", advantages: ["稳"], disadvantages: ["较慢"], estimatedCost: "120", estimatedSchedule: "3周", sourceRequirementIds: ["r1"], implementation: { ...implementation, architecture: { ...implementation.architecture, modules: [{ ...implementation.architecture.modules[0]!, id: "m2" }] } } },
+    {
+    assumption: "",
+    provenance: "legacy", id: "a", name: "A", summary: "A", advantages: ["快"], disadvantages: ["限制"], estimatedCost: "100", estimatedSchedule: "2周", sourceRequirementIds: ["r1"], implementation },
+    { id: "b", name: "B", summary: "B", advantages: ["稳"], disadvantages: ["较慢"], estimatedCost: "120", estimatedSchedule: "3周", sourceRequirementIds: ["r1"], implementation: {
+    provenance: "legacy", ...implementation, architecture: { ...implementation.architecture, modules: [{
+    assumption: "",
+    provenance: "legacy", ...implementation.architecture.modules[0]!, id: "m2" }] } } },
   ],
   reducedCandidateReason: "", recommendedCandidateId: "a", recommendationRationale: "成本低",
-} satisfies FeasibilityImplementationPlan;
+}) satisfies FeasibilityImplementationPlan;
 
 describe("implementation plan view model", () => {
   it("computes completeness and report-compatible cost metrics", () => {
@@ -51,12 +71,15 @@ describe("implementation plan view model", () => {
   it("derives high risks and validates traceable plan structures", () => {
     expect(buildImplementationStats(plan)).toMatchObject({ candidates: 2, modules: 1, milestones: 1, highRisks: 1 });
     expect(validateImplementationDraft(plan, ["r1"])).toEqual([]);
-    expect(validateImplementationDraft({ ...plan, candidates: [{ ...plan.candidates[0]!, sourceRequirementIds: [] }] }, ["r1"]))
+    expect(validateImplementationDraft({ ...plan, candidates: [{
+    assumption: "",
+    provenance: "legacy", ...plan.candidates[0]!, sourceRequirementIds: [] }] }, ["r1"]))
       .toContain("missingSources");
   });
 
   it("hides legacy absence declarations when the matching estimate exists", () => {
     expect(filterApplicableAbsenceDeclarations({
+      provenance: "legacy",
       ...implementation,
       absenceDeclarations: [
         { scope: "other-one-time-costs", reason: "旧数据重复声明", provenance: "legacy" },

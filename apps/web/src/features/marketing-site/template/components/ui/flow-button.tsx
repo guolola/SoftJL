@@ -13,7 +13,7 @@ interface FlowButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> 
   asChild?: boolean
 }
 
-const PrimaryFlowButton = React.forwardRef(function PrimaryFlowButton({ children, asChild = false, className, ...props }: FlowButtonProps, ref: React.ForwardedRef<any>) {
+const PrimaryFlowButton = React.forwardRef(function PrimaryFlowButton({ children, asChild = false, className, ...props }: FlowButtonProps, ref: React.ForwardedRef<HTMLButtonElement>) {
   return (
     <div className={cn('ring-primary/60 relative isolate w-fit overflow-hidden rounded-lg ring-2', className)}>
       <Button
@@ -34,7 +34,7 @@ const PrimaryFlowButton = React.forwardRef(function PrimaryFlowButton({ children
   )
 });
 
-const SecondaryFlowButton = React.forwardRef(function SecondaryFlowButton({ children, asChild = false, className, ...props }: FlowButtonProps, ref: React.ForwardedRef<any>) {
+const SecondaryFlowButton = React.forwardRef(function SecondaryFlowButton({ children, asChild = false, className, ...props }: FlowButtonProps, ref: React.ForwardedRef<HTMLButtonElement>) {
   return (
     <div className={cn('ring-secondary/60 relative isolate w-fit overflow-hidden rounded-lg ring-2', className)}>
       <Button

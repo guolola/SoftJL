@@ -393,11 +393,6 @@ function shouldRetryWithoutStreamUsage(status: number, detail: string | null) {
   return mentionsUsage && looksUnsupported;
 }
 
-function formatHttpLlmError(status: number, detail: string | null) {
-  return detail
-    ? `LLM request failed with HTTP ${status}: ${detail}`
-    : `LLM request failed with HTTP ${status}`;
-}
 
 function formatHttpProviderError(
   prefix: string,

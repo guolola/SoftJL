@@ -1,8 +1,9 @@
 // Assembles the Fastify API server, infrastructure adapters, and local startup compatibility.
 import { designDiagramKindSchema } from "@uml-platform/contracts";
+import { registerMcpModule } from "./mcp/server/register-mcp-module.js";
 import type { ImageGenerationClient, LlmTransport } from "./llm.js";
 import type { LlmScheduler } from "./adapters/llm/llm-scheduler.js";
-import { DEFAULT_HOST, DEFAULT_PORT, RELEASE_STARTED_AT, readPositiveInteger, } from "./server/defaults.js";
+import { DEFAULT_HOST, DEFAULT_PORT, RELEASE_STARTED_AT, } from "./server/defaults.js";
 import { createConfiguredFastifyApp } from "./server/fastify-app.js";
 import { isMainModule, resolveRuntimeCwd } from "./server/runtime.js";
 import { seedGuestUser } from "./server/bootstrap-users.js";
@@ -124,6 +125,7 @@ export async function createApiServer(options?: {
         systemNoticeStore,
         testRunAccessContext,
     });
+    await registerMcpModule({ app, authStore, pool, guestUserId, production: runtimeNodeEnv === "production" });
     return app;
 }
 async function start() {

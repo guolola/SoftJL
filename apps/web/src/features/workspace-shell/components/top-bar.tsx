@@ -3,20 +3,15 @@ import { AdmincnHeader } from "../../../shared/template/layout/header";
 import { ProfileDropdown } from './profile-dropdown';
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Activity, AlertCircle, Boxes, CheckCircle2, CircleHelp, Home, Loader2, Menu, Moon, Sun, } from "lucide-react";
+import { Activity, AlertCircle, CheckCircle2, CircleHelp, Home, Loader2, Menu, Moon, Sun, } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import type { RunStage, } from "@uml-platform/contracts";
-import { SidebarTrigger } from '../../../shared/ui/sidebar';
-import { Separator } from '../../../shared/ui/separator';
 import { Button } from "../../../shared/ui/button";
-import { Badge } from "../../../shared/ui/badge";
 import { AccountDialog } from "../../user-platform/components/account-dialog";
 import { useAuthenticatedRouteSession } from "../../user-platform/components/authenticated-route-session";
 import type { PlatformRunSummary } from "../../user-platform/services/platform-api";
 import { useTheme } from "../../../shared/ui/theme-provider";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, } from "../../../shared/ui/dropdown-menu";
-import { cn } from "../../../shared/ui/utils";
 import { useWorkspaceSession } from "../../workspace-session/state";
 import { SystemNoticeButton } from "../../system-notices/components/system-notice-dialog";
 import { SHELL_ROUTE_MODULES, type ShellRoutePath, } from "../../../entities/workspace/modules";
@@ -110,23 +105,11 @@ const reducedThemeIconVariants = {
     animate: { opacity: 1, rotate: 0, scale: 1, transition: { duration: 0 } },
     exit: { opacity: 1, rotate: 0, scale: 1, transition: { duration: 0 } },
 };
-const SHELL_ROUTE_TRANSLATION_KEYS: Partial<Record<string, "workspace" | "exam" | "tutorial">> = {
+const SHELL_ROUTE_TRANSLATION_KEYS: Partial<Record<string, "workspace">> = {
     "/workspace": "workspace",
-    "/exam": "exam",
-    "/tutorial": "tutorial",
 };
 function shellRouteTranslationKey(route: string) {
     return route === "/projects" ? "projects" : (SHELL_ROUTE_TRANSLATION_KEYS[route] ?? "workspace");
-}
-function formatStageLabel(stage: RunStage | null, t?: TFunction) {
-    if (!stage)
-        return t ? t("generation.stages.waiting") : "waiting";
-    if (t)
-        return t(`generation.stageLabels.${stage}`);
-    return STAGE_LABELS[stage] ?? stage;
-}
-function sanitizeTaskText(text: string | null | undefined) {
-    return text ?? "";
 }
 function getTaskStages(kind: RunKind | null, activeStage: RunStage | null) {
     const base = kind ? [...STAGES_BY_KIND[kind]] : [];
@@ -153,11 +136,6 @@ function normalizeRunStage(stage: PlatformRunSummary["stage"]): RunStage | null 
 }
 function isActiveProjectRun(run: PlatformRunSummary) {
     return run.status === "queued" || run.status === "running";
-}
-function isActiveGenerationTask(task: {
-    status: string;
-}) {
-    return task.status === "queued" || task.status === "running";
 }
 function projectRunTimestamp(run: PlatformRunSummary) {
     const timestamp = run.updatedAt ?? run.completedAt ?? run.startedAt ?? run.createdAt ?? "";
@@ -235,14 +213,14 @@ export function TopBar({ currentRoute, onNavigate, accountDialogOpen: controlled
     const setAccountDialogOpen = onAccountDialogOpenChange ?? setUncontrolledAccountDialogOpen;
     const navItems = [
         { route: "/dashboard" as const, label: t("nav.dashboard") },
+        { route: "/projects/connections" as const, label: t("mcp.title") },
         { route: "/projects" as const, label: t("nav.projects") },
         ...SHELL_ROUTE_MODULES.filter((item) => item.route !== "/workspace").map((item) => ({
             ...item,
             label: t(`nav.${shellRouteTranslationKey(item.route)}`),
         })),
     ];
-    const currentLabel = navItems.find((item) => currentRoute === item.route ||
-        (item.route === "/projects" && currentRoute?.startsWith("/projects")))?.label ?? t("nav.workspace");
+
     return <AdmincnHeader showSidebar navigation={<nav className="hidden min-w-0 items-center gap-1.5 xl:flex">
         <Button variant="ghost" type="button" aria-label={t("nav.home")} className={mainNavButtonClass} onClick={() => onNavigate("/projects")}>
           <Home className="size-4"/>
@@ -265,7 +243,7 @@ export function TopBar({ currentRoute, onNavigate, accountDialogOpen: controlled
             {navItems.map((item) => (<DropdownMenuItem key={item.label} onClick={() => onNavigate(item.route)}>
                 {item.label}
                 {(currentRoute === item.route ||
-                    (item.route === "/projects" && currentRoute?.startsWith("/projects"))) && (<span className="ml-auto text-xs text-primary">{t("common.current")}</span>)}
+                    (item.route === "/projects" && currentRoute?.startsWith("/projects") && currentRoute !== "/projects/connections")) && (<span className="ml-auto text-xs text-primary">{t("common.current")}</span>)}
               </DropdownMenuItem>))}
           </DropdownMenuContent>
         </DropdownMenu>

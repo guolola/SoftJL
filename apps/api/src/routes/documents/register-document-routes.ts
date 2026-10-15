@@ -34,7 +34,6 @@ import {
   type DocumentRiskEventRecorder,
 } from "./document-audit-events.js";
 import { handleOnlyOfficeCallbackSave } from "./document-onlyoffice-callback.js";
-import type { DocumentLibraryItem } from "@uml-platform/contracts";
 
 export type {
   DocumentAuditLogRecorder,

@@ -1,0 +1,40 @@
+// Verifies FAQ-style examples expand accessibly and copy the selected project workflow.
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, it, vi } from "vitest";
+import { AppI18nProvider } from "../../../shared/i18n/i18n-provider";
+import { ProjectUsageExamples } from "./project-usage-examples";
+
+it("starts with all examples collapsed and copies the active scenario after keyboard navigation", async () => {
+  const user = userEvent.setup();
+  const onCopy = vi.fn().mockResolvedValue(undefined);
+  render(<AppI18nProvider><ProjectUsageExamples onCopy={onCopy} /></AppI18nProvider>);
+  expect(screen.queryByRole("heading", { name: "使用案例" })).not.toBeInTheDocument();
+  expect(screen.queryByText(/展开查看常用场景/)).not.toBeInTheDocument();
+  const triggers = screen.getAllByRole("button", { name: /如何/ });
+  expect(triggers).toHaveLength(4);
+  for (const trigger of triggers) expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("button", { name: "复制案例提示词" })).not.toBeInTheDocument();
+  await user.click(triggers[0]);
+  expect(triggers[0]).toHaveAttribute("aria-expanded", "true");
+  const description = screen.getByText("适用于新项目或首次接手仓库，先确认工程约束，再按已保存设计完成实现。");
+  const copy = screen.getByRole("button", { name: "复制案例提示词" });
+  expect(copy.parentElement).toBe(description.parentElement);
+  expect(copy.parentElement).toHaveClass("flex", "justify-between", "gap-3");
+  expect(copy.closest('[data-slot="code-block"]')).toBeNull();
+  expect(description.parentElement!.parentElement!.querySelector('[data-slot="code-block-copy"]')).toBeNull();
+  expect(screen.getByRole("region", { name: triggers[0].textContent! })).toHaveClass("data-open:animate-accordion-down", "data-closed:animate-accordion-up", "motion-reduce:animate-none");
+  await user.click(copy);
+  expect(onCopy.mock.calls[0][0]).toContain("按已保存完整设计");
+  expect(onCopy.mock.calls[0][0]).toContain("不从需求重新推导设计");
+  onCopy.mockClear();
+  triggers[1].focus();
+  await user.keyboard("[Enter]");
+  expect(triggers[0]).toHaveAttribute("aria-expanded", "false");
+  expect(triggers[1]).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getAllByRole("button", { name: "复制案例提示词" })).toHaveLength(1);
+  await user.click(screen.getByRole("button", { name: "复制案例提示词" }));
+  expect(onCopy).toHaveBeenCalledWith(screen.getByRole("region", { name: "使用案例" }).querySelector("pre")!.textContent);
+  expect(onCopy.mock.calls[0][0]).toContain("某某自己项目");
+  expect(onCopy.mock.calls[0][0]).toContain(".uml-platform.json");
+});

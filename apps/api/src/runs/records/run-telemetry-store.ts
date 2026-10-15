@@ -1,6 +1,5 @@
 // Persists privacy-safe LLM telemetry and versioned evaluation attempts for local generation diagnostics.
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
 import type { Queryable } from "../../db/transactions.js";
 export type LlmTokenUsage = {
     inputTokens: number | null;

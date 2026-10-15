@@ -84,7 +84,7 @@ const ServicesBySalesCard = ({ className, data, onProject, ...actions }: Dashboa
           </ChartContainer>
         </div>
         <div className='grid grid-cols-2 gap-x-23 gap-y-12 px-8 max-lg:gap-x-8 lg:py-10'>
-          {salesChartData.map((service, index) => (
+          {salesChartData.map((service, _index) => (
             <div key={service.key} className='flex min-w-0 gap-3 px-2'>
               <div className='flex size-4.5 items-center justify-center'>
                 <CircleIcon fill={service.fill} stroke={service.fill} className='size-2.5' />

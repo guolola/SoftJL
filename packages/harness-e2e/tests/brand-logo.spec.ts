@@ -23,7 +23,7 @@ async function colors(logo: Locator) {
   });
 }
 
-for (const path of ['/', '/tutorial', '/projects']) {
+for (const path of ['/', '/projects']) {
   test(`brand colors follow the theme on ${path}`, async ({ page }) => {
     await mockBrandPage(page);
     await page.route('**/*.mp4', (route) => route.abort());

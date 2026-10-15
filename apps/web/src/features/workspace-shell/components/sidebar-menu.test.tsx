@@ -1,4 +1,6 @@
 // Verifies sidebar navigation, diagram status trees, queued task visibility, and workspace tab interactions.
+import { createDesignRunSnapshot } from "../../../test/artifact-fixtures";
+import { createRenderMeta } from "../../../test/artifact-fixtures";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -393,10 +395,13 @@ describe("SidebarMenu", () => {
             notes: [],
             tables: [
               {
+                constraints: [],
+                relationalConstraints: [{"id":"pk-test","type":"primary-key","columnIds":["user_id"]}],
                 id: "tbl_user",
                 name: "user",
                 columns: [
                   {
+                    constraints: [],
                     id: "user_id",
                     name: "user_id",
                     dataType: "varchar(64)",
@@ -691,7 +696,7 @@ describe("SidebarMenu", () => {
             diagramKind: "analysis",
             modelId: "analysis:uc",
             svg: "<svg><text>analysis</text></svg>",
-            renderMeta: { engine: "plantuml" },
+            renderMeta: createRenderMeta({ engine: "plantuml" }),
           },
         },
       }),
@@ -831,7 +836,7 @@ describe("SidebarMenu", () => {
             sequence: {
               diagramKind: "sequence",
               svg: "<svg><text>用例实现设计</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
           },
         }),
@@ -878,7 +883,7 @@ describe("SidebarMenu", () => {
             sequence: {
               diagramKind: "sequence",
               svg: "<svg><text>用例实现设计</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
           },
         }),
@@ -1022,6 +1027,7 @@ describe("SidebarMenu", () => {
               actors: [],
               useCases: [
                 {
+                  eventFlows: [],
                   id: "uc_generate",
                   name: "生成模型",
                   goal: "生成设计模型",
@@ -1146,6 +1152,7 @@ describe("SidebarMenu", () => {
             notes: [],
             classes: [
               {
+                constraints: [],
                 id: "order-service",
                 name: "OrderService",
                 attributes: [],
@@ -1454,7 +1461,7 @@ describe("SidebarMenu", () => {
             class: {
               diagramKind: "class",
               svg: "<svg><text>设计类图</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
           },
         }),
@@ -1539,6 +1546,7 @@ describe("SidebarMenu", () => {
               actors: [],
               useCases: [
                 {
+                  eventFlows: [],
                   id: "uc_view",
                   name: "查看活动",
                   goal: "查看活动列表",
@@ -1547,6 +1555,7 @@ describe("SidebarMenu", () => {
                   supportingActorIds: [],
                 },
                 {
+                  eventFlows: [],
                   id: "uc_create",
                   name: "创建活动",
                   goal: "创建活动",
@@ -1668,7 +1677,7 @@ describe("SidebarMenu", () => {
     expect(toast.message).toHaveBeenLastCalledWith("正在生成图像，渲染完成后可查看");
     expect(screen.queryByRole("button", { name: "关闭 查看活动" })).not.toBeInTheDocument();
 
-    currentSnapshot = {
+    currentSnapshot = createDesignRunSnapshot({
       runId: "design-run-sequence",
       requirementText: "生成 UML",
       selectedDiagrams: ["sequence"],
@@ -1703,7 +1712,7 @@ describe("SidebarMenu", () => {
           diagramKind: "sequence",
           modelId: "sequence:uc_view",
           svg: "<svg><text>查看活动</text></svg>",
-          renderMeta: { engine: "plantuml" },
+          renderMeta: createRenderMeta({ engine: "plantuml" }),
         },
       ],
       diagramErrors: {},
@@ -1713,7 +1722,7 @@ describe("SidebarMenu", () => {
       currentStage: "render_svg",
       status: "running",
       error: null,
-    };
+    });
     await act(async () => {
       emitDesignEvent({
         type: "artifact_ready",
@@ -1755,7 +1764,7 @@ describe("SidebarMenu", () => {
             sequence: {
               diagramKind: "sequence",
               svg: "<svg><text>用例实现设计</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
           },
         }),
@@ -1854,10 +1863,13 @@ describe("SidebarMenu", () => {
               notes: [],
               tables: [
                 {
+                  constraints: [],
+                  relationalConstraints: [{"id":"pk-test","type":"primary-key","columnIds":["id"]}],
                   id: "user",
                   name: "user",
                   columns: [
                     {
+                      constraints: [],
                       id: "id",
                       name: "id",
                       dataType: "INT",
@@ -1953,7 +1965,7 @@ describe("SidebarMenu", () => {
             sequence: {
               diagramKind: "sequence",
               svg: "<svg><text>用例实现设计</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
           },
         }),
@@ -2038,13 +2050,13 @@ describe("SidebarMenu", () => {
               diagramKind: "sequence",
               modelId: "sequence:uc_view",
               svg: "<svg><text>查看活动</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
             "sequence:uc_create": {
               diagramKind: "sequence",
               modelId: "sequence:uc_create",
               svg: "<svg><text>创建活动</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
           },
         }),
@@ -2112,7 +2124,7 @@ describe("SidebarMenu", () => {
             sequence: {
               diagramKind: "sequence",
               svg: "<svg><text>用例实现设计</text></svg>",
-              renderMeta: { engine: "plantuml" },
+              renderMeta: createRenderMeta({ engine: "plantuml" }),
             },
           },
         }),
