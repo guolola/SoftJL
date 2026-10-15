@@ -28,9 +28,14 @@ function probePort(port, host) {
 export async function checkDemoPorts(ports = DEMO_PORTS) {
   const conflicts = [];
   for (const { name, port } of ports) {
-    // Probe loopback and wildcard bindings: Windows can permit one while the other is occupied.
-    const available = await Promise.all([probePort(port, "127.0.0.1"), probePort(port, "::1"), probePort(port, "0.0.0.0"), probePort(port, "::")]);
-    if (available.includes(false)) conflicts.push(`${name}（${port}）`);
+    // Check every binding Windows may treat separately. Close each probe before
+    // opening the next: loopback and wildcard listeners conflict on Linux.
+    for (const host of ["127.0.0.1", "::1", "0.0.0.0", "::"]) {
+      if (!await probePort(port, host)) {
+        conflicts.push(`${name}（${port}）`);
+        break;
+      }
+    }
   }
   if (conflicts.length) {
     throw new Error(

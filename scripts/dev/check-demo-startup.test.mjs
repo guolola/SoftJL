@@ -30,6 +30,7 @@ for (const host of ["127.0.0.1", "::1", "0.0.0.0", "::"]) {
     await assert.rejects(checkDemoPorts([{ name: "旧 API", port }]), /端口被占用：旧 API.*Ctrl\+C/);
     assert.equal(server.listening, true);
     await close(server);
+    // A released port must stay available while our own loopback/wildcard probes run.
     await checkDemoPorts([{ name: "API", port }]);
   });
 }
