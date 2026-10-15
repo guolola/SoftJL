@@ -1,0 +1,13 @@
+<!-- Standalone brand badge for browser icons; page logos use the shared inline SVG component. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <style>
+    .badge { fill: #18181b; }
+    .glyph { fill: #fafafa; }
+    @media (prefers-color-scheme: dark) {
+      .badge { fill: #f4f4f5; }
+      .glyph { fill: #18181b; }
+    }
+  </style>
+  <rect class="badge" width="64" height="64" rx="18" />
+  <path class="glyph" d="M29 10H54L44 20H30L23 27H40C50 27 54 35 47 42L35 54H10L20 44H34L41 37H24C14 37 10 29 17 22L29 10Z" />
+</svg>

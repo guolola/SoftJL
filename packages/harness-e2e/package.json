@@ -1,0 +1,17 @@
+{
+  "name": "@uml-platform/harness-e2e",
+  "private": true,
+  "license": "Apache-2.0",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}

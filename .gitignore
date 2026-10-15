@@ -1,0 +1,113 @@
+# dependencies
+node_modules/
+
+# build outputs
+apps/*/dist/
+apps/*/.vite/
+/apps/web/.next*/
+packages/*/dist/
+dist/
+build/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+!*.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# local/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# test/cache
+coverage/
+.cache/
+.vitest/
+__pycache__/
+*.pyc
+playwright-report/
+test-results/
+vite.config.ts.timestamp-*
+vite.config.*.timestamp-*
+
+# local codex/dev artifacts
+/output/
+/apps/web/public/brand/engineering-construct-logo.png
+.codex/
+.codex-remote-attachments/
+.codex-artifacts/
+.codex-chrome-profile*/
+.codex-e2e-logs/
+.codex-logs/
+.codex-run-logs/
+.codex-test-logs/
+.superpowers/
+.codex-*.log
+.codex-*.png
+/.codex-test-*.txt
+# Root-only scratch scripts, extracted content, and local verification results.
+/.local-*
+current-page*.png
+tmp-*.png
+tmp-code-page-validation*.png
+dev-implementation*.log
+vite-web*.log
+.codex-web-dev*.log
+apps/web/.codex-vite*.log
+/.tmp-*.json
+/apps/web/.tmp-*.png
+*.heapsnapshot
+*.network-request
+*.network-response
+trace*.json
+trace*.json.gz
+frontend-prototype.sandpack.json
+apps/web/public/vendor/
+apps/web/public/sandpack/
+apps/web/.next/
+apps/web/next-env.d.ts
+apps/web/src/features/product-docs/model/docs-content.generated.ts
+.local-documents/
+apps/api/.local-documents/
+tmp/
+uml-run-snapshot.json
+uml-run-report.md
+# Root runtime data; keep packaged skill data under apps/ versioned.
+/data/
+/apps/api/data/
+需求规格说明书*.docx
+软件设计说明书*.docx
+docs/e2e/evidence-*
+screenshots/
+
+# release artifacts
+*.tar.gz
+*.zip
+release-*/
+.deploy/
+
+plantuml/**
+!plantuml/
+!plantuml/build/
+!plantuml/build/libs/
+!plantuml/build/libs/plantuml-1.2026.3beta8.jar
+apps/render-service/.runtime/
+
+opencode/
+opencode/**

@@ -1,0 +1,259 @@
+/* AdminCN default theme and component utilities. */
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: var(--template-radius-sm);
+  --radius-md: var(--template-radius-md);
+  --radius-lg: var(--template-radius-lg);
+  --radius-xl: var(--template-radius-xl);
+  --radius-2xl: var(--template-radius-2xl);
+  --radius-3xl: var(--template-radius-3xl);
+  --radius-4xl: var(--template-radius-4xl);
+}
+
+:root {
+  --template-radius-sm: calc(var(--radius) * 0.6);
+  --template-radius-md: calc(var(--radius) * 0.8);
+  --template-radius-lg: var(--radius);
+  --template-radius-xl: calc(var(--radius) * 1.4);
+  --template-radius-2xl: calc(var(--radius) * 1.8);
+  --template-radius-3xl: calc(var(--radius) * 2.2);
+  --template-radius-4xl: calc(var(--radius) * 2.6);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+.input-default {
+  @apply h-9;
+}
+.input-lg {
+  @apply h-10;
+}
+.input-sm {
+  @apply h-8;
+}
+.input-size-lg {
+  @apply size-10;
+}
+
+[data-slot='button'].h-10:not(.px-6),
+button[data-slot='button'].h-10:not(.px-6),
+[data-slot='dropdown-menu-trigger'].h-10:not(.px-6),
+[data-slot='dialog-trigger'].h-10:not(.px-6),
+[data-slot='dialog-close'].h-10:not(.px-6),
+[data-slot='popover-trigger'].h-10:not(.px-6),
+a[data-slot='button'].h-10:not(.px-6) {
+  @apply px-4;
+}
+
+[data-slot='button'].h-9:not(.px-6),
+button[data-slot='button'].h-9:not(.px-6),
+[data-slot='dropdown-menu-trigger'].h-9:not(.px-6),
+[data-slot='dialog-trigger'].h-9:not(.px-6),
+[data-slot='dialog-close'].h-9:not(.px-6),
+[data-slot='dropdown-menu-trigger'].h-9:not(.px-6),
+[data-slot='popover-trigger'].h-9:not(.px-6),
+a[data-slot='button'].h-9:not(.px-6) {
+  @apply px-3;
+}
+
+/* For native button elements and elements with role="button", e.g., button, checkbox, radio, switch etc. */
+button:not(:disabled),
+[role='checkbox']:not(:disabled),
+[role='radio']:not(:disabled),
+[role='switch']:not(:disabled),
+[role='button']:not(:disabled) {
+  cursor: pointer;
+}
+
+/* For labels associated with form controls */
+label[for],
+label:has([role='checkbox']):not(:disabled),
+label:has([role='radio']):not(:disabled),
+label:has([role='switch']):not(:disabled) {
+  cursor: pointer;
+}
+
+/* For slider component */
+[role='slider']:not([data-disabled]),
+[data-slot='slider-track']:not([data-disabled]),
+[data-slot='slider-thumb']:not([data-disabled]) {
+  cursor: pointer;
+}
+
+/* For components with menuitems, e.g., dropdown, context menu, etc. */
+[role='menuitem']:not(:disabled),
+[role='menuitemcheckbox']:not(:disabled),
+[role='menuitemradio']:not(:disabled) {
+  cursor: pointer !important;
+}
+
+/* For components with options, e.g., combobox, command, select etc. */
+[role='option']:not(:disabled),
+select[data-slot='native-select']:not(:disabled) {
+  cursor: pointer !important;
+}
+
+/* For number input spin buttons */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  cursor: pointer;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+[data-theme-scale='sm'] {
+  --text-sm: 0.75rem;
+  --text-base: 0.85rem;
+  --text-lg: 1.05rem;
+  --spacing: 0.222222rem;
+}
+
+[data-theme-scale='lg'] {
+  --text-sm: 1rem;
+  --text-base: 1.25rem;
+  --text-lg: 1.45;
+  --spacing: 0.262222rem;
+}
+
+
+/* Sheet slide transitions: Base UI marks exit with [data-closed] and enter with
+   [data-starting-style]; explicit rules guarantee the translate/opacity transition runs. */
+[data-slot='sheet-content'] {
+  transition:
+    translate 200ms ease-in-out,
+    opacity 200ms ease-in-out,
+    visibility 0s linear 200ms;
+}
+[data-slot='sheet-content'][data-side='right'][data-closed],
+[data-slot='sheet-content'][data-side='right'][data-starting-style] {
+  translate: 2.5rem 0 !important;
+}
+[data-slot='sheet-content'][data-side='left'][data-closed],
+[data-slot='sheet-content'][data-side='left'][data-starting-style] {
+  translate: -2.5rem 0 !important;
+}
+[data-slot='sheet-content'][data-side='top'][data-closed],
+[data-slot='sheet-content'][data-side='top'][data-starting-style] {
+  translate: 0 -2.5rem !important;
+}
+[data-slot='sheet-content'][data-side='bottom'][data-closed],
+[data-slot='sheet-content'][data-side='bottom'][data-starting-style] {
+  translate: 0 2.5rem !important;
+}
+[data-slot='sheet-content'][data-closed],
+[data-slot='sheet-content'][data-starting-style] {
+  opacity: 0;
+  pointer-events: none;
+}
+[data-slot='sheet-content'][data-closed] {
+  visibility: hidden;
+}

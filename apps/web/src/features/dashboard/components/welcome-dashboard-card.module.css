@@ -1,0 +1,11 @@
+/* Exposes temporary 3D shells to the pointer while preserving the dashboard's business controls. */
+.outer { position: relative; min-width: 0; height: 100%; }
+.businessContent, .comet, .comet > div { height: 100%; min-width: 0; }
+.comet { pointer-events: none; }
+/* Hit the tilted surface itself, including the part behind its perspective container's plane. */
+.comet > div { pointer-events: auto; }
+.businessContent[inert] { pointer-events: none; }
+.outer[data-card-phase='returning'], .outer[data-card-phase='returning'] .comet > div { pointer-events: none; }
+.outer[data-card-phase='floating'] .businessContent > :global([data-slot='card']) {
+  box-shadow: 0 24px 45px #0006, 0 0 0 1px #cfdfed20;
+}

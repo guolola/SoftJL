@@ -1,0 +1,1243 @@
+// Normalizes workspace records and merges saved run snapshots into repository state.
+import {
+  useCaseScopedSourceId,
+  currentUseCaseSourceIds,
+  isLegacyCodeSnapshot,
+  stripRetiredCodeData,
+  compareRequirementSemantics,
+  type AtomicRequirement,
+  designDiagramKindFromRecordKey,
+  designRecordBelongsToDiagramKinds,
+  designTraceabilityTouchesDiagramKinds,
+  modelRecordBelongsToDiagramKinds,
+  
+  type DesignRunSnapshot,
+  type RequirementBaseline,
+  type RequirementQualityIssue,
+  type RunSnapshot,
+  feasibilityInputsSchema,
+} from "@uml-platform/contracts";
+import {
+  getDesignArtifactId,
+  getDesignModelId,
+  getRequirementArtifactId,
+  getRequirementModelId,
+  findRequirementModelByKind,
+  type DesignDiagramType,
+  type DiagramType,
+} from "../../entities/diagram/model";
+import {
+  
+  isDesignRunSnapshot,
+  isDocumentRunSnapshot,
+  runHistorySnapshotRequirementText,
+  runHistorySnapshotRules,
+  type RunHistorySnapshot,
+} from "../../entities/run-history";
+import type { RequirementRule } from "../../entities/requirement-rule/model";
+import type { WorkspaceRecord } from "../../entities/workspace/model";
+import {
+  designInputFingerprint,
+  normalizeSnapshotFingerprint,
+  snapshotInputFingerprint,
+} from "../../shared/lib/fingerprint";
+
+function requirementInputFingerprint(
+  requirementText: string,
+  rules: RequirementRule[],
+) {
+  return snapshotInputFingerprint({ requirementText, rules });
+}
+
+function fingerprintMatches(
+  storedFingerprint: string | null | undefined,
+  currentFingerprint: string,
+) {
+  return normalizeSnapshotFingerprint(storedFingerprint) === currentFingerprint;
+}
+
+
+
+function hasWholeDesignDiagramError(
+  diagramErrors: DesignRunSnapshot["diagramErrors"],
+  diagram: DesignDiagramType,
+) {
+  return Object.keys(diagramErrors).some((key) => {
+    if (key === diagram) return true;
+    if (key.startsWith(`${diagram}:`)) return false;
+    return designDiagramKindFromRecordKey(key) === diagram;
+  });
+}
+
+function successfulDesignDiagramsFromSnapshot(
+  snapshot: DesignRunSnapshot,
+  designRecords: ReturnType<typeof mapDesignSnapshotToRecords>,
+) {
+  const selectedDesignDiagrams = new Set(snapshot.selectedDiagrams);
+  const artifactDesignDiagrams = Array.from(
+    new Set(
+      snapshot.svgArtifacts
+        .filter((artifact) => {
+          if (!selectedDesignDiagrams.has(artifact.diagramKind)) return false;
+          if (hasWholeDesignDiagramError(snapshot.diagramErrors, artifact.diagramKind)) {
+            return false;
+          }
+          const artifactId = artifact.modelId ?? artifact.diagramKind;
+          return !snapshot.diagramErrors[artifactId];
+        })
+        .map((artifact) => artifact.diagramKind),
+    ),
+  );
+  const modelDesignDiagrams = Array.from(
+    new Set(
+      Object.values(designRecords.modelMap)
+        .filter((model) => {
+          if (!selectedDesignDiagrams.has(model.diagramKind)) return false;
+          if (hasWholeDesignDiagramError(snapshot.diagramErrors, model.diagramKind)) {
+            return false;
+          }
+          return !snapshot.diagramErrors[getDesignModelId(model)];
+        })
+        .map((model) => model.diagramKind),
+    ),
+  );
+  const successful = new Set([...artifactDesignDiagrams, ...modelDesignDiagrams]);
+  return snapshot.selectedDiagrams.filter((diagram) => successful.has(diagram));
+}
+
+type RequirementReviewCandidate =
+  WorkspaceRecord["requirementReviewCandidates"][string];
+type BaselineRequirement = RequirementBaseline["requirements"][number];
+
+const REVIEWABLE_REQUIREMENT_FIELDS = [
+  "actor",
+  "subject",
+  "action",
+  "object",
+  "condition",
+  "outcome",
+  "acceptanceCriteria",
+] as const;
+
+function requirementStillNeedsReview(requirement: BaselineRequirement) {
+  if (requirement.status !== "accepted") return true;
+  return REVIEWABLE_REQUIREMENT_FIELDS.some((field) => {
+    const provenance = requirement.fieldProvenance[field];
+    return (
+      provenance?.status === "pending-review" ||
+      provenance?.status === "rejected"
+    );
+  });
+}
+
+function acceptedRequirementFromCandidate(
+  candidate: RequirementReviewCandidate,
+  currentRequirement: BaselineRequirement,
+): AtomicRequirement | null {
+  if (candidate.status !== "accepted") return null;
+  const reviewed = candidate.afterRequirement ?? candidate.beforeRequirement;
+  if (!reviewed) return null;
+  if (
+    candidate.afterRequirement &&
+    compareRequirementSemantics(
+      candidate.beforeRequirement,
+      candidate.afterRequirement,
+    ).lostFacts.length > 0
+  ) {
+    return null;
+  }
+  const fieldProvenance = { ...reviewed.fieldProvenance };
+  for (const field of REVIEWABLE_REQUIREMENT_FIELDS) {
+    const provenance = fieldProvenance[field];
+    if (!provenance) continue;
+    fieldProvenance[field] = {
+      ...provenance,
+      status: "accepted",
+      issueIds: [],
+    };
+  }
+  return {
+    ...reviewed,
+    id: currentRequirement.id,
+    sourceRuleId: currentRequirement.sourceRuleId ?? reviewed.sourceRuleId,
+    status: "accepted",
+    confidence: Math.max(reviewed.confidence, currentRequirement.confidence),
+    fieldProvenance,
+  };
+}
+
+function rebuildRequirementQualityReport(
+  baseline: RequirementBaseline,
+  requirements: BaselineRequirement[],
+  issues: RequirementQualityIssue[],
+): RequirementBaseline["qualityReport"] {
+  const blockingIssueIds = issues
+    .filter((issue) => issue.blocksDownstream)
+    .map((issue) => issue.id);
+  const reviewRequiredRequirementIds = requirements
+    .filter(requirementStillNeedsReview)
+    .map((requirement) => requirement.id);
+  const status: RequirementBaseline["qualityReport"]["status"] =
+    blockingIssueIds.length > 0
+      ? "blocked"
+      : reviewRequiredRequirementIds.length > 0 || issues.length > 0
+        ? "pending-review"
+        : "passed";
+  return {
+    ...baseline.qualityReport,
+    status,
+    summary:
+      status === "passed"
+        ? `已建立 ${requirements.length} 条原子需求基线。`
+        : `发现 ${issues.length} 个需求质量提示，可继续生成并在当前页面查看。`,
+    issues,
+    blockingIssueIds,
+    reviewRequiredRequirementIds,
+  };
+}
+
+function reconcileAcceptedReviewCandidates(
+  baseline: RequirementBaseline,
+  candidates: WorkspaceRecord["requirementReviewCandidates"],
+): RequirementBaseline {
+  const acceptedRuleIds = new Set(
+    Object.entries(candidates)
+      .filter(([, candidate]) => candidate.status === "accepted")
+      .map(([ruleId]) => ruleId),
+  );
+  if (acceptedRuleIds.size === 0) return baseline;
+
+  const acceptedRequirementIds = new Set<string>();
+  const requirements = baseline.requirements.map((requirement) => {
+    const ruleId = requirement.sourceRuleId;
+    const candidate = ruleId ? candidates[ruleId] : undefined;
+    if (!candidate || candidate.status !== "accepted") return requirement;
+    const reviewed = acceptedRequirementFromCandidate(candidate, requirement);
+    if (!reviewed) return requirement;
+    acceptedRequirementIds.add(requirement.id);
+    acceptedRequirementIds.add(reviewed.id);
+    return reviewed;
+  });
+  if (acceptedRequirementIds.size === 0) return baseline;
+
+  const issues = baseline.qualityReport.issues.filter(
+    (issue) =>
+      !issue.requirementId || !acceptedRequirementIds.has(issue.requirementId),
+  );
+  return {
+    ...baseline,
+    requirements,
+    qualityReport: rebuildRequirementQualityReport(baseline, requirements, issues),
+  };
+}
+
+function reviewCandidateStillNeeded(
+  baseline: RequirementBaseline,
+  ruleId: string,
+) {
+  const qualityIssueRequirementIds = new Set(
+    baseline.qualityReport.issues.map((issue) => issue.requirementId),
+  );
+  const reviewRequiredRequirementIds = new Set(
+    baseline.qualityReport.reviewRequiredRequirementIds,
+  );
+  return baseline.requirements.some((requirement) => {
+    if (requirement.sourceRuleId !== ruleId) return false;
+    if (reviewRequiredRequirementIds.has(requirement.id)) return true;
+    if (qualityIssueRequirementIds.has(requirement.id)) return true;
+    if (requirement.status !== "accepted") return true;
+    return Object.values(requirement.fieldProvenance).some(
+      (provenance) =>
+        provenance?.status === "pending-review" ||
+        provenance?.status === "rejected",
+    );
+  });
+}
+
+function pruneRequirementReviewCandidatesForBaseline(
+  candidates: WorkspaceRecord["requirementReviewCandidates"],
+  baseline: RequirementBaseline,
+) {
+  const next = { ...candidates };
+  for (const [ruleId, candidate] of Object.entries(next) as Array<
+    [string, RequirementReviewCandidate]
+  >) {
+    if (
+      (candidate.status === "pending" || candidate.status === "failed") &&
+      !reviewCandidateStillNeeded(baseline, ruleId)
+    ) {
+      delete next[ruleId];
+    }
+  }
+  return next;
+}
+
+function applyRequirementBaselineToWorkspace(
+  workspace: WorkspaceRecord,
+  baseline: RequirementBaseline,
+) {
+  const reconciledBaseline = reconcileAcceptedReviewCandidates(
+    baseline,
+    workspace.requirementReviewCandidates,
+  );
+  workspace.requirementBaseline = reconciledBaseline;
+  workspace.requirementQualityReport = reconciledBaseline.qualityReport;
+  workspace.requirementReviewCandidates =
+    pruneRequirementReviewCandidatesForBaseline(
+      workspace.requirementReviewCandidates,
+      reconciledBaseline,
+    );
+}
+
+export function createEmptyWorkspace(): WorkspaceRecord {
+  return {
+    id: "workspace-default",
+    name: "SoftJL",
+    requirementText: "",
+    selectedDiagramTypes: [],
+    rules: [],
+    requirementBaseline: null,
+    requirementQualityReport: null,
+    requirementReviewCandidates: {},
+    autoGeneratedUpstreamReviews: {},
+    models: {},
+    requirementModelTraceability: [],
+    generatedDiagramTypes: [],
+    plantUml: {},
+    svgArtifacts: {},
+    diagramErrors: {},
+    visualReviews: {},
+    selectedDesignDiagramTypes: [],
+    designModels: {},
+    designModelTraceability: [],
+    generatedDesignDiagramTypes: [],
+    designPlantUml: {},
+    designSvgArtifacts: {},
+    designDiagramErrors: {},
+    manualModelEditStatus: {},
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    testGenerationResult: null,
+    requirementInputFingerprint: null,
+    diagramInputFingerprints: {},
+    designInputFingerprints: {},
+    feasibilityInputs: {
+      projectName: "",
+      school: "",
+      college: "",
+      groupNumber: "",
+      members: "",
+      gradeClass: "",
+      submissionDate: "",
+      proposedBy: "",
+      developedBy: "",
+      expectedUsers: "",
+      targetEnvironment: "",
+      deadline: "",
+      expectedLifetimeYears: null,
+      budgetLimit: null,
+      teamSize: null,
+      teamSkills: "",
+      availableResources: "",
+      legalConstraints: "",
+      references: "",
+      costItems: [],
+      benefitItems: [],
+      analysisYears: null,
+    },
+    feasibilityContextModel: null,
+    feasibilityBusinessFlow: null,
+    feasibilityContextTraceability: [],
+    feasibilityContextPlantUml: "",
+    feasibilityContextSvg: "",
+    feasibilityContextFingerprint: null,
+    feasibilityImplementationPlan: null,
+    feasibilityImplementationFingerprint: null,
+    rulesVersion: 0,
+    rulesBasedOnTextVersion: null,
+    diagramVersions: {},
+    currentStage: null,
+    runStatus: "idle",
+    runProgress: 0,
+    runMessage: null,
+    errorMessage: null,
+  };
+}
+
+export function cloneWorkspace(workspace: WorkspaceRecord): WorkspaceRecord {
+  return stripRetiredCodeData(structuredClone(workspace)) as WorkspaceRecord;
+}
+
+type UseCaseScopedDiagram = "analysis" | "sequence";
+
+function stringProperty(value: unknown, key: string) {
+  if (!value || typeof value !== "object") return "";
+  const raw = (value as Record<string, unknown>)[key];
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+function currentUseCaseIds(models: WorkspaceRecord["models"]): Set<string> | null {
+  return currentUseCaseSourceIds(Object.values(models));
+}
+
+function scopedSourceUseCaseId(
+  recordKey: string,
+  model: unknown,
+  prefix: UseCaseScopedDiagram,
+) {
+  return useCaseScopedSourceId(model, prefix, recordKey);
+}
+
+function isOrphanUseCaseScopedRecord(
+  recordKey: string,
+  model: unknown,
+  prefix: UseCaseScopedDiagram,
+  validUseCaseIds: Set<string>,
+) {
+  const diagramKind = stringProperty(model, "diagramKind");
+  const scoped =
+    recordKey.startsWith(`${prefix}:`) ||
+    stringProperty(model, "modelId").startsWith(`${prefix}:`) ||
+    diagramKind === prefix;
+  if (!scoped) return false;
+  const sourceUseCaseId = scopedSourceUseCaseId(recordKey, model, prefix);
+  return Boolean(sourceUseCaseId && !validUseCaseIds.has(sourceUseCaseId));
+}
+
+function omitRecordKeys<T extends Record<string, unknown>>(
+  record: T,
+  deletedKeys: Set<string>,
+) {
+  if (deletedKeys.size === 0) return record;
+  const next = { ...record };
+  for (const key of deletedKeys) {
+    delete next[key];
+  }
+  return next as T;
+}
+
+function keepDesignRecordsForModelIds<T extends Record<string, unknown>>(
+  record: T,
+  modelIds: Set<string>,
+) {
+  return Object.fromEntries(
+    Object.entries(record).filter(
+      ([key, value]) =>
+        modelIds.has(key) || modelIds.has(stringProperty(value, "modelId")),
+    ),
+  ) as T;
+}
+
+function repairMissingDesignInputFingerprints(workspace: WorkspaceRecord) {
+  if (
+    workspace.generatedDesignDiagramTypes.length === 0 ||
+    Object.keys(workspace.designModels).length === 0
+  ) {
+    return workspace;
+  }
+  const currentDesignFingerprint = designInputFingerprint(
+    Object.values(workspace.models).filter(Boolean),
+    workspace.requirementModelTraceability,
+  );
+  let repaired = false;
+  const designInputFingerprints = { ...workspace.designInputFingerprints };
+  for (const [modelId, model] of Object.entries(workspace.designModels)) {
+    if (!workspace.generatedDesignDiagramTypes.includes(model.diagramKind)) {
+      continue;
+    }
+    if (!designInputFingerprints[modelId]) {
+      designInputFingerprints[modelId] = currentDesignFingerprint;
+      repaired = true;
+    }
+  }
+  if (!repaired) return workspace;
+  return { ...workspace, designInputFingerprints };
+}
+
+function assertGeneratedDesignChainComplete(workspace: WorkspaceRecord) {
+  if (workspace.generatedDesignDiagramTypes.length === 0) return;
+  const generatedDesignDiagrams = new Set(workspace.generatedDesignDiagramTypes);
+  const generatedDesignModelIds = Object.entries(workspace.designModels)
+    .filter(([, model]) => generatedDesignDiagrams.has(model.diagramKind))
+    .map(([modelId]) => modelId);
+  if (generatedDesignModelIds.length === 0) return;
+
+  const missingFingerprints = generatedDesignModelIds.filter(
+    (modelId) => !workspace.designInputFingerprints[modelId],
+  );
+  const missingPlantUml = generatedDesignModelIds.filter(
+    (modelId) => !workspace.designPlantUml[modelId],
+  );
+  const generatedDesignModelIdSet = new Set(generatedDesignModelIds);
+  const hasGeneratedDesignTraceability = workspace.designModelTraceability.some(
+    (entry) => {
+      const sourceModelId = entry.source?.modelId?.trim();
+      if (sourceModelId) return generatedDesignModelIdSet.has(sourceModelId);
+      return generatedDesignDiagrams.has(
+        entry.source?.diagramKind as DesignDiagramType,
+      );
+    },
+  );
+  if (
+    missingFingerprints.length === 0 &&
+    missingPlantUml.length === 0 &&
+    hasGeneratedDesignTraceability
+  ) {
+    return;
+  }
+
+  const issues = [
+    missingFingerprints.length > 0
+      ? `missing design fingerprints: ${missingFingerprints.join(", ")}`
+      : null,
+    missingPlantUml.length > 0
+      ? `missing design PlantUML: ${missingPlantUml.join(", ")}`
+      : null,
+    !hasGeneratedDesignTraceability ? "missing design traceability" : null,
+  ].filter(Boolean);
+  throw new Error(
+    `快照链路元数据不完整，已阻止写入当前项目工作区：${issues.join("; ")}`,
+  );
+}
+
+function completeGeneratedDesignDiagrams(
+  workspace: WorkspaceRecord,
+  candidates: readonly DesignDiagramType[],
+) {
+  return candidates.filter((diagram) => {
+    const modelIds = Object.entries(workspace.designModels)
+      .filter(([, model]) => model.diagramKind === diagram)
+      .map(([modelId]) => modelId);
+    if (modelIds.length === 0) return false;
+    const modelIdSet = new Set(modelIds);
+    const hasTraceability = workspace.designModelTraceability.some((entry) => {
+      const sourceModelId = entry.source?.modelId?.trim();
+      if (sourceModelId) return modelIdSet.has(sourceModelId);
+      return entry.source?.diagramKind === diagram;
+    });
+    return (
+      hasTraceability &&
+      modelIds.every(
+        (modelId) =>
+          Boolean(workspace.designInputFingerprints[modelId]) &&
+          Boolean(workspace.designPlantUml[modelId]),
+      )
+    );
+  });
+}
+
+function finalizeSnapshotWorkspace(workspace: WorkspaceRecord) {
+  const repaired = repairMissingDesignInputFingerprints(workspace);
+  const finalized = {
+    ...repaired,
+    generatedDesignDiagramTypes: completeGeneratedDesignDiagrams(
+      repaired,
+      repaired.generatedDesignDiagramTypes,
+    ),
+  };
+  assertGeneratedDesignChainComplete(finalized);
+  return finalized;
+}
+
+function cleanRequirementTraceability(
+  traceability: WorkspaceRecord["requirementModelTraceability"],
+  deletedModelIds: Set<string>,
+) {
+  if (deletedModelIds.size === 0) return traceability;
+  return traceability.filter((entry) => {
+    const modelId = entry.target.modelId;
+    return !modelId || !deletedModelIds.has(modelId);
+  });
+}
+
+function cleanDesignTraceability(
+  traceability: WorkspaceRecord["designModelTraceability"],
+  deletedModelIds: Set<string>,
+  validUseCaseIds: Set<string>,
+) {
+  if (deletedModelIds.size === 0) return traceability;
+  return traceability.flatMap((entry) => {
+    if (!entry.source || !Array.isArray(entry.targets)) {
+      return [];
+    }
+    if (entry.source.modelId && deletedModelIds.has(entry.source.modelId)) {
+      return [];
+    }
+    if (
+      entry.source.diagramKind === "usecase" &&
+      !validUseCaseIds.has(entry.source.elementId)
+    ) {
+      return [];
+    }
+    const targets = entry.targets.filter(
+      (target) => !target.modelId || !deletedModelIds.has(target.modelId),
+    );
+    if (targets.length === 0) return [];
+    const upstreamDesignRefs = entry.upstreamDesignRefs?.filter(
+      (target) => !target.modelId || !deletedModelIds.has(target.modelId),
+    );
+    return [
+      {
+        ...entry,
+        targets,
+        ...(upstreamDesignRefs ? { upstreamDesignRefs } : {}),
+      },
+    ];
+  });
+}
+
+function hasRequirementDiagramRecord(
+  workspace: WorkspaceRecord,
+  diagramKind: DiagramType,
+) {
+  return [workspace.models, workspace.plantUml, workspace.svgArtifacts, workspace.diagramErrors]
+    .some((records) => Object.entries(records).some(([key, value]) =>
+      modelRecordBelongsToDiagramKinds(key, value, [diagramKind], workspace.models)));
+}
+
+function hasDesignDiagramRecord(
+  workspace: WorkspaceRecord,
+  diagramKind: DesignDiagramType,
+) {
+  return [workspace.designModels, workspace.designPlantUml, workspace.designSvgArtifacts, workspace.designDiagramErrors]
+    .some((records) => Object.entries(records).some(([key, value]) =>
+      modelRecordBelongsToDiagramKinds(key, value, [diagramKind], workspace.designModels)));
+}
+
+function pruneUseCaseScopedWorkspace(workspace: WorkspaceRecord): WorkspaceRecord {
+  const validUseCaseIds = currentUseCaseIds(workspace.models);
+  if (!validUseCaseIds) return workspace;
+
+  const deletedRequirementModelIds = new Set(
+    Object.entries(workspace.models)
+      .filter(([modelId, model]) =>
+        isOrphanUseCaseScopedRecord(modelId, model, "analysis", validUseCaseIds),
+      )
+      .map(([modelId]) => modelId),
+  );
+  const deletedDesignModelIds = new Set(
+    Object.entries(workspace.designModels)
+      .filter(([modelId, model]) =>
+        isOrphanUseCaseScopedRecord(modelId, model, "sequence", validUseCaseIds),
+      )
+      .map(([modelId]) => modelId),
+  );
+  if (deletedRequirementModelIds.size === 0 && deletedDesignModelIds.size === 0) {
+    return workspace;
+  }
+
+  const next: WorkspaceRecord = {
+    ...workspace,
+    models: omitRecordKeys(workspace.models, deletedRequirementModelIds),
+    plantUml: omitRecordKeys(workspace.plantUml, deletedRequirementModelIds),
+    svgArtifacts: omitRecordKeys(workspace.svgArtifacts, deletedRequirementModelIds),
+    diagramErrors: omitRecordKeys(workspace.diagramErrors, deletedRequirementModelIds),
+    diagramInputFingerprints: omitRecordKeys(
+      workspace.diagramInputFingerprints as Record<string, unknown>,
+      deletedRequirementModelIds,
+    ) as WorkspaceRecord["diagramInputFingerprints"],
+    diagramVersions: omitRecordKeys(
+      workspace.diagramVersions as Record<string, unknown>,
+      deletedRequirementModelIds,
+    ) as WorkspaceRecord["diagramVersions"],
+    requirementModelTraceability: cleanRequirementTraceability(
+      workspace.requirementModelTraceability,
+      deletedRequirementModelIds,
+    ),
+    designModels: omitRecordKeys(workspace.designModels, deletedDesignModelIds),
+    designPlantUml: omitRecordKeys(workspace.designPlantUml, deletedDesignModelIds),
+    designSvgArtifacts: omitRecordKeys(
+      workspace.designSvgArtifacts,
+      deletedDesignModelIds,
+    ),
+    designDiagramErrors: omitRecordKeys(
+      workspace.designDiagramErrors,
+      deletedDesignModelIds,
+    ),
+    designInputFingerprints: omitRecordKeys(
+      workspace.designInputFingerprints,
+      deletedDesignModelIds,
+    ),
+    manualModelEditStatus: omitRecordKeys(
+      workspace.manualModelEditStatus,
+      new Set([...deletedRequirementModelIds, ...deletedDesignModelIds]),
+    ),
+    designModelTraceability: cleanDesignTraceability(
+      workspace.designModelTraceability,
+      deletedDesignModelIds,
+      validUseCaseIds,
+    ),
+  };
+
+  if (!hasRequirementDiagramRecord(next, "analysis")) {
+    next.generatedDiagramTypes = next.generatedDiagramTypes.filter(
+      (diagram) => diagram !== "analysis",
+    );
+  }
+  if (!hasDesignDiagramRecord(next, "sequence")) {
+    next.generatedDesignDiagramTypes = next.generatedDesignDiagramTypes.filter(
+      (diagram) => diagram !== "sequence",
+    );
+  }
+  return next;
+}
+
+export function mergeWorkspaceState(state?: Partial<WorkspaceRecord>): WorkspaceRecord {
+  const merged = {
+    ...createEmptyWorkspace(),
+    ...(state ?? {}),
+  };
+  merged.feasibilityInputs = feasibilityInputsSchema.parse(
+    state?.feasibilityInputs ?? {},
+  );
+  merged.feasibilityContextTraceability = [
+    ...(state?.feasibilityContextTraceability ?? []),
+  ];
+  return repairMissingDesignInputFingerprints(pruneUseCaseScopedWorkspace(merged));
+}
+
+export function applySnapshotToWorkspace(
+  workspace: WorkspaceRecord,
+  snapshot: RunHistorySnapshot,
+): WorkspaceRecord {
+  if (isLegacyCodeSnapshot(snapshot)) throw new Error("Code prototype snapshots are no longer supported.");
+  const next = cloneWorkspace(workspace);
+  const currentHasRequirementText = next.requirementText.trim().length > 0;
+  const currentHasRequirements =
+    next.requirementText.trim().length > 0 || next.rules.length > 0;
+  next.runStatus = "idle";
+  next.runProgress = 0;
+  next.currentStage = null;
+  next.runMessage = null;
+  next.errorMessage = null;
+
+  if (isDocumentRunSnapshot(snapshot)) {
+    return finalizeSnapshotWorkspace(next);
+  }
+
+  const isRequirementSnapshot =
+    !isDesignRunSnapshot(snapshot);
+  if (isRequirementSnapshot || isDesignRunSnapshot(snapshot)) {
+    const kind = isDesignRunSnapshot(snapshot) ? "design" : "requirements";
+    next.visualReviews = {
+      ...next.visualReviews,
+      ...Object.fromEntries(Object.entries(snapshot.visualReviews ?? {}).map(([id, review]) => [`${kind}:${id}`, review])),
+    };
+  }
+  if (isRequirementSnapshot || isDesignRunSnapshot(snapshot)) {
+    next.testGenerationResult = null;
+  }
+  const snapshotRequirementText = runHistorySnapshotRequirementText(snapshot);
+  const snapshotRules = runHistorySnapshotRules(snapshot);
+  if (
+    isRequirementSnapshot &&
+    !currentHasRequirementText &&
+    snapshotRequirementText.trim().length > 0
+  ) {
+    next.requirementText = snapshotRequirementText;
+  }
+  const snapshotRequirementFingerprint = requirementInputFingerprint(
+    snapshotRequirementText,
+    snapshotRules,
+  );
+  const isRulesOnlyRequirementSnapshot =
+    isRequirementSnapshot &&
+    snapshot.selectedDiagrams.length === 0 &&
+    snapshot.models.length === 0 &&
+    snapshot.plantUml.length === 0 &&
+    snapshot.svgArtifacts.length === 0 &&
+    Object.keys(snapshot.diagramErrors).length === 0;
+  if (
+    isRequirementSnapshot &&
+    (isRulesOnlyRequirementSnapshot || !currentHasRequirements)
+  ) {
+    next.requirementText = snapshotRequirementText;
+    next.rules = [...snapshotRules];
+  }
+  const workspaceRequirementFingerprint = requirementInputFingerprint(
+    next.requirementText,
+    next.rules,
+  );
+  if (
+    isRequirementSnapshot &&
+    snapshot.requirementBaseline &&
+    (!currentHasRequirements ||
+      fingerprintMatches(
+        snapshotRequirementFingerprint,
+        workspaceRequirementFingerprint,
+      ))
+  ) {
+    applyRequirementBaselineToWorkspace(next, snapshot.requirementBaseline);
+  }
+
+  
+
+  if (isDesignRunSnapshot(snapshot)) {
+    const designRecords = mapDesignSnapshotToRecords(snapshot);
+    const erroredDesignDiagrams = new Set(
+      Object.keys(snapshot.diagramErrors)
+        .map(designDiagramKindFromRecordKey)
+        .filter((diagram): diagram is DesignDiagramType => Boolean(diagram)),
+    );
+    const successfulAffectedDesignDiagrams =
+      successfulDesignDiagramsFromSnapshot(snapshot, designRecords);
+    const affectedForErrors = Array.from(
+      new Set([
+        ...snapshot.selectedDiagrams,
+        ...successfulAffectedDesignDiagrams,
+        ...erroredDesignDiagrams,
+      ]),
+    );
+    const affectedDesignModelIds = Object.entries(next.designModels)
+      .filter(([modelId, model]) =>
+        designRecordBelongsToDiagramKinds(
+          modelId,
+          model,
+          successfulAffectedDesignDiagrams,
+        ),
+      )
+      .map(([modelId]) => modelId);
+    const affectedDesignModelMap = keepDesignScopedRecord(
+      designRecords.modelMap,
+      successfulAffectedDesignDiagrams,
+    );
+    const requirementDiagrams = snapshot.requirementModels.map(
+      (model) => model.diagramKind,
+    );
+    const canMergeRequirementContextFromSnapshot =
+      requirementDiagrams.length > 0 &&
+      snapshotRequirementText.trim().length > 0 &&
+      snapshotRules.length > 0 &&
+      (!currentHasRequirements ||
+        fingerprintMatches(
+          snapshotRequirementFingerprint,
+          workspaceRequirementFingerprint,
+        ));
+    const currentRequirementVersion = fingerprintMatches(
+      next.requirementInputFingerprint,
+      workspaceRequirementFingerprint,
+    )
+      ? next.rulesVersion
+      : next.rulesVersion + 1;
+    const currentDesignFingerprint = designInputFingerprint(
+      snapshot.requirementModels,
+      snapshot.requirementModelTraceability,
+    );
+    next.selectedDesignDiagramTypes = [];
+    if (successfulAffectedDesignDiagrams.length > 0) {
+      next.designModels = {
+        ...clearDesignScopedRecord(
+          next.designModels,
+          successfulAffectedDesignDiagrams,
+        ),
+        ...affectedDesignModelMap,
+      };
+    }
+    next.designModelTraceability = mergeDesignTraceability(
+      next.designModelTraceability,
+      snapshot.designModelTraceability,
+      successfulAffectedDesignDiagrams,
+      affectedDesignModelIds,
+    );
+    next.generatedDesignDiagramTypes = Array.from(
+      new Set([
+        ...next.generatedDesignDiagramTypes,
+        ...successfulAffectedDesignDiagrams,
+      ]),
+    );
+    if (successfulAffectedDesignDiagrams.length > 0) {
+      next.designInputFingerprints = {
+        ...clearDesignScopedRecord(
+          next.designInputFingerprints,
+          successfulAffectedDesignDiagrams,
+          workspace.designModels,
+        ),
+        ...Object.fromEntries(
+          Object.keys(affectedDesignModelMap).map((modelId) => [
+            modelId,
+            currentDesignFingerprint,
+          ]),
+        ),
+      };
+      next.designPlantUml = {
+        ...clearDesignScopedRecord(
+          next.designPlantUml,
+          successfulAffectedDesignDiagrams,
+          workspace.designModels,
+        ),
+        ...keepDesignScopedRecord(
+          designRecords.plantUmlMap,
+          successfulAffectedDesignDiagrams,
+          designRecords.modelMap,
+        ),
+      };
+      next.designSvgArtifacts = {
+        ...clearDesignScopedRecord(
+          next.designSvgArtifacts,
+          successfulAffectedDesignDiagrams,
+          workspace.designModels,
+        ),
+        ...keepDesignScopedRecord(
+          designRecords.svgMap,
+          successfulAffectedDesignDiagrams,
+        ),
+      };
+    }
+    next.designDiagramErrors = clearAndMergeDiagramErrors(
+      next.designDiagramErrors,
+      snapshot.diagramErrors,
+      affectedForErrors,
+      workspace.designModels,
+    );
+    next.selectedDiagramTypes = [];
+    if (canMergeRequirementContextFromSnapshot) {
+      next.models = {
+        ...clearRequirementScopedRecord(next.models, requirementDiagrams),
+        ...(Object.fromEntries(
+          snapshot.requirementModels.map((model) => [
+            getRequirementModelId(model),
+            model,
+          ]),
+        ) as WorkspaceRecord["models"]),
+      };
+      next.requirementModelTraceability = mergeRequirementTraceability(
+        next.requirementModelTraceability,
+        snapshot.requirementModelTraceability,
+        requirementDiagrams,
+      );
+      next.generatedDiagramTypes = Array.from(
+        new Set([...next.generatedDiagramTypes, ...requirementDiagrams]),
+      );
+      next.requirementInputFingerprint = workspaceRequirementFingerprint;
+      next.rulesVersion = currentRequirementVersion;
+      next.rulesBasedOnTextVersion = 0;
+      next.diagramInputFingerprints = {
+        ...next.diagramInputFingerprints,
+        ...Object.fromEntries(
+          requirementDiagrams.map((diagram) => [
+            diagram,
+            snapshotRequirementFingerprint,
+          ]),
+        ),
+      };
+      next.diagramVersions = {
+        ...next.diagramVersions,
+        ...Object.fromEntries(
+          requirementDiagrams.map((diagram) => [
+            diagram,
+            currentRequirementVersion,
+          ]),
+        ),
+      };
+    }
+    return finalizeSnapshotWorkspace(next);
+  }
+
+  const records = mapSnapshotToRecords(snapshot);
+  const erroredDiagrams = new Set(
+    Object.keys(snapshot.diagramErrors)
+      .map(diagramKindFromErrorKey)
+      .filter((diagram): diagram is DiagramType => Boolean(diagram)),
+  );
+  const modelDiagrams = Array.from(
+    new Set(
+      Object.values(records.modelMap)
+        .map((model) => model?.diagramKind)
+        .filter((diagram): diagram is DiagramType =>
+          Boolean(diagram && !erroredDiagrams.has(diagram)),
+        ),
+    ),
+  );
+  const artifactDiagrams = Array.from(
+    new Set(
+      [
+        ...snapshot.plantUml.map((artifact) => artifact.diagramKind),
+        ...snapshot.svgArtifacts.map((artifact) => artifact.diagramKind),
+      ].filter(
+        (diagram): diagram is DiagramType => !erroredDiagrams.has(diagram),
+      ),
+    ),
+  ) as DiagramType[];
+  const selectedModelDiagrams = modelDiagrams.filter((diagram) =>
+    snapshot.selectedDiagrams.includes(diagram),
+  );
+  const canFallbackToContextModels =
+    snapshot.selectedDiagrams.length === 0 &&
+    Object.keys(snapshot.diagramErrors).length === 0;
+  const successfulAffected = Array.from(
+    new Set(
+      artifactDiagrams.length > 0
+        ? artifactDiagrams
+        : selectedModelDiagrams.length > 0
+          ? selectedModelDiagrams
+          : canFallbackToContextModels
+            ? modelDiagrams
+            : [],
+    ),
+  );
+  const affectedForErrors = Array.from(
+    new Set([
+      ...snapshot.selectedDiagrams,
+      ...successfulAffected,
+      ...erroredDiagrams,
+    ]),
+  );
+  const affected =
+    affectedForErrors.length > 0 ? affectedForErrors : successfulAffected;
+  const affectedModelMap = keepRequirementScopedRecord(
+    records.modelMap,
+    successfulAffected,
+  );
+  const inputChanged =
+    next.requirementInputFingerprint !== null &&
+    !fingerprintMatches(
+      next.requirementInputFingerprint,
+      workspaceRequirementFingerprint,
+    );
+  const nextRulesVersion = inputChanged
+    ? next.rulesVersion + 1
+    : next.rulesVersion || 1;
+  next.selectedDiagramTypes = [];
+  next.rulesVersion = nextRulesVersion;
+  next.rulesBasedOnTextVersion = 0;
+  next.requirementInputFingerprint = workspaceRequirementFingerprint;
+  if (affected.length === 0) {
+    return finalizeSnapshotWorkspace(next);
+  }
+  if (successfulAffected.length > 0) {
+    next.models = {
+      ...clearRequirementScopedRecord(next.models, successfulAffected),
+      ...affectedModelMap,
+    };
+  }
+  next.requirementModelTraceability = mergeRequirementTraceability(
+    next.requirementModelTraceability,
+    snapshot.requirementModelTraceability ?? [],
+    successfulAffected,
+  );
+  next.generatedDiagramTypes = Array.from(
+    new Set([...next.generatedDiagramTypes, ...successfulAffected]),
+  );
+  if (successfulAffected.length > 0) {
+    next.plantUml = {
+      ...clearRequirementScopedRecord(next.plantUml, successfulAffected, workspace.models),
+      ...keepRequirementScopedRecord(records.plantUmlMap, successfulAffected, records.modelMap),
+    };
+    next.svgArtifacts = {
+      ...clearRequirementScopedRecord(next.svgArtifacts, successfulAffected),
+      ...keepRequirementScopedRecord(records.svgMap, successfulAffected),
+    };
+  }
+  next.diagramErrors = clearAndMergeDiagramErrors(
+    next.diagramErrors,
+    snapshot.diagramErrors,
+    affected,
+    workspace.models,
+  );
+  next.diagramVersions = {
+    ...next.diagramVersions,
+    ...Object.fromEntries(
+      successfulAffected.map((diagram) => [diagram, nextRulesVersion]),
+    ),
+  };
+  next.diagramInputFingerprints = {
+    ...next.diagramInputFingerprints,
+    ...Object.fromEntries(
+      successfulAffected.map((diagram) => [
+        diagram,
+        snapshotRequirementFingerprint,
+      ]),
+    ),
+  };
+  return finalizeSnapshotWorkspace(next);
+}
+
+export function restoreSnapshotToWorkspace(
+  workspace: WorkspaceRecord,
+  snapshot: RunHistorySnapshot,
+): WorkspaceRecord {
+  const base = {
+    ...createEmptyWorkspace(),
+    id: workspace.id,
+    name: workspace.name,
+  };
+  return applySnapshotToWorkspace(base, snapshot);
+}
+
+function clearAndMergeDiagramErrors<T extends string, V>(
+  current: Partial<Record<T, V>>,
+  incoming: Partial<Record<T, V>>,
+  affected: readonly T[],
+  models: Record<string, unknown> = {},
+) {
+  const next = Object.fromEntries(Object.entries(current).filter(([key, value]) =>
+    !modelRecordBelongsToDiagramKinds(key, value, affected, models))) as Partial<Record<T, V>>;
+  return { ...next, ...incoming };
+}
+
+function diagramKindFromErrorKey(key: string) {
+  const [candidate] = key.split(":");
+  return candidate &&
+    [
+      "function",
+      "usecase",
+      "class",
+      "activity",
+      "deployment",
+      "prototype",
+      "analysis",
+    ].includes(candidate)
+    ? (candidate as DiagramType)
+    : null;
+}
+
+function clearRequirementScopedRecord<T>(
+  current: Record<string, T | undefined>,
+  affected: readonly DiagramType[],
+  models: Record<string, unknown> = {},
+) {
+  return Object.fromEntries(
+    Object.entries(current).filter(([key, value]) =>
+      !modelRecordBelongsToDiagramKinds(key, value, affected, models)),
+  ) as Record<string, T | undefined>;
+}
+
+function keepRequirementScopedRecord<T>(
+  current: Record<string, T | undefined>,
+  affected: readonly DiagramType[],
+  models: Record<string, unknown> = {},
+) {
+  return Object.fromEntries(
+    Object.entries(current).filter(([key, value]) =>
+      modelRecordBelongsToDiagramKinds(key, value, affected, models)),
+  ) as Record<string, T | undefined>;
+}
+
+function clearDesignScopedRecord<T>(
+  current: Record<string, T | undefined>,
+  affected: readonly DesignDiagramType[],
+  models: Record<string, unknown> = {},
+) {
+  return Object.fromEntries(
+    Object.entries(current).filter(([key, value]) =>
+      !modelRecordBelongsToDiagramKinds(key, value, affected, models)),
+  ) as Record<string, T | undefined>;
+}
+
+function keepDesignScopedRecord<T>(
+  current: Record<string, T | undefined>,
+  affected: readonly DesignDiagramType[],
+  models: Record<string, unknown> = {},
+) {
+  return Object.fromEntries(
+    Object.entries(current).filter(([key, value]) =>
+      modelRecordBelongsToDiagramKinds(key, value, affected, models)),
+  ) as Record<string, T | undefined>;
+}
+
+function mergeDesignTraceability(
+  current: WorkspaceRecord["designModelTraceability"],
+  incoming: WorkspaceRecord["designModelTraceability"],
+  affectedDiagrams: readonly DesignDiagramType[],
+  deletedModelIds: readonly string[],
+) {
+  if (affectedDiagrams.length === 0 && deletedModelIds.length === 0) {
+    return current;
+  }
+  return [
+    ...current.filter(
+      (entry) =>
+        entry.source &&
+        Array.isArray(entry.targets) &&
+        !designTraceabilityTouchesDiagramKinds(
+          entry,
+          affectedDiagrams,
+          deletedModelIds,
+        ),
+    ),
+    ...incoming.filter((entry) =>
+      designTraceabilityTouchesDiagramKinds(entry, affectedDiagrams),
+    ),
+  ];
+}
+
+function mergeRequirementTraceability(
+  current: WorkspaceRecord["requirementModelTraceability"],
+  incoming: WorkspaceRecord["requirementModelTraceability"],
+  affectedDiagrams: readonly DiagramType[],
+) {
+  const affected = new Set<DiagramType>(affectedDiagrams);
+  return [
+    ...current.filter(
+      (entry) => !affected.has(entry.target.diagramKind as DiagramType),
+    ),
+    ...incoming.filter((entry) =>
+      affected.has(entry.target.diagramKind as DiagramType),
+    ),
+  ];
+}
+
+export function stableWorkspaceState(
+  workspace: WorkspaceRecord,
+): Partial<WorkspaceRecord> {
+  const pruned = pruneUseCaseScopedWorkspace(workspace);
+  const {
+    currentStage: _currentStage,
+    runStatus: _runStatus,
+    runProgress: _runProgress,
+    runMessage: _runMessage,
+    errorMessage: _errorMessage,
+    ...state
+  } = pruned;
+  return state;
+}
+
+function mapSnapshotToRecords(snapshot: RunSnapshot) {
+  return {
+    modelMap: Object.fromEntries(
+      snapshot.models.map((model) => [getRequirementModelId(model), model]),
+    ) as WorkspaceRecord["models"],
+    plantUmlMap: Object.fromEntries(
+      snapshot.plantUml.map((artifact) => [
+        getRequirementArtifactId(artifact),
+        artifact.source,
+      ]),
+    ) as WorkspaceRecord["plantUml"],
+    svgMap: Object.fromEntries(
+      snapshot.svgArtifacts.map((artifact) => [
+        getRequirementArtifactId(artifact),
+        artifact,
+      ]),
+    ) as WorkspaceRecord["svgArtifacts"],
+  };
+}
+
+function mapDesignSnapshotToRecords(snapshot: DesignRunSnapshot) {
+  return {
+    modelMap: Object.fromEntries(
+      snapshot.models.map((model) => [getDesignModelId(model), model]),
+    ) as WorkspaceRecord["designModels"],
+    plantUmlMap: Object.fromEntries(
+      snapshot.plantUml.map((artifact) => [
+        getDesignArtifactId(artifact),
+        artifact.source,
+      ]),
+    ) as WorkspaceRecord["designPlantUml"],
+    svgMap: Object.fromEntries(
+      snapshot.svgArtifacts.map((artifact) => [
+        getDesignArtifactId(artifact),
+        artifact,
+      ]),
+    ) as WorkspaceRecord["designSvgArtifacts"],
+  };
+}

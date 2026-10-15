@@ -1,0 +1,27 @@
+/* Adds only arrival layout and typography; all surfaces inherit the existing content area's theme. */
+.stage { position: relative; min-width: 0; width: 100%; overflow-anchor: none; isolation: isolate; outline: none; }
+.active {
+  height: var(--welcome-height, calc(100dvh - 80px)); min-height: 360px; overflow: hidden;
+}
+.stage[data-welcome-phase='preparing'] > div:not(.overlay) { visibility: hidden; }
+.active :global([data-dashboard-empty]) { visibility: hidden; }
+.overlay { position: absolute; z-index: 10; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.content { max-width: calc(100% - 32px); width: min(520px, 60%); text-align: center; pointer-events: auto; transition: opacity .24s, transform .32s; }
+.title { color: var(--foreground); font-size: clamp(42px, 4.2vw, 54px); font-weight: 650; letter-spacing: -2.5px; line-height: 1.22; }
+.confetti { display: inline-block; margin-left: 12px; font-size: .8em; vertical-align: .06em; }
+.content > p { margin-top: 10px; color: var(--muted-foreground); font-size: 12px; letter-spacing: 1.2px; }
+.confirm { height: 45px; gap: 19px; margin-top: 19px; padding: 0 23px; font-size: 13px; font-weight: 550; }
+.stage[data-welcome-phase='preparing'] .content { opacity: 0; }
+.stage[data-welcome-phase='returning'] .content { opacity: 0; transform: translateY(8px) scale(.98); }
+@media (max-width: 767px) {
+  .content { width: 345px; }
+  .title { font-size: 38px; line-height: 1.3; letter-spacing: -1.5px; }
+  .confetti { margin-left: 8px; }
+  .content > p { font-size: 11px; letter-spacing: .5px; }
+  .confirm { height: 44px; font-size: 12px; padding: 0 20px; }
+}
+@media (max-height: 650px) { .title { font-size: 38px; } .confirm { height: 42px; } }
+@media (prefers-reduced-motion: reduce) {
+  .content { transition: opacity .15s; }
+  .stage[data-welcome-phase='returning'] .content { transform: none; }
+}

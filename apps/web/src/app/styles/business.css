@@ -1,0 +1,34 @@
+/* Keeps business status colors stable across theme and chart palette changes. */
+@theme inline {
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-destructive: var(--status-failure);
+  --color-info: var(--info);
+  --color-input-background: var(--background);
+  --color-switch-background: var(--input);
+  --color-destructive-foreground: var(--primary-foreground);
+  --font-display: var(--font-geist-sans);
+}
+:root {
+  --font-geist-sans: 'Geist', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  --font-geist-mono: 'Geist Mono', monospace;
+  --font-size: 16px;
+  --font-display: var(--font-geist-sans);
+  --success: var(--color-green-700);
+  --warning: var(--color-amber-600);
+  --status-failure: var(--color-red-700);
+  --info: var(--color-blue-700);
+  --input-background: var(--background);
+}
+.dark {
+  --success: var(--color-green-400);
+  --warning: var(--color-amber-400);
+  --status-failure: var(--color-red-400);
+  --info: var(--color-blue-400);
+}
+html, body, #root { min-height: 100%; }
+
+/* The portal overlay must sit above the sticky header and fixed sidebar. */
+[data-name="onborda-overlay"] {
+  z-index: 901;
+}

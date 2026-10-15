@@ -1,0 +1,22 @@
+{
+  "name": "@uml-platform/harness-eval",
+  "private": true,
+  "license": "Apache-2.0",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "eval": "tsx src/index.ts",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@uml-platform/contracts": "0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.21",
+    "tsx": "4.19.4",
+    "typescript": "5.8.3"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

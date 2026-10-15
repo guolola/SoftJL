@@ -1,0 +1,26 @@
+SoftJL
+Copyright (c) 2026 软件工程实践平台
+
+Project-authored code and documentation are licensed under the Apache License,
+Version 2.0. See LICENSE for the complete terms.
+
+Third-party components and assets retain their own copyrights and licenses.
+This notice does not relicense them. In particular:
+
+- Fonts in apps/web/public/templates/fonts/ are covered by the SIL Open Font
+  License 1.1; see apps/web/public/templates/fonts/LICENSE.txt.
+- Devicon assets retain their MIT license and attribution; see
+  apps/web/public/marketing/logos/devicon-license.txt.
+- The bundled PlantUML runtime in plantuml/build/libs/ retains its upstream
+  licensing, including the notices and licenses embedded in the JAR.
+  Upstream project and source: https://github.com/plantuml/plantuml
+  Upstream license information: https://plantuml.com/license
+- Package dependencies retain the licenses distributed by their respective
+  authors. Consult each dependency's license and notices when redistributing.
+
+These entries identify licensing boundaries and are not an exhaustive inventory
+of third-party components or their redistribution obligations.
+
+Community distribution: platform billing, operations administration and MCP
+integration have been removed. The engineering workflow and original notices
+are retained; community documentation and navigation describe this scope.

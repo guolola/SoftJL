@@ -1,0 +1,127 @@
+// Exercises lazy history reads, compact lists and event cursors against PostgreSQL-compatible SQL.
+import assert from "node:assert/strict";
+import test from "node:test";
+import { PGlite } from "@electric-sql/pglite";
+import type { Queryable } from "../../db/transactions.js";
+import { createPostgresRunRecordStore } from "./postgres-run-record-store.js";
+import { createEmptySnapshot } from "./snapshots.js";
+import { emitEvent, type RunRecord } from "./run-record-store.js";
+import { summarizeRunRecord } from "./run-record-summaries.js";
+import { buildRunArtifactItems, buildRunArtifactSummary, taskTypeForSnapshot } from "./admin-run-summaries.js";
+
+test("persisted history remains complete without a process-wide snapshot/log cache", async t => {
+  const previousMode = process.env.UML_RUN_QUEUE_MODE;
+  process.env.UML_RUN_QUEUE_MODE = "bullmq";
+  t.after(() => { if (previousMode === undefined) delete process.env.UML_RUN_QUEUE_MODE; else process.env.UML_RUN_QUEUE_MODE = previousMode; });
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(`
+    create table run_records (id text primary key, user_id text, project_id text, source_run_id text,
+      source_action text, source_run_status text, snapshot jsonb, status text, stage text, model text,
+      provider_config_id text, error_message text, error jsonb, error_code text, created_at timestamptz,
+      completed_at timestamptz, updated_at timestamptz);
+    create table run_events (run_id text references run_records(id) on delete cascade,
+      sequence integer, event_type text, payload jsonb, created_at timestamptz default now(),
+      primary key(run_id, sequence));
+  `);
+  const snapshot = {
+    ...createEmptySnapshot("large", "业务需求", ["class"]), status: "completed" as const,
+    providerSettings: { model: "model-a", providerConfigId: "provider-a", apiKey: "private-key" },
+    models: [{ diagramKind: "class", modelId: "class-a", title: "类模型", classes: [{ name: "Internal" }] }],
+    plantUml: [{ diagramKind: "class", modelId: "class-a", source: "@startuml\nclass A\n@enduml" }],
+    svgArtifacts: [{ diagramKind: "class", modelId: "class-a", svg: "<svg>" + "image".repeat(100_000) + "</svg>" }],
+    traceabilityMatrix: { links: [{ id: "link" }], diagnostics: [] },
+  };
+  await db.query(`insert into run_records(id,project_id,snapshot,status,stage,model,created_at,completed_at)
+    values('large','visible',$1,'completed','generate_models','model-a','2026-10-01','2026-10-01T00:01:00Z')`, [JSON.stringify(snapshot)]);
+  await db.exec(`insert into run_events(run_id,sequence,event_type,payload)
+    select 'large',n,'run_activity',jsonb_build_object('type','run_activity','phase','reasoning','text',repeat('thought',300))
+      from generate_series(2,2001) n;
+    insert into run_events(run_id,sequence,event_type,payload) values
+      ('large',1,'run_activity','{"type":"run_activity","stage":"generate_models","phase":"started","inputImages":[{"url":"private-image"}],"text":"private-prompt"}'),
+      ('large',2002,'completed','{"type":"completed","snapshotRef":"large"}');
+    insert into run_records(id,project_id,snapshot,status,stage,created_at,completed_at)
+      select 'batch-' || lpad(n::text,3,'0'), 'visible', '{"runId":"batch","models":[],"status":"completed"}',
+        'completed','generate_models','2026-10-01','2026-10-01' from generate_series(1,205) n;
+    insert into run_records(id,project_id,snapshot,status,stage,created_at) values
+      ('private','private','{"runId":"private","models":[],"status":"running"}','running','generate_models','2026-10-01'),
+      ('design','visible','{"runId":"design","designModelTraceability":[],"models":[],"status":"completed"}','completed','generate_design_models','2026-10-01'),
+      ('document','visible','{"runId":"document","documentKind":"requirementsSpec","sections":[{"title":"chapter","content":"private-body"}],"status":"completed"}','completed','render_document_file','2026-10-01'),
+      ('feasibility','visible','{"runId":"feasibility","selectedArtifacts":[],"status":"completed"}','completed','generate_context','2026-10-01');
+  `);
+  const queries: string[] = [];
+  const queryable: Queryable = { async query<T>(sql: string, params?: readonly unknown[]) {
+    queries.push(sql);
+    const result = await db.query<T>(sql, params ? [...params] : undefined);
+    return { ...result, rowCount: result.rows.length };
+  } };
+  const store = await createPostgresRunRecordStore(queryable);
+
+  await t.test("queue-mode startup performs no historical reads", () => {
+    assert.equal(store.size, 0);
+    assert.equal(queries.length, 0);
+  });
+  await t.test("lists paginate database metadata, preserve summaries and do not cache history", async () => {
+    const records = await store.listRecords!(["visible"]);
+    assert.equal(records.length, 209);
+    assert.equal(records.some(record => record.snapshot.runId === "private"), false);
+    assert.equal(store.size, 0);
+    assert.ok(queries.filter(sql => sql.includes("order by id asc limit 100")).length >= 3);
+    const record = records.find(record => record.snapshot.runId === "large")!;
+    assert.equal(record.events.length, 0);
+    assert.equal(summarizeRunRecord(record).eventCount, 2002);
+    assert.equal(record.persist, undefined);
+    assert.ok(JSON.stringify(record.snapshot).length < 3000);
+    assert.doesNotMatch(JSON.stringify(records), /private-key|private-prompt|private-image|private-body/);
+    assert.deepEqual(buildRunArtifactSummary(record.snapshot), buildRunArtifactSummary(snapshot as unknown as RunRecord["snapshot"]));
+    assert.deepEqual(buildRunArtifactItems(record.snapshot), buildRunArtifactItems(snapshot as unknown as RunRecord["snapshot"]));
+    assert.equal(taskTypeForSnapshot(records.find(record => record.snapshot.runId === "design")!.snapshot), "design_modeling");
+    assert.equal(taskTypeForSnapshot(records.find(record => record.snapshot.runId === "document")!.snapshot), "document_generation");
+    assert.equal(taskTypeForSnapshot(records.find(record => record.snapshot.runId === "feasibility")!.snapshot), "feasibility_analysis");
+    assert.deepEqual(await store.listRecords!([]), []);
+  });
+  await t.test("snapshot-only and filtered replay preserve total counts and terminal cursors", async () => {
+    const plain = (await store.refreshRun("large", { events: "none" }))!;
+    assert.equal(plain.events.length, 0);
+    assert.equal(plain.persistedEventCount, 2002);
+    assert.equal(plain.eventSequence, 2002);
+    const progress = (await store.refreshRun("large", { events: "progress" }))!;
+    assert.deepEqual(progress.events.map(event => event.type), ["run_activity", "completed"]);
+    assert.doesNotMatch(JSON.stringify(progress.events[0]), /private-image|private-prompt/);
+    const resumed = (await store.refreshRun("large", { events: "progress", afterSequence: 2001 }))!;
+    assert.deepEqual(resumed.events.map(event => event.sequence), [2002]);
+    const all = (await store.refreshRun("large"))!;
+    assert.equal(all.events.length, 2002);
+    assert.equal(store.size, 0);
+  });
+  await t.test("actions append after unloaded events and never overwrite the complete snapshot", async () => {
+    const record = (await store.refreshRun("large", { events: "none" }))!;
+    emitEvent(record, { type: "run_action", action: "rerun", sourceRunId: "large", newRunId: "derived", createdAt: "2026-10-01T00:02:00Z" });
+    await store.flush();
+    const reloaded = (await store.refreshRun("large"))!;
+    assert.equal(reloaded.events.at(-1)?.sequence, 2003);
+    assert.equal(reloaded.events.length, 2003);
+    assert.equal("svgArtifacts" in reloaded.snapshot && reloaded.snapshot.svgArtifacts[0]?.svg, snapshot.svgArtifacts[0]!.svg);
+    const summary = (await store.listRecords!(["visible"])).find(record => record.snapshot.runId === "large")!;
+    assert.deepEqual(summarizeRunRecord(summary).derivedRunIds, ["derived"]);
+  });
+  await t.test("live local pipelines retain identity and completed writes release execution memory", async () => {
+    const live: RunRecord = { snapshot: createEmptySnapshot("local", "需求", []), events: [], listeners: new Set(), terminal: false,
+      conversationContext: { forkBranches() {}, commitValidatedBranch() {} } };
+    store.set("local", live);
+    await store.flush();
+    assert.equal(await store.refreshRun("local"), live);
+    live.snapshot.status = "completed";
+    emitEvent(live, { type: "completed", snapshot: live.snapshot });
+    await store.flush();
+    assert.equal(store.get("local"), undefined);
+    assert.equal((await store.refreshRun("local"))?.snapshot.status, "completed");
+    assert.equal(store.size, 0);
+  });
+  await t.test("deleting uncached history remains durable and scoped", async () => {
+    store.delete("large");
+    await store.flush();
+    assert.equal(await store.refreshRun("large"), null);
+    assert.equal((await store.refreshRun("private", { events: "none" }))?.snapshot.status, "running");
+  });
+});

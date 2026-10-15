@@ -1,0 +1,93 @@
+# Runs non-deploying validation for branch and PR changes before the main deploy workflow.
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: uml_user
+          POSTGRES_PASSWORD: uml_ci_password
+          POSTGRES_DB: uml_platform_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U uml_user -d uml_platform_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java for PlantUML tests
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Graphviz for PlantUML tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+          echo "GRAPHVIZ_DOT=$(command -v dot)" >> "$GITHUB_ENV"
+          dot -V
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify PlantUML jar
+        run: test -f plantuml/build/libs/plantuml-1.2026.3beta8.jar
+
+      - name: Build shared packages for tests
+        run: |
+          npm run build:contracts
+          npm run build:prompts
+
+      - name: Audit documentation
+        run: npm run audit:docs
+
+      - name: Test
+        env:
+          UML_MIGRATION_TEST_DATABASE_URL: postgres://uml_user:uml_ci_password@127.0.0.1:5432/uml_platform_ci
+        run: |
+          npm run test:contracts
+          npm run test:api
+          npm run test:render
+          npm run test:web
+          npm run test:harness-eval
+          npm run test:deploy
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Chromium for generation performance regression
+        run: npx playwright install --with-deps chromium
+
+      - name: Check generation UI response under 30000 events
+        run: npm run test --workspace @uml-platform/harness-e2e -- generation-performance.spec.ts --workers=1

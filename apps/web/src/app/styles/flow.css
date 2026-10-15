@@ -1,0 +1,156 @@
+/* Flow theme and original animation definitions, scoped to the public homepage. */
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: var(--template-radius-sm);
+  --radius-md: var(--template-radius-md);
+  --radius-lg: var(--template-radius-lg);
+  --radius-xl: var(--template-radius-xl);
+  --radius-2xl: var(--template-radius-2xl);
+  --radius-3xl: var(--template-radius-3xl);
+  --radius-4xl: var(--template-radius-4xl);
+  --animate-marquee-horizontal: marquee-horizontal var(--marquee-duration) infinite linear;
+  --animate-marquee-vertical: marquee-vertical var(--marquee-duration) infinite linear;
+  --animate-ripple: ripple var(--duration, 3s) ease calc(var(--i, 0) * 0.2s) infinite;
+  @keyframes marquee-horizontal {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(calc(-100% - var(--marquee-gap)));
+    }
+  }
+  @keyframes marquee-vertical {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(calc(-100% - var(--marquee-gap)));
+    }
+  }
+  @keyframes ripple {
+    100% {
+      transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+      transform: translate(-50%, -50%) scale(0.9);
+    }
+  }
+}
+
+:root[data-template="flow"], [data-template="flow"] {
+  --template-radius-sm: calc(var(--radius) - 4px);
+  --template-radius-md: calc(var(--radius) - 2px);
+  --template-radius-lg: var(--radius);
+  --template-radius-xl: calc(var(--radius) + 4px);
+  --template-radius-2xl: calc(var(--radius) + 8px);
+  --template-radius-3xl: calc(var(--radius) + 12px);
+  --template-radius-4xl: calc(var(--radius) + 16px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* For native button elements and elements with role="button", e.g., button, checkbox, radio, switch etc. */
+  button:not(:disabled),
+  [role='checkbox']:not(:disabled),
+  [role='radio']:not(:disabled),
+  [role='switch']:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* For labels associated with form controls */
+  label[for],
+  label:has([role='checkbox']):not(:disabled),
+  label:has([role='radio']):not(:disabled),
+  label:has([role='switch']):not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* For slider component */
+  [role='slider']:not([data-disabled]),
+  [data-slot='slider-track']:not([data-disabled]),
+  [data-slot='slider-thumb']:not([data-disabled]) {
+    cursor: pointer;
+  }
+
+  /* For components with menuitems, e.g., dropdown, context menu, etc. */
+  [role='menuitem']:not(:disabled),
+  [role='menuitemcheckbox']:not(:disabled),
+  [role='menuitemradio']:not(:disabled) {
+    cursor: pointer !important;
+  }
+
+  /* For components with options, e.g., combobox, command, select etc. */
+  [role='option']:not(:disabled),
+  select[data-slot='native-select']:not(:disabled) {
+    cursor: pointer !important;
+  }
+
+  /* For number input spin buttons */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    cursor: pointer;
+  }
+}
+
+.input-default {
+  @apply h-9;
+}
+.input-lg {
+  @apply h-10;
+}
+.input-sm {
+  @apply h-8;
+}
+.input-size-lg {
+  @apply size-10;
+}
+
+[data-slot='button'][data-size='lg']:not(.px-6) {
+  @apply px-4;
+}
+
+[data-slot='button'][data-size='default']:not(.px-6) {
+  @apply px-3;
+}
