@@ -42,20 +42,38 @@ SoftJL Community is a self-hosted AI software engineering workspace, distributed
 
 ## Core Capabilities
 
-| Stage | Included capabilities |
-| --- | --- |
-| Requirements | Rule extraction, quality review, revision and confirmation |
-| Feasibility | System context, business/system flow and implementation options |
-| Requirement models | Functional structure, business flow, use cases, domain concepts, prototype navigation, deployment requirements and analysis models |
-| Design models | Architecture, use-case realization, design classes, page navigation, database, components and deployment |
-| Testing | Test cases, scenarios, traceability and coverage |
-| Documents | Feasibility report, requirements specification and software design description; DOCX versions and optional OnlyOffice editing |
-| Workspace | Projects, members, generation tasks, retries, history and diagram editing/export |
-| Models | Bring your own OpenAI-compatible provider, discover models and test connections |
+### Community and Hosted Comparison
+
+**Community** is the self-hosted edition in this repository. **Hosted** is the service available on the [SoftJL website](https://jianglisoftware.com). ✅ means supported; — means not provided. Configuration and access requirements are listed below.
+
+| Capability | Community | Hosted | Scope and requirements |
+| --- | :---: | :---: | --- |
+| 📝 Requirement rules and confirmation | ✅ | ✅ | Extraction, quality review, revision, human confirmation and acceptance criteria |
+| 🧭 Feasibility: system context | ✅ | ✅ | System boundaries, external actors and interactions |
+| 🧭 Feasibility: business/system flow | ✅ | ✅ | Business processes and system workflows |
+| 🧭 Feasibility: implementation options | ✅ | ✅ | Candidate solutions, costs, benefits and risks |
+| 📐 Complete requirement models | ✅ | ✅ | Functional structure, business flow, use cases, domain concepts, prototype navigation, deployment requirements and analysis models |
+| 🏗️ Complete design models | ✅ | ✅ | Architecture, use-case realization, design classes, page navigation, database, components and deployment |
+| 🧪 Test cases and coverage matrices | ✅ | ✅ | Normal, exceptional and boundary scenarios; execute generated tests against the actual system |
+| 📄 Feasibility report | ✅ | ✅ | Generation, versions and DOCX downloads |
+| 📄 Requirements specification | ✅ | ✅ | Generation, versions and DOCX downloads |
+| 📄 Software design description | ✅ | ✅ | Generation, versions and DOCX downloads |
+| ✏️ Online document editing | ✅ | ✅ | Requires OnlyOffice; configure it for Community, or use the available editing entry in Hosted |
+| 🎨 Diagram editing and export | ✅ | ✅ | PlantUML editing and SVG export |
+| 🔗 Source traceability and change impact | ✅ | ✅ | Artifact sources, dependencies and version changes |
+| 👥 Projects and members | ✅ | ✅ | Authentication, project membership and role permissions |
+| ⏱️ Generation tasks, history and retries | ✅ | ✅ | Review run records and retry failed tasks |
+| 🤖 Bring your own model service (BYOK) | ✅ | ✅ | OpenAI-compatible providers, model discovery and connection tests; usage billed by the provider |
+| ☁️ Website-managed models | — | ✅ | Subject to account configuration, model availability and generation entitlements |
+| 💻 MCP / Coding Agent integration | — | ✅ | Read-only access to designs, acceptance criteria, engineering constraints and tests; real-client compatibility and generated-code acceptance remain pending |
+| 💳 Platform billing, payments and credits | — | ✅ | Purchases, orders and entitlements; Community does not require platform credits |
+| 🛠️ Operations administration | — | ✅ | Restricted to website operators, unavailable to regular accounts |
+| 📦 Open source and self-hosting | ✅ | — | Community source under Apache-2.0; manage your own services and data |
+| 🌐 Online use without deployment | — | ✅ | Access the website with hosting maintained by the platform |
 
 ### Edition boundaries
 
-Platform billing, payments, credit management, the operations administration backend and MCP / Coding Agent integration are excluded. Authentication, project permissions, provider credential protection and generation scheduling remain available. Hosted SoftJL may offer additional features. Provider usage is billed by your own provider; community generation does not require platform credits.
+Platform billing, payments, credit management, the operations administration backend and MCP / Coding Agent integration are excluded. Authentication, project permissions, provider credential protection and generation scheduling remain available. Hosted availability depends on the current deployment, account permissions and service configuration.
 
 Use an independent database. This distribution is not a downgrade path for an existing full-edition database. Generated models and documents require review, and tests must be executed against your actual system.
 
@@ -76,8 +94,8 @@ The original visual style and historical screenshots are retained. See the capab
 Install Node.js 22, npm 10, Java 21 and Graphviz. Docker is optional for the local OnlyOffice service.
 
 ```bash
-git clone https://github.com/guolola/SoftJL-community.git
-cd SoftJL-community
+git clone https://github.com/guolola/SoftJL.git
+cd SoftJL
 npm ci
 npm run dev
 ```
