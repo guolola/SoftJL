@@ -1,4 +1,4 @@
-// Verifies that the primary public, account, and project workflows do not create page-level horizontal overflow.
+// Verifies that the community entry, account, and project workflows do not create page-level horizontal overflow.
 import { expect, test, type Page } from "@playwright/test";
 import { dashboardFixture } from "../../../apps/web/src/features/dashboard/testing/dashboard-fixture";
 import { mockProjectApi, projectId } from "./fixtures/project-workspace";
@@ -74,7 +74,7 @@ async function checkViewportMatrix(page: Page, label: string) {
   }
 }
 
-test("public home, dashboard, projects, and MFA fit the mobile viewport", async ({ page }, info) => {
+test("community entry, dashboard, projects, and MFA fit the mobile viewport", async ({ page }, info) => {
   await mockProjectApi(page);
   await page.route("**/api/dashboard/summary", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(dashboardFixture()) }));
   await page.route("**/api/projects", async (route) => {
@@ -99,9 +99,10 @@ test("public home, dashboard, projects, and MFA fit the mobile viewport", async 
   });
 
   await page.goto("/");
-  await expect(page.getByText("项目概览", { exact: true })).toBeVisible();
-  await checkViewportMatrix(page, "home");
-  await page.screenshot({ path: info.outputPath("home-360.png"), fullPage: true });
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(page.getByRole("heading", { name: "项目首页", exact: true })).toBeVisible();
+  await checkViewportMatrix(page, "community entry");
+  await page.screenshot({ path: info.outputPath("community-entry.png"), fullPage: true });
 
   await page.goto("/dashboard");
   await expect(page.getByText("协作与任务活动", { exact: true })).toBeVisible();
