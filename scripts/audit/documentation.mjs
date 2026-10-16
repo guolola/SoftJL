@@ -89,8 +89,8 @@ function validateLinks(file, content) {
   }
 }
 
-// The repository opens in Chinese; each language retains its own required headings.
-const rootReadmeSections = ["项目简介", "在线访问", "核心能力", "界面预览", "技术架构", "快速开始", "常用命令", "文档导航", "授权"];
+// The repository opens in English; each language retains its own required headings.
+const chineseReadmeSections = ["项目简介", "在线访问", "核心能力", "界面预览", "技术架构", "快速开始", "常用命令", "文档导航", "授权"];
 const englishReadmeSections = [
   "Overview",
   "Online Access",
@@ -120,8 +120,8 @@ for (const file of markdownFiles) {
   if (!fixedNames.has(path.basename(file)) && !content.trimStart().startsWith("<!--")) {
     report(file, "非协议 Markdown 必须以简短职责注释开头");
   }
-  if (file === "README.md") requireSections(file, h2s, rootReadmeSections);
-  if (file === "readme-en.md") requireSections(file, h2s, englishReadmeSections);
+  if (file === "README.md") requireSections(file, h2s, englishReadmeSections);
+  if (file === "readme-zh-cn.md") requireSections(file, h2s, chineseReadmeSections);
   if (file.startsWith("docs/")) {
     requireSections(file, h2s, technicalSections);
     for (const field of ["维护状态", "目标读者", "事实来源"]) {

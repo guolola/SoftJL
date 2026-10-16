@@ -48,4 +48,4 @@ PUBLIC_WEB_BASE_URL=https://community.example.org npm run build:web:production
 
 - [宝塔与 PM2 部署](baota-pm2.md)
 - [生产环境配置](production-environment.md)
-- [仓库首页（简体中文）](../../README.md)
+- [项目介绍（简体中文）](../../readme-zh-cn.md)

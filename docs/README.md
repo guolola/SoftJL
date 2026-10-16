@@ -46,6 +46,7 @@ npm run audit:docs
 
 ## 相关文档
 
-- [仓库首页（简体中文）](../README.md)
+- [仓库首页（English）](../README.md)
+- [项目介绍（简体中文）](../readme-zh-cn.md)
 - [项目协作规范](../AGENTS.md)
 - [线上使用指南](https://jianglisoftware.com/tutorial)
