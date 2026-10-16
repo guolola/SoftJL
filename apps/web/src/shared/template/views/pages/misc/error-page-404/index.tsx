@@ -16,9 +16,9 @@ const Error = () => {
       <div className='flex flex-col items-center justify-center px-4 py-8 text-center'>
         <h2 className='mb-6 text-5xl font-semibold'>{en ? '404 — Page not found' : '404 — 页面未找到'}</h2>
         <h3 className='mb-1.5 text-3xl font-semibold'>{en ? 'This page does not exist' : '你访问的页面不存在'}</h3>
-        <p className='text-muted-foreground mb-6 max-w-sm'>{en ? 'Check the address or return to the homepage.' : '请检查地址，或返回官网继续浏览。'}</p>
-        <Button render={<Link href='/' />} nativeButton={false} size='lg'>
-          {en ? 'Back to home' : '返回官网'}
+        <p className='text-muted-foreground mb-6 max-w-sm'>{en ? 'Check the address or return to your projects.' : '请检查地址，或返回项目列表继续操作。'}</p>
+        <Button render={<Link href='/projects' />} nativeButton={false} size='lg'>
+          {en ? 'Back to projects' : '返回项目列表'}
         </Button>
       </div>
 

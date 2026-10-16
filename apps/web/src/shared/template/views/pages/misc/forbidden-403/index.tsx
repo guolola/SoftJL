@@ -17,8 +17,8 @@ const Forbidden403 = () => {
         <h2 className='mb-6 text-5xl font-semibold'>{en ? '403 — Access denied' : '403 — 无权访问'}</h2>
         <h3 className='mb-1.5 text-3xl font-semibold'>{en ? 'You do not have access to this project' : '当前账户没有此项目的访问权限'}</h3>
         <p className='text-muted-foreground mb-6 max-w-sm'>{en ? 'Contact the project owner to check your membership.' : '请联系项目所有者确认成员权限。'}</p>
-        <Button render={<Link href='/' />} nativeButton={false} size='lg'>
-          {en ? 'Back to home' : '返回官网'}
+        <Button render={<Link href='/projects' />} nativeButton={false} size='lg'>
+          {en ? 'Back to projects' : '返回项目列表'}
         </Button>
       </div>
 

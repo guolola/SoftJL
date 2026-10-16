@@ -1,7 +1,6 @@
-import type { AppRoute, AuthRoutePath, MarketingRoutePath, ProjectRouteSection, ShellRoutePath, } from "../shared/lib/app-route-types";
-export type { AppRoute, AuthRoutePath, MarketingRoutePath, ProjectRouteSection, ShellRoutePath, } from "../shared/lib/app-route-types";
+import type { AppRoute, AuthRoutePath, ProjectRouteSection, ShellRoutePath, } from "../shared/lib/app-route-types";
+export type { AppRoute, AuthRoutePath, ProjectRouteSection, ShellRoutePath, } from "../shared/lib/app-route-types";
 const SHELL_PATHS = new Set<ShellRoutePath>(["/workspace"]);
-const MARKETING_PATHS = new Set<MarketingRoutePath>(["/"]);
 const AUTH_PATHS = new Set<AuthRoutePath>([
     "/login",
     "/register",
@@ -12,8 +11,8 @@ const AUTH_PATHS = new Set<AuthRoutePath>([
 export function matchAppRoute(pathname: string): AppRoute {
     if (["/account/billing", "/billing/alipay/return"].includes(pathname))
         return { kind: "not-found", path: pathname };
-    if (MARKETING_PATHS.has(pathname as MarketingRoutePath)) {
-        return { kind: "marketing-home", path: pathname as MarketingRoutePath };
+    if (pathname === "/") {
+        return { kind: "legacy-redirect", path: pathname, to: "/projects" };
     }
     if (SHELL_PATHS.has(pathname as ShellRoutePath)) {
         return { kind: "shell", path: pathname as ShellRoutePath };

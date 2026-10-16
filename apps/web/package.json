@@ -9,7 +9,7 @@
     "prebuild": "npm run build --workspace @uml-platform/contracts",
     "build": "npm run build:prepared",
     "start": "next start",
-    "seo:verify": "node scripts/verify-seo-deployment.mjs",
+    "deployment:verify": "node scripts/verify-web-deployment.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "preview": "next start",
     "lint": "eslint src --ext .ts,.tsx",

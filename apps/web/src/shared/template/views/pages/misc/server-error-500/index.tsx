@@ -17,8 +17,8 @@ const ServerError = () => {
         <h2 className='mb-6 text-5xl font-semibold'>{en ? '500 — Page unavailable' : '500 — 页面暂时不可用'}</h2>
         <h3 className='mb-1.5 text-3xl font-semibold'>{en ? 'Something went wrong' : '页面发生了错误'}</h3>
         <p className='text-muted-foreground mb-6 max-w-sm'>{en ? 'Reopen the page or try again later.' : '请重新打开页面，或稍后重试。'}</p>
-        <Button render={<Link href='/' />} nativeButton={false} size='lg'>
-          {en ? 'Back to home' : '返回官网'}
+        <Button render={<Link href='/projects' />} nativeButton={false} size='lg'>
+          {en ? 'Back to projects' : '返回项目列表'}
         </Button>
       </div>
 

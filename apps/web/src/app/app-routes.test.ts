@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { matchAppRoute } from "./app-routes";
 
 describe("matchAppRoute dashboard", () => {
+  it("sends the community entry to the project list", () => {
+    expect(matchAppRoute("/")).toEqual({ kind: "legacy-redirect", path: "/", to: "/projects" });
+  });
   it("does not expose the retired exam placeholder", () => {
     expect(matchAppRoute("/exam")).toEqual({ kind: "not-found", path: "/exam" });
   });

@@ -41,7 +41,7 @@ PM2 默认管理 `uml-web`、`uml-api` 和 `uml-render-service`，分别监听�
 1. 准备 Node.js 22、Java 21、Graphviz、PM2、PostgreSQL 和 Nginx；启用队列时另行准备 Redis。
 2. 在 `shared/source` 检出要发布的提交，在 `shared/production.env` 配置生产变量并限制为部署账号可读，参见[生产环境配置](production-environment.md)。
 3. 配置新站点或核对现有 Nginx 配置。可用 `bash scripts/deploy/check-nginx-access.sh <部署目录>` 检查现有权限；它不授予新权限或切换 release。
-4. 设置 `DEPLOY_PATH`、`SOURCE_DIR` 和 `RELEASE_SHA`，运行 `bash scripts/deploy/baota-pm2-git-deploy.sh`。脚本构建 release、执行数据库迁移、启动服务并检查健康和公网 SEO。
+4. 设置 `DEPLOY_PATH`、`SOURCE_DIR` 和 `RELEASE_SHA`，运行 `bash scripts/deploy/baota-pm2-git-deploy.sh`。脚本构建 release、执行数据库迁移、启动服务并检查健康、社区版入口跳转与抓取限制。
 5. 检查日志和版本。发布失败时确认应用与路由均已回滚；手动回滚时还需加载同一份外部环境文件并重启 PM2。
 
 归档部署入口已停用。不要把生产环境文件、服务器账号或私钥提交到仓库。旧的一致性修复和指纹迁移脚本已移除；需要定向修复设计来源时，使用[生成任务 Worker](generation-workers.md)文档中有备份和版本条件的工具。
@@ -57,7 +57,7 @@ curl http://127.0.0.1:4002/health
 curl http://127.0.0.1:4003/
 ```
 
-`releaseSha` 应与发布提交一致。公网检查首页、教程入口、登录及一次完整生成。PlantUML 回归需要 Java 和 Graphviz；不能仅凭 Java 退出码或返回 SVG 就判定绘图成功。
+`releaseSha` 应与发布提交一致。公网检查根地址跳转项目列表、教程入口、登录及一次完整生成。PlantUML 回归需要 Java 和 Graphviz；不能仅凭 Java 退出码或返回 SVG 就判定绘图成功。
 
 部署回归覆盖数据库迁移失败时的进程启动顺序、Nginx 定向迁移与恢复、字体和许可证的离线打包。它们使用隔离目录或模拟依赖，不执行真实发布。
 

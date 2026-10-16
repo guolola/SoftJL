@@ -1,40 +1,31 @@
-// Verifies crawler-visible brand metadata before the client app updates the document head.
+// Verifies the community entry redirect, private metadata and real 404 boundary.
 import { describe, expect, it, vi } from 'vitest';
-import { MARKETING_SEO, PUBLIC_SITE_URL } from '../../features/marketing-site/model/seo';
-import { generateMetadata } from './page';
+import { notFound, redirect } from 'next/navigation';
+import PlatformPage, { generateMetadata } from './page';
 
 vi.mock('../App', () => ({ default: () => null }));
+vi.mock('next/navigation', () => ({
+  redirect: vi.fn(() => { throw new Error('redirect'); }),
+  notFound: vi.fn(() => { throw new Error('not-found'); }),
+}));
 
-describe('server route metadata', () => {
-  it.each([{ slug: undefined }, { slug: [] as string[] }])(
-    'declares the public homepage brand for root params %j',
-    async ({ slug }) => {
-      const metadata = await generateMetadata({ params: Promise.resolve({ slug }) });
-      const home = MARKETING_SEO['/'];
+describe('community server routes', () => {
+  it.each([{ slug: undefined }, { slug: [] as string[] }])('redirects root params %j to projects', async ({ slug }) => {
+    await expect(PlatformPage({ params: Promise.resolve({ slug }) })).rejects.toThrow('redirect');
+    expect(redirect).toHaveBeenCalledWith('/projects');
+  });
 
-      expect(metadata).toMatchObject({
-        title: home.title,
-        description: home.description,
-        alternates: { canonical: PUBLIC_SITE_URL },
-        robots: { index: true, follow: true },
-        openGraph: {
-          siteName: 'SoftJL',
-          type: 'website',
-          locale: 'zh_CN',
-          title: home.title,
-          description: home.description,
-          url: PUBLIC_SITE_URL,
-        },
-      });
-    },
-  );
+  it('excludes application pages from indexing without marketing metadata', () => {
+    expect(generateMetadata()).toEqual({ title: 'SoftJL', robots: { index: false, follow: false } });
+  });
 
-  it.each(['login', 'projects'])('keeps /%s excluded from indexing', async (path) => {
-    const metadata = await generateMetadata({ params: Promise.resolve({ slug: [path] }) });
+  it('renders the project application', async () => {
+    const page = await PlatformPage({ params: Promise.resolve({ slug: ['projects'] }) });
+    expect(page.props.initialPath).toBe('/projects');
+  });
 
-    expect(metadata.title).toBe('SoftJL');
-    expect(metadata.robots).toEqual({ index: false, follow: false });
-    expect(metadata.openGraph).toBeUndefined();
-    expect(metadata.alternates).toBeUndefined();
+  it('returns a real 404 for retired pages', async () => {
+    await expect(PlatformPage({ params: Promise.resolve({ slug: ['features'] }) })).rejects.toThrow('not-found');
+    expect(notFound).toHaveBeenCalled();
   });
 });

@@ -378,15 +378,10 @@ export function AuthPage({
         <WorkbenchBackdrop />
       </div>
       <header className="relative z-20 flex items-center justify-between px-4 py-4 sm:px-8">
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-10 gap-2 px-2 text-sm font-semibold"
-          onClick={() => onNavigate("/")}
-        >
+        <div className="flex h-10 items-center gap-2 px-2 text-sm font-semibold">
           <Logo className="size-7 object-contain" />
           <span>{t("auth.page.platformName")}</span>
-        </Button>
+        </div>
         <LanguagePreferenceMenu />
       </header>
       <section
@@ -395,7 +390,7 @@ export function AuthPage({
       >
         <Card className="w-full max-w-md gap-0 overflow-hidden bg-card/95 p-0 shadow-xl backdrop-blur-2xl supports-backdrop-filter:bg-card/85 dark:bg-popover/95 dark:supports-backdrop-filter:bg-popover/85 lg:grid lg:max-w-4xl lg:grid-cols-2">
           <div className="flex flex-col gap-6 p-6 sm:p-8">
-            <Button
+            {(mfaChallenge || path !== "/login") && <Button
               type="button"
               variant="link"
               className="group h-auto w-fit gap-2 px-0 text-muted-foreground"
@@ -405,12 +400,12 @@ export function AuthPage({
                   setMfaCode("");
                   return;
                 }
-                onNavigate("/");
+                onNavigate("/login");
               }}
             >
               <ArrowLeft className="size-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
-              {mfaChallenge ? t("auth.page.backLogin") : t("auth.page.backHome")}
-            </Button>
+              {t("auth.page.backLogin")}
+            </Button>}
             <div className="flex flex-col gap-6">
               <div className="space-y-2">
                 <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">

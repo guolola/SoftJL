@@ -18,7 +18,6 @@ export const resources = {
       common: {
         appName: "SoftJL",
         appTagline: "毕设与课程设计助手",
-        backToHome: "返回官网首页",
         current: "当前",
         loading: "正在进入项目...",
         notFoundDescription: "这个地址不存在，或页面已经移动。",
@@ -157,7 +156,7 @@ export const resources = {
         goToLogin: "前往登录",
         page: {
           lifecycle: "项目开发生命周期", iterating: "v2.4.1 迭代中", process: "流程跟踪 (Process)", requirements: "需求", design: "设计", code: "代码", document: "说明书",
-          umlPreview: "UML模型预览", compiled: "编译成功", apiLatency: "API 延迟", backHome: "返回官网", welcome: "欢迎回来，请登录以继续。",
+          umlPreview: "UML模型预览", compiled: "编译成功", apiLatency: "API 延迟", welcome: "欢迎回来，请登录以继续。",
           productTagline: "面向毕业设计与课程设计的 AI 一站式辅助平台", platformName: "SoftJL", loginTitle: "登录", registerTitle: "创建账号",
           verifyTitle: "验证邮箱", verifyHeading: "验证您的邮箱", forgotTitle: "找回密码", resetTitle: "重置密码",
           loginDescription: "输入账号信息，进入 SoftJL。", registerDescription: "创建账号后，请先完成邮箱验证再进入项目空间。",
@@ -499,70 +498,6 @@ export const resources = {
           traceKinds: { llm_output: "模型原始返回", parse_error: "解析错误", parsed_model: "解析后的模型", parsed_data: "解析后的数据", validation_error: "校验错误", plantuml_source: "PlantUML 源码", render_error: "渲染错误", repair_output: "修复原始返回", repaired_data: "修复后数据", repaired_plantuml: "修复后 PlantUML", file_content: "文件内容结果" },
           queueReasons: { global: "服务器忙", provider: "供应商繁忙", project: "项目并发已满", user: "用户并发已满", run: "本次任务并发已满" },
           subtaskStatus: { queued: "排队", running: "生成中", repairing: "修复中", rendering: "渲染中", completed: "完成", failed: "失败", pending_review: "待确认" },
-        },
-      },
-      marketing: {
-        header: {
-          homeAria: "SoftJL 官网",
-          navAria: "官网导航",
-        },
-        footer: {
-          copyright: "© 2026 软件工程实践平台。保留所有权利。",
-          aboutTitle: "网站简介",
-          aboutDescription:
-            "本站为个人技术分享网站，由几位长期从事软件工程学科教学的高校老师共同打造。作为软件工程领域前沿技术的探索空间，本站致力于传播软件工程知识，探索前沿理论与技术，期望以此培养行业技术人才，助力国家软件技术发展。如果您对本站有任何意见或建议，欢迎联系我们。",
-          contact: "联系人：洪老师",
-          policeIconAlt: "公安备案图标",
-        },
-        mockup: {
-          projectName: "图书馆借阅系统",
-          progress: "实验进度 {{progress}}%",
-          generationProgress: "生成进度",
-          generatingUml: "正在生成 UML...",
-        },
-        standards: {
-          aria: "参考标准",
-        },
-        home: {
-          heroAria: "让需求、UML模型、原型和说明书一站式生成",
-          heroLine1: "让需求、UML模型、",
-          heroLine2: "原型和说明书",
-          heroAccent: "一站式生成",
-          description: "输入需求文本，平台辅助生成需求规则、UML模型、React 原型与实训说明书。",
-          start: "开始生成",
-          watchIntro: "查看平台介绍",
-          videoDialogDescription: "通过短片了解 SoftJL 如何串联需求、模型、原型和说明书证据。",
-          videoTitle: "SoftJL 介绍视频",
-          videoDescription: "从可信链路和证据视角展示平台核心流程。",
-          videoCaption: "平台介绍视频",
-        },
-        features: {
-          heroAria: "阶段化 AI 辅助的软件工程实验室",
-          heroLine1: "阶段化 AI 辅助的",
-          heroAccent: "现代软件工程实验室",
-          description:
-            "SoftJL 提供从需求分析到代码原型和说明书导出的阶段化工具链。平台通过大模型推理与结构化输出，把需求文本沉淀为可追踪、可渲染、可修复的实训产物。",
-        },
-        workflow: {
-          title: "智能研发实验全链路",
-          description:
-            "SoftJL 提供从需求输入到 UML模型、React 原型和 DOCX 说明书导出的标准化流程，通过大模型推理与结构化校验保留每一步实训产物。",
-          videoHeading: "可信链路功能演示",
-          videoDescription: "用一段短片快速了解需求、模型、原型、说明书和证据如何在同一条链路中连接。",
-          videoTitle: "可信链路功能演示视频",
-          videoPlayerDescription: "从可信链路和证据视角展示平台核心流程。",
-          videoCaption: "使用流程视频",
-        },
-        cases: {
-          title: "探索工程验证案例",
-          description:
-            "通过常见课程与原型验证场景，体验平台如何从同一需求源完成可行性上下文、候选实现方案、需求与设计模型、代码原型及说明书。",
-          feasibilityLabel: "预置可行性分析",
-          includedArtifacts: "打开案例后包含",
-          creating: "创建中...",
-          viewCase: "查看案例",
-          createFailed: "案例项目创建失败，请稍后重试。",
-          notFound: "未找到对应案例，请从下方案例卡片重新选择。",
         },
       },
       workspace: {
@@ -1324,35 +1259,6 @@ export const resources = {
         lineage: "链路图",
         runHistory: "运行历史",
       },
-      seo: {
-        siteName: "SoftJL",
-        notFoundHeading: "页面未找到",
-        notFoundTitle: "页面未找到｜SoftJL",
-        privateTitle: "SoftJL",
-        home: {
-          title: "SoftJL｜毕业设计与课程设计：设计有依据，修改有方向",
-          description:
-            "从需求规则关联 UML、设计、测试与说明书，检查覆盖缺口，查看修改影响，梳理答辩依据。导出设计与测试依据，在自己的仓库中运行和验证。",
-        },
-        features: {
-          title: "功能特性｜需求分析、UML 建模、原型与文档生成",
-          description:
-            "了解 SoftJL 如何连接需求评审、UML 模型、设计推导、代码原型、测试追踪与说明书生成。",
-        },
-        workflow: {
-          title: "使用流程｜从需求输入到 UML、代码与说明书",
-          description: "按照阶段化工作流完成需求输入、规则审查、UML 建模、设计推导、原型代码和软件说明书交付。",
-        },
-        cases: {
-          title: "案例展示｜软件工程建模与生成实践",
-          description:
-            "通过实验室预约、订单履约、设备监控和图书借阅等案例了解需求到模型、代码与文档的完整实践链路。",
-        },
-        pricing: {
-          title: "价格方案｜SoftJL",
-          description: "查看 SoftJL 当前可用方案与生成权益，按实际需求选择适合的软件工程建模和交付能力。",
-        },
-      },
     },
   },
   en: {
@@ -1367,7 +1273,6 @@ export const resources = {
       common: {
         appName: "SoftJL",
         appTagline: "Capstone & Course Projects",
-        backToHome: "Back to home",
         current: "Current",
         loading: "Opening project...",
         notFoundDescription: "This address does not exist, or the page has moved.",
@@ -1506,7 +1411,7 @@ export const resources = {
         goToLogin: "Go to login",
         page: {
           lifecycle: "Project development lifecycle", iterating: "v2.4.1 in progress", process: "Process tracking", requirements: "Requirements", design: "Design", code: "Code", document: "Documents",
-          umlPreview: "UML model preview", compiled: "Build succeeded", apiLatency: "API latency", backHome: "Back to website", welcome: "Welcome back. Sign in to continue.",
+          umlPreview: "UML model preview", compiled: "Build succeeded", apiLatency: "API latency", welcome: "Welcome back. Sign in to continue.",
           productTagline: "An AI assistant for capstone and course projects", platformName: "SoftJL", loginTitle: "Log in", registerTitle: "Create account",
           verifyTitle: "Verify email", verifyHeading: "Verify your email", forgotTitle: "Forgot password", resetTitle: "Reset password",
           loginDescription: "Enter your account details to open the platform.", registerDescription: "After creating an account, verify your email before entering the project workspace.",
@@ -1848,73 +1753,6 @@ export const resources = {
           traceKinds: { llm_output: "Raw model response", parse_error: "Parse error", parsed_model: "Parsed model", parsed_data: "Parsed data", validation_error: "Validation error", plantuml_source: "PlantUML source", render_error: "Render error", repair_output: "Raw repair response", repaired_data: "Repaired data", repaired_plantuml: "Repaired PlantUML", file_content: "File content result" },
           queueReasons: { global: "Server busy", provider: "Provider busy", project: "Project concurrency limit reached", user: "User concurrency limit reached", run: "Run concurrency limit reached" },
           subtaskStatus: { queued: "Queued", running: "Generating", repairing: "Repairing", rendering: "Rendering", completed: "Completed", failed: "Failed", pending_review: "Pending review" },
-        },
-      },
-      marketing: {
-        header: {
-          homeAria: "SoftJL home",
-          navAria: "Website navigation",
-        },
-        footer: {
-          copyright: "© 2026 Software Engineering Practice Platform. All rights reserved.",
-          aboutTitle: "About this site",
-          aboutDescription:
-            "This personal technical sharing site is built by university teachers who have long taught software engineering. As an exploration space for frontier software engineering technologies, it shares knowledge, explores emerging theory and practice, and aims to cultivate technical talent for the software industry.",
-          contact: "Contact: Teacher Hong",
-          policeIconAlt: "Public security registration icon",
-        },
-        mockup: {
-          projectName: "Library Lending System",
-          progress: "Lab progress {{progress}}%",
-          generationProgress: "Generation progress",
-          generatingUml: "Generating UML...",
-        },
-        standards: {
-          aria: "Reference standards",
-        },
-        home: {
-          heroAria: "Generate requirements, UML models, prototypes, and specifications in one place",
-          heroLine1: "Generate requirements,",
-          heroLine2: "UML, prototypes, and specs",
-          heroAccent: "in one place",
-          description:
-            "Enter requirement text, and the platform helps generate requirement rules, UML models, React prototypes, and lab specifications.",
-          start: "Start generating",
-          watchIntro: "Watch intro",
-          videoDialogDescription:
-            "Watch how SoftJL connects requirements, models, prototypes, and specification evidence.",
-          videoTitle: "SoftJL intro video",
-          videoDescription: "Shows the core platform workflow through trusted chains and evidence.",
-          videoCaption: "Platform intro video",
-        },
-        features: {
-          heroAria: "A staged AI-assisted software engineering lab",
-          heroLine1: "A staged AI-assisted",
-          heroAccent: "software engineering lab",
-          description:
-            "The platform provides a staged toolchain from requirements analysis to code prototypes and specification export. With LLM reasoning and structured output, requirement text becomes traceable, renderable, and repairable lab artifacts.",
-        },
-        workflow: {
-          title: "End-to-end intelligent engineering workflow",
-          description:
-            "The platform standardizes the path from requirement input to UML models, React prototypes, and DOCX specifications while preserving every lab artifact through LLM reasoning and structured validation.",
-          videoHeading: "Trusted-chain feature demo",
-          videoDescription:
-            "A short video shows how requirements, models, prototypes, specifications, and evidence connect in the same workflow.",
-          videoTitle: "Trusted-chain feature demo video",
-          videoPlayerDescription: "Shows the core platform workflow through trusted chains and evidence.",
-          videoCaption: "Workflow video",
-        },
-        cases: {
-          title: "Explore engineering validation cases",
-          description:
-            "See how common course and prototype scenarios use one requirement source for feasibility context, candidate implementation plans, requirement and design models, code prototypes, and specifications.",
-          feasibilityLabel: "Included feasibility analysis",
-          includedArtifacts: "Included in the case project",
-          creating: "Creating...",
-          viewCase: "View case",
-          createFailed: "Case project creation failed. Try again later.",
-          notFound: "No matching case was found. Choose a case card below and try again.",
         },
       },
       workspace: {
@@ -2675,37 +2513,6 @@ export const resources = {
         tasks: "Generation tasks",
         lineage: "Lineage graph",
         runHistory: "Run history",
-      },
-      seo: {
-        siteName: "SoftJL",
-        notFoundHeading: "Page not found",
-        notFoundTitle: "Page not found | SoftJL",
-        privateTitle: "SoftJL",
-        home: {
-          title: "Capstone & Course Projects: Traceable Design | SoftJL",
-          description:
-            "Connect requirement rules to UML, designs, tests and specifications. Review coverage gaps, follow change impacts and prepare explanations for your defense. Export your saved models and documents for implementation and verification.",
-        },
-        features: {
-          title: "Features | Requirements, UML Modeling, Prototypes, and Documents",
-          description:
-            "See how the platform connects requirements review, UML models, design derivation, code prototypes, testing traceability, and specification generation.",
-        },
-        workflow: {
-          title: "Workflow | From Requirements to UML, Code, and Documents",
-          description:
-            "Follow a staged workflow for requirements input, rule review, UML modeling, design derivation, prototype code, and software specifications.",
-        },
-        cases: {
-          title: "Case Studies | Software Engineering Modeling and Generation",
-          description:
-            "Explore lab booking, order fulfillment, device monitoring, and library lending examples from requirements to models, code, and documents.",
-        },
-        pricing: {
-          title: "Pricing | SoftJL",
-          description:
-            "Review available plans and generation credits, then choose the software engineering modeling and delivery capabilities that fit your needs.",
-        },
       },
     },
   },

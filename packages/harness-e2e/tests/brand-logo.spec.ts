@@ -35,30 +35,14 @@ for (const path of ['/', '/projects']) {
     const logo = page.locator('svg[data-slot="product-logo"]').first();
     await expect(logo).toBeVisible();
     await expect.poll(() => colors(logo)).toEqual({ badge: null, glyph: [24, 24, 27] });
-    if (path === '/') {
-      await expect.poll(() => colors(page.getByTestId('hero-orbit').locator('[data-slot="product-logo"]')))
-        .toEqual({ badge: [24, 24, 27], glyph: [250, 250, 250] });
-    }
     await page.getByRole('button', { name: /切换明暗主题|切换到深色/ }).click();
     await expect(page.locator('html')).toHaveClass(/dark/);
     await expect.poll(() => colors(logo)).toEqual({ badge: null, glyph: [244, 244, 245] });
-    if (path === '/') {
-      await expect.poll(() => colors(page.getByTestId('hero-orbit').locator('[data-slot="product-logo"]')))
-        .toEqual({ badge: [244, 244, 245], glyph: [24, 24, 27] });
-    }
     await page.reload();
     await expect(page.locator('html')).toHaveClass(/dark/);
     await expect.poll(() => colors(logo)).toEqual({ badge: null, glyph: [244, 244, 245] });
-    if (path === '/') {
-      await expect.poll(() => colors(page.getByTestId('hero-orbit').locator('[data-slot="product-logo"]')))
-        .toEqual({ badge: [244, 244, 245], glyph: [24, 24, 27] });
-    }
     await page.getByRole('button', { name: /切换明暗主题|切换到浅色/ }).click();
     await expect.poll(() => colors(logo)).toEqual({ badge: null, glyph: [24, 24, 27] });
-    if (path === '/') {
-      await expect.poll(() => colors(page.getByTestId('hero-orbit').locator('[data-slot="product-logo"]')))
-        .toEqual({ badge: [24, 24, 27], glyph: [250, 250, 250] });
-    }
   });
 }
 

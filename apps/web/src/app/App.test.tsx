@@ -1546,8 +1546,24 @@ describe("App shell routes", () => {
     expect(screen.queryByRole("separator", { name: "拖拽调整项目菜单宽度" })).not.toBeInTheDocument();
   });
 
+  it.each(["authenticated", "unauthenticated"] as const)("opens the community entry for %s sessions", async mode => {
+    authSessionMode = mode;
+    projectApiMode = mode;
+    window.history.pushState({}, "", "/");
+    render(withWorkspaceProviders(<Shell />, createRepository()));
+    if (mode === "authenticated") {
+      expect(await screen.findByRole("heading", { name: "项目首页" })).toBeInTheDocument();
+      expect(window.location.pathname).toBe("/projects");
+    } else {
+      expect(await screen.findByTestId("auth-shell")).toBeInTheDocument();
+      expect(window.location.pathname).toBe("/login");
+      expect(new URLSearchParams(window.location.search).get("redirect")).toBe("/projects");
+    }
+    expect(document.querySelector('[data-testid="flow-homepage"]')).not.toBeInTheDocument();
+  });
+
   it("matches first-round user platform routes", () => {
-    expect(matchAppRoute("/")).toMatchObject({ kind: "marketing-home" });
+    expect(matchAppRoute("/")).toEqual({ kind: "legacy-redirect", path: "/", to: "/projects" });
     expect(matchAppRoute("/features")).toMatchObject({ kind: "not-found", path: "/features" });
     expect(matchAppRoute("/workflow")).toMatchObject({ kind: "not-found", path: "/workflow" });
     expect(matchAppRoute("/cases")).toMatchObject({ kind: "not-found", path: "/cases" });

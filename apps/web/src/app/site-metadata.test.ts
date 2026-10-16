@@ -1,22 +1,20 @@
-// Checks all crawler-facing outputs use the same deployment origin.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+// Guards crawler exclusions after retiring the public marketing homepage.
+import { describe, expect, it, vi } from 'vitest';
+import sitemap from './sitemap';
 
-afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
+vi.mock('./styles/index.css', () => ({}));
+import robots from './robots';
+import { metadata } from './layout';
 
-describe('deployment metadata', () => {
-  it('uses the configured site for canonical, social, structured data and crawler URLs', async () => {
-    vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'https://community.example.test');
-    vi.resetModules();
-    const { MARKETING_SEO, PUBLIC_SITE_URL } = await import('../features/marketing-site/model/seo');
-    const { default: robots } = await import('./robots');
-    const { default: sitemap } = await import('./sitemap');
-    const { generateMetadata } = await import('./[[...slug]]/page');
-    expect(PUBLIC_SITE_URL).toBe('https://community.example.test');
-    expect(MARKETING_SEO['/'].jsonLd?.every(item => item.url === PUBLIC_SITE_URL)).toBe(true);
-    expect(robots().sitemap).toBe(`${PUBLIC_SITE_URL}/sitemap.xml`);
-    expect(sitemap()[0].url).toBe(`${PUBLIC_SITE_URL}/`);
-    const metadata = await generateMetadata({ params: Promise.resolve({ slug: [] }) });
-    expect(metadata.alternates?.canonical).toBe(PUBLIC_SITE_URL);
-    expect(metadata.openGraph).toMatchObject({ url: PUBLIC_SITE_URL });
+describe('community metadata', () => {
+  it('blocks crawling without advertising a public sitemap', () => {
+    expect(robots()).toEqual({ rules: { userAgent: '*', disallow: '/' } });
+    expect(sitemap()).toEqual([]);
+  });
+
+  it('excludes all application pages from indexing by default', () => {
+    expect(metadata.robots).toEqual({ index: false, follow: false });
+    expect(metadata.openGraph).toBeUndefined();
+    expect(metadata.alternates).toBeUndefined();
   });
 });

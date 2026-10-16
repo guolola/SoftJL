@@ -223,3 +223,14 @@ it.each([
   // input-otp mirrors the selection on 0/10/50 ms timers; let them finish before jsdom teardown.
   await new Promise((resolve) => window.setTimeout(resolve, 60));
 });
+
+it("omits website navigation from login and returns registration to login", async () => {
+  const onNavigate = vi.fn();
+  const user = userEvent.setup();
+  const { rerender } = render(<AppI18nProvider><AuthPage path="/login" onNavigate={onNavigate} /></AppI18nProvider>);
+  expect(screen.queryByRole("button", { name: "返回官网" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "返回登录" })).not.toBeInTheDocument();
+  rerender(<AppI18nProvider><AuthPage path="/register" onNavigate={onNavigate} /></AppI18nProvider>);
+  await user.click(screen.getByRole("button", { name: "返回登录" }));
+  expect(onNavigate).toHaveBeenCalledWith("/login");
+});

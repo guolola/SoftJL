@@ -1,51 +1,39 @@
-<!-- 说明 Next.js 站点 SEO 资源与上线后的维护检查。 -->
-
+<!-- 说明社区版应用的搜索索引边界与部署检查。 -->
 # SEO 运维
 
-| 元信息 | 内容 |
-| --- | --- |
-| 维护状态 | 生产使用 |
-| 目标读者 | Web 开发、内容与部署人员 |
-| 事实来源 | Web 构建脚本、路由元信息与生产站点配置 |
+- 维护状态：维护中
+- 目标读者：Web 开发与社区部署人员
+- 事实来源：Web 根布局、应用路由、robots 与部署验证脚本
 
 ## 概述
 
-SEO 配置由 Next.js 页面元信息、规范链接、结构化数据、站点地图与 robots 规则共同组成。生产规范地址由构建时的 `PUBLIC_WEB_BASE_URL` 统一提供给页面元信息、客户端导航、站点地图和 robots。
+社区版提供项目工作台，不包含官网宣传首页。所有应用页面默认使用 `noindex, nofollow`，不提供公开营销页面的搜索元信息。
 
 ## 当前设计或配置
 
-- 首页提供稳定的标题、摘要和规范 URL，v2 的公开营销内容集中在首页。
-- Next.js 的 `robots.ts` 与 `sitemap.ts` 输出爬虫文件，首页由服务端输出元信息和结构化数据。
-- 登录与业务路由使用不索引元信息；旧营销子页返回真实 404。
-- 部署后 HTTP 校验会检查规范链接、爬虫文件、私有页面与 404。
-
-### 部署者配置
-
-以下变量在 Web 构建前设置；变更后需要重新构建前端。
-
-| 变量 | 用途 | 未配置时 |
-| --- | --- | --- |
-| `PUBLIC_WEB_BASE_URL` | 本次部署的 HTTPS 根地址，不带路径、查询或片段 | 开发使用本机地址；生产 SEO 构建拒绝缺省值 |
-
-页脚保留导航、项目与线上指南入口，移除原站点介绍、联系方式及版权备案展示区。
+- 根地址 `/` 在服务端跳转 `/projects`，未登录时沿用登录验证和登录后返回项目列表的流程。
+- `robots.txt` 禁止抓取全部路径，不再声明站点地图；`/sitemap.xml` 保留为空地图。
+- 首页模板、专用图片、分享封面、规范链接及结构化数据已移除。
+- Web 构建不再要求 SEO 域名变量。API 对外访问和 MCP 的部署地址仍按各自配置维护。
+- 旧营销子页返回真实 404，旧 `/tutorial` 地址继续跳转线上使用指南。
 
 ## 操作与维护
 
-1. 新增公开路由时补齐标题、摘要、规范链接和必要的结构化数据。
-2. 路由改名时同步站点地图、内部链接和重定向策略。
-3. 更新品牌或域名时全仓检查旧名称与旧地址。
-4. 发布后向搜索平台提交新的站点地图，并观察抓取错误。
+应用入口或认证流程变更时，同步根地址跳转和浏览器检查。不要在私有项目页面发布结构化数据或向站点地图添加应用地址。部署后设置目标地址 `PUBLIC_WEB_BASE_URL`，运行 Web 部署验证脚本。
 
 ## 验证
 
 ```bash
-PUBLIC_WEB_BASE_URL=https://community.example.org npm run build:web:production
+npm run build:web:production
+npm run test:web
+npm run typecheck:web
+PUBLIC_WEB_BASE_URL=https://community.example.org npm run deployment:verify --workspace @uml-platform/web
 ```
 
-检查生产 HTML 中的标题、描述、规范链接和结构化数据，并确认 `robots.txt`、站点地图与首页返回成功且没有本地地址；旧 `/tutorial` 地址应跳转到线上使用指南。设置部署目标 `PUBLIC_WEB_BASE_URL` 后运行 `node apps/web/scripts/verify-seo-deployment.mjs` 可复查公开站点。
+验证覆盖入口跳转、登录与项目页面的不索引元信息、robots 抓取限制、空站点地图与旧营销地址的 404。
 
 ## 相关文档
 
+- [社区版维护](../development/community-edition.md)
 - [宝塔与 PM2 部署](baota-pm2.md)
 - [生产环境配置](production-environment.md)
-- [项目介绍（简体中文）](../../readme-zh-cn.md)

@@ -57,7 +57,7 @@
     "eval:harness": "npm run eval --workspace @uml-platform/harness-eval",
     "dev:mcp": "cross-env MCP_ENABLED=true MCP_PUBLIC_ORIGIN=http://localhost:3000 MCP_WEB_ORIGIN=http://localhost:3000 npm run dev",
     "build:web:prepared": "npm run build:prepared --workspace @uml-platform/web",
-    "build:web:production:prepared": "cross-env NEXT_PUBLIC_APP_API_BASE_URL= SEO_REQUIRE_SITE_URL=true npm run build:web:prepared",
+    "build:web:production:prepared": "cross-env NEXT_PUBLIC_APP_API_BASE_URL= npm run build:web:prepared",
     "test:prompts": "npm run test --workspace @uml-platform/prompts",
     "test:scripts": "node --test scripts/dev/*.test.mjs apps/api/scripts/*.test.mjs",
     "typecheck:harness-eval": "npm run typecheck --workspace @uml-platform/harness-eval"

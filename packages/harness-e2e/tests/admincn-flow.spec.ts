@@ -13,7 +13,7 @@ const scenarios = [
 for (const {viewport, locale, colorScheme} of scenarios) {
   test.describe(`${viewport.width} ${locale} ${colorScheme}`, () => {
     test.use({viewport, locale, colorScheme});
-    test('AdminCN shell, controls, v2 auth and Flow homepage', async ({page}, info) => {
+    test('AdminCN shell, controls, v2 auth and community entry', async ({page}, info) => {
       test.setTimeout(90_000);
       const errors: string[] = [];
       page.on('pageerror', error => errors.push(error.message));
@@ -60,13 +60,9 @@ for (const {viewport, locale, colorScheme} of scenarios) {
       expect(await overflow()).toBeLessThanOrEqual(1);
       await page.screenshot({path:info.outputPath('auth-v2.png')});
       await page.goto('/');
-      await expect(page.getByTestId('flow-homepage')).toBeVisible();
-      await page.evaluate(() => document.fonts.ready);
-      const sections = await page.locator('main > section').evaluateAll(nodes => nodes.map(node => node.id));
-      expect(sections).toEqual(['home','trusted-brands','features','benefits','testimonials','faq','cta']);
+      await expect(page).toHaveURL(/\/projects$/);
+      await expect(page.locator('html')).toHaveAttribute('data-template','admincn');
       expect(await overflow()).toBeLessThanOrEqual(1);
-      await expect(page.locator('html')).toHaveAttribute('data-template','flow');
-      await page.screenshot({path:info.outputPath('flow-hero.png')});
       await page.goto('/features');
       await expect(page.getByRole('heading',{name:/404/})).toBeVisible();
       await expect(page.locator('html')).not.toHaveAttribute('data-template','flow');
@@ -88,7 +84,7 @@ test('all retired marketing addresses render the template 404',async({page})=>{
   }
 });
 
-test('marketing and workspace headers share the selected palette without responsive overflow', async ({page}) => {
+test('project list and workspace headers share the selected palette without responsive overflow', async ({page}) => {
   await page.addInitScript(() => {
     localStorage.setItem('admincn-ui-theme', 'light');
     localStorage.setItem('uml-lab-locale-preference', 'zh-CN');
@@ -97,7 +93,7 @@ test('marketing and workspace headers share the selected palette without respons
 
   await page.goto('/');
   const paletteButton = page.getByRole('button', {name:'主题色板'});
-  const modeButton = page.getByRole('button', {name:'切换明暗主题'});
+  const modeButton = page.getByRole('button', {name:/切换到深色|切换到浅色/});
   await expect(paletteButton).toBeVisible();
   expect(await paletteButton.evaluate((palette, mode) => Boolean(
     palette.compareDocumentPosition(mode as Node) & Node.DOCUMENT_POSITION_FOLLOWING
@@ -107,9 +103,6 @@ test('marketing and workspace headers share the selected palette without respons
   await expect.poll(() => page.evaluate(() => localStorage.getItem('admincn-ui-theme-preset'))).toBe('caffeine');
   await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--primary')))
     .toBe(themePresets.caffeine.styles.light.primary);
-  await expect.poll(() => page.getByTestId('flow-homepage').evaluate(element =>
-    getComputedStyle(element).getPropertyValue('--primary').trim()
-  )).toBe(themePresets.caffeine.styles.light.primary);
 
   await page.goto(`/projects/${projectId}`);
   await expect(page.locator('#requirement-text')).toBeVisible();
@@ -123,9 +116,6 @@ test('marketing and workspace headers share the selected palette without respons
   await page.goto('/');
   await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--primary')))
     .toBe(themePresets['classic-indigo'].styles.light.primary);
-  await expect.poll(() => page.getByTestId('flow-homepage').evaluate(element =>
-    getComputedStyle(element).getPropertyValue('--primary').trim()
-  )).toBe(themePresets['classic-indigo'].styles.light.primary);
 
   for (const width of [375, 1024, 1440]) {
     await page.setViewportSize({width, height: 900});

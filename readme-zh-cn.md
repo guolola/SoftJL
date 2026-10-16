@@ -120,13 +120,7 @@ MCP 本地体验使用 `npm run dev:mcp`（先完成下方首次安装与构建�
 
 ## 界面预览
 
-<p align="center"><strong>官网首页与项目工作台预览</strong></p>
-
-### 🌐 官网首页
-
-![官网首页 — 桌面首屏](docs/images/readme-homepage.jpg)
-
-沿用 SoftJL 的视觉与历史截图；社区版的功能范围以本页说明为准，托管版入口可能与自部署版本不同。
+社区版直接进入项目列表，未登录时进入登录流程。功能范围以本页说明为准。
 
 ### 项目仪表盘
 
@@ -157,7 +151,7 @@ flowchart LR
 
 | 目录 | 职责 |
 | --- | --- |
-| apps/web | React、Next.js 工作区与官网页面 |
+| apps/web | React、Next.js 项目工作区 |
 | apps/api | Fastify、认证、生成流水线、记录与文档组装 |
 | apps/render-service | PlantUML 图形渲染 |
 | packages/contracts、packages/prompts | 共享契约与生成提示 |

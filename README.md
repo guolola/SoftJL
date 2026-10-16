@@ -104,11 +104,7 @@ Use an independent database. This distribution is not a downgrade path for an ex
 
 ## Interface Preview
 
-The original visual style and historical screenshots are retained. See the capability table for the current community scope.
-
-### Homepage
-
-![SoftJL homepage](docs/images/readme-homepage.jpg)
+The community edition opens the project list directly, with sign-in required. See the capability table for the current community scope.
 
 ### Project dashboard
 

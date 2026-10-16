@@ -153,15 +153,6 @@ verify_web_bundle() {
   echo "Next.js web bundle check passed: $web_dir"
 }
 
-verify_web_seo_artifacts() {
-  local web_dir="$1"
-  if [[ ! -f "$web_dir/public/og-cover.png" && ! -f "$web_dir/.next/standalone/apps/web/public/og-cover.png" ]]; then
-    echo "Next.js public SEO cover is missing: $web_dir" >&2
-    exit 1
-  fi
-  echo "Next.js public SEO asset check passed: $web_dir"
-}
-
 copy_release_payload() {
   echo "Creating release payload ..."
   rm -rf "$TMP_DIR" "$RELEASE_DIR"
@@ -459,7 +450,6 @@ if [[ ! -f "$TMP_DIR/apps/web/.next/standalone/apps/web/server.js" ]]; then
   exit 1
 fi
 verify_web_bundle "$TMP_DIR/apps/web"
-verify_web_seo_artifacts "$TMP_DIR/apps/web"
 
 mv "$TMP_DIR" "$RELEASE_DIR"
 ln -sfnT "$RELEASE_DIR" "$DEPLOY_PATH/current"
@@ -479,9 +469,9 @@ if ! run_timed "switch Nginx to Next.js" \
   exit 1
 fi
 
-if ! run_timed "public SEO verification" \
-  node "$SOURCE_DIR/apps/web/scripts/verify-seo-deployment.mjs"; then
-  echo "New release failed SEO checks; restoring previous release" >&2
+if ! run_timed "community web verification" \
+  node "$SOURCE_DIR/apps/web/scripts/verify-web-deployment.mjs"; then
+  echo "New release failed web checks; restoring previous release" >&2
   rollback_to_previous_release
   exit 1
 fi

@@ -22,8 +22,6 @@ import { RequirementsModelPage, SystemRequirementsPage } from "../features/requi
 import { FeasibilityPage } from "../features/feasibility/components/feasibility-page";
 import { TraceabilityMatrixPage } from "../features/traceability/components/traceability-matrix-page";
 import { TestModelPage } from "../features/testing/components/test-model-page";
-import { MarketingHomePage } from "../features/marketing-site/components/marketing-home-page";
-import { applyRouteMetadata } from "../features/marketing-site/model/seo";
 import { SidebarMenu } from "../features/workspace-shell/components/sidebar-menu";
 import { SidebarUserDropdown } from "../features/workspace-shell/components/sidebar-user-dropdown";
 import { TopBar, type TopBarProps, } from "../features/workspace-shell/components/top-bar";
@@ -281,9 +279,10 @@ export function Shell({ initialPath }: {
         }
     }, [route]);
     useEffect(() => {
-        document.documentElement.dataset.template = route.kind === 'marketing-home' ? 'flow' : 'admincn';
-        // Keep head metadata aligned with client-side History API navigation.
-        applyRouteMetadata(route, undefined, locale);
+        // Keep the localized 404 title aligned with History API navigation.
+        document.title = route.kind === "not-found"
+            ? locale === "en" ? "Page not found | SoftJL" : "页面未找到｜SoftJL"
+            : "SoftJL";
     }, [locale, route]);
     useEffect(() => {
         const handlePopState = () => {
@@ -335,9 +334,6 @@ export function Shell({ initialPath }: {
     const consentInteractionId = route.kind === "mcp-connections" && typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("interaction") : null;
     const renderRoute = () => {
         if (route.kind === "mcp-connections") return consentInteractionId ? <McpConsentPage interactionId={consentInteractionId} onNavigate={navigate} /> : <McpConnectionsPage onNavigate={navigate} />;
-        if (route.kind === "marketing-home") {
-            return <MarketingHomePage path={route.path} onNavigate={navigate}/>;
-        }
         if (route.kind === "shell") {
             return <RedirectRoute to="/projects" onNavigate={navigate}/>;
         }
@@ -374,7 +370,6 @@ export function Shell({ initialPath }: {
     const protectedRoutePath = getProtectedRoutePath(route);
     const routeContent = renderRoute();
     const showWorkspaceTopBar = !consentInteractionId && route.kind !== "project-workspace" &&
-        route.kind !== "marketing-home" &&
         route.kind !== "auth" &&
         route.kind !== "invitation-accept" &&
         route.kind !== "legacy-redirect" &&
@@ -383,7 +378,7 @@ export function Shell({ initialPath }: {
         {content}
     </DefaultPagesLayout>);
     const shellContent = (<FloatingAlertProvider>
-    <SidebarProvider resizable={route.kind === 'project-workspace'} className={route.kind === 'marketing-home' || route.kind === 'not-found' ? 'block min-h-screen w-full' : 'flex min-h-svh w-full flex-col bg-background text-foreground'}>
+    <SidebarProvider resizable={route.kind === 'project-workspace'} className={route.kind === 'not-found' ? 'block min-h-screen w-full' : 'flex min-h-svh w-full flex-col bg-background text-foreground'}>
       <PageErrorBoundary resetKey={route.path}>
       {protectedRoutePath ? (<AuthenticatedRoute routeKey={protectedRoutePath} onNavigate={navigate} showLoadingScreen={route.kind === "project-workspace" || loginLoadingRoute === route.path} renderLayout={showWorkspaceTopBar ? renderPlatformLayout : undefined}>
           {routeContent}
