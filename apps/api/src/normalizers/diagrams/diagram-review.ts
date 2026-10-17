@@ -83,8 +83,11 @@ export function deriveAuthorizedRepairs(model: ReviewModel, basis: DiagramReview
       if (owner && model.packages.some((item) => item.id === owner)) change(`relationships.${i}.sourceId`, owner, "explicit-owner", edge.id, target!.id, "包含关系必须指向模型明确声明的归属");
     });
   }
-  // Only exact predicates with accepted source/manual provenance qualify. Opposite polarity may be a valid false branch.
+  // Legacy facts require accepted provenance. V2 rules retain full text, so a
+  // uniquely traced literal predicate can support a finding without inventing
+  // atomic facts or treating generated rules as human approval.
   const facts = basis.baseline?.requirements.filter((requirement) => requirement.status === "accepted" && requirement.condition && requirement.fieldProvenance?.condition?.status === "accepted" && ["source-text", "manual"].includes(requirement.fieldProvenance.condition.source)) ?? [];
+  const ruleFacts = basis.baseline?.rules ?? [];
   const visit = (value: unknown, path: string, elementId?: string) => {
     if (!value || typeof value !== "object") return;
     const row = value as Record<string, unknown>; const id = typeof row.id === "string" ? row.id : elementId;
@@ -95,11 +98,21 @@ export function deriveAuthorizedRepairs(model: ReviewModel, basis: DiagramReview
         const matches = facts.filter((fact) => {
           const required = comparison(fact.condition!);
           return required && actual && required.key === actual.key && trustedBinding(basis.traceability, model, id, fact.sourceRuleId ?? fact.id, basis.requirementTraceability);
-        });
+        }).map(fact => ({ id: fact.id, condition: fact.condition! }));
+        if (actual && !/&&|\|\||且|或|\band\b|\bor\b/.test(item) && actual.key.indexOf("#") > 0) {
+          for (const rule of ruleFacts) {
+            if (!trustedBinding(basis.traceability, model, id, rule.id, basis.requirementTraceability)) continue;
+            const predicate = comparison(rule.manualFields?.condition ?? rule.text);
+            if (!predicate) continue; // Multiple boundaries require semantic review.
+            const position = predicate.key.indexOf(actual.key);
+            if (position < 0 || /[\d.]/.test(predicate.key.charAt(position + actual.key.length))) continue;
+            matches.push({ id: rule.requirementId, condition: item.replace(/>=|<=|>|<|不少于|至少|大于等于|不超过|至多|最多|小于等于|超过|大于|少于|小于/, predicate.op) });
+          }
+        }
         if (matches.length === 1 && actual) {
           const required = comparison(matches[0]!.condition!)!;
           if ((required.op === ">=" && actual.op === ">") || (required.op === "<=" && actual.op === "<")) {
-            change(fieldPath, matches[0]!.condition, "confirmed-comparator", id, matches[0]!.id, "恢复已确认业务条件的边界比较符");
+            change(fieldPath, matches[0]!.condition, "confirmed-comparator", id, matches[0]!.id, "模型边界比较符与追踪需求中的明确条件不一致，请核对");
             if (model.diagramKind === "activity" && path.startsWith("relationships.")) {
               const index = Number(path.split(".")[1]); const edge = model.relationships[index]!;
               const siblings = model.relationships.filter((candidate) => candidate.sourceId === edge.sourceId);

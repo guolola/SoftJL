@@ -1,5 +1,6 @@
 // Defines the in-memory run record boundary shared by routes, pipelines, and SSE.
 import { randomUUID } from "node:crypto";
+import { acceptOutputEvent } from "./run-output-provenance.js";
 import type {
   DashboardRun,
   
@@ -76,6 +77,8 @@ export interface RunRecordMetadata {
   offlineDemoFixture?: "library-seat";
   userId?: string;
   projectId?: string;
+  /** Canonical system name from the project, kept identical across every generated model. */
+  systemName?: string;
   model?: string;
   createdAt: string;
   completedAt?: string;
@@ -188,6 +191,8 @@ export function emitEvent(record: RunRecord, event: RunEvent) {
     record.beforeTerminalStages?.clear();
   }
   event = { ...event, eventId: event.eventId ?? randomUUID(), createdAt: event.createdAt ?? new Date().toISOString() };
+  // Artifact receipts are persisted with the accepted snapshot before terminal publication.
+  acceptOutputEvent(record, event);
   const storeEvent = shouldStoreEvent(event);
   if (storeEvent) {
     event = { ...event, sequence: (record.eventSequence ?? record.events.at(-1)?.sequence ?? record.events.length) + 1 };

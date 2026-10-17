@@ -47,7 +47,7 @@ describe('lineage node toolbar', () => {
       render(<I18nextProvider i18n={i18n}><LineageGraphPage projectId='failed-metadata-project' projectRuns={[{ runId: 'failed-read', status: 'completed' }]} /></I18nextProvider>);
       expect(await screen.findByTestId('lineage-node-requirement-model:function')).toBeInTheDocument();
       await waitFor(() => expect(request).toHaveBeenCalledOnce());
-      expect(screen.getAllByText('耗时未记录').length).toBe(2);
+      expect(screen.queryByText('耗时未记录')).not.toBeInTheDocument();
     } finally { request.mockRestore(); }
   });
   it('keeps type icons identical in cards and details across language changes', async () => {

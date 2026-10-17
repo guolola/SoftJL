@@ -3,6 +3,8 @@ import type { RunEvent } from "@uml-platform/contracts";
 import { localizeRunFailure } from "../../../shared/i18n/api-errors";
 
 export function shouldRefreshRunSnapshotFromEvent(event: RunEvent) {
+  if (event.type === "artifact_ready" &&
+    ["feasibilityContext", "feasibilityBusinessFlow", "feasibilityImplementation"].includes(event.artifactKind)) return true;
   if (
     event.type === "artifact_ready" &&
     (event.artifactKind === "model" ||

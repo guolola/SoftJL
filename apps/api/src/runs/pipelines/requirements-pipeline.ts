@@ -1,10 +1,13 @@
 // Orchestrates requirement extraction, model generation, PlantUML, and SVG rendering.
-import { mapWithConcurrency, useCaseModelForSingleUseCase } from "./shared/generation-helpers.js";
+import { missingRequestedModelOutputs } from "../records/run-output-provenance.js";
 import { getStageModelSchema, contractResponseSchema } from "@uml-platform/contracts";
 
 import { createStageLifecycle } from "./shared/stage-lifecycle.js";
 import { screenRequirementInput } from "./requirements/input-screening.js";
 import { extractRequirementRulesWithRepair } from "./requirements/extract-requirement-rules.js";
+import { prepareRequirementInput } from "./requirements/prepare-requirement-input.js";
+import { withRequirementTokenUsage } from "../records/requirement-token-usage.js";
+import { withRunReasoning } from "./shared/run-reasoning.js";
 import {
   artifactReadyRunEventSchema,
   completedRunEventSchema,
@@ -37,6 +40,7 @@ import {
   getGenerateModelsResponseFormat,
   getGenerateRequirementTraceabilityResponseFormat,
 } from "../../adapters/llm/response-formats/index.js";
+
 import {
   parseRequirementDiagramModelsOnly,
   parseRequirementDiagramModelsResult,
@@ -58,6 +62,7 @@ import {
   RunCancelledError,
   throwIfRunCancelled,
 } from "../records/run-cancellation.js";
+
 import { DiagramReviewRenderError, reviewRenderedArtifact } from "./render/review-rendered-artifact.js";
 import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
 import { withConversationBranch } from "./shared/conversation-context.js";
@@ -78,6 +83,7 @@ import {
   assertRequirementBaselineAllowsDownstream,
   buildEmptyRequirementBaseline,
   buildRequirementBaseline,
+  reconcileExtractedRuleIds,
 } from "../baselines/requirement-baseline.js";
 import {
   assertTrustedChainAllowsCompletion,
@@ -101,6 +107,26 @@ function compactText(value: unknown) {
     : "";
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(items[currentIndex]!, currentIndex);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
 
 function readRequirementAnalysisConcurrency() {
   const runConcurrency = positiveIntegerEnv(
@@ -149,6 +175,23 @@ function useCaseHasEventFlows(useCase: UseCaseForAnalysis) {
   return Array.isArray(useCase.eventFlows) && useCase.eventFlows.length > 0;
 }
 
+function useCaseModelForSingleUseCase(
+  useCaseModel: DiagramModelSpec,
+  sourceUseCaseId: string,
+) {
+  if (useCaseModel.diagramKind !== "usecase") return useCaseModel;
+  const useCase = useCaseModel.useCases.find((item) => item.id === sourceUseCaseId);
+  if (!useCase) return useCaseModel;
+  return {
+    ...useCaseModel,
+    useCases: [useCase],
+    relationships: useCaseModel.relationships.filter(
+      (relationship) =>
+        relationship.sourceId === sourceUseCaseId ||
+        relationship.targetId === sourceUseCaseId,
+    ),
+  };
+}
 
 type UseCaseForAnalysis = ReturnType<typeof useCasesFromModel>[number];
 type AnalysisRequirementModel = Extract<DiagramModelSpec, { diagramKind: "analysis" }>;
@@ -156,7 +199,6 @@ type AnalysisRequirementModel = Extract<DiagramModelSpec, { diagramKind: "analys
 function requirementModelId(model: DiagramModelSpec) {
   return compactText((model as unknown as { modelId?: string }).modelId) || model.diagramKind;
 }
-
 
 function requirementArtifactKey(
   artifact: Pick<PlantUmlArtifact | SvgArtifact, "diagramKind" | "modelId">,
@@ -354,6 +396,13 @@ async function generateAnalysisModelWithRepair(
           stage: "generate_models",
           progress: stageProgressValue("generate_models"),
           message: `需求分析模型结构不合法，正在修复（${attempt + 1}/${MAX_MODEL_REPAIR_ATTEMPTS}）`,
+          diagramKind: "analysis",
+          modelId,
+          subtaskId: modelId,
+          subtaskLabel: sourceUseCase
+            ? `需求分析模型：${sourceUseCase.name}`
+            : "需求分析模型",
+          subtaskStatus: "repairing",
         }),
       );
       onActivity?.();
@@ -398,7 +447,6 @@ function analysisModelMatchesTarget(
 ) {
   return targetUseCaseIds.has(analysisSourceUseCaseId(model));
 }
-
 
 function validateUseCaseAnalysisCoverage(
   analysisModels: AnalysisRequirementModel[],
@@ -473,16 +521,6 @@ function buildCompactActivityModelPrompt(
   rules: RequirementRule[],
   requirementBaseline: RequirementBaseline,
 ) {
-  const compactRequirements = requirementBaseline.requirements.map((requirement) => ({
-    id: requirement.id,
-    type: requirement.type,
-    actor: requirement.actor,
-    action: requirement.action,
-    object: requirement.object,
-    condition: requirement.condition,
-    outcome: requirement.outcome,
-    acceptanceCriteria: requirement.acceptanceCriteria,
-  }));
   return [
     "请只生成需求阶段总体业务流程 activity 模型。",
     "这是 activity 子任务超时后的精简重试：优先返回完整、合法、较小的 JSON，不要输出解释、Markdown 或代码块。",
@@ -496,7 +534,7 @@ function buildCompactActivityModelPrompt(
     JSON.stringify(rules, null, 2),
     "",
     "压缩后的 RequirementBaseline 需求项：",
-    JSON.stringify(compactRequirements, null, 2),
+    JSON.stringify({ conflicts: requirementBaseline.conflicts, issues: requirementBaseline.qualityReport.issues }),
   ].join("\n");
 }
 
@@ -1006,6 +1044,8 @@ export async function runStagePipeline(
   pngRenderClient?: PngRenderClient,
 ) {
   const snapshot = record.snapshot as RunSnapshot;
+  llmTransport = withRequirementTokenUsage(record, providerSettings.model, llmTransport);
+  llmTransport = withRunReasoning(llmTransport, snapshot.reasoning);
 
   const stages = createStageLifecycle(record);
   const updateStage = (stage: RunStage, message?: string) => {
@@ -1082,11 +1122,17 @@ export async function runStagePipeline(
   if (rules.length === 0 || snapshot.selectedDiagrams.length === 0) {
     updateStage("extract_rules", "正在抽取需求规则");
     const timeoutConfig = readRequirementModelTaskTimeoutConfig();
+    // Build an isolated source candidate; publish text and rules together only after validation succeeds.
+    const sourceText = await withModelTaskTimeout(
+      (markActivity, markBlankActivity, abortSignal) => prepareRequirementInput({ record, snapshot, providerSettings, llmTransport, abortSignal, onActivity: markActivity, onBlankActivity: markBlankActivity }),
+      { ...timeoutConfig, label: "需求附件读取", isCancelled: () => isRunCancelled(record), createCancelError: () => new RunCancelledError(snapshot.runId) },
+    );
+    throwIfRunCancelled(record);
     let screenedText: string;
     try {
       const screening = await withModelTaskTimeout(
         (markActivity, _markBlankActivity, abortSignal) =>
-          screenRequirementInput(snapshot.requirementText, providerSettings, llmTransport, abortSignal, markActivity),
+          screenRequirementInput(sourceText, providerSettings, llmTransport, abortSignal, markActivity),
         {
           ...timeoutConfig,
           label: "需求输入预检",
@@ -1098,7 +1144,7 @@ export async function runStagePipeline(
       snapshot.inputScreening = { ignoredSpans: screening.ignoredSpans };
       if (screening.unsafeSpans.length > 0) {
         const first = screening.unsafeSpans[0]!;
-        const line = snapshot.requirementText.slice(0, first.startOffset).split(/\r?\n/u).length;
+        const line = sourceText.slice(0, first.startOffset).split(/\r?\n/u).length;
         throwRunError(createRunError("RUN_REQUIREMENT_INPUT_UNSAFE", undefined, {
           params: { line },
           details: { line, ...first },
@@ -1132,19 +1178,21 @@ export async function runStagePipeline(
       },
     );
     throwIfRunCancelled(record);
-    // Only facts with an exact source in screened text may enter the trusted baseline.
-    rules = ruleResult.rules.filter((rule) =>
-      Boolean(rule.sourceFragment && screenedText.includes(rule.sourceFragment)),
-    );
+    // Exact source validation belongs to extraction's bounded repair loop; never
+    // silently publish only a subset of a returned requirement set.
+    rules = reconcileExtractedRuleIds(ruleResult.rules, snapshot.requirementBaseline, snapshot.runId);
     if (rules.length === 0) {
       throwRunError(createRunError("RUN_REQUIREMENT_RULES_EMPTY"));
     }
-    snapshot.rules = rules;
-    snapshot.requirementBaseline = buildRequirementBaseline({
+    const acceptedBaseline = buildRequirementBaseline({
       runId: snapshot.runId,
-      requirementText: snapshot.requirementText,
+      requirementText: sourceText,
       rules,
+      previousBaseline: snapshot.requirementBaseline,
     });
+    snapshot.requirementText = sourceText;
+    snapshot.rules = rules;
+    snapshot.requirementBaseline = acceptedBaseline;
     record.conversationContext?.commitValidatedBranch("requirements:extract-rules", JSON.stringify({ rules }));
     emitEvent(
       record,
@@ -1164,11 +1212,13 @@ export async function runStagePipeline(
     );
   }
 
-  if (!snapshot.requirementBaseline && rules.length > 0) {
+  if (rules.length > 0) {
+    // Also reconcile persisted/queued runs that predate rule-snapshot baselines.
     snapshot.requirementBaseline = buildRequirementBaseline({
       runId: snapshot.runId,
       requirementText: snapshot.requirementText,
       rules,
+      previousBaseline: snapshot.requirementBaseline,
     });
   }
   const requirementBaseline =
@@ -1625,6 +1675,12 @@ export async function runStagePipeline(
     throw new Error(renderFailures.join("；"));
   }
 
+  const missingOutputs = missingRequestedModelOutputs(snapshot);
+  if (missingOutputs.length) {
+    const failedTarget = Object.entries(snapshot.diagramErrors).find(([key]) => missingOutputs.some(target => target.split(":")[0] === key.split(":")[0]))?.[1]?.error;
+    if (failedTarget) throwRunError(failedTarget);
+    throwRunError(createRunError("RUN_MODEL_OUTPUT_EMPTY", "请求的模型未全部生成：" + missingOutputs.join("、"), { details: { missingTargets: missingOutputs } }));
+  }
   stages.finish("generate_models");
   stages.finish("generate_plantuml");
   stages.finish("render_svg");

@@ -1,8 +1,9 @@
 // Adapts persisted feasibility activity artifacts to the shared diagram detail workspace.
 import { useTranslation } from "react-i18next";
-import { Loader2, RefreshCw } from "lucide-react";
 import type { FeasibilityBusinessFlowArtifact, RequirementRule } from "@uml-platform/contracts";
-import { Button } from "../../../shared/ui/button";
+import { ModelingGenerationButton } from "../../../shared/ui/modeling-generation-button";
+import { GenerationModelControls } from "../../workspace-session/components/generation-model-controls";
+import { useWorkspaceSession } from "../../workspace-session/state";
 import { BusinessFlowDiagramView, type ContextDiagramSection } from "../../diagrams/components/diagram-detail-page";
 
 export function BusinessFlowView({ artifact, rules, stale, generating, blockedReason, message, error, onGenerate,
@@ -21,6 +22,7 @@ export function BusinessFlowView({ artifact, rules, stale, generating, blockedRe
   highlightedRelationshipId?: string | null;
 }) {
   const { t } = useTranslation();
+  const { canUpdateWorkspace, canStartRuns } = useWorkspaceSession();
   return <BusinessFlowDiagramView section={section}
     highlightedElement={highlightedElement} highlightedRelationshipId={highlightedRelationshipId}
     data={{
@@ -31,10 +33,9 @@ export function BusinessFlowView({ artifact, rules, stale, generating, blockedRe
       saveStatus: "idle", statusMessage: message, errorMessage: error,
       headerAction: <div className="flex flex-wrap items-center gap-2">
         {blockedReason && <span role="status" className="text-xs text-muted-foreground">{blockedReason}</span>}
-        <Button onClick={onGenerate} disabled={generating || Boolean(blockedReason)} title={blockedReason ?? undefined}>
-          {generating ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-          {t(artifact ? "feasibility.regenerate" : "feasibility.generate")}
-        </Button>
+        <GenerationModelControls disabled={generating || !canUpdateWorkspace || !canStartRuns} />
+        <ModelingGenerationButton label={t("common.generate")} busy={generating}
+          onClick={onGenerate} disabled={generating || Boolean(blockedReason)} title={blockedReason ?? undefined} />
       </div>,
     }} />;
 }

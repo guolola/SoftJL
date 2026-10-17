@@ -11,8 +11,22 @@ import {
   feasibilityBusinessFlowArtifactSchema,
   readFeasibilityBusinessFlowArtifact,
   buildFeasibilityImplementationFingerprint,
+  buildAcceptedRequirementSnapshot,
+  createRequirementBaselineSnapshot,
   startFeasibilityRunRequestSchema,
 } from "./index.js";
+
+test("feasibility repairs obsolete baseline rules with a deterministic source fingerprint", () => {
+  const rule = { id: "r1", category: "功能需求" as const, text: "用户下单", relatedDiagrams: ["usecase" as const] };
+  const baseline = createRequirementBaselineSnapshot({ runId: "old", requirementText: "订单系统", rules: [rule] });
+  const rules = [{ ...rule, text: "用户只能取消自己的订单" }];
+  const first = buildAcceptedRequirementSnapshot(rules, baseline);
+  const second = buildAcceptedRequirementSnapshot(rules, baseline);
+  assert.equal(first.baseline?.rules?.[0]?.text, rules[0]!.text);
+  assert.deepEqual(first, second);
+  assert.deepEqual(buildAcceptedRequirementSnapshot(rules, first.baseline), first);
+  assert.deepEqual(buildAcceptedRequirementSnapshot([], baseline).baseline?.rules, []);
+});
 
 test("historical feasibility snapshots load without a business flow", () => {
   const snapshot = feasibilityRunSnapshotSchema.parse({

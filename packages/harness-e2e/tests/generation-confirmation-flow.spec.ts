@@ -38,8 +38,8 @@ for (const theme of ["light", "dark"]) {
       await page.getByRole("navigation", { name: "项目导航" }).getByRole("button", { name: "需求模型", exact: true }).click();
       await page.getByRole("button", { name: "选择用例模型", exact: true }).click();
       await page.getByRole("button", { name: "选择领域概念模型", exact: true }).click();
-      await expect(page.getByRole("button", { name: /应用变更/ })).toBeEnabled();
-      await page.getByRole("button", { name: /应用变更/ }).click();
+      await expect(page.getByRole("button", { name: "生成", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "生成", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "确认生成需求模型" });
       await expect(dialog).toBeVisible();
       await page.setViewportSize({ width, height: 900 });

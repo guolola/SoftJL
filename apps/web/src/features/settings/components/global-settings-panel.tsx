@@ -553,7 +553,7 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
     return (<>
       <div className="space-y-2">
         <SettingRow label={t("providerSettings.title")} hint={t("providerSettings.description")}><Button type="button" size="sm" variant="outline" onClick={openCreateProviderDialog}><Plus className="size-4"/>{t("providerSettings.addProvider")}</Button></SettingRow>
-        <SettingRow label={t("providerSettings.managedConfig")} hint={t("providerSettings.description")} htmlFor="managed-provider-config"><div className="w-full space-y-1.5 sm:w-56">
+        <SettingRow label={t("providerSettings.managedConfig")} htmlFor="managed-provider-config"><div className="w-full space-y-1.5 sm:w-56">
               <Select value={settings.providerConfigId || "__none__"} onValueChange={(value) => {
             const providerConfigId = value === "__none__" ? "" : value;
             const config = providerConfigs.find((item) => item.id === providerConfigId);

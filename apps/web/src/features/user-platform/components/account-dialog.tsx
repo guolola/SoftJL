@@ -666,7 +666,6 @@ export function AccountDialog({
                   <TabsContent value="global" keepMounted className="space-y-2">
                     <GlobalSettingsPanel ref={modelActions} embedded onDirtyChange={setModelDirty} active={open} currentUserId={userId ?? ""} onNavigate={route => { setDialogOpen(false); onNavigate(route); }} />
                   </TabsContent>
-                  <div className="sr-only" aria-live="polite">{currentSessionId ? t("account.currentSession", { id: currentSessionId }) : ""}</div>
                 </main>
               </div>
               <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">

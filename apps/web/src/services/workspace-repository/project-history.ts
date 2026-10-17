@@ -40,7 +40,6 @@ export type ProjectRunDetailResponse = {
     latestActionRunId?: string | null;
     latestActionAt?: string | null;
     snapshotAvailable?: boolean | null;
-    canRestore?: boolean | null;
     documentDownloadAvailable?: boolean | null;
     documentId?: string | null;
     documentFileName?: string | null;
@@ -86,7 +85,6 @@ export type ProjectRunsResponse = {
     latestActionRunId?: string | null;
     latestActionAt?: string | null;
     snapshotAvailable?: boolean | null;
-    canRestore?: boolean | null;
     documentDownloadAvailable?: boolean | null;
     documentId?: string | null;
     documentFileName?: string | null;
@@ -100,25 +98,6 @@ export type ProjectRunsResponse = {
 type ProjectRunResponse =
   | NonNullable<ProjectRunsResponse["runs"]>[number]
   | ProjectRunDetailResponse["run"];
-
-export function isProjectDocumentRun(
-  run: ProjectRunResponse,
-  snapshot?: RunHistorySnapshot | null,
-) {
-  return (
-    run?.runKind === "document" ||
-    Boolean(run?.documentKind) ||
-    Boolean(snapshot && isDocumentRunSnapshot(snapshot))
-  );
-}
-
-export function canRestoreProjectRunWorkspace(
-  run: ProjectRunResponse,
-  snapshot?: RunHistorySnapshot | null,
-) {
-  if (isProjectDocumentRun(run, snapshot) || run?.runKind === "feasibility") return false;
-  return run?.canRestore ?? Boolean(snapshot);
-}
 
 export function normalizeProjectHistoryResponse(payload: unknown): RunHistoryItem[] {
   if (!payload || typeof payload !== "object") return [];
@@ -152,8 +131,6 @@ export function projectRunSummaryToHistoryItem(
   if (!runId) return null;
   const documentDownloadAvailable =
     run.status === "completed" && Boolean(run.documentDownloadAvailable);
-  const interrupted = run.status === "interrupted";
-  const canRestore = interrupted ? false : canRestoreProjectRunWorkspace(run, snapshot);
   const createdAt =
     run.completedAt ??
     run.startedAt ??
@@ -229,7 +206,6 @@ export function projectRunSummaryToHistoryItem(
     
     
     
-    canRestore,
     snapshotAvailable: run.snapshotAvailable ?? Boolean(snapshot),
     documentDownloadAvailable,
   };
@@ -301,7 +277,6 @@ function projectRunSummary(run: ProjectRunDetailResponse["run"]) {
       run?.missingArtifactSummary,
       run?.missingArtifactCount,
     ),
-    canRestoreProjectRunWorkspace(run) ? "快照可恢复" : null,
     run?.status === "completed" && run?.documentDownloadAvailable
       ? "文档可下载"
       : null,

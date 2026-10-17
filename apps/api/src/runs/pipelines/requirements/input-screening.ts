@@ -5,7 +5,7 @@ import type { JsonSchemaResponseFormat, LlmTransport } from "../../../llm.js";
 import { getStructuredResponseFormat } from "../../../model-capabilities.js";
 import { parseJson } from "../../../normalizers/json/parse-json.js";
 
-const MAX_SCREENING_CHARS = 30_000;
+const MAX_SCREENING_CHARS = 60_000;
 const categorySchema = z.enum(["requirement", "context", "irrelevant", "injection"]);
 const decisionSchema = z.object({
   units: z.array(z.object({ id: z.string(), category: categorySchema }).strict()),

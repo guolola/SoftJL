@@ -5,7 +5,9 @@ import type { ProviderSettings, RunSnapshot } from "@uml-platform/contracts";
 import type { LlmTransport } from "../../../llm.js";
 import type { RenderClient } from "../../../adapters/render/render-client.js";
 import { createEmptySnapshot } from "../../records/snapshots.js";
+import { buildRequirementBaseline } from "../../baselines/requirement-baseline.js";
 import type { RunRecord } from "../../records/run-record-store.js";
+import { RunCancelledError } from "../../records/run-cancellation.js";
 import { getRunError } from "../shared/errors.js";
 import { createContextualLlmTransport } from "../shared/conversation-context.js";
 import { runStagePipeline } from "../requirements-pipeline.js";
@@ -45,6 +47,37 @@ function transportFor(input: {
   };
 }
 
+test("re-extraction persists reconciled rule identities in both rules and baseline", async () => {
+  const first = { id: "r1", category: "功能需求" as const, text: "学生可以预约空闲座位。", sourceFragment: "学生可以预约空闲座位。", relatedDiagrams: ["usecase" as const] };
+  const second = { ...first, id: "r2", text: "学生可以取消自己的预约。", sourceFragment: "学生可以取消自己的预约。" };
+  const text = first.text + second.text;
+  const record = recordFor(text);
+  record.snapshot.requirementBaseline = buildRequirementBaseline({ runId: "old", requirementText: text, rules: [first, second] });
+  await runStagePipeline(record, providerSettings, transportFor({ classifications: ["requirement", "requirement"], rules: [{ ...second, id: "r1" }, { ...first, id: "r2" }] }), renderClient);
+  const snapshot = record.snapshot as RunSnapshot;
+  assert.deepEqual(snapshot.rules.map(rule => rule.id), ["r2", "r1"]);
+  assert.deepEqual(snapshot.requirementBaseline?.rules?.map(rule => rule.requirementId), ["REQ-002", "REQ-001"]);
+  assert.equal(snapshot.requirementBaseline?.version, 2);
+});
+
+test("persisted requirement runs reconcile legacy baselines before sending model prompts", async () => {
+  const rule = { id: "r1", category: "功能需求" as const, text: "学生可以预约空闲座位。", relatedDiagrams: ["usecase" as const] };
+  const snapshot = createEmptySnapshot("persisted", rule.text, ["usecase"], [rule]);
+  // Simulate a persisted snapshot loaded without going through the route factory.
+  delete snapshot.requirementBaseline!.schemaVersion;
+  delete snapshot.requirementBaseline!.sourceInputFingerprint;
+  delete snapshot.requirementBaseline!.rules;
+  const record: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false };
+  let observed = false;
+  await assert.rejects(runStagePipeline(record, providerSettings, { async *streamChatCompletion() {
+    observed = true;
+    assert.equal(snapshot.requirementBaseline?.schemaVersion, 2);
+    assert.equal(snapshot.requirementBaseline?.rules?.[0]?.text, rule.text);
+    throw new RunCancelledError(snapshot.runId);
+  } }, renderClient));
+  assert.equal(observed, true);
+});
+
 test("mixed input extracts only relevant text and records ignored offsets", async () => {
   const text = "学生可以预约空闲座位。今天天气真好。";
   const record = recordFor(text);
@@ -63,7 +96,7 @@ test("mixed input extracts only relevant text and records ignored offsets", asyn
   assert.equal(text.slice(span?.startOffset, span?.endOffset), "今天天气真好。");
 });
 
-test("screened extraction repairs a units response in the same conversation before saving its baseline", async () => {
+test("screened extraction repairs a units response with explicit source and draft", async () => {
   const record = recordFor("学生可以预约空闲座位。今天天气真好。");
   const rule = { id: "r1", category: "功能需求", text: "学生可以预约空闲座位。", sourceFragment: "学生可以预约空闲座位。", relatedDiagrams: ["usecase"] };
   let extractionCalls = 0;
@@ -80,7 +113,9 @@ test("screened extraction repairs a units response in the same conversation befo
         assert.deepEqual(request.messages.map((message) => message.role), ["system", "user"]);
         yield JSON.stringify({ units: [rule] });
       } else {
-        assert.deepEqual(request.messages.map((message) => message.role), ["system", "user", "assistant", "user"]);
+        assert.deepEqual(request.messages.map((message) => message.role), ["system", "user"]);
+        assert.match(String(request.messages.at(-1)?.content), /学生可以预约空闲座位/);
+        assert.match(String(request.messages.at(-1)?.content), /"units"/);
         assert.match(String(request.messages.at(-1)?.content), /"rules"/);
         yield JSON.stringify({ rules: [rule] });
       }
@@ -92,7 +127,8 @@ test("screened extraction repairs a units response in the same conversation befo
   assert.equal(extractionCalls, 2);
   assert.equal(snapshot.status, "completed");
   assert.equal(snapshot.rules.length, 1);
-  assert.equal(snapshot.requirementBaseline?.requirements.length, 1);
+  assert.equal(snapshot.requirementBaseline?.rules?.length, 1);
+  assert.deepEqual(snapshot.requirementBaseline?.requirements, []);
   assert.ok(record.events.some((event) => event.type === "stage_progress" && event.message.includes("正在修复（1/2）")));
 });
 
@@ -133,21 +169,22 @@ test("empty extraction fails, while a screened labeled fact can be recovered wit
   await runStagePipeline(labeled, providerSettings, transportFor({ classifications: ["requirement"] }), renderClient);
   const snapshot = labeled.snapshot as RunSnapshot;
   assert.equal(snapshot.rules.length, 1);
-  assert.notEqual(snapshot.requirementBaseline?.requirements[0]?.confidence, 0.95);
-  assert.equal(snapshot.requirementBaseline?.requirements[0]?.status, "pending-review");
+  assert.equal(snapshot.requirementBaseline?.rules?.[0]?.origin, "generated");
+  assert.deepEqual(snapshot.requirementBaseline?.requirements, []);
+  assert.doesNotMatch(JSON.stringify(snapshot.requirementBaseline), /"status":"accepted"|"confidence"/);
 });
 
 test("ignored labels cannot restore rules and model rules need an accepted source", async () => {
   const text = "[R-1] 今天天气真好。\n学生可以预约空闲座位。";
   const record = recordFor(text);
-  await runStagePipeline(record, providerSettings, transportFor({
+  await assert.rejects(runStagePipeline(record, providerSettings, transportFor({
     classifications: ["irrelevant", "requirement"],
     rules: [
       { id: "r1", category: "功能需求", text: "今天出门散步", sourceFragment: "[R-1] 今天天气真好。", relatedDiagrams: ["usecase"] },
       { id: "r2", category: "功能需求", text: "学生可以预约空闲座位。", sourceFragment: "学生可以预约空闲座位。", relatedDiagrams: ["usecase"] },
     ],
-  }), renderClient);
-  assert.deepEqual(record.snapshot.rules.map((rule) => rule.id), ["r2"]);
+  }), renderClient), /sourceFragment/);
+  assert.deepEqual(record.snapshot.rules, []);
   assert.equal(record.snapshot.inputScreening?.ignoredSpans.length, 1);
 });
 

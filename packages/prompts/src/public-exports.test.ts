@@ -1,4 +1,4 @@
-// Guards the runtime prompt-builder export surface before splitting prompt internals.
+// Guards the active public prompt builders used by generation stages.
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as prompts from "./index.js";
@@ -19,7 +19,7 @@ const REQUIRED_RUNTIME_EXPORTS = [
   "buildRepairDesignTraceabilityPrompt",
   "buildGenerateDocumentContentPrompt",
   "buildRepairDocumentContentPrompt",
-] as const;
+] as const satisfies readonly (keyof typeof prompts)[];
 
 test("prompts keep required runtime public exports available", () => {
   for (const exportName of REQUIRED_RUNTIME_EXPORTS) {

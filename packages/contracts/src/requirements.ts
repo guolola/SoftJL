@@ -260,7 +260,18 @@ export type RequirementQualityReport = z.infer<
 >;
 
 export const requirementBaselineSchema = z.object({
+  // Version 2 stores rule snapshots; legacy atomic entries remain readable only.
+  schemaVersion: z.literal(2).optional(),
+  id: z.string().min(1).optional(),
+  version: z.number().int().positive().optional(),
+  rules: z.array(requirementRuleSchema.extend({
+    requirementId: z.string().min(1),
+    origin: z.enum(["generated", "manual-added", "manual-edited", "legacy"]),
+    manualFields: z.record(atomicRequirementFieldSchema, z.string()).optional(),
+  })).optional(),
   runId: z.string().min(1),
+  // Identifies requirement content independently of the task that consumes it.
+  sourceInputFingerprint: z.string().min(1).optional(),
   sourceDocumentId: z.string().min(1),
   requirements: z.array(atomicRequirementSchema),
   assumptions: z.array(requirementAssumptionSchema),

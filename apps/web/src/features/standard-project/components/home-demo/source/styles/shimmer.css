@@ -1,0 +1,277 @@
+@property --shimmer-track-height {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 200px;
+}
+
+@property --shimmer-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 15deg;
+}
+
+@theme inline {
+  @keyframes tw-shimmer {
+    from {
+      background-position: 100% 0;
+    }
+  }
+
+  @keyframes tw-shimmer-translate {
+    to {
+      translate: var(--_travel) 0;
+    }
+  }
+}
+
+@utility shimmer {
+  --_gradient-width: calc(
+    var(--_spread) + var(--shimmer-track-height) * tan(var(--shimmer-angle))
+  );
+  --_active-distance: calc(
+    var(--shimmer-track-width, 200px) + var(--_gradient-width)
+  );
+  --_duration: var(
+    --shimmer-duration,
+    calc(var(--_active-distance) / var(--_speed) / 1px * 1000)
+  );
+  --_repeat-delay: var(--shimmer-repeat-delay, calc(20000 / var(--_speed)));
+  --_repeat-delay-px: calc(
+    var(--_repeat-delay) * var(--_active-distance) / var(--_duration)
+  );
+  --_xy-offset-px: calc(
+    (var(--shimmer-x, 0) + var(--shimmer-y, 0) * tan(var(--shimmer-angle))) *
+      1px
+  );
+
+  --_bg-width: calc(
+    100% + var(--shimmer-track-width, 100%) + var(--_gradient-width) +
+      var(--_repeat-delay-px)
+  );
+
+  --_travel: calc(
+    var(--shimmer-track-width, 100%) + var(--_gradient-width) +
+      var(--_repeat-delay-px)
+  );
+
+  --_position: calc(var(--shimmer-track-width, (100% - var(--_gradient-width) -
+    var(--_repeat-delay-px)) / 2) + var(--_gradient-width) / 2 +
+    var(--_repeat-delay-px) - var(--_xy-offset-px));
+
+  &:not(.shimmer-bg) {
+    --_speed: var(--shimmer-speed, 200);
+    --_spread: var(--shimmer-spread, calc(4ch + 80px));
+    --_bg: currentColor;
+    --_overlay: var(--shimmer-color, white);
+    --_fg: var(
+      --shimmer-color,
+      oklch(from currentColor l c h / calc(alpha* 0.2))
+    );
+
+    /* Clip only where both the clip and the gradient work; blanking the fill
+     * below that floor would leave the text invisible. */
+    @supports (background-clip: text) and (color: oklch(from red l c h)) {
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+  }
+
+  @variant dark {
+    &:not(.shimmer-bg) {
+      --_fg: var(
+        --shimmer-color,
+        oklch(from currentColor max(0.8, calc(l + 0.4)) c h / calc(alpha + 0.4))
+      );
+    }
+  }
+
+  @-moz-document url-prefix() {
+    &:not(.shimmer-bg) {
+      --_duration: var(--shimmer-duration, calc(375000 / var(--_speed)));
+    }
+  }
+
+  /* Use a sine ease-in-out curve (17 stops) for smooth falloff */
+  --_mix-96: color-mix(in oklch, var(--_fg), var(--_bg) 96%);
+  --_mix-83: color-mix(in oklch, var(--_fg), var(--_bg) 83%);
+  --_mix-67: color-mix(in oklch, var(--_fg), var(--_bg) 67%);
+  --_mix-50: color-mix(in oklch, var(--_fg), var(--_bg) 50%);
+  --_mix-33: color-mix(in oklch, var(--_fg), var(--_bg) 33%);
+  --_mix-17: color-mix(in oklch, var(--_fg), var(--_bg) 17%);
+  --_mix-4: color-mix(in oklch, var(--_fg), var(--_bg) 4%);
+
+  background: linear-gradient(
+      calc(90deg + var(--shimmer-angle)),
+      var(--_bg) calc(var(--_position) - var(--_spread) * 0.5),
+      var(--_mix-96) calc(var(--_position) - var(--_spread) * 0.44),
+      var(--_mix-83) calc(var(--_position) - var(--_spread) * 0.37),
+      var(--_mix-67) calc(var(--_position) - var(--_spread) * 0.31),
+      var(--_mix-50) calc(var(--_position) - var(--_spread) * 0.25),
+      var(--_mix-33) calc(var(--_position) - var(--_spread) * 0.19),
+      var(--_mix-17) calc(var(--_position) - var(--_spread) * 0.12),
+      var(--_mix-4) calc(var(--_position) - var(--_spread) * 0.06),
+      var(--_fg) var(--_position),
+      var(--_mix-4) calc(var(--_position) + var(--_spread) * 0.06),
+      var(--_mix-17) calc(var(--_position) + var(--_spread) * 0.12),
+      var(--_mix-33) calc(var(--_position) + var(--_spread) * 0.19),
+      var(--_mix-50) calc(var(--_position) + var(--_spread) * 0.25),
+      var(--_mix-67) calc(var(--_position) + var(--_spread) * 0.31),
+      var(--_mix-83) calc(var(--_position) + var(--_spread) * 0.37),
+      var(--_mix-96) calc(var(--_position) + var(--_spread) * 0.44),
+      var(--_bg) calc(var(--_position) + var(--_spread) * 0.5)
+    )
+    0 0 / var(--_bg-width) 100% no-repeat;
+
+  animation: tw-shimmer 1s linear 0s infinite backwards;
+  animation-duration: calc((var(--_duration) + var(--_repeat-delay)) * 1ms);
+
+  @supports (-webkit-mask-clip: text) {
+    &:where(:not(.shimmer-bg)) {
+      position: relative;
+    }
+  }
+
+  &:not(.shimmer-bg) {
+    /* Below the clip gate the gradient would paint across the whole box with
+     * unclipped text on top, so drop it and land on plain, static text. */
+    @supports not ((background-clip: text) and (color: oklch(from red l c h))) {
+      background: none;
+      animation: none;
+    }
+
+    @supports (-webkit-mask-clip: text) {
+      animation: none;
+      /* A text-clipped background makes Chrome re-record the text mask when the
+       * text changes. */
+      background: linear-gradient(transparent, transparent);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: currentColor;
+      -webkit-mask-image: linear-gradient(#000, #000);
+      -webkit-mask-clip: text;
+      --_shimmer-play-state: running;
+
+      &::before {
+        content: "";
+        position: absolute;
+        inset-block: 0;
+        left: calc(-1 * (var(--_gradient-width) + var(--_xy-offset-px)));
+        width: 100%;
+        pointer-events: none;
+        background: linear-gradient(
+            calc(90deg + var(--shimmer-angle)),
+            transparent calc(50% - var(--_spread) * 0.5),
+            color-mix(in oklch, var(--_overlay), transparent 96%)
+              calc(50% - var(--_spread) * 0.44),
+            color-mix(in oklch, var(--_overlay), transparent 83%)
+              calc(50% - var(--_spread) * 0.37),
+            color-mix(in oklch, var(--_overlay), transparent 67%)
+              calc(50% - var(--_spread) * 0.31),
+            color-mix(in oklch, var(--_overlay), transparent 50%)
+              calc(50% - var(--_spread) * 0.25),
+            color-mix(in oklch, var(--_overlay), transparent 33%)
+              calc(50% - var(--_spread) * 0.19),
+            color-mix(in oklch, var(--_overlay), transparent 17%)
+              calc(50% - var(--_spread) * 0.12),
+            color-mix(in oklch, var(--_overlay), transparent 4%)
+              calc(50% - var(--_spread) * 0.06),
+            var(--_overlay) 50%,
+            color-mix(in oklch, var(--_overlay), transparent 4%)
+              calc(50% + var(--_spread) * 0.06),
+            color-mix(in oklch, var(--_overlay), transparent 17%)
+              calc(50% + var(--_spread) * 0.12),
+            color-mix(in oklch, var(--_overlay), transparent 33%)
+              calc(50% + var(--_spread) * 0.19),
+            color-mix(in oklch, var(--_overlay), transparent 50%)
+              calc(50% + var(--_spread) * 0.25),
+            color-mix(in oklch, var(--_overlay), transparent 67%)
+              calc(50% + var(--_spread) * 0.31),
+            color-mix(in oklch, var(--_overlay), transparent 83%)
+              calc(50% + var(--_spread) * 0.37),
+            color-mix(in oklch, var(--_overlay), transparent 96%)
+              calc(50% + var(--_spread) * 0.44),
+            transparent calc(50% + var(--_spread) * 0.5)
+          )
+          0 0 / var(--_gradient-width) 100% no-repeat;
+
+        @media (prefers-reduced-motion: no-preference) {
+          will-change: translate;
+        }
+
+        animation: tw-shimmer-translate
+          calc((var(--_duration) + var(--_repeat-delay)) * 1ms) linear infinite;
+        animation-play-state: var(--_shimmer-play-state);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      animation-play-state: paused;
+      --_shimmer-play-state: paused;
+    }
+  }
+}
+
+@utility shimmer-bg {
+  --_speed: var(--shimmer-speed, 1000);
+  --_spread: var(--shimmer-spread, 480px);
+  --_bg: transparent;
+  --_fg: var(--shimmer-color, oklch(from currentColor 0 c h / 0.06));
+
+  @-moz-document url-prefix() {
+    &.shimmer {
+      --_duration: var(--shimmer-duration, calc(1500000 / var(--_speed)));
+    }
+  }
+
+  @variant dark {
+    --_fg: var(--shimmer-color, oklch(from currentColor 0 c h / 0.3));
+  }
+}
+
+@utility shimmer-speed-* {
+  --shimmer-speed: --value(number);
+}
+
+@utility shimmer-duration-* {
+  --shimmer-duration: --value(integer);
+}
+
+@utility shimmer-repeat-delay-* {
+  --shimmer-repeat-delay: --value(integer);
+}
+
+@utility shimmer-invert {
+  &:not(.shimmer-bg) {
+    --_overlay: black;
+    --shimmer-color: oklch(
+      from currentColor min(calc(l - 0.4), 0.2) c h / calc(alpha + 0.4)
+    );
+
+    @variant dark {
+      --shimmer-color: oklch(from currentColor l c h / calc(alpha * 0.2));
+    }
+  }
+}
+
+@utility shimmer-color-* {
+  --alpha: 100%;
+  --alpha: calc(--modifier(integer) * 1%);
+  --shimmer-color: --alpha(--value(--color, [color]) / var(--alpha, 100%));
+}
+
+@utility shimmer-spread-* {
+  --shimmer-spread: calc(--value(integer) * 1px);
+}
+
+@utility shimmer-angle-* {
+  --shimmer-angle: calc(--value(integer) * 1deg);
+}
+
+@utility shimmer-container {
+  container-type: inline-size;
+
+  & .shimmer {
+    --shimmer-track-width: 100cqw;
+    --shimmer-track-height: max(100cqh, 50cqw, 200px);
+  }
+}

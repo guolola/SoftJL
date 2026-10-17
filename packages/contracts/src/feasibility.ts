@@ -1,9 +1,11 @@
 // Defines editable feasibility facts, context traceability, implementation plans, and run snapshots.
 import { z } from "zod";
+import { runOutputFields } from "./run-outputs.js";
 import { feasibilityActivityDiagramSpecSchema, contextDiagramSpecSchema, plantUmlArtifactSchema, svgArtifactSchema } from "./models.js";
 import { requirementBaselineSchema, requirementRulesSchema } from "./requirements.js";
 import { providerSettingsSchema } from "./provider-configs.js";
 import { snapshotInputFingerprint } from "./fingerprints.js";
+import { createRequirementBaselineSnapshot } from "./requirement-baseline-snapshot.js";
 import { diagramVisualReviewSchema } from "./visual-review.js";
 
 const optionalText = z.string().trim().default("");
@@ -62,24 +64,28 @@ export function buildAcceptedRequirementSnapshot(
   const baselineResult = requirementBaselineSchema.nullable().safeParse(rawBaseline);
   // Historical workspaces may contain an older baseline quality-status enum.
   // They remain readable and fall back to the current rule list until reconfirmed.
-  const baseline = baselineResult.success ? baselineResult.data : null;
-  const acceptedIds = baseline
-    ? new Set(
-        baseline.requirements
-          .filter((requirement) => requirement.status === "accepted")
-          .map((requirement) => requirement.sourceRuleId)
-          .filter((id): id is string => Boolean(id)),
-      )
-    : null;
-  const acceptedRules = acceptedIds
-    ? rules.filter((rule) => acceptedIds.has(rule.id))
-    : rules;
+  let baseline = baselineResult.success ? baselineResult.data : null;
+  if (baseline) {
+    const matchingRules = baseline.rules
+      ? snapshotInputFingerprint(requirementRulesSchema.parse(baseline.rules)) === snapshotInputFingerprint(rules)
+      : baseline.requirements.length === rules.length && rules.every(rule => baseline!.requirements.some(entry =>
+        entry.sourceRuleId === rule.id && entry.sourceFragment === (rule.sourceFragment ?? rule.text)));
+    if (!matchingRules) {
+      // Feasibility has no raw-text dependency. Repair stale stored rule facts
+      // deterministically so browser freshness checks and API inputs agree.
+      baseline = createRequirementBaselineSnapshot({ runId: baseline.runId, requirementText: "", rules,
+        previousBaseline: baseline, createdAt: baseline.createdAt });
+    }
+  }
+  // Every successfully extracted (or user-added) rule counts as generated, so all rules
+  // flow downstream; quality hints in the baseline no longer filter rules out.
+  const acceptedRules = rules;
   return {
     rules: acceptedRules,
     baseline,
     snapshot: acceptedRequirementSnapshotSchema.parse({
       ruleIds: acceptedRules.map((rule) => rule.id),
-      baselineVersion: baseline?.runId ?? null,
+      baselineVersion: baseline?.id ?? baseline?.runId ?? null,
       fingerprint: snapshotInputFingerprint({
         rules: acceptedRules,
         requirementBaseline: baseline,
@@ -498,6 +504,7 @@ export const contextTraceRowSchema = z.object({
 export type ContextTraceRow = z.infer<typeof contextTraceRowSchema>;
 
 export const startFeasibilityRunRequestSchema = z.object({
+  reasoning: z.boolean().optional(),
   projectId: z.string().min(1),
   selectedArtifacts: z.array(feasibilityArtifactKindSchema).min(1).superRefine((artifacts, context) => {
     if (new Set(artifacts).size !== artifacts.length) {
@@ -571,6 +578,7 @@ export const feasibilityRunErrorSchema = z.object({
     "RUN_MODEL_OUTPUT_EMPTY",
     "RUN_STRUCTURED_OUTPUT_INVALID",
     "RUN_DEPENDENCY_MISSING",
+    "RUN_CONTEXT_LIMIT_EXCEEDED",
     "RUN_RENDER_FAILED",
     "RUN_CANCELLED",
     "RUN_INTERNAL_ERROR",
@@ -587,6 +595,8 @@ export const feasibilityRunErrorSchema = z.object({
 });
 
 export const feasibilityRunSnapshotSchema = z.object({
+  ...runOutputFields,
+  reasoning: z.boolean().optional(),
   runId: z.string().min(1),
   projectId: z.string().min(1),
   selectedArtifacts: z.array(feasibilityArtifactKindSchema),

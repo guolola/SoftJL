@@ -228,5 +228,21 @@ test("run summaries use terminal metadata timestamps for completedAt", () => {
   assert.equal(summary.startedAt, "2026-06-18T13:49:59.000Z");
   assert.equal(summary.completedAt, "2026-06-18T14:48:23.000Z");
   assert.equal(summary.updatedAt, "2026-06-18T14:48:23.000Z");
+  assert.equal(summary.operationType, "requirement_modeling");
+});
+
+test("history operation remains stable after extraction and visual verification", () => {
+  for (const selectedDiagrams of [[], ["usecase"]] as const) {
+    const snapshot = createEmptySnapshot("history-operation", "项目需求", [...selectedDiagrams]);
+    const record = { snapshot, events: [], listeners: new Set<() => void>(), terminal: true };
+    snapshot.status = "failed";
+    snapshot.currentStage = "extract_rules";
+    const expected = selectedDiagrams.length ? "requirement_modeling" : "requirement_extraction";
+    assert.equal(summarizeRunRecord(record).operationType, expected);
+    // Persisted records created before operationType was added still classify by requested targets.
+    delete snapshot.operationType;
+    snapshot.currentStage = "verify_diagram_visual";
+    assert.equal(summarizeRunRecord(record).operationType, expected);
+  }
 });
 

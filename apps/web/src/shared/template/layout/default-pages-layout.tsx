@@ -8,14 +8,16 @@ export function DefaultPagesLayout({
   header,
   children,
   contentClassName,
+  className,
 }: {
   sidebar: ReactNode;
   header: ReactNode;
   children: ReactNode;
   contentClassName?: string;
+  className?: string;
 }) {
   return (
-    <div className='flex h-full w-full min-w-0'>
+    <div className={cn('flex h-full w-full min-w-0', className)}>
       {sidebar}
       <SidebarInset className='flex min-w-0 flex-1 flex-col'>
         {header}

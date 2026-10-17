@@ -16,7 +16,13 @@ export function acceptedFeasibilityRules(workspace: WorkspaceRecord) {
   ).rules;
 }
 
-export function feasibilityArtifactState(workspace: WorkspaceRecord) {
+export type FeasibilityFreshnessInput = Pick<WorkspaceRecord,
+  "rules" | "requirementBaseline" | "feasibilityBusinessFlow" |
+  "feasibilityContextModel" | "feasibilityContextPlantUml" | "feasibilityContextSvg" |
+  "feasibilityContextFingerprint" | "feasibilityInputs" |
+  "feasibilityImplementationPlan" | "feasibilityImplementationFingerprint">;
+
+export function feasibilityArtifactState(workspace: FeasibilityFreshnessInput) {
   const requirementSource = buildAcceptedRequirementSnapshot(
     workspace.rules,
     workspace.requirementBaseline,

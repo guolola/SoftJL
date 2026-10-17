@@ -19,6 +19,31 @@ function renderCard(props: Partial<React.ComponentProps<typeof ModelBentoCard>> 
 }
 
 describe("ModelBentoCard", () => {
+  it("selects an existing model with the card without exposing an open action", async () => {
+    const user = userEvent.setup();
+    const onSelectedChange = renderCard({ status: "completed" });
+    await user.click(screen.getByRole("button", { name: "选择需求模型" }));
+    expect(onSelectedChange).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole("button", { name: /打开|查看/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox"));
+    expect(onSelectedChange).toHaveBeenCalledWith(true);
+    expect(onSelectedChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("deselects generated models with the keyboard without navigating", async () => {
+    const user = userEvent.setup();
+    const onSelectedChange = renderCard({ status: "completed", selected: true });
+    screen.getByRole("button", { name: "选择需求模型" }).focus();
+    await user.keyboard(" ");
+    expect(onSelectedChange).toHaveBeenCalledWith(false);
+  });
+
+  it("blocks card selection for read-only or running workspaces", async () => {
+    const user = userEvent.setup();
+    const onSelectedChange = renderCard({ status: "completed", disabled: true });
+    await user.click(screen.getByRole("button", { name: "选择需求模型" }));
+    expect(onSelectedChange).not.toHaveBeenCalled();
+  });
   it.each([
     ["completed", "已生成", "text-success"],
     ["failed", "失败", "text-destructive"],
@@ -26,6 +51,7 @@ describe("ModelBentoCard", () => {
     ["running", "生成中", "animate-spin"],
     ["queued", "排队", "text-muted-foreground"],
     ["stale", "更新", "text-warning"],
+    ["blocked", "暂时无法生成", "text-warning"],
   ] as const)("shows %s as a named compact icon", (status, text, color) => {
     renderCard({ status });
     const icon = screen.getByRole("img", { name: new RegExp(`需求模型：.*${text}`) });
@@ -38,12 +64,12 @@ describe("ModelBentoCard", () => {
   it("supports card selection while nested controls and tooltip focus do not toggle it", async () => {
     const user = userEvent.setup();
     const onView = vi.fn();
-    const onSelectedChange = renderCard({ content: <Button onClick={event => { event.stopPropagation(); onView(); }}>查看</Button> });
+    const onSelectedChange = renderCard({ content: <Button onClick={event => { event.stopPropagation(); onView(); }}>关联规则</Button> });
     const card = screen.getByRole("button", { name: "选择需求模型" });
     card.focus();
     await user.keyboard("{Enter}");
     expect(onSelectedChange).toHaveBeenCalledTimes(1);
-    screen.getByRole("button", { name: "查看" }).focus();
+    screen.getByRole("button", { name: "关联规则" }).focus();
     await user.keyboard("{Enter}");
     expect(onView).toHaveBeenCalledOnce();
     const status = screen.getByRole("img");

@@ -5,16 +5,9 @@ import type {
 
 
 
-function truncateForPrompt(value: string, maxChars: number) {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, Math.max(0, maxChars - 32))}\n...（内容已截断）`;
-}
-
 function stringifyDocumentContext(value: unknown) {
-  // Chapter inputs already scope models and retain the fixed directory/terms.
-  // Truncating this JSON could silently remove a chapter's required headings.
-  if (value && typeof value === "object" && "chapterInstruction" in value) return JSON.stringify(value, null, 2);
-  return truncateForPrompt(JSON.stringify(value, null, 2), 28000);
+  // Admission checks reject oversized calls; never remove chapter facts or headings.
+  return JSON.stringify(value);
 }
 
 export function buildGenerateDocumentContentPrompt(
@@ -116,7 +109,7 @@ export function buildRepairDocumentContentPrompt(
     errorMessage,
     "",
     "上一轮原始输出：",
-    truncateForPrompt(previousOutput, 16000),
+    previousOutput,
     "",
     "当前产物上下文：",
     stringifyDocumentContext(context),

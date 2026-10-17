@@ -11,6 +11,19 @@ const activity = (id: string, callId: string, phase: RunActivityEvent["phase"], 
 });
 
 describe("generation transcript", () => {
+  it("names one failed activity model across generation and render repair records", () => {
+    const title = "课程注册管理系统总体业务流程";
+    const error = { code: "RUN_RENDER_FAILED" as const, category: "render" as const, retryable: true, message: "绘图器故障：" + "SVG 关系 cf04 的标签与模型不一致；".repeat(100) };
+    const events: RunEvent[] = [
+      { type: "stage_progress", stage: "generate_models", progress: 35, subtaskId: "activity", subtaskLabel: "活动图", subtaskStatus: "failed", message: error.message },
+      { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, diagramKind: "activity", modelId: "act_course_registration_overall", subtaskId: "act_course_registration_overall", subtaskLabel: title, subtaskStatus: "failed", message: error.message },
+      { type: "failed", stage: "generate_models", error },
+    ];
+    expect(projectGenerationTranscript(events, "failed", [], {}, { includeContent: false }).finalMessage).toBe(`${title}：绘图器故障，请重试。`);
+    const completed = createRunSnapshot({ status: "completed", diagramErrors: { activity: { stage: "render_svg", error } } });
+    expect(projectGenerationTranscript([...events.slice(0, -1), { type: "completed", snapshot: completed }]).finalMessage).toBe(`${title}：绘图器故障，请重试。`);
+  });
+
   it("preserves the real preview count from a progress-only completion snapshot", () => {
     const result = projectGenerationTranscript([{ type: "completed", previewCount: 17, snapshot: createRunSnapshot({ status: "completed", svgArtifacts: [] }) }], "completed", [], {}, { includeContent: false });
     expect(result.finalMessage).toBe("已生成 17 个图形预览。");
@@ -108,7 +121,7 @@ describe("generation transcript", () => {
     expect(transcript.steps[0].calls.map((call) => call.inputImages)).toEqual([[first], [second]]);
     expect(projectGenerationTranscript([activity("legacy", "a", "started")]).steps[0].calls[0].inputImages).toBeUndefined();
   });
-  it("shows client rule repair after extraction without exposing the empty model phase", () => {
+  it("ignores retired client rule repair subtasks when replaying extraction", () => {
     const events: RunEvent[] = [
       { type: "stage_started", stage: "extract_rules", tracksCompletion: true },
       { type: "stage_finished", stage: "extract_rules", status: "completed" },
@@ -119,11 +132,11 @@ describe("generation transcript", () => {
     const extraction = { id: "extract_rules", label: "抽取需求规则", status: "completed" as const, message: null, errorMessage: null };
     const repair = { id: "repair_rules", label: "修复需求规则", status: "repairing" as const, message: "正在修复 r2", errorMessage: null };
     const active = projectGenerationTranscript(events, "completed", [extraction, repair]);
-    expect(active.visibleSteps.map((step) => step.title)).toEqual(["抽取需求规则", "修复需求规则"]);
-    expect(active.status).toBe("running");
+    expect(active.visibleSteps.map((step) => step.title)).toEqual(["抽取需求规则"]);
+    expect(active.status).toBe("completed");
     const done = projectGenerationTranscript(events, "completed", [extraction, { ...repair, status: "pending_review", pendingReviewCount: 1 }]);
     expect(done.status).toBe("completed");
-    expect(done.visibleSteps[1].calls[0].message).toContain("1 条需求规则修复结果待确认");
+    expect(done.visibleSteps).toHaveLength(1);
   });
 
   it("reveals each sequential feasibility stage as soon as its successor starts", () => {

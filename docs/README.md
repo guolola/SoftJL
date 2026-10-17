@@ -18,6 +18,7 @@
 
 - [平台架构](architecture/platform-overview.md)
 - [可信生成链路](architecture/trusted-generation.md)
+- [普通项目 Agent](architecture/standard-project-agent.md)
 
 ### 部署
 

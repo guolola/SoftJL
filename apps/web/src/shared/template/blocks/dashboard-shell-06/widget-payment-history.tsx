@@ -1,26 +1,30 @@
 // Direct port of dashboard-shell-06 from the supplied block; presentation classes are retained.
-import { ActivityIcon, FileTextIcon, ShapesIcon } from 'lucide-react'
-import { Card, CardContent, CardHeader } from '@/shared/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table'
-
-import { cn } from '@/shared/ui/utils'
-
-import { DashboardBlockMenu, type DashboardBlockActions } from './dashboard-block-menu'
-import { useDashboardLabels } from './dashboard-shell-labels'
-
+import { ActivityIcon, FileTextIcon, ShapesIcon } from 'lucide-react';
+import { Card, CardContent, CardHeader } from '@/shared/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
+import { cn } from '@/shared/ui/utils';
+import { DashboardBlockMenu, type DashboardBlockActions } from './dashboard-block-menu';
+import { useDashboardLabels } from './dashboard-shell-labels';
 type Props = DashboardBlockActions & {
-  title: string
-  paymentData: { id: string; projectName: string; type: string; kind: string; date: string; status: string; duration: string; onOpen: () => void }[]
-  className?: string
-}
-
+    title: string;
+    paymentData: {
+        id: string;
+        projectName: string;
+        type: string;
+        kind: string;
+        date: string;
+        status: string;
+        duration: string;
+        onOpen: () => void;
+    }[];
+    className?: string;
+};
 const PaymentHistoryCard = ({ title, paymentData, className, ...actions }: Props) => {
-  const { t } = useDashboardLabels()
-  return (
-    <Card className={cn('justify-between', className)}>
+    const { t } = useDashboardLabels();
+    return (<Card className={cn('justify-between', className)}>
       <CardHeader className='flex items-center justify-between px-6'>
         <span className='text-lg font-semibold'>{title}</span>
-        <DashboardBlockMenu {...actions} />
+        <DashboardBlockMenu {...actions}/>
       </CardHeader>
       <CardContent className='px-0'>
         <Table>
@@ -32,12 +36,11 @@ const PaymentHistoryCard = ({ title, paymentData, className, ...actions }: Props
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paymentData.map((payment, _index) => (
-              <TableRow key={payment.id} className='border-none hover:bg-transparent'>
+            {paymentData.map((payment, _index) => (<TableRow key={payment.id} className='border-none hover:bg-transparent'>
                 <TableCell className='pl-6 first:pt-4'>
                   <div className='flex items-center gap-2'>
                     <div className='bg-muted flex size-10.5 items-center justify-center rounded-sm'>
-                      {payment.kind === 'document' ? <FileTextIcon className='size-6' /> : payment.kind === 'design' ? <ShapesIcon className='size-6' /> : <ActivityIcon className='size-6' />}
+                      {payment.kind === 'document' ? <FileTextIcon className='size-6'/> : payment.kind === 'design' ? <ShapesIcon className='size-6'/> : <ActivityIcon className='size-6'/>}
                     </div>
                     <div className='flex flex-col gap-0.5'>
                       <button type='button' className='text-base font-medium text-left' onClick={payment.onOpen}>{payment.projectName}</button>
@@ -52,14 +55,11 @@ const PaymentHistoryCard = ({ title, paymentData, className, ...actions }: Props
                     <span className='text-muted-foreground text-xs'>{payment.duration}</span>
                   </div>
                 </TableCell>
-              </TableRow>
-            ))}
+              </TableRow>))}
             {paymentData.length === 0 && <TableRow><TableCell colSpan={3} className='h-24 text-center'>{t('noTasks')}</TableCell></TableRow>}
           </TableBody>
         </Table>
       </CardContent>
-    </Card>
-  )
-}
-
-export default PaymentHistoryCard
+    </Card>);
+};
+export default PaymentHistoryCard;

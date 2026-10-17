@@ -4,12 +4,15 @@ import { localizeRunFailure } from "../../../shared/i18n/api-errors";
 import { formatStageForDiagnostics, sanitizeDiagnosticText } from "../../workspace-session/lib/diagnostics";
 import { isConfirmedVisualReview, visualReviewDetail } from "../../workspace-session/lib/visual-review-message";
 import type { GenerationSubtask } from "../../workspace-session/model/session-state";
+import { generationFailureSummary } from "./generation-failure-summary";
 
 export type TranscriptStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "pending_review";
 export interface TranscriptCall {
   id: string;
   stage?: RunStage;
   subtaskId?: string;
+  modelId?: string;
+  diagramKind?: string;
   title: string;
   status: TranscriptStatus;
   startedAt?: string;
@@ -34,6 +37,11 @@ export interface TranscriptStep {
   entries?: Array<{ kind: "message"; text: string } | { kind: "call"; id: string }>;
   status: TranscriptStatus;
   finished?: boolean;
+  children?: TranscriptStep[];
+  artifactTask?: boolean;
+  artifactGroup?: boolean;
+  diagramKind?: string;
+  compactCalls?: boolean;
 }
 
 const order: RunStage[] = [
@@ -60,7 +68,7 @@ export function readableTaskText(text: string) {
     .replace(/\b[a-z]+(?:_[a-z0-9]+)+\b/gi, "处理步骤")
     .replace(/\b[A-Za-z0-9_]{80,}\b/g, "详细信息已省略")
     .replace(/\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b/g, "处理信息")
-    .replace(/\b(?:usecase|class|activity|deployment|prototype|analysis|architecture|sequence|component)\b/g, (word) => diagrams[word] ?? word);
+    .replace(/\b(?:function|usecase|class|activity|deployment|prototype|analysis|architecture|sequence|component|table)\b/g, (word) => diagrams[word] ?? word);
 }
 
 function label(stage: RunStage) {
@@ -122,8 +130,7 @@ export function readableOutput(call: TranscriptCall) {
 export function projectGenerationTranscript(events: RunEvent[], fallbackStatus = "running", subtasks: GenerationSubtask[] = [], currentVisualReviews: Record<string, DiagramVisualReview> = {}, options: { includeContent?: boolean } = {}) {
   // The drawer keeps lifecycle state without projecting streamed text or large review findings.
   const includeContent = options.includeContent ?? true;
-  const repairSubtask = subtasks.find((subtask) => subtask.id === "repair_rules");
-  const rulesOnly = Boolean(repairSubtask) || events.some((event) =>
+  const rulesOnly = events.some((event) =>
     event.type === "completed" && "selectedDiagrams" in event.snapshot &&
     Array.isArray(event.snapshot.selectedDiagrams) && event.snapshot.selectedDiagrams.length === 0,
   );
@@ -138,6 +145,20 @@ export function projectGenerationTranscript(events: RunEvent[], fallbackStatus =
   let terminalAt: string | undefined;
   let lastStage: RunStage | undefined;
   let completed: Extract<RunEvent, { type?: "completed" }> | undefined;
+  const failureTarget = (stage: RunStage, id?: string) => {
+    const calls = steps.flatMap((step) => step.calls);
+    const matches = id ? [...calls].reverse().filter((call) =>
+      (call.modelId === id || call.subtaskId === id || call.diagramKind === id) && call.title.split(" · ")[0] !== label(stage),
+    ) : [];
+    // A terminal snapshot can append a generic type-only failure after the named model's events.
+    const matching = matches.find((call) => !Object.values(diagrams).includes(call.title.split(" · ")[0]!)) ?? matches[0];
+    const stageTargets: Partial<Record<RunStage, string>> = {
+      extract_rules: "系统需求", generate_context: "系统环境图", render_context: "系统环境图",
+      generate_business_flow: "业务流程图", render_business_flow: "业务流程图", generate_implementation: "实施方案",
+      generate_document_text: "说明书正文", render_document_file: "说明书文件", generate_tests: "测试用例",
+    };
+    return matching?.title.split(" · ")[0] ?? (id && diagrams[id.split(":")[0]!]) ?? stageTargets[stage] ?? label(stage);
+  };
   const getStep = (stage: RunStage) => {
     if (!currentSteps.has(stage)) {
       const step: TranscriptStep = { id: `${stage}:${steps.filter((item) => item.stage === stage).length}`, stage, title: label(stage), messages: [], calls: [], entries: [], status: "running", finished: false };
@@ -146,13 +167,16 @@ export function projectGenerationTranscript(events: RunEvent[], fallbackStatus =
     }
     return currentSteps.get(stage)!;
   };
-  const getCall = (step: TranscriptStep, id: string, at?: string, subtaskId?: string, subtaskLabel?: string) => {
+  const getCall = (step: TranscriptStep, id: string, at?: string, subtaskId?: string, subtaskLabel?: string, metadata: { modelId?: string; diagramKind?: string } = {}) => {
     let call = step.calls.find((item) => item.id === id);
     if (!call) {
-      call = newCall(id, callTitle(step.stage, subtaskId, subtaskLabel), at, subtaskId);
+      call = { ...newCall(id, callTitle(step.stage, subtaskId, subtaskLabel), at, subtaskId), ...metadata };
       call.stage = step.stage;
       startedOrder.set(call, eventIndex);
       step.calls.push(call); step.entries?.push({ kind: "call", id });
+    } else {
+      call.modelId ??= metadata.modelId;
+      call.diagramKind ??= metadata.diagramKind;
     }
     return call;
   };
@@ -173,7 +197,7 @@ export function projectGenerationTranscript(events: RunEvent[], fallbackStatus =
     const at = event.createdAt;
     if (event.type === "run_activity") {
       const step = getStep(event.stage);
-      const call = getCall(step, event.callId, at, event.subtaskId, event.subtaskLabel);
+      const call = getCall(step, event.callId, at, event.subtaskId, event.subtaskLabel, { modelId: event.modelId });
       if (event.operation) {
         call.operation = event.operation; call.round = event.round;
         const operationNames = { structure_check: "结构核对", model_repair: "结构纠错", render_repair: "重建图形", visual_check: event.round ? "视觉复查" : "视觉检查" };
@@ -239,7 +263,7 @@ export function projectGenerationTranscript(events: RunEvent[], fallbackStatus =
         ? visualProgressMessage(event.subtaskStatus === "repairing" || event.subtaskStatus === "rendering" ? "running" : event.subtaskStatus ?? "running", Boolean(event.message?.includes("跳过")))
         : event.message ? readableTaskText(event.message) : "";
       if (subtaskId) {
-        const call = getCall(step, `${event.stage}:${subtaskId}`, at, subtaskId, event.subtaskLabel);
+        const call = getCall(step, `${event.stage}:${subtaskId}`, at, subtaskId, event.subtaskLabel, { modelId: event.modelId, diagramKind: event.diagramKind });
         call.status = event.subtaskStatus === "repairing" || event.subtaskStatus === "rendering" ? "running" : event.subtaskStatus ?? "running";
         call.message = text;
         mirrorOrder.set(call, eventIndex);
@@ -258,7 +282,7 @@ export function projectGenerationTranscript(events: RunEvent[], fallbackStatus =
       const step = getStep(event.stage);
       const subtaskId = event.subtaskId ?? event.modelId ?? event.diagramKind;
       if (subtaskId) {
-        const call = getCall(step, `${event.stage}:${subtaskId}`, at, subtaskId, event.subtaskLabel);
+        const call = getCall(step, `${event.stage}:${subtaskId}`, at, subtaskId, event.subtaskLabel, { modelId: event.modelId, diagramKind: event.diagramKind });
         call.status = event.subtaskStatus === "pending_review" ? "pending_review" : "completed";
         call.finishedAt = at;
         mirrorOrder.set(call, eventIndex);
@@ -292,7 +316,18 @@ export function projectGenerationTranscript(events: RunEvent[], fallbackStatus =
         call.status = "failed"; call.message = "此模型未能完成生成，可重试。"; call.finishedAt = at;
         mirrorOrder.set(call, eventIndex);
       }
-      if (failures) { status = "failed"; finalMessage = `生成结束，${failures} 个模型未完成，可重试失败项。`; }
+      if (failures && "diagramErrors" in snapshot) {
+        status = "failed";
+        // Group the same cause once, naming the affected models rather than repeating each failed phase.
+        const grouped = new Map<string, { error: unknown; names: string[] }>();
+        for (const [id, failure] of Object.entries(snapshot.diagramErrors ?? {})) {
+          const model = snapshot.models.find((item) => item.modelId === id || item.diagramKind === id);
+          const name = model?.title ?? failureTarget(failure.stage, id);
+          const summary = generationFailureSummary(failure.error);
+          grouped.set(summary, { error: failure.error, names: [...new Set([...(grouped.get(summary)?.names ?? []), name])] });
+        }
+        finalMessage = [...grouped.values()].map(({ error, names }) => generationFailureSummary(error, names.join("、"))).join("\n");
+      }
       else if ("documentKind" in snapshot) finalMessage = `文档已生成${snapshot.fileName ? `：${snapshot.fileName}` : ""}。`;
       else if ("svgArtifacts" in snapshot) {
         const visualReviews = "visualReviews" in snapshot ? Object.entries(snapshot.visualReviews ?? {}) : [];
@@ -304,9 +339,12 @@ export function projectGenerationTranscript(events: RunEvent[], fallbackStatus =
     } else if (event.type === "failed" || event.type === "cancelled") {
       terminalAt = at;
       status = event.type;
-      finalMessage = event.type === "failed"
-        ? readableTaskText(localizeRunFailure(event.error, "生成任务失败，请稍后重试。"))
-        : "任务已停止，已完成的过程保留。";
+      if (event.type === "failed") {
+        const stage = event.stage ?? lastStage ?? steps.at(-1)?.stage ?? "extract_rules";
+        const failedCalls = steps.filter((step) => step.stage === stage).flatMap((step) => step.calls).filter((call) => call.status === "failed");
+        const names = [...new Set(failedCalls.map((call) => failureTarget(stage, call.diagramKind ?? call.modelId ?? call.subtaskId)))];
+        finalMessage = generationFailureSummary(event.error, names.length ? names.join("、") : failureTarget(stage));
+      } else finalMessage = "任务已停止，已完成的过程保留。";
       break;
     }
   }
@@ -339,27 +377,6 @@ export function projectGenerationTranscript(events: RunEvent[], fallbackStatus =
       finalMessage = localizedMessage;
       status = "failed";
     }
-  }
-  if (repairSubtask && (currentSteps.get("extract_rules")?.finished || repairSubtask.status !== "queued")) {
-    const repairActive = ["queued", "running", "repairing", "rendering"].includes(repairSubtask.status);
-    if (repairActive) {
-      status = "running";
-      finalMessage = "";
-      completed = undefined;
-    }
-    const repairStatus: TranscriptStatus = repairActive ? "running" : repairSubtask.status as TranscriptStatus;
-    const call: TranscriptCall = {
-      id: "local:repair_rules", title: repairSubtask.label, status: repairStatus,
-      output: "", summary: "", thinking: false, technical: false,
-      message: repairSubtask.status === "pending_review"
-        ? `${repairSubtask.pendingReviewCount ?? 1} 条需求规则修复结果待确认`
-        : repairSubtask.errorMessage ?? repairSubtask.message ?? undefined,
-    };
-    steps.push({
-      id: "local:repair_rules", stage: "extract_rules", title: repairSubtask.label,
-      messages: [], calls: [call], entries: [{ kind: "call", id: call.id }],
-      status: repairStatus, finished: !repairActive,
-    });
   }
   const terminal = !["queued", "running", "idle"].includes(status);
   for (const step of steps) {
@@ -409,6 +426,8 @@ export function projectGenerationTranscript(events: RunEvent[], fallbackStatus =
     for (const mirror of step.calls.filter((call) => !activityIds.has(call.id) && call.subtaskId)) {
       const actual = [...step.calls].reverse().find((call) => activityIds.has(call.id) && call.subtaskId === mirror.subtaskId);
       if (!actual) continue;
+      actual.modelId ??= mirror.modelId;
+      actual.diagramKind ??= mirror.diagramKind;
       if (["failed", "pending_review"].includes(mirror.status) && (mirrorOrder.get(mirror) ?? startedOrder.get(mirror) ?? -1) >= (startedOrder.get(actual) ?? 0)) {
         actual.status = mirror.status; actual.message = mirror.message;
       } else if (step.stage === "verify_diagram_visual" && mirror.status === "completed" && mirror.message?.includes("跳过")) {

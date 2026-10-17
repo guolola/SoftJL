@@ -598,7 +598,7 @@ test("requirement pipeline calls the LLM once per selected model and keeps succe
     terminal: false,
   };
 
-  await runStagePipeline(record, providerSettings, transport, renderClient);
+  await assert.rejects(() => runStagePipeline(record, providerSettings, transport, renderClient), error => getRunError(error)?.code === "RUN_STRUCTURED_OUTPUT_INVALID");
 
   const completed = record.snapshot as RunSnapshot;
   assert.deepEqual(
@@ -614,7 +614,9 @@ test("requirement pipeline calls the LLM once per selected model and keeps succe
     ["class", "deployment", "usecase"],
   );
   assert.equal(completed.diagramErrors.activity?.stage, "generate_models");
-  assert.equal(completed.status, "completed");
+  assert.notEqual(completed.status, "completed");
+  assert.equal(record.events.some(event => event.type === "completed"), false);
+  assert.equal(completed.outputManifest?.filter(item => item.kind === "model").length, 3);
 });
 
 test("requirement pipeline auto-fills traceability when a valid model has empty traceability", async () => {
@@ -2037,7 +2039,7 @@ test("design pipeline renders a completed use case sequence before slower sequen
   assert.equal((record.snapshot as DesignRunSnapshot).status, "completed");
 });
 
-test("design sequence completes with partial artifacts when one use case generation times out", async () => {
+test("design sequence rejects completion but keeps partial artifacts when one use case generation times out", async () => {
   await withTemporaryEnv("UML_DESIGN_MODEL_TASK_TIMEOUT_MS", "20", async () => {
     const useCaseModel: DiagramModelSpec = {
       diagramKind: "usecase",
@@ -2172,7 +2174,7 @@ test("design sequence completes with partial artifacts when one use case generat
       terminal: false,
     };
 
-    await runDesignStagePipeline(record, providerSettings, transport, renderClient);
+    await assert.rejects(() => runDesignStagePipeline(record, providerSettings, transport, renderClient), error => getRunError(error)?.code === "PLATFORM_PROVIDER_TIMEOUT");
 
     const fastSvg = record.events.find(
       (event) =>
@@ -2189,8 +2191,9 @@ test("design sequence completes with partial artifacts when one use case generat
     );
     assert.ok(fastSvg);
     assert.ok(failedSlow);
-    assert.equal((record.snapshot as DesignRunSnapshot).status, "completed");
-    assert.ok(record.events.some((event) => event.type === "completed"));
+    assert.notEqual((record.snapshot as DesignRunSnapshot).status, "completed");
+    assert.equal(record.events.some((event) => event.type === "completed"), false);
+    assert.deepEqual(record.snapshot.outputManifest?.filter(item => item.kind === "model").map(item => item.id), ["sequence:uc_fast"]);
     assert.equal(
       (record.snapshot as DesignRunSnapshot).diagramErrors["sequence:uc_slow"]
         ?.error.code,

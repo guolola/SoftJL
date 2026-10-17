@@ -301,7 +301,6 @@ test("restore stores snapshot input fingerprints for requirement diagrams after 
       rulesVersion: 2,
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.equal(restored.requirementText, "座位预约系统 v2");
@@ -354,7 +353,6 @@ test("restore does not rewrite requirement fingerprints from design snapshots wi
         },
       ],
     }),
-    mode: "merge",
   });
 
   assert.equal(restored.requirementInputFingerprint, currentFingerprint);
@@ -395,7 +393,6 @@ test("restore writes requirement rules from model snapshots when text still matc
       rulesVersion: 1,
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(restored.rules, rules);
@@ -436,7 +433,6 @@ test("restore replaces requirement input when terminal auto-sync requests it", (
       rulesVersion: 2,
     },
     snapshot,
-    mode: "merge",
     replaceRequirementInput: true,
   });
 
@@ -450,6 +446,75 @@ test("restore replaces requirement input when terminal auto-sync requests it", (
     }),
   );
   assert.deepEqual(restored.generatedDiagramTypes, ["usecase"]);
+});
+
+test("restore does not replay retired rejection decisions into a new baseline", () => {
+  const requirementText = "联系方式在认领通过前隐藏。";
+  const rules = [requirementRule("r6", requirementText)];
+  const rebuilt = atomicRequirement({
+    id: "REQ-006",
+    sourceRuleId: "r6",
+    sourceFragment: requirementText,
+    actor: null,
+    status: "pending-review",
+  });
+  const decided = atomicRequirement({
+    ...rebuilt,
+    status: "accepted",
+    fieldProvenance: {
+      actor: {
+        source: "ai-suggested",
+        status: "rejected",
+        value: "系统",
+        originalValue: null,
+        rationale: "用户已拒绝本次智能修复建议。",
+      },
+    },
+  });
+  const snapshot = createEmptySnapshot(
+    "run-auto-upstream",
+    requirementText,
+    ["usecase"],
+    rules,
+    { models: [requirementUseCaseModel()] },
+  ) as RunSnapshot;
+  snapshot.status = "completed";
+  snapshot.requirementBaseline = requirementBaseline([rebuilt], {
+    qualityReport: {
+      runId: "run-auto-upstream",
+      status: "pending-review",
+      summary: "发现 1 个需求质量提示。",
+      issues: [
+        {
+          id: "ISS-006",
+          code: "missing-actor",
+          message: "REQ-006 缺少明确角色/执行者。",
+          severity: "warning",
+          requirementId: "REQ-006",
+          blocksDownstream: false,
+        },
+      ],
+      blockingIssueIds: [],
+      reviewRequiredRequirementIds: ["REQ-006"],
+    },
+  });
+
+  const restored = restoreRunSnapshotToWorkspaceState({
+    currentState: {
+      requirementText,
+      rules,
+      requirementBaseline: requirementBaseline([decided]),
+      requirementReviewCandidates: {
+        r6: { ...pendingReviewCandidate(rebuilt), status: "rejected" },
+      },
+    },
+    snapshot,
+  });
+
+  const restoredBaseline = restored.requirementBaseline as RequirementBaseline;
+  assert.equal(restoredBaseline.requirements[0]?.status, "pending-review");
+  assert.deepEqual(restoredBaseline, snapshot.requirementBaseline);
+  assert.deepEqual(restored.requirementReviewCandidates, {});
 });
 
 test("restore applies requirement baseline from model snapshots when input matches", () => {
@@ -513,7 +578,6 @@ test("restore applies requirement baseline from model snapshots when input match
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   const restoredBaseline = restored.requirementBaseline as RequirementBaseline;
@@ -522,16 +586,10 @@ test("restore applies requirement baseline from model snapshots when input match
     restoredBaseline.qualityReport.reviewRequiredRequirementIds,
     ["REQ-006"],
   );
-  assert.equal(
-    (
-      (restored.requirementReviewCandidates as Record<string, { status: string }>)
-        .r6
-    ).status,
-    "pending",
-  );
+  assert.deepEqual(restored.requirementReviewCandidates, {});
 });
 
-test("restore keeps accepted candidates over older pending snapshot baselines", () => {
+test("restore ignores retired accepted candidates instead of changing the snapshot baseline", () => {
   const requirementText = "用户通过邮箱注册账号，联系方式在认领通过前隐藏。";
   const rules = [
     requirementRule("r1", "用户通过邮箱注册账号。"),
@@ -594,22 +652,13 @@ test("restore keeps accepted candidates over older pending snapshot baselines", 
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   const restoredBaseline = restored.requirementBaseline as RequirementBaseline;
-  assert.equal(restoredBaseline.requirements[0]?.status, "accepted");
-  assert.equal(restoredBaseline.requirements[0]?.actor, "认领用户");
-  assert.equal(restoredBaseline.qualityReport.status, "passed");
-  assert.deepEqual(restoredBaseline.qualityReport.issues, []);
-  assert.deepEqual(restoredBaseline.qualityReport.reviewRequiredRequirementIds, []);
-  assert.equal(
-    (
-      (restored.requirementReviewCandidates as Record<string, { status: string }>)
-        .r6
-    ).status,
-    "accepted",
-  );
+  assert.equal(restoredBaseline.requirements[0]?.status, "pending-review");
+  assert.equal(restoredBaseline.requirements[0]?.actor, null);
+  assert.deepEqual(restoredBaseline, snapshot.requirementBaseline);
+  assert.deepEqual(restored.requirementReviewCandidates, {});
 });
 
 test("restore drops stale pending candidates when the new baseline has passed", () => {
@@ -647,7 +696,6 @@ test("restore drops stale pending candidates when the new baseline has passed", 
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   const restoredBaseline = restored.requirementBaseline as RequirementBaseline;
@@ -748,7 +796,6 @@ test("restore replaces old design records by successful selected design kind", (
       ],
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(
@@ -809,7 +856,6 @@ test("restore preserves old design records when selected design kind failed", ()
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(Object.keys(restored.designModels as Record<string, unknown>), [
@@ -861,7 +907,6 @@ test("restore applies successful design artifacts from failed partial snapshots"
       generatedDesignDiagramTypes: ["class"],
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(restored.generatedDesignDiagramTypes, []);
@@ -906,7 +951,6 @@ test("restore fills missing requirement text without replacing existing rules", 
       rules: [existingRule],
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.equal(restored.requirementText, "用户可以发布动态并关注其他用户。");
@@ -965,7 +1009,6 @@ test("restore keeps requirement analysis model instances keyed by modelId", () =
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   const models = restored.models as Record<string, DiagramModelSpec>;
@@ -989,7 +1032,7 @@ test("restore keeps requirement analysis model instances keyed by modelId", () =
   ]);
 });
 
-test("restore does not mark context requirement models generated without artifacts", () => {
+test("new workspace does not mark context requirement models generated without artifacts", () => {
   const snapshot = createEmptySnapshot(
     "run-class-restore",
     "用户可以浏览活动并报名。",
@@ -1041,39 +1084,8 @@ test("restore does not mark context requirement models generated without artifac
   ];
 
   const restored = restoreRunSnapshotToWorkspaceState({
-    currentState: {
-      models: {
-        usecase: {
-          diagramKind: "usecase",
-          modelId: "usecase",
-          title: "旧用例模型",
-          summary: "旧状态。",
-          notes: [],
-          actors: [],
-          useCases: [],
-          relationships: [],
-        },
-      },
-      plantUml: {
-        usecase: "@startuml\nusecase Old\n@enduml",
-      },
-      svgArtifacts: {
-        usecase: {
-          diagramKind: "usecase",
-          svg: "<svg><text>Old</text></svg>",
-          renderMeta: {
-            engine: "plantuml",
-            generatedAt: "2026-06-08T00:00:00.000Z",
-            sourceLength: 24,
-            durationMs: 1,
-          },
-        },
-      },
-      generatedDiagramTypes: ["usecase"],
-      diagramVersions: { usecase: 1 },
-    },
+    currentState: {},
     snapshot,
-    mode: "restore",
   });
 
   const models = restored.models as Record<string, DiagramModelSpec>;
@@ -1164,7 +1176,6 @@ test("restore preserves existing artifacts when selected diagram only has an err
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(restored.generatedDiagramTypes, [
@@ -1253,7 +1264,6 @@ test("restore applies successful requirement artifacts from cancelled partial sn
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(

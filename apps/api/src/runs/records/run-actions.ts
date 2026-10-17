@@ -23,6 +23,7 @@ import {
   type RunRecordStore,
 } from "./run-record-store.js";
 import { createRunError } from "../pipelines/shared/errors.js";
+import { emptyRequirementTokenUsage } from "./requirement-token-usage.js";
 
 function createQueuedSnapshotFromSource(
   source: RunRecord["snapshot"],
@@ -31,6 +32,7 @@ function createQueuedSnapshotFromSource(
 ): RunRecord["snapshot"] {
   if ("selectedArtifacts" in source) {
     return createEmptyFeasibilitySnapshot(newRunId, {
+      reasoning: source.reasoning,
       projectId: source.projectId,
       selectedArtifacts: source.selectedArtifacts,
       providerSettings: source.providerSettings,
@@ -49,11 +51,8 @@ function createQueuedSnapshotFromSource(
     });
   }
   if ("documentKind" in source) {
-    return createEmptyDocumentSnapshot(newRunId, {
-      documentKind: source.documentKind,
-      requirementText: source.requirementText,
-      requirementBaseline: source.requirementBaseline,
-    });
+    if (!source.replayInput) throw new Error("原任务未保存完整文档输入，请从文档页面重新生成。");
+    return createEmptyDocumentSnapshot(newRunId, structuredClone(source.replayInput));
   }
 
   
@@ -76,6 +75,7 @@ function createQueuedSnapshotFromSource(
     const selectedDiagrams =
       retryDiagrams.length > 0 ? retryDiagrams : source.selectedDiagrams;
     return createEmptyDesignSnapshot(newRunId, {
+      reasoning: source.reasoning,
       selectedDiagrams,
       requestedDiagrams:
         retryDiagrams.length > 0 ? retryDiagrams : source.requestedDiagrams,
@@ -112,7 +112,12 @@ function createQueuedSnapshotFromSource(
     selectedDiagrams,
     source.rules,
     {
+      requirementBaseline: source.requirementBaseline,
       analysisTargetUseCaseIds: source.analysisTargetUseCaseIds,
+      attachments: source.attachments,
+      reasoning: source.reasoning,
+      submittedRequirementText: source.submittedRequirementText,
+      tokenUsage: source.tokenUsage ? emptyRequirementTokenUsage(source.tokenUsage.model, source.tokenUsage.capacity) : undefined,
       requestedDiagrams:
         retryDiagrams.length > 0 ? retryDiagrams : source.requestedDiagrams,
       dependencyDiagrams: source.dependencyDiagrams,
@@ -123,7 +128,11 @@ function createQueuedSnapshotFromSource(
 }
 
 export function isRetryableRun(record: RunRecord) {
+  // Partial batches may close as completed while individual diagrams still need retrying.
+  const partialFailure = record.terminal && record.snapshot.status === "completed" &&
+    "diagramErrors" in record.snapshot && Object.values(record.snapshot.diagramErrors).some((failure) => failure.error.retryable);
   return (
+    partialFailure ||
     record.snapshot.status === "failed" ||
     record.snapshot.status === "cancelled" ||
     (record.terminal &&

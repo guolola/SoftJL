@@ -2,7 +2,7 @@
   "name": "softjl-community",
   "private": true,
   "license": "Apache-2.0",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "devDependencies": {
     "@types/node": "22.15.21",
     "concurrently": "9.1.2",
@@ -22,7 +22,7 @@
     "dev:full": "npm run dev:office && cross-env SOFTJL_DEV_ONLYOFFICE=true npm run dev",
     "dev:postgres": "npm run dev:postgres:ensure && cross-env DATABASE_URL=postgres://uml_user:uml_dev_password_123@127.0.0.1:5432/uml_platform npm run dev",
     "dev:postgres:demo": "node scripts/dev/check-demo-startup.mjs --ports && npm run dev:postgres:ensure && cross-env UML_API_AUTOSTART=true PORT=3000 RENDER_SERVICE_PORT=4002 RENDER_SERVICE_BASE_URL=http://127.0.0.1:4002 UML_DEMO_OFFLINE_PROJECT_IDS=f131e098-904f-4900-bf83-5e32506dc76b \"UML_DEMO_OFFLINE_PROJECT_NAME_PATTERNS=图书馆座位预约系统,课程 UML 实验项目\" UML_DEMO_OFFLINE_STAGE_DELAY_MS=700 DATABASE_URL=postgres://uml_user:uml_dev_password_123@127.0.0.1:5432/uml_platform npm run dev:demo",
-    "dev:demo": "npm run dev:office && concurrently --kill-others-on-fail -n render,api,web,ready -c blue,green,magenta,cyan \"npm run dev:render\" \"npm run dev:api:safe\" \"npm run dev:web:safe\" \"node scripts/dev/check-demo-startup.mjs --ready\"",
+    "dev:demo": "npm run dev:office && concurrently --kill-others-on-fail -n render,api,web,ready -c blue,green,magenta,cyan \"npm run demo:render\" \"npm run demo:api:safe\" \"npm run dev:web:safe\" \"node scripts/dev/check-demo-startup.mjs --ready\"",
     "predev:demo": "npm run build:packages",
     "dev:postgres:ensure": "node scripts/dev/ensure-postgres.mjs",
     "dev:default": "npm run dev",
@@ -60,6 +60,14 @@
     "build:web:production:prepared": "cross-env NEXT_PUBLIC_APP_API_BASE_URL= npm run build:web:prepared",
     "test:prompts": "npm run test --workspace @uml-platform/prompts",
     "test:scripts": "node --test scripts/dev/*.test.mjs apps/api/scripts/*.test.mjs",
-    "typecheck:harness-eval": "npm run typecheck --workspace @uml-platform/harness-eval"
+    "typecheck:harness-eval": "npm run typecheck --workspace @uml-platform/harness-eval",
+    "demo:api": "npm run demo --workspace @uml-platform/api",
+    "demo:render": "npm run demo --workspace @uml-platform/render-service",
+    "demo:api:safe": "cross-env API_PORT=4101 ONLYOFFICE_DOCUMENT_SERVER_URL=http://127.0.0.1:8080 PUBLIC_API_BASE_URL=http://host.docker.internal:4101 ONLYOFFICE_JWT_SECRET=local-onlyoffice-jwt-secret ONLYOFFICE_ACCESS_TOKEN_SECRET=local-onlyoffice-access-secret UML_DOCUMENT_STORAGE_DIR=.local-documents UML_ENABLE_GUEST_ACCESS=true UML_GUEST_EMAIL=guest@example.edu UML_GUEST_PASSWORD=guest UML_GUEST_DISPLAY_NAME=Guest UML_LLM_GLOBAL_CONCURRENCY=10 UML_LLM_PROVIDER_CONCURRENCY=10 UML_LLM_PROJECT_CONCURRENCY=10 UML_LLM_USER_CONCURRENCY=10 UML_LLM_RUN_CONCURRENCY=10 npm run demo:api",
+    "test:ci": "node --test scripts/ci/*.test.mjs",
+    "verify": "node scripts/ci/verify.mjs"
+  },
+  "engines": {
+    "node": ">=22.19.0"
   }
 }

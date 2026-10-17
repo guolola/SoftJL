@@ -2,6 +2,9 @@
 import { buildApiUrl } from "../../../services/api-client";
 import type {
   DesignDiagramKind,
+  FeasibilityRunSnapshot,
+  RunOperationType,
+  RunTokenConsumption,
   DiagramKind,
   DocumentKind,
   OnboardingStateResponse,
@@ -40,6 +43,7 @@ export interface PlatformUser {
 }
 
 export interface PlatformProject {
+  projectMode?: "standard" | "professional";
   id: string;
   name: string;
   description: string | null;
@@ -98,16 +102,20 @@ export interface PlatformProjectInvitation {
   project?: PlatformProject;
 }
 
+export type PlatformRunTokenConsumption = RunTokenConsumption;
+
 export interface PlatformRunSummary {
   runId: string;
+  operationType?: RunOperationType;
   projectId?: string;
   status: string;
   stage?: string | null;
   runKind?: "requirements" | "design" | "document" | string | null;
   documentKind?: DocumentKind | null;
   selectedDiagrams?: DiagramKind[] | DesignDiagramKind[] | null;
-  requestedDiagrams?: DesignDiagramKind[] | null;
+  requestedDiagrams?: (DiagramKind | DesignDiagramKind)[] | null;
   model?: string | null;
+  tokenConsumption?: PlatformRunTokenConsumption;
   createdByUserId?: string | null;
   sourceRunId?: string | null;
   sourceAction?: "retry" | "rerun" | string | null;
@@ -122,12 +130,13 @@ export interface PlatformRunSummary {
   updatedAt?: string | null;
   errorMessage?: string | null;
   error?: RunError | null;
+  diagramErrorSummary?: { diagramId: string; stage?: string | null; error?: RunError | null; message: string }[] | null;
+  missingArtifactSummary?: string[] | null;
   
   
   
   terminal?: boolean | null;
   snapshotAvailable?: boolean | null;
-  canRestore?: boolean | null;
   documentDownloadAvailable?: boolean | null;
   documentId?: string | null;
   documentFileName?: string | null;
@@ -648,6 +657,7 @@ export const platformApi = {
     return requestJson<PlatformAcademicOptionsResponse>("/api/academic-options");
   },
   createProject(input: {
+    projectMode?: "standard" | "professional";
     name: string;
     description: string | null;
     visibility?: string;
@@ -788,7 +798,7 @@ export const platformApi = {
     return requestJson<{
       projectId: string;
       run: PlatformRunSummary;
-      snapshot?: RunHistorySnapshot;
+      snapshot?: RunHistorySnapshot | FeasibilityRunSnapshot;
       events?: unknown[];
     }>(`/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}${options.includeEvents ? '?includeEvents=true' : ''}`, { signal: options.signal });
   },
@@ -813,19 +823,6 @@ export const platformApi = {
       message?: string;
     }>(
       `/api/projects/${projectId}/runs/${runId}/retry`,
-      { method: "POST" },
-    );
-  },
-  rerunProjectRun(projectId: string, runId: string) {
-    return requestJson<{
-      run?: PlatformRunSummary;
-      runId?: string;
-      sourceRunId?: string;
-      action?: "retry" | "rerun" | string;
-      status?: string;
-      message?: string;
-    }>(
-      `/api/projects/${projectId}/runs/${runId}/rerun`,
       { method: "POST" },
     );
   },

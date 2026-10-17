@@ -1,7 +1,9 @@
 // Orchestrates document text, diagram image rendering, and DOCX export for document runs.
+import { acceptRunOutput } from "../records/run-output-provenance.js";
 
 import { createStageLifecycle } from "./shared/stage-lifecycle.js";
 import { createRunLlmChunkHandlers } from "./shared/llm-chunk-events.js";
+import { withRunReasoning } from "./shared/run-reasoning.js";
 import {
   artifactReadyRunEventSchema,
   completedRunEventSchema,
@@ -243,6 +245,7 @@ export async function runDocumentStagePipeline(
   onPreparedStage?: (stage: RunStage) => Promise<void>,
 ) {
   const snapshot = record.snapshot as DocumentRunSnapshot;
+  llmTransport = withRunReasoning(llmTransport, snapshot.reasoning);
   snapshot.feasibilityImplementationPlan = input.feasibilityImplementationPlan;
   snapshot.feasibilityInputs = input.feasibilityInputs;
   assertRequirementBaselineAllowsDownstream(snapshot.requirementBaseline);
@@ -284,6 +287,7 @@ export async function runDocumentStagePipeline(
   const issues = [...findForbiddenDocumentPhrases(sections), ...findUnsupportedDocumentClaims(input, sections)];
   if (issues.length) throw new Error(`说明书整篇校验失败：${issues.join("；")}`);
   snapshot.sections = sections;
+  acceptRunOutput(snapshot, { kind: "sections", id: "sections" });
   // Demo observers describe the actual prepared sections; real runs omit this hook.
   await onPreparedStage?.("generate_document_text");
 

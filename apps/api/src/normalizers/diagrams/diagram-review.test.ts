@@ -1,7 +1,7 @@
 // Exercises repair authorization separately from provider observations and candidate validation.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deriveTableModel, type RequirementBaseline, type DiagramReviewFinding } from "@uml-platform/contracts";
+import { createRequirementBaselineSnapshot, deriveTableModel, type RequirementBaseline, type DiagramReviewFinding } from "@uml-platform/contracts";
 import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
 import { acceptRepairCandidate, deriveAuthorizedRepairs, verifyReviewClaims, type DiagramReviewBasis, type ReviewModel } from "./diagram-review.js";
 
@@ -19,6 +19,48 @@ function comparatorFixture() {
   const basis: DiagramReviewBasis = { stage: "requirements", baseline, traceability: [{ ruleId: "R1", mappingSource: "llm", reviewStatus: "confirmed", target: { modelId: "activity", diagramKind: "activity", elementId: "yes" } }] };
   return { model, basis };
 }
+
+function ruleSnapshotFixture() {
+  const fixture = comparatorFixture();
+  fixture.basis.baseline = createRequirementBaselineSnapshot({ runId: "v2", requirementText: "数量至少10时允许提交。", rules: [
+    { id: "R1", category: "业务规则", text: "数量至少10时允许提交。", relatedDiagrams: ["activity"] },
+  ] });
+  return fixture;
+}
+
+test("v2 full rule text restores scoped boundary findings without mutating business conditions", () => {
+  const { model, basis } = ruleSnapshotFixture();
+  const result = deriveAuthorizedRepairs(model, basis);
+  assert.equal(result.findings.length, 2);
+  assert.equal(result.findings[0]?.expected, "数量>=10");
+  assert.ok(result.findings.every(finding => !finding.repairable && finding.category === "business_content"));
+  assert.deepEqual(result.expectedModel, model);
+  assert.deepEqual(result.changes, []);
+});
+
+test("v2 boundary checks require an unambiguous literal predicate and trusted trace", () => {
+  for (const mode of ["pending", "missing", "other-metric", "other-number", "multiple", "other-rule", "compound"] as const) {
+    const { model, basis } = ruleSnapshotFixture();
+    if (mode === "pending") (basis.traceability as any[])[0].reviewStatus = "pending";
+    if (mode === "missing") basis.traceability = [];
+    if (mode === "other-metric") basis.baseline!.rules![0]!.text = "金额至少10时允许提交。";
+    if (mode === "other-number") basis.baseline!.rules![0]!.text = "数量至少100时允许提交。";
+    if (mode === "multiple") basis.baseline!.rules![0]!.text = "数量至少10且金额至少20时允许提交。";
+    if (mode === "other-rule") basis.baseline!.rules![0]!.id = "R2";
+    if (mode === "compound") model.relationships[1]!.guard = "数量>10且账户有效";
+    assert.deepEqual(deriveAuthorizedRepairs(model, basis).findings, [], mode);
+  }
+});
+
+test("design boundary findings follow the two-hop requirement trace and reject pending upstream links", () => {
+  const { model, basis } = ruleSnapshotFixture();
+  basis.stage = "design";
+  basis.requirementTraceability = [{ ruleId: "R1", mappingSource: "llm", reviewStatus: "confirmed", target: { modelId: "uc-model", diagramKind: "usecase", elementId: "uc" } }];
+  basis.traceability = [{ source: { modelId: model.modelId, diagramKind: model.diagramKind, elementId: "yes" }, targets: [{ modelId: "uc-model", diagramKind: "usecase", elementId: "uc" }] }];
+  assert.equal(deriveAuthorizedRepairs(model, basis).findings.length, 2);
+  (basis.requirementTraceability as any[])[0].reviewStatus = "pending";
+  assert.deepEqual(deriveAuthorizedRepairs(model, basis).findings, []);
+});
 test("records a confirmed business comparator discrepancy without automatic content changes", () => {
   const { model, basis } = comparatorFixture();
   const authorized = deriveAuthorizedRepairs(model, basis);

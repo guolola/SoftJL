@@ -25,11 +25,11 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Version-v2.0.0-2563eb?style=flat-square" alt="Current product version v2.0.0" />
+  <img src="https://img.shields.io/badge/Version-v2.1.0-2563eb?style=flat-square" alt="Current product version v2.1.0" />
   <img src="https://img.shields.io/badge/Frontend-React%20%2B%20Next.js-61dafb?style=flat-square" alt="React and Next.js" />
   <img src="https://img.shields.io/badge/API-Fastify%20%2B%20Zod-111827?style=flat-square" alt="Fastify and Zod" />
   <img src="https://img.shields.io/badge/UML-PlantUML-f59e0b?style=flat-square" alt="PlantUML" />
-  <img src="https://img.shields.io/badge/Runtime-Node.js%2022-339933?style=flat-square" alt="Node.js 22" />
+  <img src="https://img.shields.io/badge/Runtime-Node.js%2022.19.0%2B-339933?style=flat-square" alt="Node.js 22.19.0+" />
 </p>
 
 > Trace your designs, guide your revisions. Review models, tests and specifications against the same requirements, follow change impacts and organize design sources you can explain in reviews and your defense.
@@ -65,13 +65,28 @@ SoftJL Community is a self-hosted AI software engineering workspace, distributed
 
 ## Core Capabilities
 
+### What's new in v2.1.0
+
+This release brings the current SoftJL modeling workflows to Community while retaining self-hosting, BYOK and the edition boundaries below.
+
+- **Two project workflows**: new projects default to Standard, a persistent conversation for course and capstone modeling. Professional keeps the full requirements, feasibility, design, traceability, tests and document workflow. Existing projects remain Professional; a project's mode cannot be changed after creation. These modes are unrelated to billing.
+- **A project modeling assistant**: clarify requirements, choose the model types to generate, follow streaming replies and tool progress, and revise or regenerate a specific diagram. Saved conversations, project memory, context compaction, stop and resume preserve completed work.
+- **Eight Standard diagram types**: functional structure, use cases, business flow, architecture, conceptual E-R, design classes, sequences and database table relationships. Generate tests, requirements specifications and software design descriptions when needed; DOCX files use the existing document library and optional OnlyOffice editor.
+- **Shared modeling controls**: text/Markdown attachments, images for confirmed vision-capable models, capability-based reasoning controls and actual provider token usage. A cached public model catalog supplies capacity and capability references without receiving provider credentials or project content.
+- **More reliable Professional generation**: versioned requirement rule snapshots, stable identities, guarded workspace updates, improved progress and failure details, and protection against late results overwriting newer edits. Diagram navigation, editing and generation controls are shared across workflows.
+- **Runtime security update**: migrate the project agent to the maintained Pi SDK 1.3.0 namespace and require Node.js 22.19.0 or newer. Credentials and model metadata stay in memory for each session; host extensions and personal credential files are not loaded.
+- **Community upgrades retained**: optional PostgreSQL and OnlyOffice, direct project entry, private application metadata, explicit MCP grants and patched dependency versions. Billing, website-managed models, operations administration and the hosted marketing site remain excluded.
+
+See [community maintenance and upgrade notes](docs/development/community-edition.md) and the [v2.1.0 release](https://github.com/guolola/SoftJL/releases/tag/v2.1.0) for details. Real provider tool calling and OnlyOffice editing require validation with your own services.
+
 ### Community and Hosted Comparison
 
 **Community** is the self-hosted edition in this repository. **Hosted** is the service available on the [SoftJL website](https://jianglisoftware.com). ✅ means supported; — means not provided. Configuration and access requirements are listed below.
 
 | Capability | Community | Hosted | Scope and requirements |
 | --- | :---: | :---: | --- |
-| 📝 Requirement rules and confirmation | ✅ | ✅ | Extraction, quality review, revision, human confirmation and acceptance criteria |
+| 💬 Standard and Professional project modes | ✅ | ✅ | Standard conversation and eight diagram types; Professional full engineering workflow; existing projects remain Professional |
+| 📝 Requirement rules and snapshots | ✅ | ✅ | Extraction, manual editing, versioned rule snapshots and acceptance sources; generated content still requires human review |
 | 🧭 Feasibility: system context | ✅ | ✅ | System boundaries, external actors and interactions |
 | 🧭 Feasibility: business/system flow | ✅ | ✅ | Business processes and system workflows |
 | 🧭 Feasibility: implementation options | ✅ | ✅ | Candidate solutions, costs, benefits and risks |
@@ -100,6 +115,8 @@ After the initial installation and build, use `npm run dev:mcp` for local MCP ac
 
 Platform billing, payments, credit management, and the operations administration backend are excluded. Read-only MCP access is optional, with explicit project grants and the shared connection page. Authentication, project permissions, provider credential protection and generation scheduling remain available. Hosted availability depends on the current deployment, account permissions and service configuration.
 
+Standard and Professional are workflow choices available in Community. The three feasibility analyses, full requirement/design coverage and feasibility report belong to Professional. Standard provides conversation-based diagrams, tests and two engineering specifications without Professional dependency and freshness checks. MCP reads saved artifacts according to the project's mode and authorization scope.
+
 Use an independent database. This distribution is not a downgrade path for an existing full-edition database. Generated models and documents require review, and tests must be executed against your actual system.
 
 ## Interface Preview
@@ -112,7 +129,7 @@ The community edition opens the project list directly, with sign-in required. Se
 
 ## Quick Start
 
-Install Node.js 22, npm 10, Java 21 and Graphviz. Docker is optional for the core in-memory experience, and is used by the PostgreSQL and OnlyOffice helpers. The first renderer setup may download PDF CJK fonts.
+Install Node.js 22.19.0+, npm 10, Java 21 and Graphviz. Docker is optional for the core in-memory experience, and is used by the PostgreSQL and OnlyOffice helpers. The first renderer setup may download PDF CJK fonts.
 
 ### 1. Install and start core services
 

@@ -9,7 +9,7 @@ export function getSafeRedirectPath() {
   if (redirect.startsWith("/") && !redirect.startsWith("//")) {
     return redirect;
   }
-  return "/dashboard";
+  return "/projects";
 }
 
 export type LoginRedirectReason =
@@ -23,7 +23,7 @@ export function buildLoginRedirectPath(
 ) {
   const safeRedirect = redirect.startsWith("/") && !redirect.startsWith("//")
     ? redirect
-    : "/dashboard";
+    : "/projects";
   const search = new URLSearchParams({ redirect: safeRedirect, reason });
   return `/login?${search.toString()}`;
 }

@@ -392,6 +392,7 @@ export function createScheduledLlmTransport({
           const providerStream = transport.streamChatCompletion({
             runContext: input.runContext,
             providerSettings: input.providerSettings,
+            reasoning: input.reasoning,
             messages: input.messages as ChatMessage[],
             responseFormat:
               input.responseFormat as ChatCompletionResponseFormat | null | undefined,

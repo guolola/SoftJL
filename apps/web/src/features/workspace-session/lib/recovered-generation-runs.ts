@@ -1,6 +1,6 @@
 // Restores active model runs after navigation without starting another generation job.
 import { useEffect, useRef } from "react";
-import type { DesignRunSnapshot, RunEvent, RunSnapshot } from "@uml-platform/contracts";
+import type { DesignRunSnapshot, FeasibilityRunSnapshot, RunEvent, RunSnapshot } from "@uml-platform/contracts";
 import type { WorkspaceRepository } from "../../../services/workspace-repository";
 import type { GenerationTask, GenerationTaskRunSummary } from "../model/session-state";
 import { shouldRefreshRunSnapshotFromEvent } from "./run-events";
@@ -12,7 +12,7 @@ interface RecoveredGenerationRunsInput {
   getTasks: () => GenerationTask[];
   recoverTask: (run: GenerationTaskRunSummary) => string;
   onEvent: (taskId: string, event: RunEvent) => void;
-  onSnapshot: (taskId: string, snapshot: RunSnapshot | DesignRunSnapshot) => void;
+  onSnapshot: (taskId: string, snapshot: RunSnapshot | DesignRunSnapshot | FeasibilityRunSnapshot) => void | Promise<void>;
 }
 
 export function useRecoveredGenerationRuns(input: RecoveredGenerationRunsInput) {
@@ -33,22 +33,24 @@ export function useRecoveredGenerationRuns(input: RecoveredGenerationRunsInput) 
     for (const run of input.runs) {
       const runId = run.runId;
       if (!runId || (run.status !== "queued" && run.status !== "running") ||
-        (run.runKind !== "requirements" && run.runKind !== "design") || connections.current.has(runId)) continue;
+        (run.runKind !== "requirements" && run.runKind !== "design" && run.runKind !== "feasibility") || connections.current.has(runId)) continue;
       const existing = latest.current.getTasks().find((task) => task.runId === runId);
       // Locally started runs already own a subscription. Recovered runs may retry
       // a temporary network failure on the next server summary refresh.
       if (existing && (!existing.clientTaskId.startsWith("recovered:") ||
         (existing.status !== "queued" && existing.status !== "running"))) continue;
       const repository = input.repository;
-      const read = run.runKind === "design" ? repository.getDesignRunSnapshot?.bind(repository) : repository.getRunSnapshot.bind(repository);
-      const subscribe = run.runKind === "design" ? repository.subscribeToDesignRun?.bind(repository) : repository.subscribeToRun.bind(repository);
+      const read = run.runKind === "feasibility" ? repository.getFeasibilityRunSnapshot?.bind(repository) :
+        run.runKind === "design" ? repository.getDesignRunSnapshot?.bind(repository) : repository.getRunSnapshot.bind(repository);
+      const subscribe = run.runKind === "feasibility" ? repository.subscribeToFeasibilityRun?.bind(repository) :
+        run.runKind === "design" ? repository.subscribeToDesignRun?.bind(repository) : repository.subscribeToRun.bind(repository);
       if (!read || !subscribe) continue;
       const taskId = latest.current.recoverTask(run);
       const controller = new AbortController();
       connections.current.set(runId, controller);
-      const apply = (snapshot: RunSnapshot | DesignRunSnapshot) => {
+      const apply = (snapshot: RunSnapshot | DesignRunSnapshot | FeasibilityRunSnapshot) => {
         // Missing or mismatched snapshots cannot restore this run's workspace.
-        if (snapshot?.runId === runId && !controller.signal.aborted) latest.current.onSnapshot(taskId, snapshot);
+        if (snapshot?.runId === runId && !controller.signal.aborted) return latest.current.onSnapshot(taskId, snapshot);
       };
       // Coalesce replay bursts and serialize reads so older responses cannot
       // overwrite a newer partial snapshot or terminal result.
@@ -63,7 +65,7 @@ export function useRecoveredGenerationRuns(input: RecoveredGenerationRunsInput) 
               refreshRequested = false;
               const revision = snapshotRevision;
               const snapshot = await read(runId);
-              if (revision === snapshotRevision) apply(snapshot);
+              if (revision === snapshotRevision) await apply(snapshot);
             }
           })().finally(() => { refreshing = null; });
         }
@@ -78,16 +80,20 @@ export function useRecoveredGenerationRuns(input: RecoveredGenerationRunsInput) 
           if (event.type === "completed") {
             // Invalidate in-flight reads before applying the terminal snapshot.
             controller.abort();
-            if (event.snapshot?.runId === runId) latest.current.onSnapshot(taskId, event.snapshot as RunSnapshot | DesignRunSnapshot);
+            if (event.snapshot?.runId === runId) void latest.current.onSnapshot(taskId, event.snapshot as RunSnapshot | DesignRunSnapshot | FeasibilityRunSnapshot);
+          } else if (run.runKind === "feasibility" && (event.type === "failed" || event.type === "cancelled")) {
+            // A failed sibling must not hide the branches already accepted by the server.
+            snapshotRevision += 1;
+            void refresh().catch(() => {}).finally(() => controller.abort());
           } else if (shouldRefreshRunSnapshotFromEvent(event)) {
             void refresh().catch(() => {});
           }
         }, {
           signal: controller.signal,
-          onSnapshot: (snapshot: RunSnapshot | DesignRunSnapshot) => {
+          onSnapshot: (snapshot: RunSnapshot | DesignRunSnapshot | FeasibilityRunSnapshot) => {
             // A slow event-triggered read must not hold up polling recovery.
             snapshotRevision += 1;
-            apply(snapshot);
+            return apply(snapshot);
           },
         });
       })().catch(() => {

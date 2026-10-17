@@ -104,6 +104,11 @@ function readCompletedAt(record: RunRecord, event?: RunEvent) {
   return new Date().toISOString();
 }
 
+function persistedSystemName(snapshot: unknown) {
+  const value = (snapshot as { _systemName?: unknown } | null)?._systemName;
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 function createMetadata(row: RunRecordRow): RunRecordMetadata | undefined {
   if (
     !row.user_id &&
@@ -119,6 +124,7 @@ function createMetadata(row: RunRecordRow): RunRecordMetadata | undefined {
   return {
     userId: row.user_id ?? undefined,
     offlineDemoFixture: (row.snapshot as { _offlineDemoFixture?: unknown })._offlineDemoFixture === "library-seat" ? "library-seat" : undefined,
+    systemName: persistedSystemName(row.snapshot),
     projectId: row.project_id ?? undefined,
     sourceRunId: row.source_run_id ?? undefined,
     sourceAction: row.source_action ?? undefined,
@@ -260,8 +266,12 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
       if (!rows.rows.length) break;
       const ids = rows.rows.map(row => row.id);
       const actions = await this.db.query<RunEventRow>(`
-        select run_id, sequence, payload, created_at from run_events
-        where run_id = any($1::text[]) and event_type = 'run_action'
+        select run_id, sequence,
+          case when event_type = 'artifact_ready' then jsonb_strip_nulls(jsonb_build_object(
+            'type', payload->'type', 'stage', payload->'stage', 'artifactKind', payload->'artifactKind',
+            'modelId', payload->'modelId', 'diagramKind', payload->'diagramKind', 'subtaskId', payload->'subtaskId', 'subtaskStatus', payload->'subtaskStatus'))
+          else payload end as payload, created_at from run_events
+        where run_id = any($1::text[]) and event_type in ('run_action', 'artifact_ready')
         order by run_id asc, sequence asc
       `, [ids]);
       const records = this.applyLoadedRows(rows.rows, actions.rows, { markActiveInterrupted: false, readOnly: true });
@@ -372,6 +382,7 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
       snapshot.status = row.status as RunRecord["snapshot"]["status"];
       // Keep the server-only execution marker outside public run snapshots and events.
       if ("_offlineDemoFixture" in snapshot) delete snapshot._offlineDemoFixture;
+      if ("_systemName" in snapshot) delete snapshot._systemName;
       const events = (eventRowsByRun.get(row.id) ?? []).map((eventRow) =>
         ({ ...hydratePersistedEvent(eventRow.payload, snapshot), sequence: eventRow.sequence }),
       );
@@ -487,7 +498,12 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
           readPersistedStatus(record, event),
           readModel(snapshot),
           metadata?.offlineDemoFixture ? null : readProviderConfigId(snapshot),
-          JSON.stringify(metadata?.offlineDemoFixture ? { ...snapshot, _offlineDemoFixture: metadata.offlineDemoFixture } : snapshot),
+          // Server-only execution markers ride inside the snapshot JSON and are stripped on load.
+          JSON.stringify({
+            ...snapshot,
+            ...(metadata?.offlineDemoFixture ? { _offlineDemoFixture: metadata.offlineDemoFixture } : {}),
+            ...(metadata?.systemName ? { _systemName: metadata.systemName } : {}),
+          }),
           snapshot.error ? JSON.stringify(snapshot.error) : null,
           snapshot.error?.code ?? null,
           readCompletedAt(record, event),

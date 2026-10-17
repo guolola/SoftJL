@@ -7,6 +7,7 @@ import type { PngRenderClient } from "../../adapters/render/png-render-client.js
 import type { LlmScheduler } from "../../adapters/llm/llm-scheduler.js";
 import type { LlmTransport } from "../../llm.js";
 import type { ProviderConfigStore } from "../../provider-configs/provider-config-store.js";
+import type { ModelCatalog } from "../../provider-configs/model-catalog.js";
 import { resolveProviderRateLimitPolicy, type ProviderUsageTracker, } from "../../provider-configs/provider-usage-tracker.js";
 import type { GenerationUsageService } from "../../generation/generation-usage.js";
 import { generatePlantUmlArtifacts } from "../../plantuml.js";
@@ -16,7 +17,8 @@ import { registerRunEventsRoute } from "../../runs/records/run-events.js";
 import { flushRunStoreIfAvailable, type RunQueue } from "../../runs/queue/run-queue.js";
 import { checkGenerationUsageLimit, checkProviderUsageLimit, recordGenerationUsage, recordProviderUsage, providerResolutionFailureResponse, resolveProviderConfigIdForRun, resolveProviderSettingsForRun, } from "../../runs/providers/run-provider-gates.js";
 import { startFeasibilityRecordPipeline } from "../../runs/pipelines/run-record-pipeline-starter.js";
-import { isOfflineDemoProject, offlineDemoProviderSettings } from "../../runs/demo/offline-demo-config.js";
+import { captureWorkspaceGuard } from "../../runs/records/workspace-run-guard.js";
+import { isOfflineDemoProject, offlineDemoProviderSettings } from "../../runs/demo/offline-demo-runs.js";
 import type { RunTelemetryStore } from "../../runs/records/run-telemetry-store.js";
 import { attachProjectWorkspaceSync, type ProjectWorkspaceSync, } from "../runs/project-workspace-sync.js";
 type ProjectWorkspace = {
@@ -56,7 +58,7 @@ function existingContextFromWorkspace(state: Record<string, unknown>, expectedFi
         contextFingerprint: fingerprint,
     };
 }
-export function registerFeasibilityRoutes({ app, runs, renderClient, pngRenderClient, llmTransport, llmScheduler, providerConfigs, providerUsageTracker, generationUsage, runQueue, defaultSseAllowOrigin, resolveUserId, canUpdateProject, loadWorkspace, resolveProjectName, syncProjectWorkspace, analyticsStore, }: {
+export function registerFeasibilityRoutes({ app, runs, renderClient, pngRenderClient, llmTransport, llmScheduler, providerConfigs, providerUsageTracker, generationUsage, runQueue, defaultSseAllowOrigin, resolveUserId, canUpdateProject, loadWorkspace, resolveProjectName, syncProjectWorkspace, analyticsStore, modelCatalog, }: {
     app: FastifyInstance;
     runs: RunRecordStore;
     renderClient: RenderClient;
@@ -74,6 +76,7 @@ export function registerFeasibilityRoutes({ app, runs, renderClient, pngRenderCl
     resolveProjectName?: (projectId: string) => Promise<string | null>;
     syncProjectWorkspace?: ProjectWorkspaceSync;
     analyticsStore?: Pick<RunTelemetryStore, "recordTelemetry">;
+    modelCatalog?: ModelCatalog;
 }) {
     const usageAccess = {
         async resolveRunAccess(request: FastifyRequest) {
@@ -113,6 +116,9 @@ export function registerFeasibilityRoutes({ app, runs, renderClient, pngRenderCl
         }
         const providerSettings = providerResolution.providerSettings;
         const providerConfigId = offlineDemo ? null : await resolveProviderConfigIdForRun({ providerSettings: input.providerSettings });
+        const capacity = providerConfigId ? modelCatalog?.resolve(providerConfigId, providerSettings.model, providerSettings.apiBaseUrl) : undefined;
+        if (capacity?.capabilities?.reasoning !== true)
+            input.reasoning = undefined;
         const generationCheck = offlineDemo ? true : await checkGenerationUsageLimit({
             generationUsage,
             runAccessGuard: usageAccess,
@@ -173,6 +179,7 @@ export function registerFeasibilityRoutes({ app, runs, renderClient, pngRenderCl
             snapshot: createEmptyFeasibilitySnapshot(runId, {
                 projectId: input.projectId,
                 selectedArtifacts: input.selectedArtifacts,
+                reasoning: input.reasoning,
                 providerSettings: offlineDemo ? { providerConfigId: "offline-demo", model: offlineDemoProviderSettings.model } : input.providerSettings,
                 rules,
                 requirementBaseline: baseline,
@@ -187,28 +194,31 @@ export function registerFeasibilityRoutes({ app, runs, renderClient, pngRenderCl
             metadata,
         };
         runs.set(runId, record);
+        record.snapshot.modelCapacity = capacity;
+        record.snapshot.workspaceGuard = captureWorkspaceGuard(record, workspace.state);
+        await syncProjectWorkspace?.prepare?.(record);
         attachProjectWorkspaceSync(record, syncProjectWorkspace);
         runQueue?.attachEventPublisher(record);
         // PostgreSQL persistence must complete before any workspace sync can use this run as a foreign key.
         await flushRunStoreIfAvailable(runs);
         emitEvent(record, queuedRunEventSchema.parse({ type: "queued" }));
-    if (runQueue?.enabled && !offlineDemo) {
-      await flushRunStoreIfAvailable(runs);
-      await runQueue.enqueueRun({ record });
-      releaseRunRecordIfAvailable(runs, runId);
-    } else {
-      startFeasibilityRecordPipeline({
-        record,
-        providerSettings: providerSettings as ProviderSettings,
-        providerConfigId,
-        llmTransport,
-        llmScheduler,
-        renderClient,
-        pngRenderClient,
-        analyticsStore,
-      });
-    }
-
+        if (runQueue?.enabled && !offlineDemo) {
+            await flushRunStoreIfAvailable(runs);
+            await runQueue.enqueueRun({ record });
+            releaseRunRecordIfAvailable(runs, runId);
+        }
+        else {
+            startFeasibilityRecordPipeline({
+                record,
+                providerSettings: providerSettings as ProviderSettings,
+                providerConfigId,
+                llmTransport,
+                llmScheduler,
+                renderClient,
+                pngRenderClient,
+                analyticsStore,
+            });
+        }
         return reply.code(202).send({ runId });
     });
     app.get("/api/feasibility-runs/:runId", async (request, reply) => {

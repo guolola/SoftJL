@@ -11,22 +11,29 @@ const steps: TranscriptStep[] = [{ stage: "generate_models", title: "生成模�
 afterEach(async () => { await act(async () => { await i18n.changeLanguage("zh-CN"); }); });
 
 describe("stage reading surface", () => {
-  it("does not mount batch visual warnings while keeping failed checks retryable", () => {
+  it("can start with details folded while summary and recovery remain visible", () => {
+    render(<GenerationTranscript taskKey="compact" initiallyExpanded={false} active={false} finalMessage="生成失败，请重试。"
+      steps={[{ ...steps[0], status: "failed", calls: [{ ...steps[0].calls[0], status: "failed", subtaskId: "usecase", message: "服务暂时不可用" }] }]} />);
+    expect(screen.getByRole("button", { name: "思考过程" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("region", { name: "输出总结" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /重试/ })).not.toBeInTheDocument();
+  });
+  it("does not repeat batch visual failures or add phase-level retry controls", () => {
     const detail = "架构模型追踪关系错配，需核对字段归属。".repeat(10_000);
     const calls = Array.from({ length: 20 }, (_, index) => ({
       ...steps[0].calls[0], id: `review-${index}`, title: `模型 ${index + 1} · 视觉检查`,
       subtaskId: `model-${index}`, status: "pending_review" as const, message: detail,
     }));
-    const { container } = render(<GenerationTranscript taskKey="batch-review" active={false} finalMessage="生成完成。" onRetry={() => {}}
+    const { container } = render(<GenerationTranscript taskKey="batch-review" active={false} finalMessage="绘图器故障。"
       steps={[{ stage: "verify_diagram_visual", title: "视觉检查", status: "completed", finished: true, messages: [detail], calls: [
         ...calls, { ...calls[0], id: "failed-check", subtaskId: "class", title: "类图 · 结构核对", status: "failed", message: detail },
       ] }]} />);
     expect(container).not.toHaveTextContent(detail);
     expect(container.querySelector('[data-slot="diagram-review-details"]')).toBeNull();
     expect(screen.getAllByText("检查已结束")).toHaveLength(20);
-    const issues = container.querySelector('[data-slot="generation-task-issues"]') as HTMLElement;
-    expect(issues).toHaveTextContent("类图 · 结构核对：视觉检查未完成，可重试。");
-    expect(within(issues).getAllByRole("button", { name: "重试此模型" })).toHaveLength(1);
+    expect(container.querySelector('[data-slot="generation-task-issues"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: /重试/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "输出总结" })).toHaveTextContent("绘图器故障。");
     fireEvent.click(screen.getByRole("button", { name: "思考过程" }));
     fireEvent.click(screen.getByRole("button", { name: "思考过程" }));
     expect(container).not.toHaveTextContent(detail);
@@ -82,11 +89,14 @@ describe("stage reading surface", () => {
     expect(container.querySelector('[data-slot="transcript-prose"]')).toBeNull();
   });
 
-  it("keeps failures and retry controls visible when the process is folded", () => {
-    render(<GenerationTranscript taskKey="a" steps={[{ ...steps[0], status: "failed", calls: [{ ...steps[0].calls[0], status: "failed", subtaskId: "usecase", message: "关系缺失，需要修复。" }] }]} active={false} finalMessage="" onRetry={() => {}} />);
+  it("keeps only the concise task failure when the process is folded", () => {
+    render(<GenerationTranscript taskKey="a" steps={[{ ...steps[0], status: "failed", messages: ["绘图器故障：SVG 关系不一致，预期标签与实际标签不同"], calls: [{ ...steps[0].calls[0], status: "failed", subtaskId: "usecase", message: "关系缺失，需要修复。" }] }]} active={false} failed finalMessage="用例图：绘图器故障，请重试。" />);
+    expect(screen.queryByText(/SVG 关系不一致/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "思考过程" }));
-    expect(screen.getByText(/关系缺失，需要修复/)).toBeVisible();
-    expect(screen.getByRole("button", { name: "重试此模型" })).toBeVisible();
+    expect(screen.queryByText(/关系缺失，需要修复/)).not.toBeInTheDocument();
+    expect(screen.getByText("用例图：绘图器故障，请重试。")).toBeVisible();
+    expect(screen.getByRole("region", { name: "输出总结" })).toHaveClass("text-sm", "leading-6", "text-destructive");
+    expect(screen.queryByRole("button", { name: /重试/ })).not.toBeInTheDocument();
     expect(document.querySelector('[data-slot="spinner"]')).toBeNull();
   });
 

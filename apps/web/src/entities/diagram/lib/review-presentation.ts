@@ -41,7 +41,7 @@ export function reviewProblemGroups(review: DiagramVisualReview) {
 export function reviewProblemTreatment(problem: ReviewProblem, review: DiagramVisualReview): string {
   const repair = [...(review.repairHistory ?? [])].reverse().find((item) => item.issueIds.includes(problem.finding?.id ?? problem.id));
   if (repair) return `第 ${repair.round} 轮${repair.target === "model" ? "结构纠错" : "图形重建"}：${repair.status === "accepted" ? "已接受" : repair.status === "rejected" ? "已拒绝" : "未完成"} · ${repair.reason}`;
-  if (problem.category === "business_content") return "内容待核实：保留原业务含义，未自动修改";
+  if (problem.category === "business_content") return "";
   if (problem.category === "check_execution") return "检查未完成或已跳过：请查看原因，必要时重试检查";
   if (problem.verification !== "verified") return "尚无程序校验依据：自动检查观察保留，不能据此宣称已修复";
   return problem.finding?.repairable ? `未尝试：${review.stopReason ?? "尚未启动修复"}` : "未修复：当前问题没有自动修复规则";

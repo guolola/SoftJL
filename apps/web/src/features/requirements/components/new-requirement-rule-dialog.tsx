@@ -1,14 +1,12 @@
 // Renders the dialog used to create a manual requirement rule.
 import { Alert } from '../../../shared/ui/alert';
 import { Textarea } from '../../../shared/ui/textarea';
-import { DIAGRAM_ORDER, getDiagramLabel, type DiagramType } from "../../../entities/diagram/model";
 import { useTranslation } from "react-i18next";
 import {
   RULE_CATEGORY_ORDER,
   type RequirementRule,
 } from "../../../entities/requirement-rule/model";
 import { Button } from "../../../shared/ui/button";
-import { Checkbox } from "../../../shared/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -25,14 +23,12 @@ interface NewRequirementRuleDialogProps {
   generating: boolean;
   newRuleCanSubmit: boolean;
   newRuleCategory: RequirementRule["category"];
-  newRuleDiagrams: DiagramType[];
   newRuleError: string | null;
   newRuleText: string;
   onCategoryChange: (category: RequirementRule["category"]) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
   onTextChange: (text: string) => void;
-  onToggleDiagram: (diagram: DiagramType, checked: boolean) => void;
   open: boolean;
 }
 
@@ -41,14 +37,12 @@ export function NewRequirementRuleDialog({
   generating,
   newRuleCanSubmit,
   newRuleCategory,
-  newRuleDiagrams,
   newRuleError,
   newRuleText,
   onCategoryChange,
   onOpenChange,
   onSubmit,
   onTextChange,
-  onToggleDiagram,
   open,
 }: NewRequirementRuleDialogProps) {
   const { t } = useTranslation();
@@ -79,27 +73,6 @@ export function NewRequirementRuleDialog({
                 label: t(`requirements.categories.${categoryKey(category)}`),
               }))}
             />
-          </Field>
-
-          <Field>
-            <FieldLabel>{t("requirements.newRule.models")}</FieldLabel>
-            <div className="grid grid-cols-2 gap-2">
-              {DIAGRAM_ORDER.map((diagram) => (
-                <label
-                  key={`new-rule:${diagram}`}
-                  className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-xs text-muted-foreground"
-                >
-                  <Checkbox
-                    checked={newRuleDiagrams.includes(diagram)}
-                    onCheckedChange={(value) =>
-                      onToggleDiagram(diagram, Boolean(value))
-                    }
-                    disabled={generating || !canEditRequirements}
-                  />
-                  {getDiagramLabel(diagram, t)}
-                </label>
-              ))}
-            </div>
           </Field>
 
           <Field>

@@ -33,6 +33,7 @@ export {
 const WorkspaceRepositoryContext = createContext<WorkspaceRepository | null>(
   null,
 );
+const WorkspaceProjectIdContext = createContext<string | null>(null);
 const defaultWorkspaceRepository = createHttpWorkspaceRepository();
 
 export function WorkspaceRepositoryProvider({
@@ -76,9 +77,11 @@ export function WorkspaceRepositoryProvider({
   );
 
   return (
-    <WorkspaceRepositoryContext.Provider value={value}>
-      {children}
-    </WorkspaceRepositoryContext.Provider>
+    <WorkspaceProjectIdContext.Provider value={scopedProjectId}>
+      <WorkspaceRepositoryContext.Provider value={value}>
+        {children}
+      </WorkspaceRepositoryContext.Provider>
+    </WorkspaceProjectIdContext.Provider>
   );
 }
 
@@ -90,4 +93,8 @@ export function useWorkspaceRepository() {
     );
   }
   return value;
+}
+
+export function useWorkspaceProjectId() {
+  return useContext(WorkspaceProjectIdContext);
 }

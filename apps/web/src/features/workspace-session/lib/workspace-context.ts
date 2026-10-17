@@ -36,7 +36,6 @@ import {
 } from "./generation-planning";
 
 export type ApplyRunSnapshotOptions = {
-  preserveRuleReviewState?: boolean;
   persistRuleState?: boolean;
 };
 

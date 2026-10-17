@@ -1035,6 +1035,17 @@ export const migrations = [
     },
     { id: "030_retire_code_prototypes", sql: retiredCodeDataSql },
     { id: "031_community_mcp_authorization", sql: mcpSchemaSql },
+    {
+        id: "031_project_mode",
+        // Existing projects keep all professional checks; create requests explicitly
+        // select standard mode. Workspace payloads cannot change this project policy.
+        sql: `alter table projects add column if not exists project_mode text not null default 'professional'
+      check (project_mode in ('standard', 'professional'));`,
+    },
+    {
+        id: "032_llm_telemetry_project_run",
+        sql: "create index if not exists llm_telemetry_project_run_idx on llm_request_telemetry(project_id, run_id);",
+    },
 ] as const;
 export async function runMigrations(db: Queryable | TransactionPool, migrationList: readonly {
     id: string;

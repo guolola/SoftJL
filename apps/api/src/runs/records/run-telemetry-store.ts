@@ -48,16 +48,20 @@ export type AnalyticsWindowFilters = {
     model?: string;
     requestedModelCount?: number;
     strategyId?: string;
+    projectId?: string;
+    runIds?: string[];
 };
 export interface RunTelemetryStore {
     recordTelemetry(entry: LlmRequestTelemetry): Promise<void>;
     listTelemetry(filters: AnalyticsWindowFilters): Promise<LlmRequestTelemetry[]>;
 }
-function matchesFilters(entry: Pick<LlmRequestTelemetry, "queuedAt" | "taskType" | "providerConfigId" | "model" | "requestedModelCount">, filters: AnalyticsWindowFilters) {
+function matchesFilters(entry: Pick<LlmRequestTelemetry, "queuedAt" | "taskType" | "providerConfigId" | "model" | "requestedModelCount" | "projectId" | "runId">, filters: AnalyticsWindowFilters) {
     return entry.queuedAt >= filters.from && entry.queuedAt < filters.to &&
         (!filters.taskType || entry.taskType === filters.taskType) &&
         (!filters.providerConfigId || entry.providerConfigId === filters.providerConfigId) &&
         (!filters.model || entry.model === filters.model) &&
+        (!filters.projectId || entry.projectId === filters.projectId) &&
+        (!filters.runIds || filters.runIds.includes(entry.runId)) &&
         (filters.requestedModelCount === undefined || entry.requestedModelCount === filters.requestedModelCount);
 }
 export function createInMemoryRunTelemetryStore(): RunTelemetryStore {
@@ -100,7 +104,7 @@ function mapTelemetryRow(row: Record<string, unknown>): LlmRequestTelemetry {
         queueMs: nullableNumber(row.queue_ms), providerTtftMs: nullableNumber(row.provider_ttft_ms),
         ttftMs: nullableNumber(row.ttft_ms), reasoningMs: nullableNumber(row.reasoning_ms),
         decodeMs: nullableNumber(row.decode_ms), totalMs: Number(row.total_ms),
-        usage: row.input_tokens === null && row.output_tokens === null && row.total_tokens === null ? null : {
+        usage: [row.input_tokens, row.output_tokens, row.cached_input_tokens, row.reasoning_tokens, row.total_tokens].every(value => value === null) ? null : {
             inputTokens: nullableNumber(row.input_tokens), outputTokens: nullableNumber(row.output_tokens),
             cachedInputTokens: nullableNumber(row.cached_input_tokens), reasoningTokens: nullableNumber(row.reasoning_tokens),
             totalTokens: nullableNumber(row.total_tokens),
@@ -140,8 +144,10 @@ export function createPostgresRunTelemetryStore(db: Queryable): RunTelemetryStor
         where queued_at >= $1::timestamptz and queued_at < $2::timestamptz
           and ($3::text is null or task_type = $3) and ($4::text is null or provider_config_id = $4)
           and ($5::text is null or model = $5) and ($6::int is null or requested_model_count = $6)
+          and ($7::text is null or project_id = $7) and ($8::text[] is null or run_id = any($8::text[]))
         order by queued_at asc`, [filters.from, filters.to, filters.taskType ?? null,
-                filters.providerConfigId ?? null, filters.model ?? null, filters.requestedModelCount ?? null]);
+                filters.providerConfigId ?? null, filters.model ?? null, filters.requestedModelCount ?? null,
+                filters.projectId ?? null, filters.runIds ?? null]);
             return result.rows.map(mapTelemetryRow);
         },
     };

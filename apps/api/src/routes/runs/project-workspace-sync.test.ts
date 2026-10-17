@@ -5,7 +5,7 @@ import type {
   DesignDiagramModelSpec,
   DiagramModelSpec,
 } from "@uml-platform/contracts";
-import { snapshotInputFingerprint, feasibilityInputsSchema } from "@uml-platform/contracts";
+import { buildAcceptedRequirementSnapshot, buildFeasibilityImplementationFingerprint, snapshotInputFingerprint, feasibilityInputsSchema } from "@uml-platform/contracts";
 import { createBusinessFlowArtifact } from "../../test-fixtures/feasibility/business-flow.js";
 import { createInMemoryAuthStore } from "../../auth/in-memory-auth-store.js";
 import {  createEmptyDesignSnapshot, createEmptyDocumentSnapshot, createEmptyFeasibilitySnapshot, createEmptySnapshot } from "../../runs/records/snapshots.js";
@@ -81,7 +81,7 @@ const deploymentModel: DesignDiagramModelSpec = {
   relationships: [],
 };
 
-test("design completion preserves changed requirements and manual design branches while merging independent results", async () => {
+test("changed requirement inputs prevent publication while complete results remain in history", async () => {
   const { authStore, project, user, syncProjectWorkspace } = await createWorkspaceSyncFixture();
   const baseline = buildRequirementBaseline({ runId: "baseline", requirementText: rule.text, rules: [rule] });
   const snapshot = createEmptyDesignSnapshot("concurrent-design", { selectedDiagrams: ["class", "navigation"], requirementBaseline: baseline, requirementModels: [useCaseModel], requirementModelTraceability: [] });
@@ -94,7 +94,8 @@ test("design completion preserves changed requirements and manual design branche
   await syncProjectWorkspace(record);
   const state = (await authStore.getProjectWorkspace(project.id)).state;
   assert.deepEqual((state.designModels as Record<string, unknown>)[manual.modelId!], manual);
-  assert.deepEqual((state.designModels as Record<string, unknown>)[interfaceModel.modelId!], interfaceModel);
+  assert.equal((state.designModels as Record<string, unknown>)[interfaceModel.modelId!], undefined);
+  assert.match(snapshot.publicationSkipped ?? "", /相关输入/);
   assert.equal(state.requirementText, "生成期间的新需求");
   assert.equal((state.models as Record<string, { title: string }>).usecase.title, "人工需求模型");
   assert.equal(snapshot.models.length, 2, "complete generated result remains in history");
@@ -151,6 +152,70 @@ async function waitForCondition(predicate: () => Promise<boolean>) {
   }
   assert.equal(await predicate(), true);
 }
+
+test("an edited design target stays intact while another generated branch is published", async () => {
+  const { authStore, project, user, syncProjectWorkspace } = await createWorkspaceSyncFixture();
+  const baseline = buildRequirementBaseline({ runId: "baseline", requirementText: rule.text, rules: [rule] });
+  const snapshot = createEmptyDesignSnapshot("partial-protection", { selectedDiagrams: ["class", "navigation"], requirementBaseline: baseline, requirementModels: [useCaseModel], requirementModelTraceability: [] });
+  const record: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false, metadata: { createdAt: new Date().toISOString(), projectId: project.id, userId: user.id } };
+  await syncProjectWorkspace.prepare!(record);
+  const current = await authStore.getProjectWorkspace(project.id);
+  const manual = { ...designClassModel, summary: "人工修改" };
+  await authStore.saveProjectWorkspace({ projectId: project.id, baseVersion: current.version, updatedByUserId: user.id, sourceRunId: null,
+    state: { ...current.state, designModels: { [manual.modelId!]: manual } } });
+  snapshot.models = [designClassModel, interfaceModel];
+  snapshot.status = "completed";
+  await syncProjectWorkspace(record);
+  const saved = (await authStore.getProjectWorkspace(project.id)).state;
+  assert.deepEqual((saved.designModels as Record<string, unknown>)[manual.modelId!], manual);
+  assert.deepEqual((saved.designModels as Record<string, unknown>)[interfaceModel.modelId!], interfaceModel);
+});
+
+test("model failure, cancellation and completion preserve baseline and feasibility freshness", async () => {
+  const { authStore, project, user, syncProjectWorkspace } = await createWorkspaceSyncFixture();
+  const baseline = buildRequirementBaseline({ runId: "rules-baseline", requirementText: rule.text, rules: [rule], createdAt: "2026-10-01T00:00:00Z" });
+  const source = buildAcceptedRequirementSnapshot([rule], baseline);
+  const businessFlow = { ...createBusinessFlowArtifact([rule]), fingerprint: source.snapshot.fingerprint };
+  const contextModel = { title: "系统环境图" };
+  const inputs = feasibilityInputsSchema.parse({});
+  const implementationFingerprint = buildFeasibilityImplementationFingerprint({ rules: [rule], requirementBaseline: baseline, contextModel, businessFlow, inputs });
+  await authStore.saveProjectWorkspace({
+    projectId: project.id, baseVersion: 0, updatedByUserId: user.id, sourceRunId: null,
+    state: { requirementText: rule.text, rules: [rule], requirementBaseline: baseline,
+      feasibilityContextModel: contextModel, feasibilityContextFingerprint: source.snapshot.fingerprint,
+      feasibilityBusinessFlow: businessFlow, feasibilityInputs: inputs,
+      feasibilityImplementationPlan: { overview: "已有实现方案" }, feasibilityImplementationFingerprint: implementationFingerprint },
+  });
+  for (const status of ["failed", "cancelled", "completed"] as const) {
+    // Also cover snapshots queued before this fix that already carry a new task ID.
+    const snapshot = createEmptySnapshot(`model-${status}`, rule.text, ["usecase"], [rule]);
+    snapshot.status = status;
+    await syncProjectWorkspace({ snapshot, events: [], listeners: new Set(), terminal: true,
+      metadata: { projectId: project.id, userId: user.id } });
+    const state = (await authStore.getProjectWorkspace(project.id)).state;
+    assert.deepEqual(state.requirementBaseline, baseline);
+    assert.equal(buildAcceptedRequirementSnapshot(state.rules, state.requirementBaseline).snapshot.fingerprint, source.snapshot.fingerprint);
+    assert.equal(state.feasibilityContextFingerprint, source.snapshot.fingerprint);
+    assert.deepEqual(state.feasibilityBusinessFlow, businessFlow);
+    assert.equal(buildFeasibilityImplementationFingerprint({ rules: state.rules, requirementBaseline: state.requirementBaseline, contextModel, businessFlow, inputs }), implementationFingerprint);
+    assert.equal(state.feasibilityImplementationFingerprint, implementationFingerprint);
+  }
+});
+
+test("an old model task cannot roll back edited requirement input or its baseline", async () => {
+  const { authStore, project, user, syncProjectWorkspace } = await createWorkspaceSyncFixture();
+  const changedRule = { ...rule, text: "用户每天最多预约一次。" };
+  const changedBaseline = buildRequirementBaseline({ runId: "new-baseline", requirementText: changedRule.text, rules: [changedRule] });
+  await authStore.saveProjectWorkspace({ projectId: project.id, baseVersion: 0, updatedByUserId: user.id, sourceRunId: null,
+    state: { requirementText: changedRule.text, rules: [changedRule], requirementBaseline: changedBaseline } });
+  const snapshot = createEmptySnapshot("old-model-retry", rule.text, ["usecase"], [rule]);
+  snapshot.status = "completed";
+  await syncProjectWorkspace({ snapshot, events: [], listeners: new Set(), terminal: true, metadata: { projectId: project.id, userId: user.id } });
+  const state = (await authStore.getProjectWorkspace(project.id)).state;
+  assert.equal(state.requirementText, changedRule.text);
+  assert.deepEqual(state.rules, [changedRule]);
+  assert.deepEqual(state.requirementBaseline, changedBaseline);
+});
 
 test("business flow is published atomically and preserved after failed or cancelled regeneration", async () => {
   const { authStore, project, user, syncProjectWorkspace } = await createWorkspaceSyncFixture();
@@ -466,3 +531,26 @@ test("terminal design snapshots do not pollute requirement fingerprints during a
 
 
 
+
+test("publishes an accepted feasibility branch before the remaining work completes", async () => {
+  const { authStore, project, user, syncProjectWorkspace } = await createWorkspaceSyncFixture();
+  const businessFlow = createBusinessFlowArtifact([rule]);
+  const snapshot = createEmptyFeasibilitySnapshot("flow-incremental", {
+    projectId: project.id, selectedArtifacts: ["business-flow", "context"], rules: [{ ...rule, relatedDiagrams: [...rule.relatedDiagrams] }],
+    requirementBaseline: null, providerSettings: { providerConfigId: "provider-a", model: "model-a" },
+    inputs: feasibilityInputsSchema.parse({}), businessFlow,
+  });
+  snapshot.status = "running";
+  const record: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false,
+    metadata: { projectId: project.id, userId: user.id, createdAt: "2026-10-17T00:00:00.000Z" } };
+  attachProjectWorkspaceSync(record, syncProjectWorkspace);
+  emitEvent(record, { type: "artifact_ready", stage: "render_business_flow", artifactKind: "feasibilityBusinessFlow", subtaskId: "business-flow", subtaskStatus: "completed" });
+  const state = await waitForWorkspace(async () => (await authStore.getProjectWorkspace(project.id)).state,
+    (candidate) => Boolean(candidate.feasibilityBusinessFlow));
+  assert.deepEqual(state.feasibilityBusinessFlow, businessFlow);
+  assert.equal(snapshot.status, "running");
+  assert.equal(record.terminal, false);
+  snapshot.status = "completed";
+  await record.persist!(record, { type: "completed", snapshot });
+  assert.deepEqual((await authStore.getProjectWorkspace(project.id)).state.feasibilityBusinessFlow, businessFlow);
+});

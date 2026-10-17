@@ -4,7 +4,6 @@ import test from "node:test";
 import Fastify from "fastify";
 import type { FastifyRequest } from "fastify";
 import { ZodError } from "zod";
-import { createEmptySnapshot } from "../../runs/records/snapshots.js";
 import type {
   DesignDiagramModelSpec,
   DesignModelTraceabilityEntry,
@@ -22,6 +21,8 @@ import type {
 import {
   designInputFingerprint,
   snapshotInputFingerprint,
+  runTokenConsumptionSchema,
+  feasibilityInputsSchema,
 } from "@uml-platform/contracts";
 import type { LlmTransport } from "../../llm.js";
 import {
@@ -39,9 +40,11 @@ import {
   
   createEmptyDesignSnapshot,
   createEmptyDocumentSnapshot,
+  createEmptyFeasibilitySnapshot,
   createEmptySnapshot,
 } from "../../runs/records/snapshots.js";
 import { registerRunRoutes, type RunAccessGuard } from "./register-run-routes.js";
+import { ModelCatalog } from "../../provider-configs/model-catalog.js";
 import { createProviderConfigStore } from "../../provider-configs/provider-config-store.js";
 import type {
   ProviderLimitCheckInput,
@@ -50,12 +53,124 @@ import type {
 } from "../../provider-configs/provider-usage-tracker.js";
 import { createGenerationUsageService } from "../../generation/generation-usage.js";
 import { buildRequirementBaseline } from "../../runs/baselines/requirement-baseline.js";
+import { createInMemoryRunTelemetryStore, type LlmRequestTelemetry } from "../../runs/records/run-telemetry-store.js";
 
 const plaintextProviderSettings: ProviderSettings = {
   apiBaseUrl: "https://ai.comfly.org",
   apiKey: "sk-test",
   model: "gpt-5.5",
 };
+
+for (const reasoning of [true, false]) test(`model and document commands persist supported reasoning=${reasoning}`, async t => {
+  const catalog = new ModelCatalog("unused-model-catalog.json");
+  const supported = { context: 128000, output: 8192, source: "modelpedia" as const, matchedId: "gpt-5.5", updatedAt: null, capabilities: { vision: true, reasoning: true, toolCall: true } };
+  catalog.resolve = () => supported;
+  const { app, runs } = await createRunRouteTestContext({
+    modelCatalog: catalog,
+    runAccessGuard: createTestRunAccessGuard({ owner: { start_runs: ["project-a"], manage_documents: ["project-a"] } }),
+    loadProjectWorkspace: async () => ({ state: createProjectWorkspaceState() }),
+    completeRuns: false,
+  });
+  t.after(() => app.close());
+  const headers = { "x-test-user-id": "owner", "x-test-project-id": "project-a" };
+  const commands = [
+    { url: "/api/runs", payload: { selectedDiagrams: ["usecase"] } },
+    { url: "/api/design-runs", payload: { selectedDiagrams: ["sequence"] } },
+    { url: "/api/document-runs", payload: { documentKind: "requirementsSpec" } },
+  ];
+  for (const { url, payload } of commands) {
+    catalog.resolve = () => supported;
+    const response = await app.inject({ method: "POST", url, payload: { projectId: "project-a", ...payload, reasoning }, headers });
+    assert.equal(response.statusCode, 202, response.body);
+    assert.equal((runs.get(response.json().runId)!.snapshot as { reasoning?: boolean }).reasoning, reasoning);
+    catalog.resolve = () => ({ ...supported, capabilities: { ...supported.capabilities, reasoning: false } });
+    const unsupported = await app.inject({ method: "POST", url, payload: { projectId: "project-a", ...payload, reasoning }, headers });
+    assert.equal(unsupported.statusCode, 202, unsupported.body);
+    assert.equal((runs.get(unsupported.json().runId)!.snapshot as { reasoning?: boolean }).reasoning, undefined);
+  }
+});
+
+test("engineering run routes preserve attachments and reasoning, and reject unsupported capabilities before queuing", async t => {
+  const catalog = new ModelCatalog("unused-model-catalog.json");
+  catalog.resolve = () => ({ context: 128000, output: 8192, source: "modelpedia", matchedId: "gpt-5.5", updatedAt: null, capabilities: { vision: true, reasoning: true, toolCall: true } });
+  const { app, runs } = await createRunRouteTestContext({
+    modelCatalog: catalog,
+    runAccessGuard: createTestRunAccessGuard({ owner: { start_runs: ["project-a"] } }),
+    loadProjectWorkspace: async () => ({ state: { requirementText: "", rules: [] } }),
+    completeRuns: false,
+  });
+  t.after(() => app.close());
+  const image = { id: "i", name: "flow.png", type: "image", contentType: "image/png", data: "iVBORw0KGgo=" };
+  const headers = { "x-test-user-id": "owner", "x-test-project-id": "project-a" };
+  const payload = { projectId: "project-a", requirementText: "", selectedDiagrams: [], attachments: [image], reasoning: true };
+  const started = await app.inject({ method: "POST", url: "/api/runs", payload, headers });
+  assert.equal(started.statusCode, 202, started.body);
+  const snapshot = runs.get(started.json().runId)!.snapshot as RunSnapshot;
+  assert.deepEqual(snapshot.attachments, [image]);
+  assert.equal(snapshot.submittedRequirementText, "");
+  assert.equal(snapshot.reasoning, true);
+  const prior = runs.size;
+  catalog.resolve = () => ({ context: null, output: null, source: "unknown", matchedId: null, updatedAt: null });
+  const unsupported = await app.inject({ method: "POST", url: "/api/runs", payload, headers });
+  assert.equal(unsupported.statusCode, 400, unsupported.body);
+  assert.match(unsupported.json().message, /推理/);
+  const noVision = await app.inject({ method: "POST", url: "/api/runs", payload: { ...payload, reasoning: false }, headers });
+  assert.equal(noVision.statusCode, 400, noVision.body);
+  assert.match(noVision.json().message, /图片/);
+  assert.equal(runs.size, prior);
+});
+
+test("run history batches whole-run consumption across workflow types and skips telemetry for progress polling", async t => {
+  const analyticsStore = createInMemoryRunTelemetryStore();
+  const baseList = analyticsStore.listTelemetry.bind(analyticsStore);
+  let reads = 0;
+  analyticsStore.listTelemetry = async filters => {
+    reads++;
+    assert.equal(filters.projectId, "project-a");
+    assert.ok(filters.runIds?.length);
+    return baseList(filters);
+  };
+  const { app, runs } = await createRunRouteTestContext({ analyticsStore,
+    runAccessGuard: createTestRunAccessGuard({ owner: { view_runs: ["project-a"] } }),
+  });
+  t.after(() => app.close());
+  const snapshots: RunRecord["snapshot"][] = [
+    createEmptySnapshot("rules", "需求", []),
+    createEmptyFeasibilitySnapshot("feasibility", { projectId: "project-a", selectedArtifacts: ["context"], providerSettings: { providerConfigId: "provider", model: "model" }, rules: [], requirementBaseline: null, inputs: feasibilityInputsSchema.parse({}) }),
+    createEmptySnapshot("requirements", "需求", ["usecase"]),
+    createEmptyDesignSnapshot("design", { selectedDiagrams: ["sequence"], requirementBaseline: buildRequirementBaseline({ runId: "design", requirementText: "需求", rules: [] }), requirementModels: [], requirementModelTraceability: [] }),
+    createEmptyDocumentSnapshot("document", { documentKind: "requirementsSpec", requirementText: "需求" }),
+  ];
+  for (const [index, snapshot] of snapshots.entries()) {
+    snapshot.status = index % 2 ? "failed" : "cancelled";
+    runs.set(snapshot.runId, { snapshot, events: [], listeners: new Set(), terminal: true, metadata: { projectId: "project-a", userId: "owner", createdAt: "2026-10-17T00:00:00.000Z" } });
+    const entry = { id: `${snapshot.runId}-initial`, runId: snapshot.runId, projectId: "project-a", providerConfigId: "provider", model: "model", taskType: ["requirements_to_uml", "feasibility_analysis", "requirements_to_uml", "design_modeling", "document_generation"][index],
+      queuedAt: "2026-10-17T00:00:00.000Z", providerStartedAt: "2026-10-17T00:00:01.000Z", completedAt: "2026-10-17T00:00:02.000Z", outcome: "success",
+      usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120, cachedInputTokens: 30, reasoningTokens: 5 },
+    } as LlmRequestTelemetry;
+    await analyticsStore.recordTelemetry(entry);
+    await analyticsStore.recordTelemetry({ ...entry, id: `${snapshot.runId}-repair`, providerConfigId: "other-provider", model: "other-model", outcome: "failed", usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15, cachedInputTokens: 0, reasoningTokens: 0 } });
+    await analyticsStore.recordTelemetry({ ...entry, id: `${snapshot.runId}-cancel`, outcome: "cancelled", usage: null });
+    await analyticsStore.recordTelemetry({ ...entry, id: `${snapshot.runId}-foreign`, projectId: "private" });
+  }
+  const headers = { "x-test-user-id": "owner" };
+  const history = await app.inject({ url: "/api/projects/project-a/runs", headers });
+  assert.equal(history.statusCode, 200, history.body);
+  assert.equal(reads, 1, "all history rows share one scoped telemetry query");
+  assert.equal(history.json().runs.length, 5);
+  const expected = { totalTokens: 135, inputTokens: 110, outputTokens: 25, cachedInputTokens: 30, reasoningTokens: 5, calls: 3, unreportedCalls: 1 };
+  for (const run of history.json().runs) assert.deepEqual(runTokenConsumptionSchema.parse(run.tokenConsumption), expected);
+  const detail = await app.inject({ url: "/api/projects/project-a/runs/design", headers });
+  assert.deepEqual(detail.json().run.tokenConsumption, expected);
+  assert.equal(reads, 2);
+  const progress = await app.inject({ url: "/api/projects/project-a/runs/design?view=progress&includeEvents=true", headers });
+  assert.equal(progress.statusCode, 200, progress.body);
+  assert.equal(progress.json().run.tokenConsumption, undefined);
+  assert.equal(reads, 2, "frequent progress reads must not query consumption");
+  const denied = await app.inject({ url: "/api/projects/private/runs/design", headers });
+  assert.equal(denied.statusCode, 403);
+  assert.equal(reads, 2);
+});
 
 function isZodLikeError(error: unknown): error is {
   issues: Array<{ message: string; path: Array<string | number> }>;
@@ -305,6 +420,18 @@ function createProjectWorkspaceState(svg = "<svg><text>sequence</text></svg>") {
   };
 }
 
+test("retired requirement repair endpoints are unavailable and never call the provider", async () => {
+  let providerCalls = 0;
+  const app = await createRunRouteTestApp({ llmTransport: { async *streamChatCompletion() { providerCalls++; yield "{}"; } } });
+  try {
+    for (const url of ["/api/runs/requirement-rule-repair", "/api/runs/requirement-rule-repairs"]) {
+      const response = await app.inject({ method: "POST", url, payload: {} });
+      assert.equal(response.statusCode, 404);
+    }
+    assert.equal(providerCalls, 0);
+  } finally { await app.close(); }
+});
+
 function stringHeader(request: FastifyRequest, name: string) {
   const value = request.headers[name];
   return typeof value === "string" ? value : undefined;
@@ -343,6 +470,8 @@ async function createRunRouteTestApp(options?: {
   generationUsage?: Parameters<typeof registerRunRoutes>[0]["generationUsage"];
   loadProjectWorkspace?: Parameters<typeof registerRunRoutes>[0]["loadProjectWorkspace"];
   runQueue?: RunQueue;
+  modelCatalog?: ModelCatalog;
+  analyticsStore?: Parameters<typeof registerRunRoutes>[0]["analyticsStore"];
 }) {
   return (await createRunRouteTestContext(options)).app;
 }
@@ -362,6 +491,8 @@ async function createRunRouteTestContext(options?: {
   generationUsage?: Parameters<typeof registerRunRoutes>[0]["generationUsage"];
   loadProjectWorkspace?: Parameters<typeof registerRunRoutes>[0]["loadProjectWorkspace"];
   runQueue?: RunQueue;
+  modelCatalog?: ModelCatalog;
+  analyticsStore?: Parameters<typeof registerRunRoutes>[0]["analyticsStore"];
 }) {
   const app = Fastify({ logger: false });
   app.setErrorHandler((error, _request, reply) => {
@@ -456,6 +587,8 @@ async function createRunRouteTestContext(options?: {
     generationUsage: options?.generationUsage,
     llmScheduler: options?.llmScheduler,
     runQueue: options?.runQueue,
+    modelCatalog: options?.modelCatalog,
+    analyticsStore: options?.analyticsStore,
     loadProjectWorkspace: options?.loadProjectWorkspace,
   });
 
@@ -474,536 +607,12 @@ async function waitForRunStatus(
   assert.equal(runs.get(runId)?.snapshot.status, status);
 }
 
-test("requirement rule repair returns only the updated current requirement", async () => {
-  const rule = {
-    id: "r10",
-    category: "业务规则" as const,
-    text: "普通读者只能查询其自己当前借出的书目。",
-    relatedDiagrams: ["usecase" as const],
-  };
-  const baseline = buildRequirementBaseline({
-    runId: "run-baseline",
-    requirementText: "普通读者只能查询其自己当前借出的书目。",
-    rules: [
-      rule,
-      {
-        id: "r11",
-        category: "业务规则" as const,
-        text: "管理员可以增加图书。",
-        relatedDiagrams: ["usecase" as const],
-      },
-    ],
-  });
-  const llmTransport: LlmTransport = {
-    async *streamChatCompletion() {
-      yield JSON.stringify({
-        fields: {
-          actor: {
-            source: "ai-suggested",
-            status: "accepted",
-            value: "普通读者",
-            originalValue: null,
-            rationale: "原文明确说明普通读者。",
-          },
-          subject: {
-            source: "ai-suggested",
-            status: "accepted",
-            value: "普通读者",
-            originalValue: null,
-            rationale: "主体与角色一致。",
-          },
-          action: null,
-        },
-        confidence: 0.82,
-        status: "accepted",
-        rationale: "只补齐当前规则的角色和主体。",
-      });
-    },
-  };
-  const app = await createRunRouteTestApp({
-    llmTransport,
-    runAccessGuard: createTestRunAccessGuard({
-      "user-a": { start_runs: ["project-a"] },
-    }),
-  });
 
-  const response = await app.inject({
-    method: "POST",
-    url: "/api/runs/requirement-rule-repair",
-    headers: {
-      "x-test-user-id": "user-a",
-    },
-    payload: {
-      projectId: "project-a",
-      requirementText: "普通读者只能查询其自己当前借出的书目。",
-      rule,
-      baseline,
-    },
-  });
 
-  assert.equal(response.statusCode, 200, response.body);
-  const body = response.json();
-  assert.equal(body.requirement.sourceRuleId, "r10");
-  assert.equal(body.requirement.actor, "普通读者");
-  assert.equal(body.requirement.fieldProvenance.actor.status, "accepted");
-  assert.ok(!("requirements" in body), "repair endpoint must not return regenerated rules");
-});
 
-test("requirement rule repair normalizes array field values from model output", async () => {
-  const rule = {
-    id: "r13",
-    category: "业务规则" as const,
-    text: "在同一时刻，一本书不能既被借出，又可供借阅。",
-    relatedDiagrams: ["class" as const],
-  };
-  const baseline = buildRequirementBaseline({
-    runId: "run-baseline",
-    requirementText: rule.text,
-    rules: [rule],
-  });
-  const llmTransport: LlmTransport = {
-    async *streamChatCompletion() {
-      yield JSON.stringify({
-        fields: {
-          acceptanceCriteria: {
-            source: "ai-suggested",
-            status: "accepted",
-            value: [
-              "同一本书在同一时刻只能处于一种借阅状态",
-              "已借出的书不得同时展示为可借阅",
-            ],
-            originalValue: [
-              "验证：一本书不能既处于已借出状态",
-              "又处于可借阅状态",
-            ],
-            rationale: "原文明确说明书籍状态互斥。",
-          },
-        },
-        confidence: 0.9,
-        status: "accepted",
-        rationale: "只规范化当前规则的验收标准。",
-      });
-    },
-  };
-  const app = await createRunRouteTestApp({
-    llmTransport,
-    runAccessGuard: createTestRunAccessGuard({
-      "user-a": { start_runs: ["project-a"] },
-    }),
-  });
 
-  const response = await app.inject({
-    method: "POST",
-    url: "/api/runs/requirement-rule-repair",
-    headers: {
-      "x-test-user-id": "user-a",
-    },
-    payload: {
-      projectId: "project-a",
-      requirementText: rule.text,
-      rule,
-      baseline,
-    },
-  });
 
-  assert.equal(response.statusCode, 200, response.body);
-  const body = response.json();
-  assert.deepEqual(body.requirement.acceptanceCriteria, [
-    "同一本书在同一时刻只能处于一种借阅状态",
-    "已借出的书不得同时展示为可借阅",
-  ]);
-  assert.equal(
-    body.requirement.fieldProvenance.acceptanceCriteria.originalValue,
-    "验证：一本书不能既处于已借出状态；又处于可借阅状态",
-  );
-  assert.equal(body.requirement.fieldProvenance.acceptanceCriteria.status, "accepted");
-});
 
-test("requirement rule repair normalizes string confidence from model output", async () => {
-  const rule = {
-    id: "r15",
-    category: "功能需求" as const,
-    text: "用户可以提交订单。",
-    relatedDiagrams: ["usecase" as const],
-  };
-  const baseline = buildRequirementBaseline({
-    runId: "run-baseline",
-    requirementText: rule.text,
-    rules: [rule],
-  });
-  const llmTransport: LlmTransport = {
-    async *streamChatCompletion({ responseFormat }) {
-      assert.equal(responseFormat?.type, "json_schema");
-      yield JSON.stringify({
-        fields: {
-          actor: {
-            source: "ai-suggested",
-            status: "accepted",
-            value: "用户",
-            originalValue: null,
-            rationale: "原文明确说明用户。",
-          },
-        },
-        confidence: "82%",
-        status: "accepted",
-        rationale: "补齐角色。",
-      });
-    },
-  };
-  const app = await createRunRouteTestApp({
-    llmTransport,
-    runAccessGuard: createTestRunAccessGuard({
-      "user-a": { start_runs: ["project-a"] },
-    }),
-  });
-
-  const response = await app.inject({
-    method: "POST",
-    url: "/api/runs/requirement-rule-repair",
-    headers: {
-      "x-test-user-id": "user-a",
-    },
-    payload: {
-      projectId: "project-a",
-      requirementText: rule.text,
-      rule,
-      baseline,
-    },
-  });
-
-  assert.equal(response.statusCode, 200, response.body);
-  assert.equal(response.json().requirement.confidence, 0.82);
-});
-
-test("requirement rule batch repair uses one LLM call and returns candidates", async () => {
-  const rules = [
-    {
-      id: "r20",
-      category: "功能需求" as const,
-      text: "普通读者可以查询当前借出的书目。",
-      relatedDiagrams: ["usecase" as const],
-    },
-    {
-      id: "r21",
-      category: "业务规则" as const,
-      text: "管理员可以增加图书。",
-      relatedDiagrams: ["usecase" as const],
-    },
-  ];
-  const baseline = buildRequirementBaseline({
-    runId: "run-baseline",
-    requirementText: rules.map((rule) => rule.text).join("\n"),
-    rules,
-  });
-  let llmCallCount = 0;
-  const llmTransport: LlmTransport = {
-    async *streamChatCompletion({ responseFormat }) {
-      assert.equal(responseFormat?.type, "json_schema");
-      llmCallCount += 1;
-      yield JSON.stringify({
-        repairs: [
-          {
-            ruleId: "r20",
-            fields: {
-              actor: {
-                source: "ai-suggested",
-                status: "accepted",
-                value: "普通读者",
-                originalValue: null,
-                rationale: "原文明确说明普通读者。",
-              },
-            },
-            confidence: "0.82",
-            status: "accepted",
-            rationale: "补齐普通读者。",
-          },
-          {
-            ruleId: "r21",
-            fields: {
-              actor: {
-                source: "ai-suggested",
-                status: "accepted",
-                value: "管理员",
-                originalValue: null,
-                rationale: "原文明确说明管理员。",
-              },
-            },
-            confidence: 0.88,
-            status: "accepted",
-            rationale: "补齐管理员。",
-          },
-        ],
-      });
-    },
-  };
-  const app = await createRunRouteTestApp({
-    llmTransport,
-    runAccessGuard: createTestRunAccessGuard({
-      "user-a": { start_runs: ["project-a"] },
-    }),
-  });
-
-  const response = await app.inject({
-    method: "POST",
-    url: "/api/runs/requirement-rule-repairs",
-    headers: {
-      "x-test-user-id": "user-a",
-    },
-    payload: {
-      projectId: "project-a",
-      requirementText: rules.map((rule) => rule.text).join("\n"),
-      rules,
-      targetRuleIds: ["r20", "r21"],
-      baseline,
-    },
-  });
-
-  assert.equal(response.statusCode, 200, response.body);
-  assert.equal(llmCallCount, 1);
-  const body = response.json();
-  assert.equal(body.failures.length, 0);
-  assert.deepEqual(
-    body.candidates.map((candidate: { ruleId: string }) => candidate.ruleId),
-    ["r20", "r21"],
-  );
-  assert.equal(body.candidates[0].requirement.actor, "普通读者");
-  assert.equal(body.candidates[0].requirement.confidence, 0.82);
-  assert.equal(body.candidates[1].requirement.actor, "管理员");
-});
-
-test("requirement rule batch repair isolates missing and invalid repairs", async () => {
-  const rules = [
-    {
-      id: "r30",
-      category: "功能需求" as const,
-      text: "普通读者可以查询当前借出的书目。",
-      relatedDiagrams: ["usecase" as const],
-    },
-    {
-      id: "r31",
-      category: "业务规则" as const,
-      text: "管理员可以增加图书。",
-      relatedDiagrams: ["usecase" as const],
-    },
-    {
-      id: "r32",
-      category: "业务规则" as const,
-      text: "系统必须记录图书库存。",
-      relatedDiagrams: ["class" as const],
-    },
-  ];
-  const baseline = buildRequirementBaseline({
-    runId: "run-baseline",
-    requirementText: rules.map((rule) => rule.text).join("\n"),
-    rules,
-  });
-  const originalConfidence = baseline.requirements.find(
-    (requirement) => requirement.sourceRuleId === "r30",
-  )?.confidence;
-  const llmTransport: LlmTransport = {
-    async *streamChatCompletion() {
-      yield JSON.stringify({
-        repairs: [
-          {
-            ruleId: "r30",
-            fields: {
-              actor: {
-                source: "ai-suggested",
-                status: "accepted",
-                value: "普通读者",
-                originalValue: null,
-                rationale: "原文明确说明普通读者。",
-              },
-            },
-            confidence: "high",
-            status: "accepted",
-            rationale: "无法解析的置信度应被忽略。",
-          },
-          {
-            ruleId: "r31",
-            fields: {
-              actor: {
-                source: "ai-suggested",
-              },
-            },
-            confidence: 0.8,
-            status: "accepted",
-            rationale: "字段结构不完整。",
-          },
-        ],
-      });
-    },
-  };
-  const app = await createRunRouteTestApp({
-    llmTransport,
-    runAccessGuard: createTestRunAccessGuard({
-      "user-a": { start_runs: ["project-a"] },
-    }),
-  });
-
-  const response = await app.inject({
-    method: "POST",
-    url: "/api/runs/requirement-rule-repairs",
-    headers: {
-      "x-test-user-id": "user-a",
-    },
-    payload: {
-      projectId: "project-a",
-      requirementText: rules.map((rule) => rule.text).join("\n"),
-      rules,
-      targetRuleIds: ["r30", "r31", "r32"],
-      baseline,
-    },
-  });
-
-  assert.equal(response.statusCode, 200, response.body);
-  const body = response.json();
-  assert.deepEqual(
-    body.candidates.map((candidate: { ruleId: string }) => candidate.ruleId),
-    ["r30"],
-  );
-  assert.equal(body.candidates[0].requirement.confidence, originalConfidence);
-  assert.deepEqual(
-    body.failures.map((failure: { ruleId: string }) => failure.ruleId).sort(),
-    ["r31", "r32"],
-  );
-});
-
-test("requirement rule batch repair retries only candidates omitted by the provider", async () => {
-  const rules = [
-    {
-      id: "r40",
-      category: "功能需求" as const,
-      text: "普通读者可以查询图书。",
-      relatedDiagrams: ["usecase" as const],
-    },
-    {
-      id: "r41",
-      category: "业务规则" as const,
-      text: "管理员可以增加图书。",
-      relatedDiagrams: ["usecase" as const],
-    },
-  ];
-  const baseline = buildRequirementBaseline({
-    runId: "run-provider-omission",
-    requirementText: rules.map((rule) => rule.text).join("\n"),
-    rules,
-  });
-  let llmCallCount = 0;
-  const app = await createRunRouteTestApp({
-    llmTransport: {
-      async *streamChatCompletion() {
-        llmCallCount += 1;
-        if (llmCallCount === 1) {
-          yield JSON.stringify({
-            repairs: [
-              {
-                ruleId: "r40",
-                fields: {
-                  actor: {
-                    source: "ai-suggested",
-                    status: "accepted",
-                    value: "普通读者",
-                    originalValue: null,
-                    rationale: "补齐明确角色。",
-                  },
-                },
-                confidence: 0.9,
-                status: "accepted",
-                rationale: "批量候选。",
-              },
-            ],
-          });
-          return;
-        }
-        yield JSON.stringify({
-          fields: {
-            actor: {
-              source: "ai-suggested",
-              status: "accepted",
-              value: "管理员",
-              originalValue: null,
-              rationale: "补齐明确角色。",
-            },
-          },
-          confidence: 0.9,
-          status: "accepted",
-          rationale: "单条补偿重试。",
-        });
-      },
-    },
-    runAccessGuard: createTestRunAccessGuard({
-      "user-a": { start_runs: ["project-a"] },
-    }),
-  });
-
-  const response = await app.inject({
-    method: "POST",
-    url: "/api/runs/requirement-rule-repairs",
-    headers: { "x-test-user-id": "user-a" },
-    payload: {
-      projectId: "project-a",
-      requirementText: rules.map((rule) => rule.text).join("\n"),
-      rules,
-      targetRuleIds: ["r40", "r41"],
-      baseline,
-    },
-  });
-
-  assert.equal(response.statusCode, 200, response.body);
-  assert.equal(llmCallCount, 2);
-  assert.equal(response.json().failures.length, 0);
-  assert.deepEqual(
-    response
-      .json()
-      .candidates.map((candidate: { ruleId: string }) => candidate.ruleId)
-      .sort(),
-    ["r40", "r41"],
-  );
-});
-
-test("requirement rule repair rejects invalid model output without mutating baseline", async () => {
-  const rule = {
-    id: "r14",
-    category: "业务规则" as const,
-    text: "一个读者一次借出的书籍数目不能超过预定值。",
-    relatedDiagrams: ["class" as const],
-  };
-  const baseline = buildRequirementBaseline({
-    runId: "run-baseline",
-    requirementText: rule.text,
-    rules: [rule],
-  });
-  const llmTransport: LlmTransport = {
-    async *streamChatCompletion() {
-      yield "{\"fields\":{\"condition\":{\"source\":\"ai-suggested\"}}}";
-    },
-  };
-  const app = await createRunRouteTestApp({
-    llmTransport,
-    runAccessGuard: createTestRunAccessGuard({
-      "user-a": { start_runs: ["project-a"] },
-    }),
-  });
-
-  const response = await app.inject({
-    method: "POST",
-    url: "/api/runs/requirement-rule-repair",
-    headers: {
-      "x-test-user-id": "user-a",
-    },
-    payload: {
-      projectId: "project-a",
-      requirementText: rule.text,
-      rule,
-      baseline,
-    },
-  });
-
-  assert.equal(response.statusCode, 422);
-  assert.equal(response.json().error.code, "RUN_STRUCTURED_OUTPUT_INVALID");
-  assert.equal("rawOutput" in response.json(), false);
-});
 
 test("project run snapshots reject unauthenticated and cross-project users", async () => {
   const app = await createRunRouteTestApp({
@@ -1977,7 +1586,7 @@ test("project run history exposes snapshot and document capabilities without emb
   assert.equal(history.statusCode, 200);
   const run = history.json().runs[0];
   assert.equal(run.snapshotAvailable, true);
-  assert.equal(run.canRestore, false);
+  assert.equal("canRestore" in run, false);
   assert.equal(run.documentDownloadAvailable, true);
   assert.equal(run.missingArtifactCount, 1);
   assert.deepEqual(run.missingArtifactSummary, ["用例图：缺少可嵌入图片源"]);
@@ -2698,6 +2307,28 @@ test("project document runs do not require legacy workspace credentials", async 
   await app.close();
 });
 
+test("repeated requirement model starts retain the project baseline identity", async () => {
+  const state = createProjectWorkspaceState();
+  const { app, runs } = await createRunRouteTestContext({
+    completeRuns: false,
+    runAccessGuard: createTestRunAccessGuard({ "user-a": { start_runs: ["project-a"] } }),
+    loadProjectWorkspace: async () => ({ state }),
+  });
+  const ids: string[] = [];
+  try {
+    for (let index = 0; index < 2; index++) {
+      const response = await app.inject({ method: "POST", url: "/api/runs",
+        headers: { "x-test-user-id": "user-a" }, payload: { projectId: "project-a", selectedDiagrams: ["usecase"] } });
+      assert.equal(response.statusCode, 202, response.body);
+      ids.push(response.json().runId);
+      const snapshot = runs.get(ids.at(-1)!)!.snapshot as RunSnapshot;
+      assert.deepEqual(snapshot.requirementBaseline, state.requirementBaseline);
+      assert.equal(snapshot.requirementBaseline!.runId, "workspace-baseline");
+    }
+    assert.notEqual(ids[0], ids[1]);
+  } finally { await app.close(); }
+});
+
 test("project design start command loads complete workspace input with large svg artifacts", async () => {
   const largeSvg = `<svg>${"x".repeat(1024 * 1024 + 32)}</svg>`;
   const loadedProjectIds: string[] = [];
@@ -2879,9 +2510,14 @@ test("project design start command rejects custom-ID stale sources using the leg
   await app.close();
 });
 
-test("project start commands reject pending requirement review candidates before queuing", async () => {
-  const requirement = workspaceRequirementBaseline.requirements[0];
-  assert.ok(requirement);
+test("project start commands do not wait for requirement review candidates", async () => {
+  // Historical review candidates remain readable beside new rule snapshots.
+  const requirement = {
+    id: "REQ-001", sourceRuleId: "r1", sourceFragment: "用户可以查询活动。",
+    type: "functional", actor: null, subject: null, action: "查询活动", object: "活动",
+    condition: null, outcome: null, confidence: 0.8, status: "accepted",
+    criticality: "medium", acceptanceCriteria: [], fieldProvenance: {},
+  };
   const pendingReviewWorkspaceState = {
     ...createProjectWorkspaceState(),
     requirementReviewCandidates: {
@@ -2963,12 +2599,9 @@ test("project start commands reject pending requirement review candidates before
       headers: { "x-test-user-id": "reviewer-a" },
       payload: request.payload,
     });
-    assert.equal(response.statusCode, 409, response.body);
-    assert.equal(response.json().error.code, "REQUIREMENT_REVIEWS_PENDING");
-    assert.equal(response.json().error.params.count, 1);
-    assert.deepEqual(response.json().error.details.ruleIds, ["REQ-001"]);
+    // Open repair candidates are informational now and never reject a start command.
+    assert.notEqual(response.json().error?.code, "REQUIREMENT_REVIEWS_PENDING", response.body);
   }
-  assert.equal(runs.size, 0);
 
   await app.close();
 });
@@ -3841,9 +3474,38 @@ test("project run cancel requires start permission, cancels scheduled work, reco
   await app.close();
 });
 
-test("project run retry and rerun create queued records and start their pipeline", async () => {
+test("project retry accepts a completed batch with failed diagrams and preserves its scope", async () => {
+  const requirementText = "用户可以查看图书并接收通知。";
+  const pipelineRunIds: string[] = [];
+  const { app, runs } = await createRunRouteTestContext({
+    loadProjectWorkspace: async () => ({ state: { requirementText, rules: [] } }),
+    runAccessGuard: createTestRunAccessGuard({ "runner-a": { start_runs: ["project-a"], view_runs: ["project-a"] } }),
+    completeRuns: false,
+    runStagePipeline: async (record) => { pipelineRunIds.push(record.snapshot.runId); },
+  });
+  try {
+    const headers = { "x-test-user-id": "runner-a" };
+    const start = await app.inject({ method: "POST", url: "/api/runs", headers, payload: { projectId: "project-a", requirementText, selectedDiagrams: ["usecase", "activity"] } });
+    assert.equal(start.statusCode, 202, start.body);
+    const source = runs.get(start.json().runId)!;
+    assert.ok("diagramErrors" in source.snapshot);
+    source.snapshot.diagramErrors.activity = { stage: "render_svg", error: { code: "RUN_RENDER_FAILED", category: "render", retryable: true, message: "绘图器故障" } };
+    source.snapshot.status = "completed";
+    emitEvent(source, { type: "completed", snapshot: source.snapshot } as RunEvent);
+    const retry = await app.inject({ method: "POST", url: `/api/projects/project-a/runs/${source.snapshot.runId}/retry`, headers });
+    assert.equal(retry.statusCode, 202, retry.body);
+    const next = runs.get(retry.json().runId)!.snapshot as RunSnapshot;
+    assert.deepEqual(next.selectedDiagrams, ["activity"]);
+    assert.deepEqual(next.requestedDiagrams, ["activity"]);
+    assert.ok(pipelineRunIds.includes(next.runId));
+    assert.equal(source.snapshot.status, "completed");
+  } finally { await app.close(); }
+});
+
+test("task retries start their pipeline while retired history reruns return 404", async () => {
   const pipelineRunIds: string[] = [];
   const { app } = await createRunRouteTestContext({
+    loadProjectWorkspace: async () => ({ state: { requirementText: "需要重试的需求", rules: [] } }),
     runAccessGuard: createTestRunAccessGuard({
       "runner-a": {
         start_runs: ["project-a"],
@@ -3914,11 +3576,9 @@ test("project run retry and rerun create queued records and start their pipeline
   });
 
   assert.equal(retry.statusCode, 202);
-  assert.equal(rerun.statusCode, 202);
+  assert.equal(rerun.statusCode, 404);
   assert.notEqual(retry.json().runId, sourceRunId);
-  assert.notEqual(rerun.json().runId, sourceRunId);
   assert.equal(retry.json().sourceRunId, sourceRunId);
-  assert.equal(rerun.json().sourceRunId, sourceRunId);
   assert.equal(retryDetail.json().snapshot.status, "queued");
   assert.equal(retryDetail.json().snapshot.requirementText, "需要重试的需求");
   assert.equal(retryDetail.json().run.sourceRunId, sourceRunId);
@@ -3927,10 +3587,9 @@ test("project run retry and rerun create queued records and start their pipeline
   assert.equal(sourceDetail.json().snapshot.status, "cancelled");
   assert.deepEqual(sourceDetail.json().run.derivedRunIds, [
     retry.json().runId,
-    rerun.json().runId,
   ]);
-  assert.equal(sourceDetail.json().run.latestAction, "rerun");
-  assert.equal(sourceDetail.json().run.latestActionRunId, rerun.json().runId);
+  assert.equal(sourceDetail.json().run.latestAction, "retry");
+  assert.equal(sourceDetail.json().run.latestActionRunId, retry.json().runId);
   assert.equal(sourceDetail.json().events.at(-1).type, "run_action");
   const runs = projectRuns.json().runs as Array<{
     runId: string;
@@ -3945,17 +3604,15 @@ test("project run retry and rerun create queued records and start their pipeline
   const retrySummary = runs.find((run) => run.runId === retry.json().runId);
   assert.deepEqual(sourceSummary?.derivedRunIds, [
     retry.json().runId,
-    rerun.json().runId,
   ]);
-  assert.equal(sourceSummary?.latestAction, "rerun");
-  assert.equal(sourceSummary?.latestActionRunId, rerun.json().runId);
+  assert.equal(sourceSummary?.latestAction, "retry");
+  assert.equal(sourceSummary?.latestActionRunId, retry.json().runId);
   assert.equal(retrySummary?.sourceRunId, sourceRunId);
   assert.equal(retrySummary?.sourceAction, "retry");
   assert.equal(retrySummary?.sourceRunStatus, "cancelled");
   assert.deepEqual(pipelineRunIds, [
     sourceRunId,
     retry.json().runId,
-    rerun.json().runId,
   ]);
 
   await app.close();

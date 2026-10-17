@@ -79,12 +79,18 @@ export function devTokenPayload(
 export function projectWorkspacePayload(
   workspace: Awaited<ReturnType<AuthStore["getProjectWorkspace"]>>,
 ) {
+  const state = { ...workspace.state };
+  if (state.standardProject && typeof state.standardProject === "object") {
+    // Pi's tool history stays server-owned; clients receive the separate user-facing conversation.
+    const { piSession: _session, ...publicProject } = state.standardProject as Record<string, unknown>;
+    state.standardProject = publicProject;
+  }
   return {
     projectId: workspace.projectId,
     version: workspace.version,
     state: {
       ...stableProjectWorkspaceDefaults,
-      ...workspace.state,
+      ...state,
     },
     updatedByUserId: workspace.updatedByUserId,
     sourceRunId: workspace.sourceRunId,

@@ -89,6 +89,7 @@ jobs:
           npm run test:harness-eval
           npm run test:deploy
           npm run test:scripts
+          npm run test:ci
 
       - name: Typecheck
         run: |

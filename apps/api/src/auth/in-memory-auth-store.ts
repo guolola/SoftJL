@@ -49,6 +49,7 @@ export type SessionRecord = {
 };
 
 export type ProjectRecord = {
+  projectMode?: "standard" | "professional";
   id: string;
   name: string;
   description: string | null;
@@ -652,6 +653,7 @@ export function createInMemoryAuthStore() {
   }
 
   function createProject(input: {
+    projectMode?: "standard" | "professional";
     ownerUserId: string;
     name: string;
     description: string | null;
@@ -666,6 +668,7 @@ export function createInMemoryAuthStore() {
   }) {
     const createdAt = now();
     const project: ProjectRecord = {
+      projectMode: input.projectMode ?? "professional",
       id: randomUUID(),
       name: input.name,
       description: input.description,

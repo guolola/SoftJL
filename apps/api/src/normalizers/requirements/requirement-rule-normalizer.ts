@@ -1,6 +1,8 @@
 // Normalizes extracted requirement rules before validating the public contract.
 import {
+  diagramAllowedForCategory,
   extractProtectedRequirementFacts,
+  inferRelatedDiagrams,
   requirementRulesResultSchema,
   type DiagramKind,
   type RequirementRule,
@@ -130,56 +132,6 @@ function diagramFromAlias(value: unknown): DiagramKind | null {
     return "analysis";
   }
   return null;
-}
-
-function inferRelatedDiagrams(ruleText: string, category: RuleCategory): DiagramKind[] {
-  const inferred: DiagramKind[] = [];
-  const add = (kind: DiagramKind) => {
-    if (!inferred.includes(kind)) inferred.push(kind);
-  };
-
-  if (
-    category === "功能需求" ||
-    /功能|流程|登录|授权|预约|签到|查询|管理|查看|选择|提交|取消|刷新/.test(ruleText)
-  ) {
-    add("function");
-    add("usecase");
-    add("activity");
-    add("analysis");
-  }
-  if (
-    category === "数据需求" ||
-    /座位状态|预约记录|用户身份|用户信息|缓存|数据|记录|状态|时间段/.test(ruleText)
-  ) {
-    add("class");
-  }
-  if (
-    category === "非功能需求" ||
-    category === "部署需求" ||
-    /性能|安全|可靠|可用|并发|定时任务|加密|部署|服务器|响应|加载|缓存|同步/.test(ruleText)
-  ) {
-    add("deployment");
-  }
-  if (category === "外部接口") {
-    add("usecase");
-    add("deployment");
-  }
-  if (category === "界面需求") {
-    add("usecase");
-    add("prototype");
-  }
-  if (category === "异常处理") {
-    add("activity");
-    add("analysis");
-    add("usecase");
-  }
-
-  return inferred.length > 0 ? inferred : ["usecase"];
-}
-
-function diagramAllowedForCategory(diagram: DiagramKind, category: RuleCategory) {
-  if (diagram !== "function") return true;
-  return category === "功能需求" || category === "业务规则";
 }
 
 function normalizeRelatedDiagrams(value: unknown, ruleText: string, category: RuleCategory) {
@@ -325,7 +277,7 @@ export function mergeConfirmedLabeledRequirementRules(
       const covered = merged[coveredIndex]!;
       merged[coveredIndex] = {
         ...covered,
-        sourceFragment: `[${sourceLabel}] ${text}`,
+        sourceFragment: match[0].trim(),
       };
       continue;
     }
@@ -337,7 +289,7 @@ export function mergeConfirmedLabeledRequirementRules(
       ),
       category,
       text,
-      sourceFragment: `[${sourceLabel}] ${text}`,
+      sourceFragment: match[0].trim(),
       relatedDiagrams: inferRelatedDiagrams(text, category).filter((diagram) =>
         diagramAllowedForCategory(diagram, category),
       ),

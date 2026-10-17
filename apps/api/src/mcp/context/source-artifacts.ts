@@ -4,6 +4,8 @@ import { z } from "zod";
 import {
   atomicRequirementSchema,
   requirementRuleSchema,
+  requirementBaselineSchema,
+  requirementBaselineTraceEntries,
   diagramModelSpecSchema,
   designDiagramModelSpecSchema,
   requirementModelTraceabilityEntrySchema,
@@ -140,13 +142,15 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
     requirementFactsSchema,
     baseline.requirements,
   );
+  const snapshotBaseline = baseline.schemaVersion === 2 ? requirementBaselineSchema.safeParse(baseline) : null;
+  const snapshotRequirements = snapshotBaseline?.success ? requirementBaselineTraceEntries(snapshotBaseline.data) : [];
   const rules = parsedItems(requirementRuleSchema, state.rules);
   if (
     requirements.length !== array(baseline.requirements).length ||
     rules.length !== array(state.rules).length
   )
     issues.push("部分需求字段不符合领域契约，已标记缺失，未输出原始工作区。");
-  for (const requirement of requirements) {
+  for (const requirement of [...requirements, ...snapshotRequirements]) {
     add(
       {
         id: `requirement:${requirement.id}`,
@@ -159,14 +163,16 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
         dependencies: [],
         sourceConsistency: "unknown",
         issues: [],
-        payload: { requirement },
+        payload: { requirement: baseline.schemaVersion === 2
+          ? { id: requirement.id, sourceRuleId: requirement.sourceRuleId, text: requirement.action, sourceFragment: requirement.sourceFragment }
+          : requirement },
       },
       state.requirementInputFingerprint,
       ruleInput,
     );
   }
   for (const rule of rules) {
-    const linked = requirements.filter((req) => req.sourceRuleId === rule.id);
+    const linked = [...requirements, ...snapshotRequirements].filter((req) => req.sourceRuleId === rule.id);
     add(
       {
         id: `rule:${rule.id}`,

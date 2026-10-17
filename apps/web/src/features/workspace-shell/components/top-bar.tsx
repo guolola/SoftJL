@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Activity, AlertCircle, CheckCircle2, CircleHelp, Home, Loader2, Menu, Moon, Sun, } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { RunStage, } from "@uml-platform/contracts";
 import { Button } from "../../../shared/ui/button";
 import { AccountDialog } from "../../user-platform/components/account-dialog";
 import { useAuthenticatedRouteSession } from "../../user-platform/components/authenticated-route-session";
@@ -48,40 +47,6 @@ const RUN_STATUS_LABEL = {
     cancelled: "cancelled",
     interrupted: "interrupted",
 } as const;
-type RunKind = "requirements" | "design" | "document" | "feasibility";
-const STAGE_LABELS: Record<RunStage, string> = {
-    generate_business_flow: "generate_business_flow", render_business_flow: "render_business_flow",
-    extract_rules: "extract_rules", generate_models: "generate_models", generate_design_sequence: "generate_design_sequence",
-    generate_design_models: "generate_design_models", generate_tests: "generate_tests",
-    generate_document_text: "generate_document_text", render_document_file: "render_document_file", generate_plantuml: "generate_plantuml",
-    render_svg: "render_svg", generate_context: "generate_context", render_context: "render_context", generate_implementation: "generate_implementation",
-    verify_diagram_visual: "verify_diagram_visual",
-};
-const STAGES_BY_KIND: Record<RunKind, RunStage[]> = {
-    requirements: [
-        "extract_rules",
-        "generate_models",
-        "generate_plantuml",
-        "render_svg",
-        "verify_diagram_visual",
-    ],
-    design: [
-        "generate_design_sequence",
-        "generate_design_models",
-        "generate_plantuml",
-        "render_svg",
-        "verify_diagram_visual",
-    ],
-    document: ["generate_document_text", "render_document_file"],
-    feasibility: [
-        "generate_context",
-        "render_context",
-        "verify_diagram_visual",
-        "generate_business_flow",
-        "render_business_flow",
-        "generate_implementation",
-    ],
-};
 const topBarActionButtonClass = "size-9 shrink-0";
 const taskStatusButtonClass = "h-9 shrink-0 px-2.5";
 const mainNavButtonClass = "h-9";
@@ -111,28 +76,10 @@ const SHELL_ROUTE_TRANSLATION_KEYS: Partial<Record<string, "workspace">> = {
 function shellRouteTranslationKey(route: string) {
     return route === "/projects" ? "projects" : (SHELL_ROUTE_TRANSLATION_KEYS[route] ?? "workspace");
 }
-function getTaskStages(kind: RunKind | null, activeStage: RunStage | null) {
-    const base = kind ? [...STAGES_BY_KIND[kind]] : [];
-    if (activeStage && !base.includes(activeStage)) {
-        base.push(activeStage);
-    }
-    return base;
-}
 function normalizeRunStatus(status: string): keyof typeof RUN_STATUS_LABEL {
     return status in RUN_STATUS_LABEL
         ? (status as keyof typeof RUN_STATUS_LABEL)
         : "idle";
-}
-function normalizeRunKind(kind: PlatformRunSummary["runKind"]): RunKind | null {
-    return kind === "requirements" ||
-        kind === "design" ||
-        kind === "document" ||
-        kind === "feasibility"
-        ? kind
-        : null;
-}
-function normalizeRunStage(stage: PlatformRunSummary["stage"]): RunStage | null {
-    return stage && stage in STAGE_LABELS ? (stage as RunStage) : null;
 }
 function isActiveProjectRun(run: PlatformRunSummary) {
     return run.status === "queued" || run.status === "running";
@@ -145,27 +92,31 @@ function projectRunTimestamp(run: PlatformRunSummary) {
 function latestProjectRun(runs: PlatformRunSummary[]) {
     return [...runs].sort((left, right) => projectRunTimestamp(right) - projectRunTimestamp(left))[0] ?? null;
 }
-function getProjectRunProgress(run: PlatformRunSummary) {
-    const status = normalizeRunStatus(run.status);
-    if (status === "queued")
-        return 0;
-    if (status === "completed" ||
-        status === "failed" ||
-        status === "cancelled" ||
-        status === "interrupted") {
-        return 100;
-    }
-    const stage = normalizeRunStage(run.stage);
-    const stages = getTaskStages(normalizeRunKind(run.runKind), stage);
-    const stageIndex = stage ? stages.indexOf(stage) : -1;
-    if (stageIndex < 0 || stages.length === 0)
-        return status === "running" ? 5 : 0;
-    return Math.min(95, Math.max(5, Math.round(((stageIndex + 1) / stages.length) * 100)));
+// Stage-based percentages jump between a few values, so active work shows elapsed time instead.
+function formatElapsed(ms: number) {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const clock = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    return hours > 0 ? `${hours}:${clock}` : clock;
+}
+function useElapsedLabel(startedAt: string | null | undefined) {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (!startedAt)
+            return;
+        setNow(Date.now());
+        const timer = window.setInterval(() => setNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, [startedAt]);
+    const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN;
+    return Number.isFinite(startedAtMs) ? formatElapsed(now - startedAtMs) : null;
 }
 export { ProjectGenerationTasksDrawerContent } from "./project-generation-tasks";
 export function ProjectWorkspaceActions({ onOpenDrawer, projectRuns = EMPTY_PROJECT_RUNS, onStartTour, }: ProjectWorkspaceActionsProps) {
     const { t } = useTranslation();
-    const { runStatus, runProgress, generationTasks, reconcileGenerationTasksWithProjectRuns, } = useWorkspaceSession();
+    const { runStatus, generationTasks, reconcileGenerationTasksWithProjectRuns, } = useWorkspaceSession();
     useEffect(() => {
         reconcileGenerationTasksWithProjectRuns(projectRuns);
     }, [projectRuns, reconcileGenerationTasksWithProjectRuns]);
@@ -181,9 +132,11 @@ export function ProjectWorkspaceActions({ onOpenDrawer, projectRuns = EMPTY_PROJ
     const visibleRunStatus = selectedProjectRun
         ? normalizeRunStatus(selectedProjectRun.status)
         : runStatus;
-    const visibleRunProgress = selectedProjectRun
-        ? getProjectRunProgress(selectedProjectRun)
-        : runProgress;
+    const activeLocalTask = generationTasks.find((task) => task.status === "queued" || task.status === "running");
+    const activeStartedAt = visibleTaskIsActive
+        ? activeLocalTask?.startedAt ?? activeProjectRuns[0]?.startedAt ?? activeProjectRuns[0]?.createdAt ?? null
+        : null;
+    const elapsedLabel = useElapsedLabel(activeStartedAt);
     return (<div className="flex shrink-0 items-center gap-2">
       {onStartTour && (<Button type="button" variant="ghost" size="icon" className={topBarActionButtonClass} aria-label={t("onboarding.replay")} title={t("onboarding.replay")} onClick={onStartTour}>
           <CircleHelp className="size-5"/>
@@ -193,10 +146,10 @@ export function ProjectWorkspaceActions({ onOpenDrawer, projectRuns = EMPTY_PROJ
         <span className="hidden max-w-36 truncate font-semibold xl:inline">
           {visibleActiveTaskCount > 1
             ? t("status.run.count", { count: visibleActiveTaskCount })
-            : visibleTaskIsActive
-                ? t("status.run.progress", {
+            : visibleTaskIsActive && elapsedLabel
+                ? t("status.run.elapsed", {
                     status: t(`status.run.${visibleRunStatus}`),
-                    progress: visibleRunProgress,
+                    elapsed: elapsedLabel,
                 })
                 : t(`status.run.${visibleRunStatus}`)}
         </span>
@@ -220,7 +173,6 @@ export function TopBar({ currentRoute, onNavigate, accountDialogOpen: controlled
             label: t(`nav.${shellRouteTranslationKey(item.route)}`),
         })),
     ];
-
     return <AdmincnHeader showSidebar navigation={<nav className="hidden min-w-0 items-center gap-1.5 xl:flex">
         <Button variant="ghost" type="button" aria-label={t("nav.home")} className={mainNavButtonClass} onClick={() => onNavigate("/projects")}>
           <Home className="size-4"/>

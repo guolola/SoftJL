@@ -17,7 +17,8 @@ for (const { migrationStatus, rollback } of [
   test(`release startup respects database migration status ${migrationStatus} (rollback: ${rollback})`, () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "uml-release-startup-"));
     try {
-      const result = spawnSync(process.env.UML_TEST_BASH ?? "bash", ["-s"], {
+      const bash = process.env.UML_TEST_BASH ?? (process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : 'bash');
+      const result = spawnSync(bash, ["-s"], {
         encoding: "utf8",
         env: { ...process.env, TEST_RELEASE_DIR: directory.replaceAll("\\", "/") },
         input: `

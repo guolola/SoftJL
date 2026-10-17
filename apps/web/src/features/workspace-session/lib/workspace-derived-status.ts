@@ -8,7 +8,6 @@ import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
 import type { GenerationTask, RunDiagnostics } from "../model/session-state";
 import { getDesignModelId } from "../../../entities/diagram/model";
-import { requirementRuleIdsBlockingGeneration } from "./requirement-review";
 import type { createEmptyRunUiState } from "./run-ui-state";
 import {
   designFingerprintMatches,
@@ -139,17 +138,10 @@ export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
   const requirementTraceabilityStale =
     generatedRequirementDiagramSet.size > 0 &&
     (requirementInputStale || requirementTraceabilityMissing);
-  const pendingRequirementReviewRuleIds = requirementRuleIdsBlockingGeneration(
-    input.requirementBaseline,
-    input.requirementReviewCandidates,
-  );
-  const requirementReviewBlockedReason =
-    pendingRequirementReviewRuleIds.length > 0
-      ? "请先确认需求规则修复结果"
-      : null;
+  // Extracted rules count as generated; rule confirmation never gates design generation.
   const designGenerationBlockedReason = !input.requirementText.trim()
     ? "请先输入需求文本"
-    : requirementReviewBlockedReason ?? (Object.values(input.models).some((model) => model && validateModelInput(model, "requirements").some((issue) => issue.severity === "error"))
+    : (Object.values(input.models).some((model) => model && validateModelInput(model, "requirements").some((issue) => issue.severity === "error"))
       ? "上游需求模型未通过结构校验，请修复或重新生成后继续设计" : null);
   const staleDesignReasons: Record<string, string> = {};
   const staleDesignModelIds = Object.values(input.designModels).flatMap((model) => {
@@ -190,7 +182,6 @@ export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
       input.visibleGenerationTask?.errorMessage ?? input.runUiState.errorMessage,
     isRulesStale,
     rulesStaleReason,
-    requirementReviewBlockedReason,
     requirementTraceabilityStale,
     runMessage:
       input.visibleGenerationTask?.message ?? input.runUiState.runMessage,

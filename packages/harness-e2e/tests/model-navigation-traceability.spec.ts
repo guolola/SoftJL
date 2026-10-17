@@ -30,8 +30,8 @@ test("project sidebar aligns scoped models, database fields, SVG focus, and desi
   await expect(sidebar.getByRole("button", { name: /需求分析模型/u })).toHaveCount(0);
 
   await sidebar.getByRole("button", { name: "展开 设计" }).click();
-  await expect(sidebar.getByRole("button", { name: "展开 用例实现设计（5）" })).toBeVisible();
-  await sidebar.getByRole("button", { name: "展开 用例实现设计（5）" }).click();
+  await expect(sidebar.getByRole("button", { name: "展开 用例实现设计", exact: true })).toBeVisible();
+  await sidebar.getByRole("button", { name: "展开 用例实现设计", exact: true }).click();
   for (const label of ["微信授权登录", "查询座位", "预约座位", "查看预约记录", "签到确认"]) {
     await expect(sidebar.getByRole("button", { name: label, exact: true })).toBeVisible();
   }

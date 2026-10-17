@@ -105,7 +105,7 @@ const WorkflowNode = ({ data, selected }: NodeProps<Node<WorkflowNodeData>>) => 
         </div>
 
         <div className='bg-muted/40 flex items-center justify-between gap-2 border-t px-3 py-2'>
-          <GenerationStamp info={data.generation?.representative ?? (data.lineage.hasViewableArtifact ? { instanceId: data.lineage.id, label: data.title, generated: true, scope: data.lineage.kind === 'rule' ? 'rules-batch' : data.lineage.kind === 'document' ? 'document' : 'instance' } : undefined)} representative={(data.generation?.instances.length ?? 0) > 1} />
+          <GenerationStamp showDuration={false} info={data.generation?.representative ?? (data.lineage.hasViewableArtifact ? { instanceId: data.lineage.id, label: data.title, generated: true, scope: data.lineage.kind === 'rule' ? 'rules-batch' : data.lineage.kind === 'document' ? 'document' : 'instance' } : undefined)} representative={(data.generation?.instances.length ?? 0) > 1} />
           <StatusBadge status={data.meta.status} />
         </div>
       </div>

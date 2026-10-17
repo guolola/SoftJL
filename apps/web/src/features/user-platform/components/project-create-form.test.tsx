@@ -66,6 +66,8 @@ describe("ProjectCreateForm", () => {
     render(<ProjectCreateForm onNavigate={() => {}} />);
 
     const nameInput = screen.getByLabelText("项目名称");
+    expect(nameInput).toHaveValue("");
+    expect(screen.getByRole("button", { name: "下一步" })).toBeDisabled();
     await user.clear(nameInput);
     await user.type(nameInput, "质量追溯系统 UML 实验");
 
@@ -77,6 +79,23 @@ describe("ProjectCreateForm", () => {
     expect(screen.getAllByTestId("project-background-preview-image")).toHaveLength(1);
   });
 
+  it.each([["仅成员可见", "private"], ["团队成员可见", "team"], ["公开可见", "public"]])("submits %s without silently remapping visibility", async (label, value) => {
+    const user = userEvent.setup();
+    const fetchMock = stubCreateProjectFetch();
+    render(<ProjectCreateForm onNavigate={() => {}} />);
+    await user.type(screen.getByLabelText("项目名称"), "权限测试");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.queryByRole("button", { name: "课程班级可见" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: label }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.getByText(label)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true));
+    const call = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(JSON.parse(String(call?.[1]?.body)).visibility).toBe(value);
+  });
+
   it("submits a manual project background selection", async () => {
     const user = userEvent.setup();
     const fetchMock = stubCreateProjectFetch();
@@ -86,6 +105,8 @@ describe("ProjectCreateForm", () => {
     expect(screen.queryByRole("button", { name: /预约预订系统/u })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /选择背景图/u }));
     await user.click(await screen.findByRole("button", { name: /预约预订系统/u }));
+    await user.type(screen.getByLabelText("项目名称"), "订单系统");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: /创建并进入项目/u }));
@@ -98,8 +119,51 @@ describe("ProjectCreateForm", () => {
       expect(createCall).toBeTruthy();
       expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({
         backgroundKey: "booking",
+        projectMode: "standard",
       });
     });
+  });
+
+  it("lets the creator explicitly select professional mode", async () => {
+    const user = userEvent.setup(); const fetchMock = stubCreateProjectFetch();
+    render(<ProjectCreateForm onNavigate={() => {}} />);
+    await user.type(screen.getByLabelText("项目名称"), "订单系统");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.queryByLabelText("项目名称")).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "快速建模" })).toBeChecked();
+    const quickCard = screen.getByRole("radio", { name: "快速建模" }).closest("label")!;
+    const engineeringCard = screen.getByRole("radio", { name: "工程建模" }).closest("label")!;
+    expect(screen.getByRole("radio", { name: "快速建模" })).toHaveAccessibleDescription("适合初学者和希望快速验证想法的用户。通过对话灵活建模，不进行链路校验。");
+    expect(screen.getByRole("radio", { name: "工程建模" })).toHaveAccessibleDescription("适合开展课程设计或工程实践的学生与团队。按规范流程分步建模，校验链路并追踪变更影响，过程更严谨。");
+    expect(quickCard.querySelector('[data-project-mode-illustration="chat"]')).toHaveAttribute("aria-hidden", "true");
+    expect(engineeringCard.querySelector('[data-project-mode-illustration="beam"]')).toHaveAttribute("aria-hidden", "true");
+    // Decorative chat actions must not add form controls inside the mode's label.
+    expect(quickCard.querySelectorAll("button, input")).toHaveLength(1);
+    expect(engineeringCard.querySelectorAll("button, input")).toHaveLength(1);
+    expect(screen.getByText("聊天式")).toBeVisible();
+    expect(screen.getByText("工作流式")).toBeVisible();
+    await user.click(screen.getByRole("radio", { name: "工程建模" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
+    const call = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(JSON.parse(String(call?.[1]?.body)).projectMode).toBe("professional");
+  });
+
+  it("preserves the chosen mode and project details when navigating back", async () => {
+    const user = userEvent.setup();
+    stubCreateProjectFetch();
+    render(<ProjectCreateForm onNavigate={() => {}} />);
+    expect(screen.queryByRole("radio", { name: "快速建模" })).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("项目名称"), "订单系统");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    screen.getByRole("radio", { name: "快速建模" }).focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("radio", { name: "工程建模" })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "上一步" }));
+    expect(screen.getByLabelText("项目名称")).toHaveValue("订单系统");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.getByRole("radio", { name: "工程建模" })).toBeChecked();
   });
 
   it("shows a success toast before navigating to the created project", async () => {
@@ -110,6 +174,8 @@ describe("ProjectCreateForm", () => {
 
     render(<ProjectCreateForm onNavigate={onNavigate} />);
 
+    await user.type(screen.getByLabelText("项目名称"), "订单系统");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
@@ -127,6 +193,8 @@ describe("ProjectCreateForm", () => {
     stubCreateProjectFetch();
     const onNavigate = vi.fn();
     const { unmount } = render(<ProjectCreateForm onNavigate={onNavigate} />);
+    await user.type(screen.getByLabelText("项目名称"), "订单系统");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "创建并进入项目" }));

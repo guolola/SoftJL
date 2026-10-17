@@ -205,10 +205,6 @@ export class PromptRuntimeStore {
   }
 }
 
-const runSnapshots = new WeakMap<object, PublishedSnapshot>();
-export function pinPromptRuntimeSnapshot(run: object, snapshot: PublishedSnapshot) { runSnapshots.set(run, snapshot); }
-export function getPinnedPromptRuntimeSnapshot(run: object): PublishedSnapshot { return runSnapshots.get(run) ?? {}; }
-
 let singleton: PromptRuntimeStore | null = null;
 export function getPromptRuntimeStore() { return singleton ??= new PromptRuntimeStore(); }
 

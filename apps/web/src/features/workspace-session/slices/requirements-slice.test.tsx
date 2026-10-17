@@ -17,7 +17,6 @@ function createRepository(): WorkspaceRepository {
     testProviderSettings: vi.fn(),
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(),
-    restoreRunHistory: vi.fn(),
     deleteRunHistory: vi.fn(),
     clearRunHistory: vi.fn(),
   };

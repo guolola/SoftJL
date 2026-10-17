@@ -429,15 +429,3 @@ export function normalizeFeasibilityImplementationDetailed(
   }
   return { plan, actions: [...new Set(actions)] };
 }
-
-export function normalizeFeasibilityImplementation(
-  value: unknown,
-  validRequirementIds: ReadonlySet<string>,
-  externalSystems?: readonly FeasibilityContextExternalSystem[],
-): FeasibilityImplementationPlan {
-  return normalizeFeasibilityImplementationDetailed(
-    value,
-    validRequirementIds,
-    externalSystems,
-  ).plan;
-}

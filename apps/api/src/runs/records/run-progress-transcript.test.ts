@@ -7,7 +7,10 @@ import { projectRunProgressEvents } from "./run-progress-transcript.js";
 
 test("a 30,000-chunk history transfers only lifecycle events while the full record remains intact", () => {
   const started: RunEvent = { type: "run_activity", runId: "run", callId: "call", eventId: "start", createdAt: "2026-10-12T00:00:00Z", stage: "generate_models", phase: "started", format: "technical", inputImages: [{ url: "data:image/png;base64," + "x".repeat(100000) }] };
-  const snapshot = createEmptySnapshot("run", "需求正文".repeat(10000), ["usecase"]); snapshot.status = "completed";
+  const snapshot = createEmptySnapshot("run", "需求正文".repeat(10000), ["usecase"], [], {
+    submittedRequirementText: "输入原文".repeat(10000),
+    attachments: [{ id: "image", name: "flow.png", type: "image", contentType: "image/png", data: "iVBORw0KGgo=" }],
+  }); snapshot.status = "completed";
   const content: RunEvent[] = Array.from({ length: 30000 }, (_, index) => ({ ...started, eventId: `chunk-${index}`, inputImages: undefined, phase: "reasoning", text: "思考正文".repeat(30) }));
   const events: RunEvent[] = [started, ...content, { ...started, eventId: "done", inputImages: undefined, phase: "completed" }, { type: "completed", eventId: "terminal", snapshot }];
   const projected = projectRunProgressEvents(events);
@@ -16,6 +19,9 @@ test("a 30,000-chunk history transfers only lifecycle events while the full reco
   assert.equal(JSON.stringify(projected).includes("思考正文"), false); assert.equal(JSON.stringify(projected).includes("data:image"), false);
   assert.equal(content[0]?.type === "run_activity" && content[0].text?.includes("思考正文"), true);
   assert.ok(snapshot.requirementText.length > 10000);
+  assert.equal(snapshot.attachments?.length, 1);
+  assert.equal(JSON.stringify(projected).includes("iVBORw0KGgo="), false);
+  assert.equal(JSON.stringify(projected).includes("输入原文"), false);
 });
 
 test("document completion preserves download metadata without its body", () => {

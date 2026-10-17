@@ -72,6 +72,7 @@ function mapOnboardingRow(row?: OnboardingRow): OnboardingStateResponse {
 }
 
 type ProjectRow = {
+  project_mode?: "standard" | "professional";
   id: string;
   name: string;
   description: string | null;
@@ -251,6 +252,7 @@ function mapSessionRow(row: SessionRow): SessionRecord {
 
 function mapProjectRow(row: ProjectRow): ProjectRecord {
   return {
+    projectMode: row.project_mode ?? "professional",
     id: row.id,
     name: row.name,
     description: row.description,
@@ -382,6 +384,7 @@ const sessionColumns = `
 `;
 
 const projectColumns = `
+  project_mode,
   id,
   name,
   description,
@@ -1201,6 +1204,7 @@ export function createPostgresAuthRepository(db: Queryable) {
     },
 
     async createProject(input: {
+      projectMode?: "standard" | "professional";
       ownerUserId: string;
       name: string;
       description: string | null;
@@ -1227,9 +1231,10 @@ export function createPostgresAuthRepository(db: Queryable) {
             team_id,
             default_provider_config_id,
             retention_policy,
-            background_key
+            background_key,
+            project_mode
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           returning ${projectColumns}
         `,
         [
@@ -1245,6 +1250,7 @@ export function createPostgresAuthRepository(db: Queryable) {
           input.defaultProviderConfigId ?? null,
           input.retentionPolicy ?? "manual",
           input.backgroundKey ?? null,
+          input.projectMode ?? "professional",
         ],
       );
       const project = mapProjectRow(projectResult.rows[0]);

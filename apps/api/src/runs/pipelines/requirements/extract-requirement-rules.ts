@@ -1,4 +1,4 @@
-// Repairs rule-extraction JSON by appending validation feedback to one isolated chat history.
+// Repairs rule extraction with complete source, draft and exact-source validation.
 import {
   stageProgressRunEventSchema,
   type ProviderSettings,
@@ -32,6 +32,7 @@ export function extractRequirementRulesWithRepair(input: {
   // Screening uses a different JSON contract (units); only extraction turns belong in this branch.
   return withIsolatedConversationBranch("requirements:extract-rules", async () => {
     let prompt = buildExtractRulesPrompt(input.requirementText);
+    let previousOutput = "";
     const responseFormat = getExtractRequirementRulesResponseFormat(input.providerSettings);
     for (let attempt = 0; ; attempt += 1) {
       throwIfRunCancelled(input.record);
@@ -54,8 +55,12 @@ export function extractRequirementRulesWithRepair(input: {
             round: attempt ? attempt : undefined,
           }),
           (text) => {
+            previousOutput = text;
             try {
-              return normalizeRequirementRulesResult(parseJson(text), input.requirementText);
+              const result = normalizeRequirementRulesResult(parseJson(text), input.requirementText);
+              const invalid = result.rules.filter(rule => !rule.sourceFragment || !input.requirementText.includes(rule.sourceFragment));
+              if (invalid.length) throw new Error(`sourceFragment 必须逐字引用原始需求，以下规则来源无效：${invalid.map(rule => rule.id).join(", ")}`);
+              return result;
             } catch (error) {
               validationFailed = true;
               throw error;
@@ -77,9 +82,7 @@ export function extractRequirementRulesWithRepair(input: {
           message: `需求规则 JSON 结构不合法，正在修复（${attempt + 1}/${MAX_RULE_REPAIR_ATTEMPTS}）`,
         }));
         input.onActivity?.();
-        // The contextual transport retains the original user request and assistant JSON;
-        // send only a new user diagnosis instead of restarting extraction or duplicating history.
-        prompt = buildRepairExtractedRulesPrompt(formatParseError(error));
+        prompt = buildRepairExtractedRulesPrompt(formatParseError(error), input.requirementText, previousOutput);
       }
     }
   });

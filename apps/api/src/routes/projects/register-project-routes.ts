@@ -32,8 +32,6 @@ import {
   type MailAdapter,
 } from "../../mail/mail-adapter.js";
 import type { AcademicAdminRepository } from "../../db/academic-admin-repository.js";
-import { refreshRunRecordIfAvailable, type RunRecordStore } from "../../runs/records/run-record-store.js";
-import { isRestorableRunSnapshot } from "./workspace-snapshot-restore.js";
 import {
   devTokenPayload,
   isWorkspaceSourceRunConstraintError,
@@ -57,14 +55,12 @@ export function registerProjectRoutes({
   mailAdapter = createMailAdapterFromEnv(),
   nodeEnv = process.env.NODE_ENV ?? null,
   academicStore,
-  runs,
 }: {
   app: FastifyInstance;
   authStore: AuthStore;
   mailAdapter?: MailAdapter;
   nodeEnv?: string | null;
   academicStore?: AcademicAdminRepository;
-  runs?: RunRecordStore;
 }) {
   app.get("/api/academic-options", async (request, reply) => {
     const auth = await requireAuth(request, reply, authStore);
@@ -108,6 +104,7 @@ export function registerProjectRoutes({
     }
     const input = parsedInput.data;
     const { project, ownerMember } = await authStore.createProject({
+      projectMode: input.projectMode,
       ownerUserId: auth.user.id,
       name: input.name,
       description: input.description,
@@ -181,7 +178,8 @@ export function registerProjectRoutes({
       result = await authStore.saveProjectWorkspace({
         projectId,
         baseVersion: input.baseVersion,
-        state: normalizeWorkspaceModelState(input.state, currentWorkspace.state),
+        // Ordinary workflow state is server-owned. Older clients cannot delete it or forge generated results.
+        state: normalizeWorkspaceModelState({ ...input.state, standardProject: currentWorkspace.state.standardProject }, currentWorkspace.state),
         updatedByUserId: context.user.id,
         sourceRunId: input.sourceRunId ?? null,
       });
@@ -219,44 +217,6 @@ export function registerProjectRoutes({
     return projectWorkspacePayload(result.workspace);
     },
   );
-
-  app.post("/api/projects/:projectId/runs/:runId/restore-workspace", async (request, reply) => {
-    const { projectId, runId } = request.params as {
-      projectId: string;
-      runId: string;
-    };
-    const context = await requireProjectPermission(
-      request,
-      reply,
-      authStore,
-      projectId,
-      "update_project",
-    );
-    if (isProjectPermissionError(context)) return context;
-    if (!runs) {
-      reply.code(404);
-      return { message: "Run history is not available" };
-    }
-
-    const record = await refreshRunRecordIfAvailable(runs, runId, { events: "none" });
-    if (!record || record.metadata?.projectId !== projectId) {
-      reply.code(404);
-      return { message: "Run not found" };
-    }
-    if (!record.terminal) {
-      reply.code(409);
-      return { message: "运行尚未结束，暂不能恢复快照。" };
-    }
-    if (!isRestorableRunSnapshot(record.snapshot)) {
-      reply.code(400);
-      return { message: "说明书快照不能恢复为项目工作台。" };
-    }
-    reply.code(410);
-    return {
-      message:
-        "历史快照暂仅支持查看，不能直接覆盖当前项目工作区。请重新运行对应阶段生成当前状态。",
-    };
-  });
 
   app.patch("/api/projects/:projectId", async (request, reply) => {
     const { projectId } = request.params as { projectId: string };

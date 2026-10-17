@@ -40,8 +40,10 @@ import {
 import {
   platformApi,
   type PlatformProject,
+  type PlatformProjectMember,
 } from "../services/platform-api";
 import { ProjectBackgroundPicker } from "./project-background-picker";
+import { projectVisibilityOptions } from "../lib/project-visibility";
 
 export function ProjectSettings({
   project,
@@ -78,6 +80,20 @@ export function ProjectSettings({
   const [ownerError, setOwnerError] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
+  const [members, setMembers] = useState<PlatformProjectMember[]>([]);
+  const [membersError, setMembersError] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(true);
+  const [membersRetry, setMembersRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setMembers([]); setMembersError(false); setMembersLoading(true);
+    platformApi.listProjectMembers(project.id).then(({ members: next }) => {
+      if (active) setMembers(next);
+    }).catch(() => { if (active) setMembersError(true); })
+      .finally(() => { if (active) setMembersLoading(false); });
+    return () => { active = false; };
+  }, [project.id, membersRetry]);
+  const eligibleOwners = members.filter(member => member.status === "active" && member.userId !== currentProject.ownerUserId);
 
   useEffect(() => {
     setName(project.name);
@@ -125,6 +141,7 @@ export function ProjectSettings({
   };
 
   const archiveProject = async () => {
+    if ((membershipRole && membershipRole !== "owner") || currentProject.status !== "active") return;
     if (!window.confirm(t("projectSettings.confirm.archive"))) return;
     try {
       const response = await platformApi.archiveProject(project.id);
@@ -136,6 +153,7 @@ export function ProjectSettings({
   };
 
   const restoreProject = async () => {
+    if ((membershipRole && membershipRole !== "owner") || currentProject.status !== "archived") return;
     if (!window.confirm(t("projectSettings.confirm.restore"))) return;
     try {
       const response = await platformApi.restoreProject(project.id);
@@ -147,9 +165,10 @@ export function ProjectSettings({
   };
 
   const transferOwner = async () => {
+    if ((membershipRole && membershipRole !== "owner") || membersLoading || membersError || currentProject.status !== "active") return;
     setOwnerError("");
     const trimmedOwnerId = newOwnerUserId.trim();
-    if (!trimmedOwnerId) {
+    if (!eligibleOwners.some(member => member.userId === trimmedOwnerId)) {
       setOwnerError(t("projectSettings.errors.ownerRequired"));
       return;
     }
@@ -259,11 +278,7 @@ export function ProjectSettings({
                   value={visibility}
                   onValueChange={setVisibility}
                   disabled={!canManageProjectSettings}
-                  options={[
-                    { value: "private", label: t("projectSettings.visibilityValues.private") },
-                    { value: "team", label: t("projectSettings.visibilityValues.team") },
-                    { value: "public", label: t("projectSettings.visibilityValues.public") },
-                  ]}
+                  options={projectVisibilityOptions(t)}
                 />
               </Field>
               <Field>
@@ -313,6 +328,7 @@ export function ProjectSettings({
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
+            {currentProject.status === "active" && (
             <Button
               type="button"
               variant="destructive"
@@ -323,6 +339,8 @@ export function ProjectSettings({
               <Archive className="size-4" />
               {t("projectSettings.actions.archive")}
             </Button>
+            )}
+            {currentProject.status === "archived" && (
             <Button
               type="button"
               variant="outline"
@@ -332,26 +350,29 @@ export function ProjectSettings({
             >
               {t("projectSettings.actions.restore")}
             </Button>
+            )}
             <Field className="gap-2">
               <FieldLabel htmlFor="settings-transfer-owner">{t("projectSettings.actions.transfer")}</FieldLabel>
-              <Input
+              <SelectControl
                 id="settings-transfer-owner"
                 value={newOwnerUserId}
-                onChange={(event) => {
-                  setNewOwnerUserId(event.target.value);
-                  if (event.target.value.trim()) setOwnerError("");
+                onValueChange={(value) => {
+                  setNewOwnerUserId(value);
+                  setOwnerError("");
                 }}
-                placeholder={t("projectSettings.ownerPlaceholder")}
-                disabled={!canManageProjectSettings}
-                title={!canManageProjectSettings ? settingsBlockedReason : undefined}
+                placeholder={t("uxReview.chooseMember")}
+                options={eligibleOwners.map(member => ({ value: member.userId, label: `${member.displayName || member.email} (${member.email})` }))}
+                disabled={!canManageProjectSettings || membersLoading || membersError || currentProject.status !== "active"}
               />
+              {membersError && <p role="alert" className="text-sm">{t("uxReview.memberLoadFailed")} <Button variant="link" size="sm" onClick={() => setMembersRetry(value => value + 1)}>{t("uxReview.retry")}</Button></p>}
+              {!membersLoading && !membersError && eligibleOwners.length === 0 && <p className="text-sm text-muted-foreground">{t("uxReview.noOtherMembers")}</p>}
               {ownerError && <FieldError>{ownerError}</FieldError>}
               <Button
                 type="button"
                 variant="outline"
                 className="w-fit"
                 onClick={() => void transferOwner()}
-                disabled={!canManageProjectSettings}
+                disabled={!canManageProjectSettings || membersLoading || membersError || !newOwnerUserId || currentProject.status !== "active"}
                 title={!canManageProjectSettings ? settingsBlockedReason : undefined}
               >
                 {t("projectSettings.actions.transfer")}

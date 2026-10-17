@@ -61,7 +61,7 @@ export interface DocumentLibrary {
     projectId?: string | null;
     createdByUserId?: string | null;
     documentKind: DocumentKind;
-    sourceRunId: string;
+    sourceRunId: string | null;
     fileName: string;
     mimeType?: string | null;
     buffer: Buffer;
@@ -437,7 +437,7 @@ export function createFileDocumentLibrary(rootDir: string): DocumentLibrary {
     projectId?: string | null;
     createdByUserId?: string | null;
     documentKind: DocumentKind;
-    sourceRunId: string;
+    sourceRunId: string | null;
     fileName: string;
     mimeType?: string | null;
     buffer: Buffer;

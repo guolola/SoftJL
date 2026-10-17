@@ -1,12 +1,11 @@
 // Normalizes workspace records and merges saved run snapshots into repository state.
-import { rebuildRequirementQualityReport } from "@uml-platform/contracts";
 import {
+  reuseRequirementBaseline,
+  workspaceGuardConflicts,
   useCaseScopedSourceId as getUseCaseScopedSourceId,
   currentUseCaseSourceIds,
   isLegacyCodeSnapshot,
   stripRetiredCodeData,
-  compareRequirementSemantics,
-  type AtomicRequirement,
   designDiagramKindFromRecordKey,
   designRecordBelongsToDiagramKinds,
   designTraceabilityTouchesDiagramKinds,
@@ -56,6 +55,7 @@ function fingerprintMatches(
 }
 
 
+
 function hasWholeDesignDiagramError(
   diagramErrors: DesignRunSnapshot["diagramErrors"],
   diagram: DesignDiagramType,
@@ -103,149 +103,12 @@ function successfulDesignDiagramsFromSnapshot(
   return snapshot.selectedDiagrams.filter((diagram) => successful.has(diagram));
 }
 
-type RequirementReviewCandidate =
-  WorkspaceRecord["requirementReviewCandidates"][string];
-type BaselineRequirement = RequirementBaseline["requirements"][number];
-
-const REVIEWABLE_REQUIREMENT_FIELDS = [
-  "actor",
-  "subject",
-  "action",
-  "object",
-  "condition",
-  "outcome",
-  "acceptanceCriteria",
-] as const;
-
-
-function acceptedRequirementFromCandidate(
-  candidate: RequirementReviewCandidate,
-  currentRequirement: BaselineRequirement,
-): AtomicRequirement | null {
-  if (candidate.status !== "accepted") return null;
-  const reviewed = candidate.afterRequirement ?? candidate.beforeRequirement;
-  if (!reviewed) return null;
-  if (
-    candidate.afterRequirement &&
-    compareRequirementSemantics(
-      candidate.beforeRequirement,
-      candidate.afterRequirement,
-    ).lostFacts.length > 0
-  ) {
-    return null;
-  }
-  const fieldProvenance = { ...reviewed.fieldProvenance };
-  for (const field of REVIEWABLE_REQUIREMENT_FIELDS) {
-    const provenance = fieldProvenance[field];
-    if (!provenance) continue;
-    fieldProvenance[field] = {
-      ...provenance,
-      status: "accepted",
-      issueIds: [],
-    };
-  }
-  return {
-    ...reviewed,
-    id: currentRequirement.id,
-    sourceRuleId: currentRequirement.sourceRuleId ?? reviewed.sourceRuleId,
-    status: "accepted",
-    confidence: Math.max(reviewed.confidence, currentRequirement.confidence),
-    fieldProvenance,
-  };
-}
-
-
-function reconcileAcceptedReviewCandidates(
-  baseline: RequirementBaseline,
-  candidates: WorkspaceRecord["requirementReviewCandidates"],
-): RequirementBaseline {
-  const acceptedRuleIds = new Set(
-    Object.entries(candidates)
-      .filter(([, candidate]) => candidate.status === "accepted")
-      .map(([ruleId]) => ruleId),
-  );
-  if (acceptedRuleIds.size === 0) return baseline;
-
-  const acceptedRequirementIds = new Set<string>();
-  const requirements = baseline.requirements.map((requirement) => {
-    const ruleId = requirement.sourceRuleId;
-    const candidate = ruleId ? candidates[ruleId] : undefined;
-    if (!candidate || candidate.status !== "accepted") return requirement;
-    const reviewed = acceptedRequirementFromCandidate(candidate, requirement);
-    if (!reviewed) return requirement;
-    acceptedRequirementIds.add(requirement.id);
-    acceptedRequirementIds.add(reviewed.id);
-    return reviewed;
-  });
-  if (acceptedRequirementIds.size === 0) return baseline;
-
-  const issues = baseline.qualityReport.issues.filter(
-    (issue) =>
-      !issue.requirementId || !acceptedRequirementIds.has(issue.requirementId),
-  );
-  return {
-    ...baseline,
-    requirements,
-    qualityReport: rebuildRequirementQualityReport(baseline, requirements, issues),
-  };
-}
-
-function reviewCandidateStillNeeded(
-  baseline: RequirementBaseline,
-  ruleId: string,
-) {
-  const qualityIssueRequirementIds = new Set(
-    baseline.qualityReport.issues.map((issue) => issue.requirementId),
-  );
-  const reviewRequiredRequirementIds = new Set(
-    baseline.qualityReport.reviewRequiredRequirementIds,
-  );
-  return baseline.requirements.some((requirement) => {
-    if (requirement.sourceRuleId !== ruleId) return false;
-    if (reviewRequiredRequirementIds.has(requirement.id)) return true;
-    if (qualityIssueRequirementIds.has(requirement.id)) return true;
-    if (requirement.status !== "accepted") return true;
-    return Object.values(requirement.fieldProvenance).some(
-      (provenance) =>
-        provenance?.status === "pending-review" ||
-        provenance?.status === "rejected",
-    );
-  });
-}
-
-function pruneRequirementReviewCandidatesForBaseline(
-  candidates: WorkspaceRecord["requirementReviewCandidates"],
-  baseline: RequirementBaseline,
-) {
-  const next = { ...candidates };
-  for (const [ruleId, candidate] of Object.entries(next) as Array<
-    [string, RequirementReviewCandidate]
-  >) {
-    if (
-      (candidate.status === "pending" || candidate.status === "failed") &&
-      !reviewCandidateStillNeeded(baseline, ruleId)
-    ) {
-      delete next[ruleId];
-    }
-  }
-  return next;
-}
-
-function applyRequirementBaselineToWorkspace(
-  workspace: WorkspaceRecord,
-  baseline: RequirementBaseline,
-) {
-  const reconciledBaseline = reconcileAcceptedReviewCandidates(
-    baseline,
-    workspace.requirementReviewCandidates,
-  );
-  workspace.requirementBaseline = reconciledBaseline;
-  workspace.requirementQualityReport = reconciledBaseline.qualityReport;
-  workspace.requirementReviewCandidates =
-    pruneRequirementReviewCandidatesForBaseline(
-      workspace.requirementReviewCandidates,
-      reconciledBaseline,
-    );
+function applyRequirementBaselineToWorkspace(workspace: WorkspaceRecord, baseline: RequirementBaseline) {
+  // Retired repair candidates must never be replayed into a newly generated baseline.
+  const resolved = reuseRequirementBaseline(workspace.requirementBaseline, baseline);
+  workspace.requirementBaseline = structuredClone(resolved);
+  workspace.requirementQualityReport = structuredClone(resolved.qualityReport);
+  workspace.requirementReviewCandidates = {};
 }
 
 export function createEmptyWorkspace(): WorkspaceRecord {
@@ -274,6 +137,16 @@ export function createEmptyWorkspace(): WorkspaceRecord {
     designSvgArtifacts: {},
     designDiagramErrors: {},
     manualModelEditStatus: {},
+
+
+
+
+
+
+
+
+
+
 
 
     testGenerationResult: null,
@@ -374,7 +247,6 @@ function omitRecordKeys<T extends Record<string, unknown>>(
   }
   return next as T;
 }
-
 
 function repairMissingDesignInputFingerprints(workspace: WorkspaceRecord) {
   if (
@@ -635,6 +507,8 @@ export function mergeWorkspaceState(state?: Partial<WorkspaceRecord>): Workspace
     ...createEmptyWorkspace(),
     ...(state ?? {}),
   };
+  // Discard retired repair candidates when opening historical workspaces.
+  merged.requirementReviewCandidates = {};
   merged.feasibilityInputs = feasibilityInputsSchema.parse(
     state?.feasibilityInputs ?? {},
   );
@@ -649,6 +523,7 @@ export function applySnapshotToWorkspace(
   snapshot: RunHistorySnapshot,
 ): WorkspaceRecord {
   if (isLegacyCodeSnapshot(snapshot)) throw new Error("Code prototype snapshots are no longer supported.");
+  if (snapshot.publicationSkipped || snapshot.workspaceGuard && workspaceGuardConflicts({ snapshot }, { ...workspace }).length) return workspace;
   const next = cloneWorkspace(workspace);
   const currentHasRequirementText = next.requirementText.trim().length > 0;
   const currentHasRequirements =
@@ -717,6 +592,7 @@ export function applySnapshotToWorkspace(
   ) {
     applyRequirementBaselineToWorkspace(next, snapshot.requirementBaseline);
   }
+
 
 
   if (isDesignRunSnapshot(snapshot)) {
@@ -997,18 +873,6 @@ export function applySnapshotToWorkspace(
     ),
   };
   return finalizeSnapshotWorkspace(next);
-}
-
-export function restoreSnapshotToWorkspace(
-  workspace: WorkspaceRecord,
-  snapshot: RunHistorySnapshot,
-): WorkspaceRecord {
-  const base = {
-    ...createEmptyWorkspace(),
-    id: workspace.id,
-    name: workspace.name,
-  };
-  return applySnapshotToWorkspace(base, snapshot);
 }
 
 function clearAndMergeDiagramErrors<T extends string, V>(

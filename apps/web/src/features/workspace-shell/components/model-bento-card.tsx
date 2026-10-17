@@ -50,6 +50,7 @@ export function ModelBentoCard({
   onSelectedChange,
 }: ModelBentoCardProps) {
   const handleToggle = () => {
+    // Artifact availability never changes the card's selection behavior.
     if (!disabled) {
       onSelectedChange(!selected);
     }
@@ -61,6 +62,7 @@ export function ModelBentoCard({
       tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled}
       aria-label={ariaLabel}
+      aria-pressed={selected}
       title={title}
       onClick={handleToggle}
       onKeyDown={(event) => {
@@ -109,7 +111,7 @@ export function ModelBentoCard({
               aria-label={checkboxLabel}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
-              onCheckedChange={(value) => onSelectedChange(Boolean(value))}
+              onCheckedChange={(value) => { if (!disabled) onSelectedChange(Boolean(value)); }}
             />
           </div>
         </div>
@@ -127,7 +129,7 @@ export function ModelBentoCard({
           <GenerationStatusIcon status={status} label={label} />
           {pendingReview && <Badge variant="warning" className="px-1.5 py-0 text-[10px]">待审</Badge>}
         </div>
-        <span title={english} className="block truncate font-mono text-[11px] leading-4 text-muted-foreground sm:text-xs sm:leading-5">
+        <span title={english} className="block truncate text-[11px] leading-4 text-muted-foreground sm:text-xs sm:leading-5">
           {english}
         </span>
         <p title={description} className={cn("mt-2 text-xs leading-4 text-muted-foreground sm:leading-5", singleLineDescription ? "truncate" : "line-clamp-2")}>
@@ -135,7 +137,7 @@ export function ModelBentoCard({
         </p>
       </div>
       {(details || content) && (
-        // Disabling card selection must not disable viewing an existing artifact or reviewing its inputs.
+        // Disabling card selection must not disable reviewing its inputs.
         <div aria-disabled={false} className="mt-3 min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto overscroll-contain text-[11px] leading-4 text-muted-foreground sm:text-xs sm:leading-5">
           {details}
           {content}

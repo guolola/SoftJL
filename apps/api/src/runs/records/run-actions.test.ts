@@ -8,11 +8,12 @@ import type {
   RunSnapshot,
 } from "@uml-platform/contracts";
 import { buildRequirementBaseline } from "../baselines/requirement-baseline.js";
-import { createQueuedRunFromSource } from "./run-actions.js";
+import { createQueuedRunFromSource, isRetryableRun } from "./run-actions.js";
 import type { RunRecord, RunRecordStore } from "./run-record-store.js";
 import {
   
   createEmptyDesignSnapshot,
+  createEmptyDocumentSnapshot,
   createEmptyFeasibilitySnapshot,
   createEmptySnapshot,
 } from "./snapshots.js";
@@ -26,6 +27,21 @@ const rule = {
   text: "用户可以查看图书。",
   relatedDiagrams: ["analysis" as const],
 };
+
+for (const reasoning of [true, false]) test(`engineering retries retain reasoning=${reasoning}`, () => {
+  const baseline = buildRequirementBaseline({ runId: "baseline", requirementText: rule.text, rules: [rule] });
+  const snapshots = [
+    createEmptyDesignSnapshot("source-design", { selectedDiagrams: ["sequence"], requirementBaseline: baseline, requirementModels: [], requirementModelTraceability: [], reasoning }),
+    createEmptyDocumentSnapshot("source-document", { documentKind: "requirementsSpec", requirementText: rule.text, requirementBaseline: baseline, reasoning, rules: [rule], requirementModels: [], designModels: [] }),
+    createEmptyFeasibilitySnapshot("source-feasibility", { projectId: "project-a", selectedArtifacts: ["context"], providerSettings: { providerConfigId: "provider", model: "model" }, rules: [rule], requirementBaseline: baseline, inputs: feasibilityInputsSchema.parse({}), reasoning }),
+  ];
+  for (const snapshot of snapshots) for (const action of ["retry", "rerun"] as const) {
+    snapshot.status = "failed";
+    const runs: RunRecordStore = new Map();
+    createQueuedRunFromSource({ runs, source: createSourceRecord(snapshot), action, sourceRunId: snapshot.runId, runId: "new-run" });
+    assert.equal((runs.get("new-run")!.snapshot as typeof snapshot).reasoning, reasoning);
+  }
+});
 
 function createSourceRecord(snapshot: RunRecord["snapshot"]): RunRecord {
   return {
@@ -77,6 +93,8 @@ test("createQueuedRunFromSource preserves requirement analysis target ids", () =
     ?.snapshot as RunSnapshot;
   assert.deepEqual(retrySnapshot.selectedDiagrams, ["analysis"]);
   assert.deepEqual(retrySnapshot.analysisTargetUseCaseIds, ["uc_view_books"]);
+  assert.notEqual(retrySnapshot.runId, sourceSnapshot.runId);
+  assert.deepEqual(retrySnapshot.requirementBaseline, sourceSnapshot.requirementBaseline);
 });
 
 test("createQueuedRunFromSource preserves design requested diagram scope", () => {
@@ -139,4 +157,29 @@ test("retry narrows a failed requirement batch to retryable diagram errors", () 
     ?.snapshot as RunSnapshot;
   assert.deepEqual(retrySnapshot.selectedDiagrams, ["activity"]);
   assert.deepEqual(retrySnapshot.requestedDiagrams, ["activity"]);
+});
+
+test("completed requirement and design batches retry only failed diagram types", () => {
+  const baseline = buildRequirementBaseline({ runId: "baseline", requirementText: rule.text, rules: [rule] });
+  const snapshots = [
+    createEmptySnapshot("partial-requirements", rule.text, ["usecase", "class"], [rule]),
+    createEmptyDesignSnapshot("partial-design", { selectedDiagrams: ["sequence", "class"], requirementBaseline: baseline, requirementModels: [], requirementModelTraceability: [] }),
+  ];
+  for (const snapshot of snapshots) {
+    snapshot.status = "completed";
+    const source = createSourceRecord(snapshot);
+    assert.equal(isRetryableRun(source), false);
+    snapshot.diagramErrors.class = { stage: "render_svg", error: createRunError("RUN_RENDER_FAILED") };
+    assert.equal(isRetryableRun(source), true);
+    source.terminal = false;
+    assert.equal(isRetryableRun(source), false);
+    source.terminal = true;
+    const runs: RunRecordStore = new Map();
+    createQueuedRunFromSource({ runs, source, action: "retry", sourceRunId: snapshot.runId, runId: "retry-partial" });
+    const retry = runs.get("retry-partial")!.snapshot as RunSnapshot | DesignRunSnapshot;
+    assert.deepEqual(retry.selectedDiagrams, ["class"]);
+    assert.deepEqual(retry.requestedDiagrams, ["class"]);
+    snapshot.diagramErrors.class.error.retryable = false;
+    assert.equal(isRetryableRun(source), false);
+  }
 });

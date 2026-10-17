@@ -9,6 +9,8 @@ import { registerAuthRoutes } from "../routes/auth/register-auth-routes.js";
 import { registerCaseRoutes } from "../routes/cases/register-case-routes.js";
 import { registerDocumentRoutes } from "../routes/documents/register-document-routes.js";
 import { registerProjectRoutes } from "../routes/projects/register-project-routes.js";
+import { registerStandardProjectRoutes } from "../routes/standard/register-standard-project-routes.js";
+import { createModelCatalog } from "./model-catalog.js";
 import { registerDashboardRoutes } from "../routes/dashboard/register-dashboard-routes.js";
 import { registerProviderConfigRoutes } from "../routes/provider-configs/register-provider-config-routes.js";
 import { registerRenderRoutes } from "../routes/render/register-render-routes.js";
@@ -98,8 +100,10 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
         mailAdapter,
         nodeEnv,
         academicStore,
-        runs,
     });
+    const modelCatalog = createModelCatalog(app, nodeEnv);
+    registerStandardProjectRoutes({ app, authStore, llmTransport, llmScheduler, renderClient, pngRenderClient, modelCatalog,
+        providerConfigs, providerUsageTracker, generationUsage, analyticsStore, documentLibrary });
     registerDashboardRoutes({ app, authStore, runs, documentLibrary });
     registerCaseRoutes({ app, authStore, renderClient });
     registerProviderConfigRoutes({
@@ -127,6 +131,7 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
         }),
     });
     registerRunRoutes({
+        modelCatalog,
         app,
         runs,
         documentLibrary,
@@ -175,6 +180,7 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
     });
     registerFeasibilityRoutes({
         app,
+        modelCatalog,
         runs,
         renderClient,
         pngRenderClient,

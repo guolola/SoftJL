@@ -23,7 +23,6 @@ import {
   downloadStatusLabel,
   formatDateTime,
   getProjectDocumentDisplayName,
-  onlyOfficeStatusLabel,
   shortIdentifier,
 } from "../lib/project-workspace-presentation";
 import {
@@ -235,16 +234,16 @@ export function ProjectDocuments({
                     <CardDescription className="text-xs">
                       {t("projectShell.documentsUi.metadata", { projectId, version: document.version ?? 1, updatedAt: document.updatedAt ? formatDateTime(document.updatedAt, locale) : t("projectShell.documentsUi.notRecorded") })}
                     </CardDescription>
-                    <CardAction>
+                    {["ready", "processing", "failed", "deleted"].includes(document.status) && <CardAction>
                       <Badge variant="secondary">
                         {t(`projectShell.documentsUi.documentStatus.${["ready", "processing", "failed", "deleted"].includes(document.status) ? document.status : "unknown"}`)}
                       </Badge>
-                    </CardAction>
+                    </CardAction>}
                   </CardHeader>
                   <CardContent className="grid gap-3">
                     <div className="text-muted-foreground grid gap-1 text-sm">
-                      <span>{t("projectShell.documentsUi.onlyOffice", { status: onlyOfficeStatusLabel(document.onlyOffice?.status, t) })}</span>
-                      <span>{t("projectShell.documentsUi.editLock", { value: document.editLock?.lockedBy ?? document.onlyOffice?.lockedBy ?? t("projectShell.documentsUi.unlocked") })}</span>
+                      {document.onlyOffice?.status === "unavailable" && <span>{t("uxReview.officeUnavailable")}</span>}
+                      {(document.editLock?.lockedBy || document.onlyOffice?.lockedBy) && <span>{t("uxReview.editing")}</span>}
                       <span>
                         {t("projectShell.documentsUi.downloadLabel")}
                         {downloadStatusLabel(
@@ -252,7 +251,7 @@ export function ProjectDocuments({
                           t,
                         )}
                       </span>
-                      <span>{t("projectShell.documentsUi.size", { value: document.byteLength ? `${new Intl.NumberFormat(locale).format(document.byteLength)} bytes` : t("projectShell.documentsUi.notRecorded") })}</span>
+                      {document.byteLength != null && <span>{t("projectShell.documentsUi.size", { value: `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(document.byteLength / 1024)} KB` })}</span>}
                     </div>
                     <Field>
                       <FieldLabel htmlFor={`document-name-${document.id}`}>

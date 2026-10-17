@@ -1,15 +1,19 @@
-// Recreates queued project runs for retry/rerun after route-level access is resolved.
+// Recreates queued project runs for task retries after route-level access is resolved.
 import { randomUUID } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { apiErrorResponseSchema, type ProviderSettings, type RunAction, } from "@uml-platform/contracts";
 import type { GenerationUsageService } from "../../generation/generation-usage.js";
 import type { ProviderConfigStore } from "../../provider-configs/provider-config-store.js";
+import type { ModelCatalog } from "../../provider-configs/model-catalog.js";
+import { modelingInputError } from "../providers/modeling-input-validation.js";
+import { captureWorkspaceGuard, retryInputProblem, workspaceState } from "../records/workspace-run-guard.js";
+import type { LoadProjectWorkspaceForRun } from "../../routes/runs/run-input-resolution.js";
 import type { ProviderRateLimitPolicy, ProviderUsageTracker, } from "../../provider-configs/provider-usage-tracker.js";
 import { offlineDemoProviderSettings } from "../demo/offline-demo-config.js";
 import { checkGenerationUsageLimit, checkProviderUsageLimit, isActiveRun, recordGenerationUsage, recordProviderUsage, rememberProviderSettings, providerResolutionFailureResponse, resolveProviderConfigIdForRun, resolveProviderSettingsForRun, snapshotProviderSettings, taskTypeForRun, } from "../providers/run-provider-gates.js";
 import { createQueuedRunFromSource, isRetryableRun, } from "../records/run-actions.js";
 import { refreshRunRecordIfAvailable, type RunRecord, type RunRecordMetadata, type RunRecordStore, } from "../records/run-record-store.js";
-type ProjectRunAction = Extract<RunAction, "retry" | "rerun">;
+type ProjectRunAction = Extract<RunAction, "retry">;
 type StartProjectRunActionPipeline = (input: {
     record: RunRecord;
     providerSettings: ProviderSettings;
@@ -21,7 +25,7 @@ type RunAccessResolver = {
         email?: string | null;
     }>;
 };
-export async function createProjectRunAction({ request, reply, action, projectId, runId, actorUserId, runs, runAccessGuard, providerConfigs, providerUsageTracker, generationUsage, providerRateLimitPolicy, startRecordPipeline, }: {
+export async function createProjectRunAction({ request, reply, action, projectId, runId, actorUserId, runs, runAccessGuard, providerConfigs, providerUsageTracker, generationUsage, providerRateLimitPolicy, startRecordPipeline, modelCatalog, loadProjectWorkspace, }: {
     request: FastifyRequest;
     reply: FastifyReply;
     action: ProjectRunAction;
@@ -35,6 +39,8 @@ export async function createProjectRunAction({ request, reply, action, projectId
     generationUsage?: GenerationUsageService;
     providerRateLimitPolicy: ProviderRateLimitPolicy;
     startRecordPipeline: StartProjectRunActionPipeline;
+    modelCatalog?: ModelCatalog;
+    loadProjectWorkspace?: LoadProjectWorkspaceForRun;
 }) {
     const source = await refreshRunRecordIfAvailable(runs, runId);
     if (!source || source.metadata?.projectId !== projectId) {
@@ -43,7 +49,7 @@ export async function createProjectRunAction({ request, reply, action, projectId
             error: { code: "RUN_NOT_FOUND", category: "not_found", retryable: false },
         });
     }
-    if (action === "retry" && !isRetryableRun(source)) {
+    if (!isRetryableRun(source)) {
         reply.code(409);
         return apiErrorResponseSchema.parse({
             error: { code: "RUN_NOT_RETRYABLE", category: "conflict", retryable: false },
@@ -55,6 +61,10 @@ export async function createProjectRunAction({ request, reply, action, projectId
             error: { code: "RUN_ACTIVE_CONFLICT", category: "conflict", retryable: false },
         });
     }
+    const currentState = loadProjectWorkspace ? workspaceState(await loadProjectWorkspace(projectId)) : undefined;
+    const replayProblem = retryInputProblem(source, currentState);
+    if (replayProblem)
+        return reply.code(409).send({ message: replayProblem, error: { code: "RUN_RETRY_INPUT_STALE", category: "conflict", retryable: false } });
     const metadata: RunRecordMetadata = {
         userId: actorUserId,
         projectId,
@@ -83,6 +93,13 @@ export async function createProjectRunAction({ request, reply, action, projectId
         providerSettings: providerSettingsInput,
     });
     const taskType = taskTypeForRun(source);
+    if ("attachments" in source.snapshot || "reasoning" in source.snapshot) {
+        const snapshot = source.snapshot as import("@uml-platform/contracts").RunSnapshot;
+        const capacity = providerConfigId ? modelCatalog?.resolve(providerConfigId, providerSettings.model, providerSettings.apiBaseUrl) : undefined;
+        const error = modelingInputError({ text: snapshot.submittedRequirementText ?? snapshot.requirementText, attachments: snapshot.attachments, reasoning: snapshot.reasoning }, capacity);
+        if (error)
+            return reply.code(400).send({ message: error });
+    }
     const generationLimitCheck = await checkGenerationUsageLimit({
         generationUsage,
         runAccessGuard,
@@ -103,7 +120,6 @@ export async function createProjectRunAction({ request, reply, action, projectId
     if (limitCheck !== true)
         return limitCheck;
     const newRunId = randomUUID();
-
     await recordProviderUsage({
         usageTracker: providerUsageTracker,
         providerConfigId,
@@ -118,7 +134,7 @@ export async function createProjectRunAction({ request, reply, action, projectId
         taskType,
         providerConfigId,
     });
-    // Retry/rerun reuse the source snapshot, then start a fresh pipeline for the queued copy.
+    // Task retries reuse the source snapshot, then start a fresh pipeline for the queued copy.
     const result = createQueuedRunFromSource({
         runs,
         source,
@@ -129,18 +145,19 @@ export async function createProjectRunAction({ request, reply, action, projectId
         runId: newRunId,
     });
     const newRecord = runs.get(result.runId);
-  if (newRecord) {
-    rememberProviderSettings(newRecord, providerSettingsInput, {
-      providerConfigId,
-      model: providerSettings.model,
-    });
-    await startRecordPipeline({
-      record: newRecord,
-      providerSettings,
-      providerConfigId,    });
-  }
-
-
+    if (newRecord) {
+        if (currentState)
+            newRecord.snapshot.workspaceGuard = captureWorkspaceGuard(newRecord, currentState);
+        rememberProviderSettings(newRecord, providerSettingsInput, {
+            providerConfigId,
+            model: providerSettings.model,
+        });
+        await startRecordPipeline({
+            record: newRecord,
+            providerSettings,
+            providerConfigId,
+        });
+    }
     reply.code(202);
     return result;
 }

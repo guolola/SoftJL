@@ -1,7 +1,8 @@
 // Orchestrates design-model generation, PlantUML, and SVG rendering for design runs.
-import { mapWithConcurrency, useCaseModelForSingleUseCase } from "./shared/generation-helpers.js";
+import { missingRequestedModelOutputs } from "../records/run-output-provenance.js";
 
 import { createStageLifecycle } from "./shared/stage-lifecycle.js";
+import { withRunReasoning } from "./shared/run-reasoning.js";
 import {
   artifactReadyRunEventSchema,
   completedRunEventSchema,
@@ -35,6 +36,7 @@ import {
   getGenerateDesignModelsResponseFormat,
   getGenerateDesignTraceabilityResponseFormat,
 } from "../../adapters/llm/response-formats/index.js";
+
 import {
   parseDesignDiagramModelsOnly,
   parseDesignDiagramModelsResult,
@@ -57,6 +59,7 @@ import {
   RunCancelledError,
   throwIfRunCancelled,
 } from "../records/run-cancellation.js";
+
 import { DiagramReviewRenderError, reviewRenderedArtifact } from "./render/review-rendered-artifact.js";
 import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
 import { withConversationBranch } from "./shared/conversation-context.js";
@@ -257,6 +260,26 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks;
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(items[currentIndex]!, currentIndex);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
 
 function autoFillDesignTraceability(
   missingSources: ModelElementRef[],
@@ -386,6 +409,23 @@ function useCasesFromModel(useCaseModel: DiagramModelSpec) {
   return useCaseModel.diagramKind === "usecase" ? useCaseModel.useCases : [];
 }
 
+function useCaseModelForSingleUseCase(
+  useCaseModel: DiagramModelSpec,
+  sourceUseCaseId: string,
+) {
+  if (useCaseModel.diagramKind !== "usecase") return useCaseModel;
+  const useCase = useCaseModel.useCases.find((item) => item.id === sourceUseCaseId);
+  if (!useCase) return useCaseModel;
+  return {
+    ...useCaseModel,
+    useCases: [useCase],
+    relationships: useCaseModel.relationships.filter(
+      (relationship) =>
+        relationship.sourceId === sourceUseCaseId ||
+        relationship.targetId === sourceUseCaseId,
+    ),
+  };
+}
 
 type UseCaseForSequence = ReturnType<typeof useCasesFromModel>[number];
 type SequenceDesignModel = Extract<DesignDiagramModelSpec, { diagramKind: "sequence" }>;
@@ -1144,7 +1184,6 @@ function mergeDesignModels(
   return [...merged.values()];
 }
 
-
 function designArtifactKey(
   artifact: Pick<DesignPlantUmlArtifact | DesignSvgArtifact, "diagramKind" | "modelId">,
 ) {
@@ -1238,6 +1277,7 @@ export async function runDesignStagePipeline(
   pngRenderClient?: PngRenderClient,
 ) {
   const snapshot = record.snapshot as DesignRunSnapshot;
+  llmTransport = withRunReasoning(llmTransport, snapshot.reasoning);
   throwIfRunCancelled(record);
   if (!snapshot.requirementBaseline) {
     throw new Error("设计生成缺少当前需求基线，无法兼容旧设计快照结构");
@@ -1819,6 +1859,12 @@ export async function runDesignStagePipeline(
     throw new Error(renderFailures.join("；"));
   }
 
+  const missingOutputs = missingRequestedModelOutputs(snapshot);
+  if (missingOutputs.length) {
+    const failedTarget = Object.entries(snapshot.diagramErrors).find(([key]) => missingOutputs.some(target => target.split(":")[0] === key.split(":")[0]))?.[1]?.error;
+    if (failedTarget) throwRunError(failedTarget);
+    throwRunError(createRunError("RUN_MODEL_OUTPUT_EMPTY", "请求的模型未全部生成：" + missingOutputs.join("、"), { details: { missingTargets: missingOutputs } }));
+  }
   stages.finish("generate_design_models");
   stages.finish("generate_plantuml");
   stages.finish("render_svg");

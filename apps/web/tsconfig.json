@@ -3,7 +3,7 @@
     "target": "ES2020",
     "useDefineForClassFields": true,
     "lib": [
-      "ES2020",
+      "ES2022",
       "DOM",
       "DOM.Iterable"
     ],
@@ -20,6 +20,12 @@
     ],
     "baseUrl": ".",
     "paths": {
+      "@/lib/utils": [
+        "./src/shared/ui/utils.ts"
+      ],
+      "@/components/ui/*": [
+        "./src/shared/ui/*"
+      ],
       "@/*": [
         "./src/*"
       ]

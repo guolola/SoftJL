@@ -14,7 +14,10 @@ import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
 type RunUiState = ReturnType<typeof createEmptyRunUiState>;
 
 interface WorkspaceInitializationInput {
-  applyWorkspaceRecord: (workspace: WorkspaceRecord) => void;
+  applyWorkspaceRecord: (
+    workspace: WorkspaceRecord,
+    options?: { preserveRequirementDraft?: boolean },
+  ) => void;
   getHasActiveGenerationTask?: () => boolean;
   repository: WorkspaceRepository;
   setHistoryItems: Dispatch<SetStateAction<RunHistoryItem[]>>;
@@ -47,12 +50,12 @@ export function useWorkspaceInitialization({
       }
     };
 
-    const refreshWorkspaceAndHistory = async (applyWorkspace: boolean) => {
+    const refreshWorkspaceAndHistory = async (applyWorkspace: boolean, resumed = false) => {
       if (applyWorkspace) {
         try {
           const workspace = await repository.loadWorkspace();
           if (!active) return;
-          applyWorkspaceRecord(workspace);
+          applyWorkspaceRecord(workspace, { preserveRequirementDraft: resumed });
         } catch (error) {
           if (!active) return;
           setRunUiState((current) => ({
@@ -73,7 +76,7 @@ export function useWorkspaceInitialization({
         return;
       }
       const hasActiveGenerationTask = getHasActiveGenerationTask?.() ?? false;
-      void refreshWorkspaceAndHistory(!hasActiveGenerationTask);
+      void refreshWorkspaceAndHistory(!hasActiveGenerationTask, true);
     };
 
     void refreshWorkspaceAndHistory(true).finally(() => {

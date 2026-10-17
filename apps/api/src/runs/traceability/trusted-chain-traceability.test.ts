@@ -688,7 +688,7 @@ test("buildRequirementStageTrustedChain preserves non-functional requirements as
 
   assert.equal(row?.status, "not-modelable");
   assert.match(row?.rationale ?? "", /alternative evidence|替代证据/i);
-  assert.deepEqual(row?.reviewItems, ["alternative-evidence:REQ-001"]);
+  assert.deepEqual(row?.reviewItems, [`alternative-evidence:${baseline.rules![0]!.requirementId}`]);
   assert.doesNotThrow(() => assertTrustedChainAllowsCompletion(trustedChain));
 });
 

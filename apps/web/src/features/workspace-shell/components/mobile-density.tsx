@@ -47,44 +47,6 @@ export function MobileStatusPill({
   );
 }
 
-export function MobileRail({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-  minWidth?: number;
-}) {
-  return (
-    <div
-      data-workspace-density="rail"
-      className={cn("grid min-w-0 grid-cols-1 gap-2 md:grid md:gap-2", className)}
-    >
-      {children}
-    </div>
-  );
-}
-
-export function MobileRailCard({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      data-workspace-density="rail-card"
-      className={cn(
-        "min-w-0 snap-start",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
 export function MobileCompactGrid({
   children,
   className,

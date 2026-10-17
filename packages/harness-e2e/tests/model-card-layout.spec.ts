@@ -61,7 +61,7 @@ for (const theme of ["light", "dark"]) {
           await expect(failed).toBeVisible();
           await expectSemanticColor(failed.locator('svg'), '--status-failure');
           const failureCard = cards.filter({ has: page.locator('[data-generation-status="failed"]') });
-          await expect(failureCard.getByRole('button', { name: '查看', exact: true })).toBeVisible();
+          await expect(failureCard.locator('div.text-destructive')).toContainText("失败");
           // Stable error codes use concise localized text; scrolling is available when content needs it.
           await expect(failureCard.locator('.overflow-y-auto')).toHaveCSS('overflow-y', 'auto');
         }

@@ -23,7 +23,6 @@ function createRepository(record = createWorkspaceRecord()): WorkspaceRepository
     testProviderSettings: vi.fn(),
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
-    restoreRunHistory: vi.fn(async () => null),
     deleteRunHistory: vi.fn(async () => []),
     clearRunHistory: vi.fn(async () => {}),
   };
@@ -93,7 +92,7 @@ describe("TestModelPage", () => {
     expect(statsGrid).toBeInTheDocument();
 
     const user = userEvent.setup();
-    const generateButton = await screen.findByRole("button", { name: "生成测试用例" });
+    const generateButton = await screen.findByRole("button", { name: "生成" });
     await waitFor(() => expect(generateButton).toBeEnabled());
     await user.click(generateButton);
 
@@ -156,7 +155,7 @@ describe("TestModelPage", () => {
     const user = userEvent.setup();
     render(withWorkspaceProviders(<TestModelPage />, repository));
 
-    const generateButton = await screen.findByRole("button", { name: "生成测试用例" });
+    const generateButton = await screen.findByRole("button", { name: "生成" });
     await waitFor(() => expect(generateButton).toBeEnabled());
     await user.click(generateButton);
     const first = await screen.findByRole("dialog", { name: "测试用例生成失败" });
@@ -256,7 +255,7 @@ describe("TestModelPage", () => {
 
     render(withWorkspaceProviders(<TestModelPage />, repository));
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "生成测试用例" }));
+    await user.click(await screen.findByRole("button", { name: "生成" }));
 
     await waitFor(() =>
       expect(repository.updateTestGenerationResult).toHaveBeenCalledWith(

@@ -1932,9 +1932,9 @@ test("api generates design sequences with one LLM request per use case", async (
         await new Promise((resolve) => setTimeout(resolve, 5));
         assert.equal(responseFormat?.type, "json_schema");
         try {
-          if (prompt.includes('"id": "usecase_review"')) {
+          if (/"id":\s*"usecase_review"/.test(prompt)) {
             yield sequenceJsonFor("usecase_review", "审核模型");
-          } else if (prompt.includes('"id": "usecase_archive"')) {
+          } else if (/"id":\s*"usecase_archive"/.test(prompt)) {
             yield sequenceJsonFor("usecase_archive", "归档模型");
           } else {
             yield sequenceJsonFor("usecase_generate", "生成模型");
@@ -1988,25 +1988,25 @@ test("api generates design sequences with one LLM request per use case", async (
   assert.ok(
     prompts.some(
       (prompt) =>
-        prompt.includes('"id": "usecase_generate"') &&
-        !prompt.includes('"id": "usecase_review"') &&
-        !prompt.includes('"id": "usecase_archive"'),
+        /"id":\s*"usecase_generate"/.test(prompt) &&
+        !/"id":\s*"usecase_review"/.test(prompt) &&
+        !/"id":\s*"usecase_archive"/.test(prompt),
     ),
   );
   assert.ok(
     prompts.some(
       (prompt) =>
-        prompt.includes('"id": "usecase_review"') &&
-        !prompt.includes('"id": "usecase_generate"') &&
-        !prompt.includes('"id": "usecase_archive"'),
+        /"id":\s*"usecase_review"/.test(prompt) &&
+        !/"id":\s*"usecase_generate"/.test(prompt) &&
+        !/"id":\s*"usecase_archive"/.test(prompt),
     ),
   );
   assert.ok(
     prompts.some(
       (prompt) =>
-        prompt.includes('"id": "usecase_archive"') &&
-        !prompt.includes('"id": "usecase_generate"') &&
-        !prompt.includes('"id": "usecase_review"'),
+        /"id":\s*"usecase_archive"/.test(prompt) &&
+        !/"id":\s*"usecase_generate"/.test(prompt) &&
+        !/"id":\s*"usecase_review"/.test(prompt),
     ),
   );
 
@@ -2247,7 +2247,7 @@ test("api preserves successful sequences when one use-case sequence keeps failin
           yield traceabilityJsonFor("usecase_generate", "生成模型");
           return;
         }
-        if (prompt.includes('"id": "uc_filter_date"')) {
+        if (/"id":\s*"uc_filter_date"/.test(prompt)) {
           yield JSON.stringify({ models: [], designModelTraceability: [] });
           return;
         }
@@ -2289,8 +2289,9 @@ test("api preserves successful sequences when one use-case sequence keeps failin
     })
   ).json();
 
-  assert.equal(snapshot.status, "completed");
-  assert.equal(snapshot.error, null);
+  assert.equal(snapshot.status, "failed");
+  assert.ok(snapshot.error);
+  assert.deepEqual(snapshot.outputManifest.filter((item: { kind: string }) => item.kind === "model").map((item: { id: string }) => item.id), ["sequence:usecase_generate"]);
   assert.deepEqual(
     snapshot.models.map((model: { sourceUseCaseId: string }) => model.sourceUseCaseId),
     ["usecase_generate"],
@@ -4173,14 +4174,16 @@ test("api keeps successful diagrams and reports activity render failure in diagr
       origin: "http://localhost:5173",
     },
   });
-  assert.match(eventsResponse.body, /"type":"completed"/);
+  assert.match(eventsResponse.body, /"type":"failed"/);
   const snapshotResponse = await app.inject({
     method: "GET",
     url: `/api/runs/${runId}`,
   });
   const snapshot = snapshotResponse.json();
 
-  assert.equal(snapshot.status, "completed");
+  assert.equal(snapshot.status, "failed");
+  assert.ok(snapshot.error);
+  assert.equal(snapshot.outputManifest.filter((item: { kind: string }) => item.kind === "model").length, 1);
   assert.equal(snapshot.svgArtifacts.length, 1);
   assert.equal(snapshot.svgArtifacts[0].diagramKind, "usecase");
   assert.match(

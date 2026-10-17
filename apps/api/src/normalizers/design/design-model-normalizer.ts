@@ -74,27 +74,6 @@ export function parseDesignDiagramModelsOnly(value: string) {
   return parseDesignDiagramModelsOnlyFromParsed(parseJson<unknown>(value));
 }
 
-export function parseDesignTraceabilityResult(
-  value: string,
-  designModels: DesignDiagramModelSpec[],
-  requirementModels: DiagramModelSpec[],
-) {
-  const coverage = parseDesignTraceabilityCoverageResult(
-    value,
-    designModels,
-    requirementModels,
-  );
-  if (coverage.traceability.length === 0) {
-    throw new Error(
-      "generate_design_models must return non-empty designModelTraceability with valid design-to-requirement element references",
-    );
-  }
-  if (coverage.missingSources.length > 0) {
-    throw new Error(formatTraceabilityMissingRefs("design", coverage.missingSources));
-  }
-  return { designModelTraceability: coverage.traceability };
-}
-
 export function parseDesignTraceabilityCoverageResult(
   value: string,
   designModels: DesignDiagramModelSpec[],

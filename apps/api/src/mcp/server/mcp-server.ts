@@ -24,7 +24,7 @@ export function createPlatformMcpServer(
 ) {
   const server = new McpServer(
     { name: "uml-platform", version: "1.0.0", icons: platformMcpIcons },
-    { instructions: agentInstructions },
+    { instructions: `先调用 list_projects，按 projectMode 区分普通版与专业版，再遵守 get_implementation_context 返回的 instructions。普通版读取已保存需求、方案、图表和测试即可实施，不要求专业版实施报告或链路验证器。以下流程仅适用于专业版：\n${agentInstructions}` },
   );
   const service = createMcpToolService(access, principal);
   function register<T extends z.ZodTypeAny>(
@@ -123,7 +123,7 @@ export function createPlatformMcpServer(
   register(
     "get_implementation_context",
     mcpContextInputSchema,
-    "取得完整设计模型、验收条件、工程约束、测试与实施产物目录；不输出需求模型或原始需求正文。以设计为直接编码依据，设计缺口须反馈。按范围读取所有分页，合并来源 manifest；开始前读取 implementation:bundle 的任务、验收和全部关联来源；交付验证前获取 implementation:report 契约及 implementation:validator 下载元数据。依赖资料不扩展实施范围。",
+    "按项目模式取得编码资料。普通版提供已保存需求、共享方案、图表和测试，无需 implementation 报告或验证器。以下要求仅适用于专业版：取得完整设计模型、验收条件、工程约束、测试与实施产物目录；不输出需求模型或原始需求正文。以设计为直接编码依据，设计缺口须反馈。按范围读取所有分页，合并来源 manifest；开始前读取 implementation:bundle 的任务、验收和全部关联来源；交付验证前获取 implementation:report 契约及 implementation:validator 下载元数据。依赖资料不扩展实施范围。",
     service.get_implementation_context,
   );
   register(

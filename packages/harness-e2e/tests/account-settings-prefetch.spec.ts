@@ -135,7 +135,7 @@ test("preloads global settings before the tab is selected without duplicate requ
 
   const countsBeforeTabSwitch = { ...requestCounts };
   await dialog.getByRole("tab", { name: "模型配置" }).click();
-  await expect(dialog.getByLabel("托管 Provider 配置")).toContainText("课程 OpenAI");
+  await expect(dialog.getByLabel("模型来源")).toContainText("课程 OpenAI");
   await expect(dialog.getByLabel("默认模型")).toContainText("gpt-5.6");
 
   await expect.poll(() => ({ ...requestCounts })).toEqual(countsBeforeTabSwitch);
@@ -143,12 +143,12 @@ test("preloads global settings before the tab is selected without duplicate requ
   // Real element measurements protect widths and alignment across both block layouts.
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
-    const providerWidth = await dialog.getByLabel("托管 Provider 配置").evaluate(element => element.getBoundingClientRect().width);
+    const providerWidth = await dialog.getByLabel("模型来源").evaluate(element => element.getBoundingClientRect().width);
     const modelWidth = await dialog.getByLabel("默认模型", { exact: true }).evaluate(element => element.getBoundingClientRect().width);
     expect(providerWidth).toBe(modelWidth);
     await expect(dialog.locator("[data-page-description]")).not.toHaveText(/[。.]+$/u);
 
-    await dialog.getByRole("button", { name: "添加供应商", exact: true }).click();
+    await dialog.getByRole("button", { name: "添加自己的模型密钥", exact: true }).click();
     const creation = page.getByRole("dialog", { name: "添加供应商", exact: true });
     // The shared popup may animate even in a development build; measure after it reaches full size.
     await expect.poll(async () => {

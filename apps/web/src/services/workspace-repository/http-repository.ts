@@ -1,846 +1,528 @@
 // Implements the browser HTTP workspace repository and project-scoped persistence adapter.
-import type {
-  GenerationExecutionMode,
-  DesignSvgArtifact,
-  OnlyOfficeUiTheme,
-  RepairRequirementRuleRequest,
-  RepairRequirementRulesRequest,
-  RequirementBaseline,
-  RunEvent,
-  RunSnapshot,
-  DesignRunSnapshot,
-  DocumentRunSnapshot,
-  SvgArtifact,
-  FeasibilityRunSnapshot,
-} from "@uml-platform/contracts";
-import {
-  getRequirementModelId,
-} from "../../entities/diagram/model";
+import type { GenerationExecutionMode, DesignSvgArtifact, OnlyOfficeUiTheme, RequirementBaseline, RunEvent, RunSnapshot, DesignRunSnapshot, DocumentRunSnapshot, SvgArtifact, FeasibilityRunSnapshot, } from "@uml-platform/contracts";
+import { getRequirementModelId, } from "../../entities/diagram/model";
 import type { WorkspaceRecord } from "../../entities/workspace/model";
 import type { RequirementRule } from "../../entities/requirement-rule/model";
 import { ApiClientError, requestJson } from "../api-client";
-import {
-  createRunHistoryTitle,
-  loadRunHistory,
-  runHistorySnapshotRequirementText,
-  type RunHistorySnapshot,
-} from "../../entities/run-history";
-import type {
-
-  StartDesignRunInput,
-  StartDocumentRunInput,
-  StartFeasibilityRunInput,
-  StartRunInput,
-} from "./start-inputs";
-import {
-  PROJECT_REQUIRED_MESSAGE,
-  normalizeProjectId,
-  requireProjectScope,
-  withProjectHeaders,
-} from "./project-scope";
-import {
-  canRestoreProjectRunWorkspace,
-  normalizeProjectHistoryResponse,
-  projectRunSummaryToHistoryItem,
-  type ProjectRunDetailResponse,
-  type ProjectRunsResponse,
-} from "./project-history";
-import {
-
-  readDesignRunSnapshot,
-  readDocumentRunSnapshot,
-  readRunSnapshot,
-
-  subscribeToDesignRunEvents,
-  subscribeToDocumentRunEvents,
-  subscribeToFeasibilityRunEvents,
-  subscribeToRequirementRunEvents,
-} from "./run-subscriptions";
-import {
-  downloadDocumentFile,
-  downloadDocumentRunFile,
-  listDocumentLibraryItems,
-  readOnlyOfficeEditorConfig,
-} from "./document-api";
-import {
-  applySnapshotToWorkspace,
-  cloneWorkspace,
-  createEmptyWorkspace,
-  mergeWorkspaceState,
-  restoreSnapshotToWorkspace,
-  stableWorkspaceState,
-} from "./workspace-state";
-import {
-  renderPlantUmlRequest,
-  exportDiagramRequest,
-  renderStructuredModelRequest,
-  repairRequirementRuleRequest,
-  repairRequirementRulesRequest,
-
-  startDesignRunRequest,
-  startDocumentRunRequest,
-  startRequirementRunRequest,
-  testProviderSettingsRequest,
-} from "./run-actions-api";
-import type {
-  RequirementRulesUpdateMetadata,
-  WorkspaceRepository,
-  RunSubscriptionOptions,
-} from "./types";
-
+import { createRunHistoryTitle, loadRunHistory, runHistorySnapshotRequirementText, type RunHistorySnapshot, } from "../../entities/run-history";
+import type { StartDesignRunInput, StartDocumentRunInput, StartFeasibilityRunInput, StartRunInput, } from "./start-inputs";
+import { PROJECT_REQUIRED_MESSAGE, normalizeProjectId, requireProjectScope, withProjectHeaders, } from "./project-scope";
+import { normalizeProjectHistoryResponse, projectRunSummaryToHistoryItem, type ProjectRunDetailResponse, type ProjectRunsResponse, } from "./project-history";
+import { readDesignRunSnapshot, readDocumentRunSnapshot, readRunSnapshot, subscribeToDesignRunEvents, subscribeToDocumentRunEvents, subscribeToFeasibilityRunEvents, subscribeToRequirementRunEvents, } from "./run-subscriptions";
+import { downloadDocumentFile, downloadDocumentRunFile, listDocumentLibraryItems, readOnlyOfficeEditorConfig, } from "./document-api";
+import { applySnapshotToWorkspace, cloneWorkspace, createEmptyWorkspace, mergeWorkspaceState, stableWorkspaceState, } from "./workspace-state";
+import { renderPlantUmlRequest, exportDiagramRequest, renderStructuredModelRequest, startDesignRunRequest, startDocumentRunRequest, startRequirementRunRequest, cancelRequirementRunRequest, testProviderSettingsRequest, } from "./run-actions-api";
+import type { RequirementRulesUpdateMetadata, WorkspaceRepository, RunSubscriptionOptions, } from "./types";
 interface WorkspaceRepositoryOptions {
-  projectId?: string | null;
+    projectId?: string | null;
 }
-
 type ProjectWorkspaceResponse = {
-  projectId: string;
-  version: number;
-  state?: Partial<WorkspaceRecord>;
-  updatedAt?: string;
-  updatedByUserId?: string | null;
-  sourceRunId?: string | null;
+    projectId: string;
+    version: number;
+    state?: Partial<WorkspaceRecord>;
+    updatedAt?: string;
+    updatedByUserId?: string | null;
+    sourceRunId?: string | null;
 };
-
 type ProjectAccessResponse = {
-  capabilities?: string[];
-  generationExecutionMode?: GenerationExecutionMode;
+    capabilities?: string[];
+    generationExecutionMode?: GenerationExecutionMode;
 };
-
-export function createHttpWorkspaceRepository(
-  options: WorkspaceRepositoryOptions = {},
-): WorkspaceRepository {
-  const projectId = normalizeProjectId(options.projectId);
-  let localRequirementText = "";
-  let localRequirementRules: RequirementRule[] = [];
-  let localRequirementBaseline: RequirementBaseline | null = null;
-  let localRequirementReviewCandidates: WorkspaceRecord["requirementReviewCandidates"] =
-    {};
-  let localRequirementModelTraceability: WorkspaceRecord["requirementModelTraceability"] =
-    [];
-  let localAutoGeneratedUpstreamReviews: WorkspaceRecord["autoGeneratedUpstreamReviews"] =
-    {};
-
-  let localRequirementInputFingerprint: WorkspaceRecord["requirementInputFingerprint"] =
-    null;
-  let localRulesVersion = 0;
-  let localRulesBasedOnTextVersion: WorkspaceRecord["rulesBasedOnTextVersion"] =
-    null;
-  let projectWorkspace: WorkspaceRecord | null = null;
-  let projectWorkspaceVersion = 0;
-  let projectWorkspaceUpdateQueue: Promise<unknown> = Promise.resolve();
-  let projectWorkspaceSaveError: unknown = null;
-
-  async function loadProjectWorkspace() {
-    const scopedProjectId = requireProjectScope(projectId);
-    const response = await requestJson<ProjectWorkspaceResponse>(
-      `/api/projects/${encodeURIComponent(scopedProjectId)}/workspace`,
-      withProjectHeaders(scopedProjectId, {
-        errorKey: "errors.operations.loadWorkspace",
-      }),
-    );
-    projectWorkspaceVersion = response.version;
-    projectWorkspace = mergeWorkspaceState(response.state);
-    await hydrateEmptyProjectWorkspaceFromLatestRun();
-    return cloneWorkspace(projectWorkspace);
-  }
-
-  async function ensureProjectWorkspace() {
-    if (projectWorkspace) return projectWorkspace;
-    await loadProjectWorkspace();
-    return projectWorkspace ?? createEmptyWorkspace();
-  }
-
-  async function saveProjectWorkspace(
-    workspace: WorkspaceRecord,
-    sourceRunId?: string | null,
-  ) {
-    const scopedProjectId = requireProjectScope(projectId);
-    const response = await requestJson<ProjectWorkspaceResponse>(
-      `/api/projects/${encodeURIComponent(scopedProjectId)}/workspace`,
-      withProjectHeaders(scopedProjectId, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          baseVersion: projectWorkspaceVersion,
-          state: stableWorkspaceState(workspace),
-          sourceRunId: sourceRunId ?? null,
-        }),
-        errorKey: "errors.operations.saveWorkspace",
-      }),
-    );
-    projectWorkspaceVersion = response.version;
-    projectWorkspace = mergeWorkspaceState(response.state);
-    return cloneWorkspace(projectWorkspace);
-  }
-
-  async function awaitRulesOnlyProjectSync(snapshot: { runId: string }) {
-    const scopedProjectId = requireProjectScope(projectId);
-    // Terminal SSE events can arrive before the run record and server workspace sync finish.
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      const response = await requestJson<ProjectWorkspaceResponse>(
-        `/api/projects/${encodeURIComponent(scopedProjectId)}/workspace`,
-        withProjectHeaders(scopedProjectId, { errorKey: "errors.operations.loadWorkspace" }),
-      );
-      if (response.sourceRunId === snapshot.runId) {
+export function createHttpWorkspaceRepository(options: WorkspaceRepositoryOptions = {}): WorkspaceRepository {
+    const projectId = normalizeProjectId(options.projectId);
+    let localRequirementText = "";
+    let localRequirementRules: RequirementRule[] = [];
+    let localRequirementBaseline: RequirementBaseline | null = null;
+    let localRequirementReviewCandidates: WorkspaceRecord["requirementReviewCandidates"] = {};
+    let localRequirementModelTraceability: WorkspaceRecord["requirementModelTraceability"] = [];
+    let localAutoGeneratedUpstreamReviews: WorkspaceRecord["autoGeneratedUpstreamReviews"] = {};
+    let localRequirementInputFingerprint: WorkspaceRecord["requirementInputFingerprint"] = null;
+    let localRulesVersion = 0;
+    let localRulesBasedOnTextVersion: WorkspaceRecord["rulesBasedOnTextVersion"] = null;
+    let projectWorkspace: WorkspaceRecord | null = null;
+    let projectWorkspaceVersion = 0;
+    let projectWorkspaceUpdateQueue: Promise<unknown> = Promise.resolve();
+    let projectWorkspaceSaveError: unknown = null;
+    async function loadProjectWorkspace() {
+        const scopedProjectId = requireProjectScope(projectId);
+        const response = await requestJson<ProjectWorkspaceResponse>(`/api/projects/${encodeURIComponent(scopedProjectId)}/workspace`, withProjectHeaders(scopedProjectId, {
+            errorKey: "errors.operations.loadWorkspace",
+        }));
         projectWorkspaceVersion = response.version;
         projectWorkspace = mergeWorkspaceState(response.state);
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
+        return cloneWorkspace(projectWorkspace);
     }
-    throw new Error("需求规则已生成，但项目保存尚未确认，请稍后刷新并检查运行历史。");
-  }
-
-  async function updateProjectWorkspace(
-    mutate: (workspace: WorkspaceRecord) => void,
-    sourceRunId?: string | null,
-  ) {
-    const runUpdate = async () => {
-      const current = await ensureProjectWorkspace();
-      const next = cloneWorkspace(current);
-      mutate(next);
-      try {
-        return await saveProjectWorkspace(next, sourceRunId);
-      } catch (error) {
-        if (!(error instanceof ApiClientError) || error.status !== 409) {
-          throw error;
-        }
+    async function ensureProjectWorkspace() {
+        if (projectWorkspace)
+            return projectWorkspace;
         await loadProjectWorkspace();
-        const latest = cloneWorkspace(
-          projectWorkspace ?? createEmptyWorkspace(),
-        );
-        mutate(latest);
-        return saveProjectWorkspace(latest, sourceRunId);
-      }
+        return projectWorkspace ?? createEmptyWorkspace();
+    }
+    async function saveProjectWorkspace(workspace: WorkspaceRecord, sourceRunId?: string | null) {
+        const scopedProjectId = requireProjectScope(projectId);
+        const response = await requestJson<ProjectWorkspaceResponse>(`/api/projects/${encodeURIComponent(scopedProjectId)}/workspace`, withProjectHeaders(scopedProjectId, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                baseVersion: projectWorkspaceVersion,
+                state: stableWorkspaceState(workspace),
+                sourceRunId: sourceRunId ?? null,
+            }),
+            errorKey: "errors.operations.saveWorkspace",
+        }));
+        projectWorkspaceVersion = response.version;
+        projectWorkspace = mergeWorkspaceState(response.state);
+        return cloneWorkspace(projectWorkspace);
+    }
+    async function awaitRulesOnlyProjectSync(snapshot: {
+        runId: string;
+    }) {
+        const scopedProjectId = requireProjectScope(projectId);
+        // Terminal SSE events can arrive before the run record and server workspace sync finish.
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+            const response = await requestJson<ProjectWorkspaceResponse>(`/api/projects/${encodeURIComponent(scopedProjectId)}/workspace`, withProjectHeaders(scopedProjectId, { errorKey: "errors.operations.loadWorkspace" }));
+            if (response.sourceRunId === snapshot.runId) {
+                projectWorkspaceVersion = response.version;
+                projectWorkspace = mergeWorkspaceState(response.state);
+                return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        throw new Error("需求规则已生成，但项目保存尚未确认，请稍后刷新并检查运行历史。");
+    }
+    async function updateProjectWorkspace(mutate: (workspace: WorkspaceRecord) => void, sourceRunId?: string | null) {
+        const runUpdate = async () => {
+            const current = await ensureProjectWorkspace();
+            const next = cloneWorkspace(current);
+            mutate(next);
+            try {
+                return await saveProjectWorkspace(next, sourceRunId);
+            }
+            catch (error) {
+                if (!(error instanceof ApiClientError) || error.status !== 409) {
+                    throw error;
+                }
+                await loadProjectWorkspace();
+                const latest = cloneWorkspace(projectWorkspace ?? createEmptyWorkspace());
+                mutate(latest);
+                return saveProjectWorkspace(latest, sourceRunId);
+            }
+        };
+        const queuedUpdate = projectWorkspaceUpdateQueue.then(runUpdate, runUpdate);
+        projectWorkspaceUpdateQueue = queuedUpdate.then(() => {
+            projectWorkspaceSaveError = null;
+        }, (error) => {
+            projectWorkspaceSaveError = error;
+        });
+        return queuedUpdate;
+    }
+    async function waitForProjectWorkspaceSaves() {
+        await projectWorkspaceUpdateQueue;
+        if (projectWorkspaceSaveError) {
+            throw projectWorkspaceSaveError;
+        }
+    }
+    async function readProjectRunDetail(runId: string) {
+        const scopedProjectId = requireProjectScope(projectId);
+        return requestJson<ProjectRunDetailResponse>(`/api/projects/${encodeURIComponent(scopedProjectId)}/runs/${encodeURIComponent(runId)}`, withProjectHeaders(scopedProjectId, {
+            errorKey: "errors.operations.loadRun",
+        }));
+    }
+    async function readProjectRunHistoryItem(runId: string) {
+        const detail = await readProjectRunDetail(runId);
+        return projectRunSummaryToHistoryItem(detail.run, detail.snapshot ?? null);
+    }
+    async function readProjectRuns() {
+        const scopedProjectId = requireProjectScope(projectId);
+        return requestJson<ProjectRunsResponse>(`/api/projects/${encodeURIComponent(scopedProjectId)}/runs`, withProjectHeaders(scopedProjectId, {
+            errorKey: "errors.operations.loadHistory",
+        }));
+    }
+    async function persistSnapshotAsProjectWorkspace(snapshot: RunHistorySnapshot) {
+        const current = await ensureProjectWorkspace();
+        const next = applySnapshotToWorkspace(current, snapshot);
+        try {
+            return await saveProjectWorkspace(next, snapshot.runId);
+        }
+        catch (error) {
+            if (!(error instanceof ApiClientError) || error.status !== 409) {
+                throw error;
+            }
+            await loadProjectWorkspace();
+            const latest = projectWorkspace ?? createEmptyWorkspace();
+            return saveProjectWorkspace(applySnapshotToWorkspace(latest, snapshot), snapshot.runId);
+        }
+    }
+    return {
+        async getProjectAccess() {
+            if (!projectId)
+                return { capabilities: ["update_project", "start_runs"], generationExecutionMode: "provider" };
+            const scopedProjectId = requireProjectScope(projectId);
+            const response = await requestJson<ProjectAccessResponse>(`/api/projects/${encodeURIComponent(scopedProjectId)}`, withProjectHeaders(scopedProjectId, {
+                errorKey: "errors.operations.loadPermissions",
+            }));
+            return {
+                capabilities: response.capabilities ?? [],
+                generationExecutionMode: response.generationExecutionMode === "offline-demo" ? "offline-demo" : "provider",
+            };
+        },
+        async loadWorkspace() {
+            if (projectId) {
+                return loadProjectWorkspace();
+            }
+            const workspace = createEmptyWorkspace();
+            workspace.requirementText = localRequirementText;
+            workspace.rules = [...localRequirementRules];
+            workspace.requirementBaseline = localRequirementBaseline;
+            workspace.requirementQualityReport =
+                localRequirementBaseline?.qualityReport ?? null;
+            workspace.requirementReviewCandidates = {
+                ...localRequirementReviewCandidates,
+            };
+            workspace.requirementModelTraceability = [
+                ...localRequirementModelTraceability,
+            ];
+            workspace.autoGeneratedUpstreamReviews = {
+                ...localAutoGeneratedUpstreamReviews,
+            };
+            workspace.requirementInputFingerprint = localRequirementInputFingerprint;
+            workspace.rulesVersion = localRulesVersion;
+            workspace.rulesBasedOnTextVersion = localRulesBasedOnTextVersion;
+            return workspace;
+        },
+        async updateRequirementText(text: string) {
+            if (projectId) {
+                await updateProjectWorkspace((workspace) => {
+                    workspace.requirementText = text;
+                });
+                return;
+            }
+            localRequirementText = text;
+        },
+        async updateRequirementRules(rules: RequirementRule[], metadata?: RequirementRulesUpdateMetadata) {
+            // A completed project run is persisted by the server; a second browser PUT races its run record.
+            if (projectId && metadata?.sourceRunId)
+                return;
+            if (projectId) {
+                await updateProjectWorkspace((workspace) => {
+                    workspace.rules = [...rules];
+                    if ("requirementInputFingerprint" in (metadata ?? {})) {
+                        workspace.requirementInputFingerprint =
+                            metadata?.requirementInputFingerprint ?? null;
+                    }
+                    if ("requirementBaseline" in (metadata ?? {})) {
+                        workspace.requirementBaseline =
+                            metadata?.requirementBaseline ?? null;
+                        workspace.requirementQualityReport =
+                            metadata?.requirementQualityReport ??
+                                metadata?.requirementBaseline?.qualityReport ??
+                                null;
+                    }
+                    else if ("requirementQualityReport" in (metadata ?? {})) {
+                        workspace.requirementQualityReport =
+                            metadata?.requirementQualityReport ?? null;
+                    }
+                    if ("requirementModelTraceability" in (metadata ?? {})) {
+                        workspace.requirementModelTraceability =
+                            metadata?.requirementModelTraceability ?? [];
+                    }
+                    if ("requirementReviewCandidates" in (metadata ?? {})) {
+                        workspace.requirementReviewCandidates = structuredClone(metadata?.requirementReviewCandidates ?? {}) as WorkspaceRecord["requirementReviewCandidates"];
+                    }
+                    if ("rulesBasedOnTextVersion" in (metadata ?? {})) {
+                        workspace.rulesBasedOnTextVersion =
+                            metadata?.rulesBasedOnTextVersion ?? null;
+                    }
+                    if (typeof metadata?.rulesVersion === "number") {
+                        workspace.rulesVersion = metadata.rulesVersion;
+                    }
+                });
+                return;
+            }
+            localRequirementRules = [...rules];
+            if ("requirementInputFingerprint" in (metadata ?? {})) {
+                localRequirementInputFingerprint =
+                    metadata?.requirementInputFingerprint ?? null;
+            }
+            if ("requirementBaseline" in (metadata ?? {})) {
+                localRequirementBaseline =
+                    metadata?.requirementBaseline === null ||
+                        metadata?.requirementBaseline === undefined
+                        ? null
+                        : (structuredClone(metadata.requirementBaseline) as RequirementBaseline);
+            }
+            if ("requirementModelTraceability" in (metadata ?? {})) {
+                localRequirementModelTraceability =
+                    metadata?.requirementModelTraceability ?? [];
+            }
+            if ("requirementReviewCandidates" in (metadata ?? {})) {
+                localRequirementReviewCandidates = structuredClone(metadata?.requirementReviewCandidates ?? {}) as WorkspaceRecord["requirementReviewCandidates"];
+            }
+            if ("rulesBasedOnTextVersion" in (metadata ?? {})) {
+                localRulesBasedOnTextVersion = metadata?.rulesBasedOnTextVersion ?? null;
+            }
+            if (typeof metadata?.rulesVersion === "number") {
+                localRulesVersion = metadata.rulesVersion;
+            }
+        },
+        async updateFeasibility(patch) {
+            await updateProjectWorkspace((current) => {
+                if (patch.inputs !== undefined)
+                    current.feasibilityInputs = patch.inputs;
+                if (patch.contextModel !== undefined)
+                    current.feasibilityContextModel = patch.contextModel;
+                if (patch.contextTraceability !== undefined)
+                    current.feasibilityContextTraceability = patch.contextTraceability;
+                if (patch.contextPlantUml !== undefined)
+                    current.feasibilityContextPlantUml = patch.contextPlantUml;
+                if (patch.contextSvg !== undefined)
+                    current.feasibilityContextSvg = patch.contextSvg;
+                if (patch.contextSvg !== undefined) {
+                    current.visualReviews = Object.fromEntries(Object.entries(current.visualReviews ?? {}).filter(([key]) => !key.startsWith("feasibility:")));
+                }
+                if (patch.contextFingerprint !== undefined)
+                    current.feasibilityContextFingerprint = patch.contextFingerprint;
+                if (patch.implementationPlan !== undefined)
+                    current.feasibilityImplementationPlan = patch.implementationPlan;
+                if (patch.implementationFingerprint !== undefined)
+                    current.feasibilityImplementationFingerprint = patch.implementationFingerprint;
+            });
+        },
+        async startFeasibilityRun(input: StartFeasibilityRunInput) {
+            await waitForProjectWorkspaceSaves();
+            const scopedProjectId = requireProjectScope(projectId);
+            return requestJson<{
+                runId: string;
+            }>("/api/feasibility-runs", withProjectHeaders(scopedProjectId, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ projectId: scopedProjectId, ...input }),
+                errorKey: "errors.operations.startFeasibility",
+            }));
+        },
+        async getFeasibilityRunSnapshot(runId) {
+            return requestJson<FeasibilityRunSnapshot>(`/api/feasibility-runs/${encodeURIComponent(runId)}`, withProjectHeaders(requireProjectScope(projectId), {
+                errorKey: "errors.operations.loadFeasibility",
+            }));
+        },
+        async subscribeToFeasibilityRun(runId: string, onEvent: (event: RunEvent) => void, options?: RunSubscriptionOptions<FeasibilityRunSnapshot>) {
+            await subscribeToFeasibilityRunEvents({ runId, projectId, onEvent, ...options });
+        },
+        async updateAutoGeneratedUpstreamReviews(reviews) {
+            if (projectId) {
+                await updateProjectWorkspace((workspace) => {
+                    workspace.autoGeneratedUpstreamReviews = structuredClone(reviews) as WorkspaceRecord["autoGeneratedUpstreamReviews"];
+                });
+                return;
+            }
+            localAutoGeneratedUpstreamReviews = structuredClone(reviews) as WorkspaceRecord["autoGeneratedUpstreamReviews"];
+        },
+        async updateTestGenerationResult(result) {
+            if (projectId) {
+                await updateProjectWorkspace((workspace) => {
+                    workspace.testGenerationResult = result
+                        ? structuredClone(result)
+                        : null;
+                });
+                return;
+            }
+            const workspace = await ensureProjectWorkspace();
+            workspace.testGenerationResult = result
+                ? structuredClone(result)
+                : null;
+        },
+        async startRun(input: StartRunInput) {
+            await waitForProjectWorkspaceSaves();
+            return startRequirementRunRequest(input, projectId);
+        },
+        async cancelRun(runId: string) {
+            await cancelRequirementRunRequest(runId, projectId);
+        },
+        async startDesignRun(input: StartDesignRunInput) {
+            await waitForProjectWorkspaceSaves();
+            return startDesignRunRequest(input, projectId);
+        },
+        async startDocumentRun(input: StartDocumentRunInput) {
+            await waitForProjectWorkspaceSaves();
+            return startDocumentRunRequest(input, projectId);
+        },
+        async subscribeToRun(runId: string, onEvent: (event: RunEvent) => void, options?: RunSubscriptionOptions<RunSnapshot>) {
+            await subscribeToRequirementRunEvents({
+                runId,
+                projectId,
+                onEvent,
+                ...options,
+            });
+        },
+        async subscribeToDesignRun(runId: string, onEvent: (event: RunEvent) => void, options?: RunSubscriptionOptions<DesignRunSnapshot>) {
+            await subscribeToDesignRunEvents({ runId, projectId, onEvent, ...options });
+        },
+        async subscribeToDocumentRun(runId: string, onEvent: (event: RunEvent) => void, options?: RunSubscriptionOptions<DocumentRunSnapshot>) {
+            await subscribeToDocumentRunEvents({ runId, projectId, onEvent, ...options });
+        },
+        async getRunSnapshot(runId: string) {
+            return readRunSnapshot(runId, requireProjectScope(projectId));
+        },
+        async getDesignRunSnapshot(runId: string) {
+            return readDesignRunSnapshot(runId, requireProjectScope(projectId));
+        },
+        async getDocumentRunSnapshot(runId: string) {
+            return readDocumentRunSnapshot(runId, requireProjectScope(projectId));
+        },
+        async listDocuments() {
+            return listDocumentLibraryItems(projectId);
+        },
+        async getOnlyOfficeEditorConfig(documentId: string, uiTheme?: OnlyOfficeUiTheme) {
+            return readOnlyOfficeEditorConfig(documentId, uiTheme, projectId);
+        },
+        async downloadDocumentRun(runId: string, defaultFileName?: string) {
+            return downloadDocumentRunFile(runId, defaultFileName, projectId);
+        },
+        async downloadDocument(documentId: string, defaultFileName?: string) {
+            return downloadDocumentFile(documentId, defaultFileName, projectId);
+        },
+        async renderPlantUml(diagramKind, plantUmlSource) {
+            return renderPlantUmlRequest(diagramKind, plantUmlSource, projectId);
+        },
+        exportDiagram(input, signal) {
+            return exportDiagramRequest(input, projectId, signal);
+        },
+        async renderStructuredModel(model, stage) {
+            return renderStructuredModelRequest(model, projectId, stage);
+        },
+        async confirmVisualReview(key, checkedAt) {
+            const saved = await updateProjectWorkspace((workspace) => {
+                const review = workspace.visualReviews?.[key];
+                if (!review || review.status !== "pending_review" || review.checkedAt !== checkedAt) {
+                    throw new Error("视觉检查结果已更新，请刷新后重试。");
+                }
+                workspace.visualReviews = {
+                    ...workspace.visualReviews,
+                    [key]: { ...review, confirmedAt: review.confirmedAt ?? new Date().toISOString() },
+                };
+            });
+            return saved.visualReviews![key];
+        },
+        async saveRequirementModelEdit(_diagramKind, model, status, traceability) {
+            const modelKey = getRequirementModelId(model);
+            await updateProjectWorkspace((workspace) => {
+                workspace.models = { ...workspace.models, [modelKey]: model };
+                if (traceability) {
+                    workspace.requirementModelTraceability =
+                        traceability.requirementModelTraceability;
+                    workspace.designModelTraceability = traceability.designModelTraceability;
+                }
+                workspace.manualModelEditStatus = {
+                    ...workspace.manualModelEditStatus,
+                    [modelKey]: status,
+                };
+            });
+        },
+        async saveDesignModelEdit(modelId, model, status, traceability) {
+            await updateProjectWorkspace((workspace) => {
+                workspace.designModels = { ...workspace.designModels, [modelId]: model };
+                if (traceability) {
+                    workspace.designModelTraceability = traceability.designModelTraceability;
+                }
+                workspace.manualModelEditStatus = {
+                    ...workspace.manualModelEditStatus,
+                    [modelId]: status,
+                };
+            });
+        },
+        async saveManualModelRerender(key, status, artifact) {
+            await updateProjectWorkspace((workspace) => {
+                workspace.manualModelEditStatus = {
+                    ...workspace.manualModelEditStatus,
+                    [key]: status,
+                };
+                if (key in workspace.designModels) {
+                    if (workspace.visualReviews)
+                        delete workspace.visualReviews[`design:${key}`];
+                    workspace.designPlantUml = {
+                        ...workspace.designPlantUml,
+                        [key]: artifact.plantUmlSource,
+                    };
+                    workspace.designSvgArtifacts = {
+                        ...workspace.designSvgArtifacts,
+                        [key]: artifact.svgArtifact as DesignSvgArtifact,
+                    };
+                }
+                else {
+                    if (workspace.visualReviews)
+                        delete workspace.visualReviews[`requirements:${key}`];
+                    workspace.plantUml = {
+                        ...workspace.plantUml,
+                        [key]: artifact.plantUmlSource,
+                    };
+                    workspace.svgArtifacts = {
+                        ...workspace.svgArtifacts,
+                        [key]: artifact.svgArtifact as SvgArtifact,
+                    };
+                }
+            });
+        },
+        async testProviderSettings(providerSettings) {
+            return testProviderSettingsRequest(providerSettings);
+        },
+        async saveRunHistory(snapshot, meta) {
+            if (projectId) {
+                const rulesOnly = "selectedDiagrams" in snapshot &&
+                    !('files' in snapshot) &&
+                    !('designModelTraceability' in snapshot) &&
+                    snapshot.selectedDiagrams.length === 0 &&
+                    ('models' in snapshot && snapshot.models.length === 0);
+                if (rulesOnly) {
+                    if (snapshot.status === "completed")
+                        await awaitRulesOnlyProjectSync(snapshot);
+                }
+                else {
+                    await persistSnapshotAsProjectWorkspace(snapshot);
+                }
+                return {
+                    id: snapshot.runId,
+                    createdAt: new Date().toISOString(),
+                    title: createRunHistoryTitle(runHistorySnapshotRequirementText(snapshot)),
+                    snapshot,
+                    providerModel: meta.providerModel,
+                    durationMs: meta.durationMs,
+                };
+            }
+            throw new Error(PROJECT_REQUIRED_MESSAGE);
+        },
+        async listRunHistory() {
+            if (projectId) {
+                const payload = await readProjectRuns();
+                return normalizeProjectHistoryResponse(payload);
+            }
+            throw new Error(PROJECT_REQUIRED_MESSAGE);
+        },
+        async getRunHistoryItem(id) {
+            if (projectId) {
+                return readProjectRunHistoryItem(id);
+            }
+            return loadRunHistory().find((item) => item.id === id) ?? null;
+        },
+        async deleteRunHistory(id) {
+            if (projectId) {
+                await requestJson(`/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(id)}`, withProjectHeaders(projectId, {
+                    method: "DELETE",
+                    errorKey: "errors.operations.deleteHistory",
+                }));
+                const history = await readProjectRuns();
+                return normalizeProjectHistoryResponse(history);
+            }
+            throw new Error(PROJECT_REQUIRED_MESSAGE);
+        },
+        async clearRunHistory() {
+            if (projectId) {
+                await requestJson(`/api/projects/${encodeURIComponent(projectId)}/runs`, withProjectHeaders(projectId, {
+                    method: "DELETE",
+                    errorKey: "errors.operations.clearHistory",
+                }));
+                return;
+            }
+            throw new Error(PROJECT_REQUIRED_MESSAGE);
+        },
     };
-    const queuedUpdate = projectWorkspaceUpdateQueue.then(runUpdate, runUpdate);
-    projectWorkspaceUpdateQueue = queuedUpdate.then(
-      () => {
-        projectWorkspaceSaveError = null;
-      },
-      (error) => {
-        projectWorkspaceSaveError = error;
-      },
-    );
-    return queuedUpdate;
-  }
-
-  async function waitForProjectWorkspaceSaves() {
-    await projectWorkspaceUpdateQueue;
-    if (projectWorkspaceSaveError) {
-      throw projectWorkspaceSaveError;
-    }
-  }
-
-  async function readProjectRunDetail(runId: string) {
-    const scopedProjectId = requireProjectScope(projectId);
-    return requestJson<ProjectRunDetailResponse>(
-      `/api/projects/${encodeURIComponent(scopedProjectId)}/runs/${encodeURIComponent(runId)}`,
-      withProjectHeaders(scopedProjectId, {
-        errorKey: "errors.operations.loadRun",
-      }),
-    );
-  }
-
-  async function restoreProjectWorkspaceFromRun(runId: string) {
-    const scopedProjectId = requireProjectScope(projectId);
-    const response = await requestJson<ProjectWorkspaceResponse>(
-      `/api/projects/${encodeURIComponent(scopedProjectId)}/runs/${encodeURIComponent(runId)}/restore-workspace`,
-      withProjectHeaders(scopedProjectId, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "restore",
-        }),
-        errorKey: "errors.operations.restoreWorkspace",
-      }),
-    );
-    projectWorkspaceVersion = response.version;
-    projectWorkspace = mergeWorkspaceState(response.state);
-    return cloneWorkspace(projectWorkspace);
-  }
-
-  async function readProjectRunHistoryItem(runId: string) {
-    const detail = await readProjectRunDetail(runId);
-    return projectRunSummaryToHistoryItem(detail.run, detail.snapshot ?? null);
-  }
-
-  async function readProjectRuns() {
-    const scopedProjectId = requireProjectScope(projectId);
-    return requestJson<ProjectRunsResponse>(
-      `/api/projects/${encodeURIComponent(scopedProjectId)}/runs`,
-      withProjectHeaders(scopedProjectId, {
-        errorKey: "errors.operations.loadHistory",
-      }),
-    );
-  }
-
-  async function persistSnapshotAsProjectWorkspace(
-    snapshot: RunHistorySnapshot,
-    mode: "merge" | "restore" = "merge",
-  ) {
-    const current = await ensureProjectWorkspace();
-    const next =
-      mode === "restore"
-        ? restoreSnapshotToWorkspace(current, snapshot)
-        : applySnapshotToWorkspace(current, snapshot);
-    try {
-      return await saveProjectWorkspace(next, snapshot.runId);
-    } catch (error) {
-      if (!(error instanceof ApiClientError) || error.status !== 409) {
-        throw error;
-      }
-      await loadProjectWorkspace();
-      const latest = projectWorkspace ?? createEmptyWorkspace();
-      return saveProjectWorkspace(
-        mode === "restore"
-          ? restoreSnapshotToWorkspace(latest, snapshot)
-          : applySnapshotToWorkspace(latest, snapshot),
-        snapshot.runId,
-      );
-    }
-  }
-
-  async function hydrateEmptyProjectWorkspaceFromLatestRun() {
-    if (!projectWorkspace || projectWorkspace.requirementText.trim()) return;
-    const runs = (await readProjectRuns()).runs ?? [];
-    const candidates = runs
-      .filter((run) => run.runId && run.snapshotAvailable && canRestoreProjectRunWorkspace(run))
-      .sort((left, right) => {
-        const documentRank =
-          Number(left.documentDownloadAvailable) -
-          Number(right.documentDownloadAvailable);
-        if (documentRank !== 0) return documentRank;
-        const leftTime = Date.parse(
-          left.completedAt ?? left.updatedAt ?? left.startedAt ?? "",
-        );
-        const rightTime = Date.parse(
-          right.completedAt ?? right.updatedAt ?? right.startedAt ?? "",
-        );
-        return (
-          (Number.isNaN(rightTime) ? 0 : rightTime) -
-          (Number.isNaN(leftTime) ? 0 : leftTime)
-        );
-      });
-    for (const run of candidates) {
-      try {
-        await restoreProjectWorkspaceFromRun(run.runId!);
-      } catch (error) {
-        if (
-          !(error instanceof ApiClientError) ||
-          (error.status !== 400 && error.status !== 403 && error.status !== 409)
-        ) {
-          throw error;
-        }
-        continue;
-      }
-      return;
-    }
-  }
-
-  return {
-    async getProjectAccess() {
-      if (!projectId) return { capabilities: ["update_project", "start_runs"], generationExecutionMode: "provider" };
-      const scopedProjectId = requireProjectScope(projectId);
-      const response = await requestJson<ProjectAccessResponse>(
-        `/api/projects/${encodeURIComponent(scopedProjectId)}`,
-        withProjectHeaders(scopedProjectId, {
-          errorKey: "errors.operations.loadPermissions",
-        }),
-      );
-      return {
-        capabilities: response.capabilities ?? [],
-        generationExecutionMode: response.generationExecutionMode === "offline-demo" ? "offline-demo" : "provider",
-      };
-    },
-
-    async loadWorkspace() {
-      if (projectId) {
-        return loadProjectWorkspace();
-      }
-      const workspace = createEmptyWorkspace();
-      workspace.requirementText = localRequirementText;
-      workspace.rules = [...localRequirementRules];
-      workspace.requirementBaseline = localRequirementBaseline;
-      workspace.requirementQualityReport =
-        localRequirementBaseline?.qualityReport ?? null;
-      workspace.requirementReviewCandidates = {
-        ...localRequirementReviewCandidates,
-      };
-      workspace.requirementModelTraceability = [
-        ...localRequirementModelTraceability,
-      ];
-      workspace.autoGeneratedUpstreamReviews = {
-        ...localAutoGeneratedUpstreamReviews,
-      };
-
-      workspace.requirementInputFingerprint = localRequirementInputFingerprint;
-      workspace.rulesVersion = localRulesVersion;
-      workspace.rulesBasedOnTextVersion = localRulesBasedOnTextVersion;
-      return workspace;
-    },
-
-    async updateRequirementText(text: string) {
-      if (projectId) {
-        await updateProjectWorkspace((workspace) => {
-          workspace.requirementText = text;
-        });
-        return;
-      }
-      localRequirementText = text;
-    },
-
-    async updateRequirementRules(
-      rules: RequirementRule[],
-      metadata?: RequirementRulesUpdateMetadata,
-    ) {
-      // A completed project run is persisted by the server; a second browser PUT races its run record.
-      if (projectId && metadata?.sourceRunId) return;
-      if (projectId) {
-        await updateProjectWorkspace((workspace) => {
-          workspace.rules = [...rules];
-          if ("requirementInputFingerprint" in (metadata ?? {})) {
-            workspace.requirementInputFingerprint =
-              metadata?.requirementInputFingerprint ?? null;
-          }
-          if ("requirementBaseline" in (metadata ?? {})) {
-            workspace.requirementBaseline =
-              metadata?.requirementBaseline ?? null;
-            workspace.requirementQualityReport =
-              metadata?.requirementQualityReport ??
-              metadata?.requirementBaseline?.qualityReport ??
-              null;
-          } else if ("requirementQualityReport" in (metadata ?? {})) {
-            workspace.requirementQualityReport =
-              metadata?.requirementQualityReport ?? null;
-          }
-          if ("requirementModelTraceability" in (metadata ?? {})) {
-            workspace.requirementModelTraceability =
-              metadata?.requirementModelTraceability ?? [];
-          }
-          if ("requirementReviewCandidates" in (metadata ?? {})) {
-            workspace.requirementReviewCandidates = structuredClone(
-              metadata?.requirementReviewCandidates ?? {},
-            ) as WorkspaceRecord["requirementReviewCandidates"];
-          }
-          if ("rulesBasedOnTextVersion" in (metadata ?? {})) {
-            workspace.rulesBasedOnTextVersion =
-              metadata?.rulesBasedOnTextVersion ?? null;
-          }
-          if (typeof metadata?.rulesVersion === "number") {
-            workspace.rulesVersion = metadata.rulesVersion;
-          }
-        });
-        return;
-      }
-      localRequirementRules = [...rules];
-      if ("requirementInputFingerprint" in (metadata ?? {})) {
-        localRequirementInputFingerprint =
-          metadata?.requirementInputFingerprint ?? null;
-      }
-      if ("requirementBaseline" in (metadata ?? {})) {
-        localRequirementBaseline =
-          metadata?.requirementBaseline === null ||
-          metadata?.requirementBaseline === undefined
-            ? null
-            : (structuredClone(
-                metadata.requirementBaseline,
-              ) as RequirementBaseline);
-      }
-      if ("requirementModelTraceability" in (metadata ?? {})) {
-        localRequirementModelTraceability =
-          metadata?.requirementModelTraceability ?? [];
-      }
-      if ("requirementReviewCandidates" in (metadata ?? {})) {
-        localRequirementReviewCandidates = structuredClone(
-          metadata?.requirementReviewCandidates ?? {},
-        ) as WorkspaceRecord["requirementReviewCandidates"];
-      }
-      if ("rulesBasedOnTextVersion" in (metadata ?? {})) {
-        localRulesBasedOnTextVersion = metadata?.rulesBasedOnTextVersion ?? null;
-      }
-      if (typeof metadata?.rulesVersion === "number") {
-        localRulesVersion = metadata.rulesVersion;
-      }
-    },
-
-    async updateFeasibility(patch) {
-      await updateProjectWorkspace((current) => {
-        if (patch.inputs !== undefined) current.feasibilityInputs = patch.inputs;
-        if (patch.contextModel !== undefined) current.feasibilityContextModel = patch.contextModel;
-        if (patch.contextTraceability !== undefined) current.feasibilityContextTraceability = patch.contextTraceability;
-        if (patch.contextPlantUml !== undefined) current.feasibilityContextPlantUml = patch.contextPlantUml;
-        if (patch.contextSvg !== undefined) current.feasibilityContextSvg = patch.contextSvg;
-        if (patch.contextSvg !== undefined) {
-          current.visualReviews = Object.fromEntries(Object.entries(current.visualReviews ?? {}).filter(([key]) => !key.startsWith("feasibility:")));
-        }
-        if (patch.contextFingerprint !== undefined) current.feasibilityContextFingerprint = patch.contextFingerprint;
-        if (patch.implementationPlan !== undefined) current.feasibilityImplementationPlan = patch.implementationPlan;
-        if (patch.implementationFingerprint !== undefined) current.feasibilityImplementationFingerprint = patch.implementationFingerprint;
-      });
-    },
-
-    async startFeasibilityRun(input: StartFeasibilityRunInput) {
-      await waitForProjectWorkspaceSaves();
-      const scopedProjectId = requireProjectScope(projectId);
-      return requestJson<{ runId: string }>("/api/feasibility-runs", withProjectHeaders(scopedProjectId, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: scopedProjectId, ...input }),
-        errorKey: "errors.operations.startFeasibility",
-      }));
-    },
-
-    async getFeasibilityRunSnapshot(runId) {
-      return requestJson<FeasibilityRunSnapshot>(`/api/feasibility-runs/${encodeURIComponent(runId)}`, withProjectHeaders(requireProjectScope(projectId), {
-        errorKey: "errors.operations.loadFeasibility",
-      }));
-    },
-
-    async subscribeToFeasibilityRun(
-      runId: string,
-      onEvent: (event: RunEvent) => void,
-      options?: RunSubscriptionOptions<FeasibilityRunSnapshot>,
-    ) {
-      await subscribeToFeasibilityRunEvents({ runId, projectId, onEvent, ...options });
-    },
-
-    async updateRequirementBaseline(baseline: RequirementBaseline) {
-      if (projectId) {
-        await updateProjectWorkspace((workspace) => {
-          workspace.requirementBaseline = baseline;
-          workspace.requirementQualityReport = baseline.qualityReport;
-        });
-        return;
-      }
-      localRequirementBaseline = structuredClone(
-        baseline,
-      ) as RequirementBaseline;
-    },
-
-    async updateRequirementReviewCandidates(candidates, options) {
-      if (projectId && options?.sourceRunId) return;
-      if (projectId) {
-        await updateProjectWorkspace((workspace) => {
-          workspace.requirementReviewCandidates = structuredClone(
-            candidates,
-          ) as WorkspaceRecord["requirementReviewCandidates"];
-        });
-        return;
-      }
-      localRequirementReviewCandidates = structuredClone(
-        candidates,
-      ) as WorkspaceRecord["requirementReviewCandidates"];
-    },
-
-    async updateAutoGeneratedUpstreamReviews(reviews) {
-      if (projectId) {
-        await updateProjectWorkspace((workspace) => {
-          workspace.autoGeneratedUpstreamReviews = structuredClone(
-            reviews,
-          ) as WorkspaceRecord["autoGeneratedUpstreamReviews"];
-        });
-        return;
-      }
-      localAutoGeneratedUpstreamReviews = structuredClone(
-        reviews,
-      ) as WorkspaceRecord["autoGeneratedUpstreamReviews"];
-    },
-
-
-    async updateTestGenerationResult(result) {
-      if (projectId) {
-        await updateProjectWorkspace((workspace) => {
-          workspace.testGenerationResult = result
-            ? structuredClone(result)
-            : null;
-        });
-        return;
-      }
-      const workspace = await ensureProjectWorkspace();
-      workspace.testGenerationResult = result
-        ? structuredClone(result)
-        : null;
-    },
-
-    async updateRequirementReviewState(baseline, candidates) {
-      if (projectId) {
-        await updateProjectWorkspace((workspace) => {
-          workspace.requirementBaseline = structuredClone(
-            baseline,
-          ) as RequirementBaseline;
-          workspace.requirementQualityReport = baseline.qualityReport;
-          workspace.requirementReviewCandidates = structuredClone(
-            candidates,
-          ) as WorkspaceRecord["requirementReviewCandidates"];
-        });
-        return;
-      }
-      localRequirementBaseline = structuredClone(
-        baseline,
-      ) as RequirementBaseline;
-      localRequirementReviewCandidates = structuredClone(
-        candidates,
-      ) as WorkspaceRecord["requirementReviewCandidates"];
-    },
-
-    async repairRequirementRule(input: RepairRequirementRuleRequest) {
-      return repairRequirementRuleRequest(input, projectId);
-    },
-
-    async repairRequirementRules(input: RepairRequirementRulesRequest) {
-      return repairRequirementRulesRequest(input, projectId);
-    },
-
-    async startRun(input: StartRunInput) {
-      await waitForProjectWorkspaceSaves();
-      return startRequirementRunRequest(input, projectId);
-    },
-
-    async startDesignRun(input: StartDesignRunInput) {
-      await waitForProjectWorkspaceSaves();
-      return startDesignRunRequest(input, projectId);
-    },
-
-
-    async startDocumentRun(input: StartDocumentRunInput) {
-      await waitForProjectWorkspaceSaves();
-      return startDocumentRunRequest(input, projectId);
-    },
-
-    async subscribeToRun(runId: string, onEvent: (event: RunEvent) => void, options?: RunSubscriptionOptions<RunSnapshot>) {
-      await subscribeToRequirementRunEvents({
-        runId,
-        projectId,
-        onEvent,
-        ...options,
-      });
-    },
-
-    async subscribeToDesignRun(
-      runId: string,
-      onEvent: (event: RunEvent) => void,
-      options?: RunSubscriptionOptions<DesignRunSnapshot>,
-    ) {
-      await subscribeToDesignRunEvents({ runId, projectId, onEvent, ...options });
-    },
-
-
-    async subscribeToDocumentRun(
-      runId: string,
-      onEvent: (event: RunEvent) => void,
-      options?: RunSubscriptionOptions<DocumentRunSnapshot>,
-    ) {
-      await subscribeToDocumentRunEvents({ runId, projectId, onEvent, ...options });
-    },
-
-    async getRunSnapshot(runId: string) {
-      return readRunSnapshot(runId, requireProjectScope(projectId));
-    },
-
-    async getDesignRunSnapshot(runId: string) {
-      return readDesignRunSnapshot(runId, requireProjectScope(projectId));
-    },
-
-
-    async getDocumentRunSnapshot(runId: string) {
-      return readDocumentRunSnapshot(runId, requireProjectScope(projectId));
-    },
-
-    async listDocuments() {
-      return listDocumentLibraryItems(projectId);
-    },
-
-    async getOnlyOfficeEditorConfig(
-      documentId: string,
-      uiTheme?: OnlyOfficeUiTheme,
-    ) {
-      return readOnlyOfficeEditorConfig(documentId, uiTheme, projectId);
-    },
-
-    async downloadDocumentRun(runId: string, defaultFileName?: string) {
-      return downloadDocumentRunFile(runId, defaultFileName, projectId);
-    },
-
-    async downloadDocument(documentId: string, defaultFileName?: string) {
-      return downloadDocumentFile(documentId, defaultFileName, projectId);
-    },
-
-    async renderPlantUml(diagramKind, plantUmlSource) {
-      return renderPlantUmlRequest(diagramKind, plantUmlSource, projectId);
-    },
-
-    exportDiagram(input, signal) {
-      return exportDiagramRequest(input, projectId, signal);
-    },
-
-    async renderStructuredModel(model, stage) {
-      return renderStructuredModelRequest(model, projectId, stage);
-    },
-
-    async confirmVisualReview(key, checkedAt) {
-      const saved = await updateProjectWorkspace((workspace) => {
-        const review = workspace.visualReviews?.[key];
-        if (!review || review.status !== "pending_review" || review.checkedAt !== checkedAt) {
-          throw new Error("视觉检查结果已更新，请刷新后重试。");
-        }
-        workspace.visualReviews = {
-          ...workspace.visualReviews,
-          [key]: { ...review, confirmedAt: review.confirmedAt ?? new Date().toISOString() },
-        };
-      });
-      return saved.visualReviews![key];
-    },
-
-    async saveRequirementModelEdit(_diagramKind, model, status, traceability) {
-      const modelKey = getRequirementModelId(model);
-      await updateProjectWorkspace((workspace) => {
-        workspace.models = { ...workspace.models, [modelKey]: model };
-        if (traceability) {
-          workspace.requirementModelTraceability =
-            traceability.requirementModelTraceability;
-          workspace.designModelTraceability = traceability.designModelTraceability;
-        }
-        workspace.manualModelEditStatus = {
-          ...workspace.manualModelEditStatus,
-          [modelKey]: status,
-        };
-      });
-    },
-
-    async saveDesignModelEdit(modelId, model, status, traceability) {
-      await updateProjectWorkspace((workspace) => {
-        workspace.designModels = { ...workspace.designModels, [modelId]: model };
-        if (traceability) {
-          workspace.designModelTraceability = traceability.designModelTraceability;
-        }
-        workspace.manualModelEditStatus = {
-          ...workspace.manualModelEditStatus,
-          [modelId]: status,
-        };
-      });
-    },
-
-    async saveManualModelRerender(key, status, artifact) {
-      await updateProjectWorkspace((workspace) => {
-        workspace.manualModelEditStatus = {
-          ...workspace.manualModelEditStatus,
-          [key]: status,
-        };
-        if (key in workspace.designModels) {
-          if (workspace.visualReviews) delete workspace.visualReviews[`design:${key}`];
-          workspace.designPlantUml = {
-            ...workspace.designPlantUml,
-            [key]: artifact.plantUmlSource,
-          };
-          workspace.designSvgArtifacts = {
-            ...workspace.designSvgArtifacts,
-            [key]: artifact.svgArtifact as DesignSvgArtifact,
-          };
-        } else {
-          if (workspace.visualReviews) delete workspace.visualReviews[`requirements:${key}`];
-          workspace.plantUml = {
-            ...workspace.plantUml,
-            [key]: artifact.plantUmlSource,
-          };
-          workspace.svgArtifacts = {
-            ...workspace.svgArtifacts,
-            [key]: artifact.svgArtifact as SvgArtifact,
-          };
-        }
-      });
-    },
-
-    async testProviderSettings(providerSettings) {
-      return testProviderSettingsRequest(providerSettings);
-    },
-
-    async saveRunHistory(snapshot, meta) {
-      if (projectId) {
-        const rulesOnly = "selectedDiagrams" in snapshot &&
-          !('files' in snapshot) &&
-          !('designModelTraceability' in snapshot) &&
-          snapshot.selectedDiagrams.length === 0 &&
-          ('models' in snapshot && snapshot.models.length === 0);
-        if (rulesOnly) {
-          if (snapshot.status === "completed") await awaitRulesOnlyProjectSync(snapshot);
-        } else {
-          await persistSnapshotAsProjectWorkspace(snapshot);
-        }
-        return {
-          id: snapshot.runId,
-          createdAt: new Date().toISOString(),
-          title: createRunHistoryTitle(
-            runHistorySnapshotRequirementText(snapshot),
-          ),
-          snapshot,
-          providerModel: meta.providerModel,
-          durationMs: meta.durationMs,
-        };
-      }
-      throw new Error(PROJECT_REQUIRED_MESSAGE);
-    },
-
-    async listRunHistory() {
-      if (projectId) {
-        const payload = await readProjectRuns();
-        return normalizeProjectHistoryResponse(payload);
-      }
-      throw new Error(PROJECT_REQUIRED_MESSAGE);
-    },
-
-    async getRunHistoryItem(id) {
-      if (projectId) {
-        return readProjectRunHistoryItem(id);
-      }
-      return loadRunHistory().find((item) => item.id === id) ?? null;
-    },
-
-    async restoreRunHistory(id) {
-      if (projectId) {
-        const detail = await readProjectRunDetail(id);
-        if (!canRestoreProjectRunWorkspace(detail.run, detail.snapshot ?? null)) {
-          throw new Error("说明书快照不能恢复为项目工作台。");
-        }
-        await restoreProjectWorkspaceFromRun(id);
-        return projectRunSummaryToHistoryItem({
-          ...detail.run,
-          runId: id,
-          status: detail.run?.status ?? "completed",
-          snapshotAvailable: detail.run?.snapshotAvailable ?? true,
-          canRestore: detail.run?.canRestore ?? true,
-        });
-      }
-      throw new Error(PROJECT_REQUIRED_MESSAGE);
-    },
-
-    async deleteRunHistory(id) {
-      if (projectId) {
-        await requestJson(
-          `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(id)}`,
-          withProjectHeaders(projectId, {
-            method: "DELETE",
-            errorKey: "errors.operations.deleteHistory",
-          }),
-        );
-        const history = await readProjectRuns();
-        return normalizeProjectHistoryResponse(history);
-      }
-      throw new Error(PROJECT_REQUIRED_MESSAGE);
-    },
-
-    async clearRunHistory() {
-      if (projectId) {
-        await requestJson(
-          `/api/projects/${encodeURIComponent(projectId)}/runs`,
-          withProjectHeaders(projectId, {
-            method: "DELETE",
-            errorKey: "errors.operations.clearHistory",
-          }),
-        );
-        return;
-      }
-      throw new Error(PROJECT_REQUIRED_MESSAGE);
-    },
-  };
 }

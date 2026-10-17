@@ -31,7 +31,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 async function openCreation() {
   const user = userEvent.setup();
   render(<AppI18nProvider><GlobalSettingsPanel active currentUserId="user-1" /></AppI18nProvider>);
-  await user.click(await screen.findByRole("button", { name: "添加供应商" }));
+  await user.click(await screen.findByRole("button", { name: "添加自己的模型密钥" }));
   const dialog = await screen.findByRole("dialog", { name: "添加供应商" });
   return { user, dialog };
 }
@@ -62,7 +62,7 @@ describe("Provider creation block34", () => {
     await user.click(within(dialog).getByRole("button", { name: "保存供应商" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "添加供应商" })).not.toBeInTheDocument());
     expect(platformApi.createProviderConfig).toHaveBeenCalledWith(expect.objectContaining({ name: "My provider", apiKey: "test-only-key", defaultModel: "chat-b", allowedModels: ["chat-a", "chat-b"] }));
-    expect(screen.getByLabelText("托管 Provider 配置")).toHaveTextContent("My provider");
+    expect(screen.getByLabelText("模型来源")).toHaveTextContent("My provider");
   });
 
   it("shows missing prerequisites inline and invalidates a passed test after connection changes", async () => {

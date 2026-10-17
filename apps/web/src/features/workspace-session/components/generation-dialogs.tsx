@@ -1,11 +1,10 @@
-// Renders generation result and confirmation dialogs used by the workspace session provider.
+// Builds generation feedback and renders the workspace confirmation dialog.
 import { useTranslation } from "react-i18next";
 import { CircleAlert } from "lucide-react";
 import { Button } from "../../../shared/ui/button";
 import { StatusFlow, StatusFlowItem } from "../../../shared/ui/status-flow";
 import { cn } from "../../../shared/ui/utils";
 import {
-  FeedbackDialog,
   type FeedbackDialogAction,
   type FeedbackDialogState,
 } from "../../../shared/ui/feedback-dialog";
@@ -101,22 +100,6 @@ export function generationResultDialogGroup(
     result.stageLabel ?? result.title ?? i18n.t("generation.dialog.result"),
   );
   return `${tone}:${runKey || stageKey}`;
-}
-
-export function GenerationResultDialog({
-  result,
-  onClose,
-}: {
-  result: GenerationResultDialogState | null;
-  onClose: () => void;
-}) {
-  return (
-    <FeedbackDialog
-      feedback={result ? generationResultFeedback(result) : null}
-      open={Boolean(result)}
-      onClose={onClose}
-    />
-  );
 }
 
 function DependencySummary({ label, items }: { label: string; items: string[] }) {

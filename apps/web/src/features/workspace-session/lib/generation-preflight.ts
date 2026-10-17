@@ -16,10 +16,8 @@ import type { GenerationResultDialogState } from "../components/generation-dialo
 import { i18n } from "../../../shared/i18n/i18n";
 import {
   requestOpenProjectWorkspaceTarget,
-  requestOpenRequirementRule,
   type ProjectWorkspaceTarget,
 } from "../../../shared/lib/app-navigation";
-import { requirementRuleIdsBlockingGeneration } from "./requirement-review";
 import {
   DESIGN_REQUIREMENT_SOURCE_MAP,
   collectExistingDesignDiagramKinds,
@@ -119,25 +117,6 @@ function staleRulesBlock(targetLabel: string): PreflightBlock {
   };
 }
 
-function pendingReviewBlock(
-  pendingReviews: string[],
-  targetLabel: string,
-): PreflightBlock {
-  return {
-    title: "需求规则待确认",
-    tone: "warning",
-    message: "请先确认需求规则修复结果",
-    stageLabel: "需求规则",
-    targetLabel,
-    primaryAction: pendingReviews[0]
-      ? {
-          label: i18n.t("feedback.actions.pendingRules"),
-          onSelect: () => requestOpenRequirementRule(pendingReviews[0]!),
-        }
-      : openWorkspaceAction("system-requirements", "systemRequirements"),
-  };
-}
-
 function invalidStructureBlock(models: unknown[], stage: "requirements" | "design", targetLabel: string): PreflightBlock | null {
   const count = models.flatMap((model) => validateModelInput(model, stage).filter((issue) => issue.severity === "error")).length;
   if (!count) return null;
@@ -211,15 +190,6 @@ function hasStaleRules(input: SharedRequirementPreflightInput) {
   return { activeRequirementFingerprint, stale };
 }
 
-function pendingRequirementReviewRuleIds(
-  input: SharedRequirementPreflightInput,
-) {
-  return requirementRuleIdsBlockingGeneration(
-    input.requirementBaseline,
-    input.requirementReviewCandidates,
-  );
-}
-
 export function analyzeRequirementGenerationPreflight(
   input: RequirementGenerationPreflightInput,
 ): RequirementGenerationPreflight {
@@ -230,13 +200,6 @@ export function analyzeRequirementGenerationPreflight(
   const { activeRequirementFingerprint, stale } = hasStaleRules(input);
   if (stale) {
     return { status: "blocked", block: staleRulesBlock("已选需求模型") };
-  }
-  const pendingReviews = pendingRequirementReviewRuleIds(input);
-  if (pendingReviews.length > 0) {
-    return {
-      status: "blocked",
-      block: pendingReviewBlock(pendingReviews, "已选需求模型"),
-    };
   }
   // Regeneration may replace an invalid source; analysis alone must consume a valid saved use case.
   if (diagrams.includes("analysis") && !diagrams.includes("usecase")) {
@@ -305,13 +268,6 @@ export function analyzeDesignGenerationPreflight(
   const requestedDiagrams = requestedDesignDiagramsForPreflight(input);
   if (requestedDiagrams.length === 0) {
     return { status: "empty" };
-  }
-  const pendingReviews = pendingRequirementReviewRuleIds(input);
-  if (pendingReviews.length > 0) {
-    return {
-      status: "blocked",
-      block: pendingReviewBlock(pendingReviews, "已选设计模型"),
-    };
   }
   const { activeRequirementFingerprint, stale } = hasStaleRules(input);
   if (stale) {

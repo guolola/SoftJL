@@ -1,11 +1,27 @@
 // Applies shared model semantics to manual workspace writes before they reach persistent storage.
 import { isDeepStrictEqual } from "node:util";
-import { stripRetiredCodeData } from "@uml-platform/contracts";
+import { stripRetiredCodeData, invalidateDesignDependents, createRequirementBaselineSnapshot, requirementBaselineSchema, requirementRulesSchema } from "@uml-platform/contracts";
 import { deriveTableModel, getStageModelSchema, ModelSemanticError, validateModelInput, type ModelingStage, type TableDiagramSpec } from "@uml-platform/contracts";
 
 export function normalizeWorkspaceModelState(state: Record<string, unknown>, previousState: Record<string, unknown> = {}) {
   // Old browser sessions must not reintroduce retired prototype data after the migration.
   const next = stripRetiredCodeData({ ...state });
+  // Older clients may still send repair candidates; this retired workflow cannot be revived.
+  next.requirementReviewCandidates = {};
+  // API clients may edit rules without updating the derived baseline. Reconcile
+  // at the storage boundary before propagating staleness to dependent designs.
+  if (Array.isArray(next.rules)) {
+    const previous = requirementBaselineSchema.safeParse(next.requirementBaseline ?? previousState.requirementBaseline);
+    const baseline = createRequirementBaselineSnapshot({
+      runId: previous.success ? previous.data.runId : "manual-rules",
+      requirementText: typeof next.requirementText === "string" ? next.requirementText : "",
+      rules: requirementRulesSchema.parse(next.rules),
+      previousBaseline: previous.success ? previous.data : null,
+      origin: "manual",
+    });
+    next.requirementBaseline = baseline;
+    next.requirementQualityReport = baseline.qualityReport;
+  }
   const normalize = (model: unknown, stage: ModelingStage, expectedKind?: string) => {
     const diagnostics = validateModelInput(model, stage);
     if (diagnostics.length) throw new ModelSemanticError(diagnostics);
@@ -36,5 +52,5 @@ export function normalizeWorkspaceModelState(state: Record<string, unknown>, pre
     }
     next[key] = models;
   }
-  return next;
+  return invalidateDesignDependents(previousState, next);
 }

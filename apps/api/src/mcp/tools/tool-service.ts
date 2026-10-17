@@ -1,6 +1,7 @@
 // Implements four read-only tools with principal-bound pagination and optimistic source-version checks.
 import { z } from "zod";
 import { withImplementationArtifacts } from "../context/implementation-artifacts.js";
+import { buildStandardContext, standardAgentInstructions } from "../context/standard-context.js";
 import {
   mcpListProjectsInputSchema,
   mcpContextInputSchema,
@@ -84,10 +85,14 @@ export function createMcpToolService(
   async function read(projectId: string, scope: McpScope) {
     const project = await access.project(principal, projectId);
     const workspace = await access.authStore.getProjectWorkspace(projectId);
-    const context = withImplementationArtifacts(buildContext(workspace?.state ?? {}, normalizeScope(scope)), projectId, access.config.origin);
+    // Mode comes from the authorized project record, never from writable workspace data.
+    const projectMode = project.projectMode === "standard" ? "standard" : "professional";
+    const context = projectMode === "standard"
+      ? buildStandardContext(workspace?.state ?? {}, normalizeScope(scope))
+      : withImplementationArtifacts(buildContext(workspace?.state ?? {}, normalizeScope(scope)), projectId, access.config.origin);
     return {
       ...context,
-      project: { id: project.id, name: project.name },
+      project: { id: project.id, name: project.name, projectMode },
       workspaceSaved: Boolean(workspace && workspace.version > 0),
     };
   }
@@ -104,7 +109,7 @@ export function createMcpToolService(
               .toLowerCase()
               .includes(input.search.toLowerCase()),
         )
-        .map((p) => ({ id: p.id, name: p.name, description: p.description }))
+        .map((p) => ({ id: p.id, name: p.name, description: p.description, projectMode: p.projectMode === "standard" ? "standard" : "professional" }))
         .sort((a, b) => a.id.localeCompare(b.id));
       const paged = page(
         projects,
@@ -161,7 +166,9 @@ export function createMcpToolService(
         );
       return result(
         "ok",
-        "请读完完整设计、验收条件与工程约束的目录分页和产物分段；按设计实现，缺少设计时先在平台补齐。",
+        context.project.projectMode === "standard"
+          ? "请读完已保存的需求、共享方案和图表目录，再由 Coding Agent 生成代码；普通版不要求专业版实施报告或链路验证。"
+          : "请读完完整设计、验收条件与工程约束的目录分页和产物分段；按设计实现，缺少设计时先在平台补齐。",
         {
           project: context.project,
           scope: context.scope,
@@ -176,10 +183,11 @@ export function createMcpToolService(
           remaining: paged.remaining,
           nextCursor: paged.nextCursor,
           issues: context.issues,
-          instructions: agentInstructions,
+          instructions: context.project.projectMode === "standard" ? standardAgentInstructions : agentInstructions,
           serverUrl: access.config.resource,
-          versionPolicy:
-            "manifest 为本页版本清单，需合并全部目录分页。同一轮请求使用 scope 与 contextVersion；内容哈希与上游指纹分别表示内容变化和过期状态。",
+          versionPolicy: context.project.projectMode === "standard"
+            ? "分页读取使用同一 contextVersion，防止拼接不同保存时刻的内容；不进行普通版产物过期或依赖检查。"
+            : "manifest 为本页版本清单，需合并全部目录分页。同一轮请求使用 scope 与 contextVersion；内容哈希与上游指纹分别表示内容变化和过期状态。",
         },
       );
     },

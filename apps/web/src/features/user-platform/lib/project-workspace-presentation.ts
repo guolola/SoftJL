@@ -250,7 +250,8 @@ export function getProjectDocumentDisplayName(document: PlatformDocument, t?: TF
   return t ? t("projectShell.documentsUi.documentFallback", { id: shortIdentifier(document.id) }) : `文档 ${shortIdentifier(document.id)}`;
 }
 
-export function getProjectRunModelLabel(run: PlatformRunSummary) {
+export function getProjectRunModelLabel(run: PlatformRunSummary, t?: TFunction) {
+  if (run.model === "offline-demo-fixed-artifacts") return t ? t("uxReview.demoData") : "演示数据";
   return run.model?.trim() || "默认模型";
 }
 

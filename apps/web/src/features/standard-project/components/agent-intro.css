@@ -1,0 +1,38 @@
+/* Fits the supplied intro blocks to the conversation without changing their internal designs. */
+.homepage-conversation {
+  container-type: inline-size;
+}
+
+/* Large intro content must start at the top when it exceeds the viewport height. */
+.homepage-theme.homepage-theme.homepage-conversation .justify-center:has(.agent-feature-showcase) {
+  justify-content: safe center;
+}
+
+.homepage-theme.homepage-theme.homepage-conversation .agent-intro-badges {
+  flex-shrink: 0;
+  margin-bottom: -0.75rem;
+}
+
+.homepage-theme.homepage-theme.homepage-conversation .agent-intro-badges > div {
+  width: 100%;
+  max-width: none;
+  height: 8rem;
+}
+
+.homepage-theme.homepage-theme.homepage-conversation .agent-feature-showcase {
+  align-self: center;
+  flex-shrink: 0;
+  width: min(80rem, calc(100cqw - 3rem));
+  margin-top: 1.5rem;
+}
+
+/* Give each feature its own subtle surface in light mode, without an enclosing card. */
+.homepage-theme.homepage-theme.homepage-conversation .agent-feature-showcase [data-slot="card"]:not(.dark *) {
+  background-color: color-mix(in oklab, var(--muted) 70%, var(--background));
+}
+
+@media (max-width: 639px) {
+  .homepage-theme.homepage-theme.homepage-conversation .agent-feature-showcase {
+    width: calc(100cqw - 2rem);
+  }
+}

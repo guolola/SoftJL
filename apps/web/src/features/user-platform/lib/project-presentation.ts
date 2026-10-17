@@ -10,6 +10,7 @@ import {
 } from "./project-backgrounds";
 
 export type StaticProject = {
+  projectMode: "standard" | "professional";
   id: string;
   name: string;
   description: string;
@@ -166,6 +167,7 @@ export function projectFromApi(
   });
   return {
     id: project.id,
+    projectMode: project.projectMode === "standard" ? "standard" : "professional",
     name: project.name,
     description: project.description ?? noDescription,
     owner: ownerName,

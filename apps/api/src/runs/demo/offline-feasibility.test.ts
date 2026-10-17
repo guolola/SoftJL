@@ -12,6 +12,7 @@ import { createRunRecordStore, type RunRecord } from "../records/run-record-stor
 import { runFeasibilityStagePipeline } from "../pipelines/feasibility-pipeline.js";
 import { normalizeFeasibilityBusinessFlow } from "../../normalizers/feasibility/business-flow-normalizer.js";
 import { createProjectRunAction } from "../actions/project-run-actions.js";
+import { captureWorkspaceGuard } from "../records/workspace-run-guard.js";
 import { resolveDocumentRunInput } from "../../routes/runs/run-input-resolution.js";
 
 function demoRecord(): RunRecord {
@@ -71,18 +72,22 @@ test("fixed demo yields current environment, business flow and two complete impl
   }
 });
 
-test("demo reruns retain offline data and skip provider resolution and usage", async () => {
+test("demo retries retain offline data and skip provider resolution and usage", async () => {
   const source = demoRecord();
+  const state = { requirementText: "demo", rules: [], feasibilityInputs: {} };
+  source.snapshot.workspaceGuard = captureWorkspaceGuard(source, state);
   await runDemo(source);
+  source.snapshot.status = "failed";
   const runs = createRunRecordStore();
   runs.set(source.snapshot.runId, source);
   let status = 0;
   const result = await createProjectRunAction({
     request: {} as never, reply: { code(value: number) { status = value; return this; } } as never,
-    action: "rerun", projectId: "demo-project", runId: source.snapshot.runId, actorUserId: "demo-user", runs,
+    action: "retry", projectId: "demo-project", runId: source.snapshot.runId, actorUserId: "demo-user", runs,
     runAccessGuard: { async resolveRunAccess() { throw new Error("Demo must not record usage"); } },
     providerConfigs: { async get() { throw new Error("Demo must not resolve a paid provider"); } } as never,
     providerRateLimitPolicy: {} as never,
+    loadProjectWorkspace: async () => ({ state }),
     startRecordPipeline: async ({ record }) => { assert.equal(record.metadata?.offlineDemoFixture, "library-seat"); await runDemo(record); },
   });
   assert.equal(status, 202);

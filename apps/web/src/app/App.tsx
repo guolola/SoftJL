@@ -3,7 +3,7 @@
 import { McpConnectionsPage } from "../features/mcp-connections/components/mcp-connections-panel";
 import { McpConsentPage } from "../features/mcp-connections/components/mcp-consent-page";
 import { DefaultPagesLayout } from '../shared/template/layout/default-pages-layout';
-import { DefaultSidebar } from '../shared/template/layout/default-sidebar';
+import { ProjectSidebar } from '../features/workspace-shell/components/project-sidebar';
 import { PlatformSidebar } from '../features/workspace-shell/components/platform-sidebar';
 import React, { useCallback, useEffect, useState, type ReactNode } from "react";
 import { SidebarProvider, useSidebar } from '../shared/ui/sidebar';
@@ -23,9 +23,9 @@ import { FeasibilityPage } from "../features/feasibility/components/feasibility-
 import { TraceabilityMatrixPage } from "../features/traceability/components/traceability-matrix-page";
 import { TestModelPage } from "../features/testing/components/test-model-page";
 import { SidebarMenu } from "../features/workspace-shell/components/sidebar-menu";
-import { SidebarUserDropdown } from "../features/workspace-shell/components/sidebar-user-dropdown";
 import { TopBar, type TopBarProps, } from "../features/workspace-shell/components/top-bar";
 import { matchAppRoute, type AppRoute, type ProjectRouteSection } from "./app-routes";
+import { StandardWorkspace } from "../features/standard-project/components/standard-workspace";
 import { LineageGraphPage } from "../features/lineage/components/lineage-graph-page";
 import { WorkspaceRepositoryProvider } from "../services/workspace-repository";
 import { WorkspaceShellProvider, useWorkspaceShell } from "../features/workspace-shell/state";
@@ -66,7 +66,9 @@ function ProjectWorkspaceShell({ header, projectId, projectSection, activeProjec
     const { openDesignHome, openFeasibilityHome, openRequirementsText, openSystemRequirements, selection, } = useWorkspaceShell();
     const { setOpenMobile } = useSidebar();
     const projectOverview = useProjectOverview(projectId);
-    const { startProjectTour } = useProjectOnboarding(projectId);
+    const { generatedDesignDiagrams = [], staleDesignDiagrams = [], staleDesignModelIds = [] } = useWorkspaceSession();
+    const designReady = generatedDesignDiagrams.length === 7 && staleDesignDiagrams.length === 0 && staleDesignModelIds.length === 0;
+    const { startProjectTour } = useProjectOnboarding(projectId, projectOverview.project?.projectMode !== "standard");
     const projectRuns = projectOverview.runs;
     const projectPath = `/projects/${encodeURIComponent(projectId)}`;
     const traceabilityPrefix = t("traceability.title.scoped", { label: "" });
@@ -223,12 +225,12 @@ function ProjectWorkspaceShell({ header, projectId, projectSection, activeProjec
     else if (projectSection) {
         body = <ProjectSectionPage projectId={projectId} section={projectSection} onNavigate={onNavigate}/>;
     }
-    return (<DefaultPagesLayout sidebar={<DefaultSidebar resizeLabel={t("workspace.sidebar.resize")} footer={<>
-
-          <SidebarUserDropdown onOpenAccount={onOpenAccount} onNavigate={onNavigate}/>
-        </>}>
+    if (projectOverview.project?.projectMode === "standard") {
+        return <StandardWorkspace key={projectId} projectId={projectId} projectName={projectOverview.project.name} canEdit={projectOverview.project.status === "active" && ["owner", "editor"].includes(projectOverview.membership?.role ?? "")} header={header} onNavigate={onNavigate} onSettings={onOpenProviderSettings} onOpenAccount={onOpenAccount} projectSection={projectSection} sectionContent={projectSection && projectSection !== "lineage" ? body : undefined}/>;
+    }
+    return (<DefaultPagesLayout sidebar={<ProjectSidebar showCodingAgent={designReady} onOpenAccount={onOpenAccount} onNavigate={onNavigate}>
         <SidebarMenu projectRuns={projectRuns} activeProjectSection={projectSection} onOpenProjectSection={section => onNavigate(`${projectPath}/${section}`)} onNavigateItemSelect={returnToWorkspace}/>
-      </DefaultSidebar>} header={React.isValidElement(header)
+      </ProjectSidebar>} header={React.isValidElement(header)
             ? React.cloneElement(header as React.ReactElement<TopBarProps>, {
                 projectDrawer: {
                     projectId,
@@ -260,6 +262,18 @@ export function Shell({ initialPath }: {
     const [activeProjectDrawer, setActiveProjectDrawer] = useState<ProjectDrawerKind | null>(null);
     const [preferredTaskRunId, setPreferredTaskRunId] = useState<string | null>(null);
     const { generationTasks, selectGenerationTask } = useWorkspaceSession();
+    // A run pinned by "查看任务" must not hide later work: opening the drawer from the shell
+    // or starting a new task shows the current task again.
+    const openProjectDrawer = useCallback((kind: ProjectDrawerKind | null) => {
+        if (kind === "tasks")
+            setPreferredTaskRunId(null);
+        setActiveProjectDrawer(kind);
+    }, []);
+    const newestActiveTaskId = generationTasks.find((task) => ["queued", "running"].includes(task.status))?.clientTaskId ?? null;
+    useEffect(() => {
+        if (newestActiveTaskId)
+            setPreferredTaskRunId(null);
+    }, [newestActiveTaskId]);
     const [accountDialogOpen, setAccountDialogOpen] = useState(false);
     const [globalSettingsRequestId, setGlobalSettingsRequestId] = useState(0);
     const openProviderSettings = useCallback(() => {
@@ -333,7 +347,8 @@ export function Shell({ initialPath }: {
     }, []);
     const consentInteractionId = route.kind === "mcp-connections" && typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("interaction") : null;
     const renderRoute = () => {
-        if (route.kind === "mcp-connections") return consentInteractionId ? <McpConsentPage interactionId={consentInteractionId} onNavigate={navigate} /> : <McpConnectionsPage onNavigate={navigate} />;
+        if (route.kind === "mcp-connections")
+            return consentInteractionId ? <McpConsentPage interactionId={consentInteractionId} onNavigate={navigate}/> : <McpConnectionsPage onNavigate={navigate}/>;
         if (route.kind === "shell") {
             return <RedirectRoute to="/projects" onNavigate={navigate}/>;
         }
@@ -361,7 +376,7 @@ export function Shell({ initialPath }: {
         if (route.kind === "project-workspace") {
             return (<ProjectWorkspaceAccessBoundary projectId={route.projectId} onNavigate={navigate}>
           <WorkspaceShellProvider key={route.projectId}>
-            <ProjectWorkspaceShell header={<TopBar currentRoute={route.path} onNavigate={navigate} accountDialogOpen={accountDialogOpen} onAccountDialogOpenChange={setAccountDialogOpen} globalSettingsRequestId={globalSettingsRequestId}/>} projectId={route.projectId} projectSection={route.section ?? null} activeProjectDrawer={activeProjectDrawer} onActiveProjectDrawerChange={setActiveProjectDrawer} onOpenProviderSettings={openProviderSettings} onOpenAccount={() => setAccountDialogOpen(true)} onNavigate={navigate} preferredTaskRunId={preferredTaskRunId}/>
+            <ProjectWorkspaceShell header={<TopBar currentRoute={route.path} onNavigate={navigate} accountDialogOpen={accountDialogOpen} onAccountDialogOpenChange={setAccountDialogOpen} globalSettingsRequestId={globalSettingsRequestId}/>} projectId={route.projectId} projectSection={route.section ?? null} activeProjectDrawer={activeProjectDrawer} onActiveProjectDrawerChange={openProjectDrawer} onOpenProviderSettings={openProviderSettings} onOpenAccount={() => setAccountDialogOpen(true)} onNavigate={navigate} preferredTaskRunId={preferredTaskRunId}/>
           </WorkspaceShellProvider>
         </ProjectWorkspaceAccessBoundary>);
         }

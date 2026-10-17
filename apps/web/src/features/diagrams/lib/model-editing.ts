@@ -1,6 +1,6 @@
 // Owns pure diagram model draft helpers used by the diagram detail editor UI.
 import { getStageModelSchema, contractResponseSchema, type ModelingStage } from "@uml-platform/contracts";
-import type { DesignDiagramType, DiagramType } from "../../../entities/diagram/model";
+import type { DiagramType } from "../../../entities/diagram/model";
 import type { DiagramDetailItem } from "../../../entities/diagram/lib/model-details";
 
 export type EditableCollection = {
@@ -239,33 +239,6 @@ export function draftFingerprint(model: Record<string, unknown> | null) {
   return model ? JSON.stringify(model) : "";
 }
 
-export function designSourceLabel(
-  diagram: DesignDiagramType,
-  model: Record<string, unknown> | null,
-) {
-  if (diagram === "sequence") {
-    const useCaseName = stringValue(model?.sourceUseCaseName).trim();
-    if (useCaseName) {
-      return `来源：需求阶段用例模型事件流 + 需求分析模型（用例：${useCaseName}）`;
-    }
-    const useCaseId = stringValue(model?.sourceUseCaseId).trim();
-    if (useCaseId) {
-      return `来源：需求阶段用例模型事件流 + 需求分析模型（用例ID：${useCaseId}）`;
-    }
-    return "来源：需求阶段用例模型事件流 + 需求分析模型（具体用例未标明）";
-  }
-  if (diagram === "navigation") {
-    return "来源：需求阶段原型界面关系 + 设计阶段用例实现设计";
-  }
-  if (diagram === "class") {
-    return "来源：需求阶段领域概念模型 + 设计阶段用例实现设计";
-  }
-  if (diagram === "deployment") {
-    return "来源：需求阶段部署需求模型 + 设计阶段用例实现设计";
-  }
-  return "来源：设计阶段设计类图 + 设计阶段用例实现设计";
-}
-
 export function requirementSourceLabel(
   diagram: DiagramType,
   model: Record<string, unknown> | null,
@@ -326,13 +299,6 @@ export function diagramHighlightAliases(element: DiagramDetailItem | undefined) 
   ]).filter((alias) => alias !== element.label);
 }
 
-export function textToStringList(value: string) {
-  return value
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 export function setOptionalStringValue(
   record: Record<string, unknown>,
   key: string,
@@ -375,14 +341,6 @@ export function itemLabel(item: Record<string, unknown>, collection: EditableCol
   return typeof value === "string" ? value : "";
 }
 
-export function setItemLabel(item: Record<string, unknown>, collection: EditableCollection, value: string) {
-  if (item.type === "decision" && "question" in item) {
-    item.question = value;
-    return;
-  }
-  item[collection.nameKey] = value;
-}
-
 export function relationshipItems(draft: Record<string, unknown>) {
   if (["analysis", "sequence"].includes(String(draft.diagramKind))) {
     return Array.isArray(draft.messages)
@@ -396,14 +354,6 @@ export function relationshipItems(draft: Record<string, unknown>) {
 
 export function relationName(relation: Record<string, unknown>) {
   return String(relation.label ?? relation.name ?? relation.condition ?? relation.description ?? "");
-}
-
-export function setRelationName(relation: Record<string, unknown>, value: string) {
-  if ("name" in relation) {
-    relation.name = value || "关系";
-  } else {
-    relation.label = value || undefined;
-  }
 }
 
 export function relationEndpointKey(draft: Record<string, unknown>, endpoint: "source" | "target") {
@@ -497,48 +447,4 @@ export function relationTypeOptions(diagramKind: unknown, stage: ModelingStage =
   if (!contract) return [];
   const schema = contractResponseSchema(contract);
   return schema.properties[kind === "analysis" || kind === "sequence" ? "messages" : "relationships"]?.items?.properties?.[kind === "context" ? "direction" : "type"]?.enum ?? [];
-}
-
-export function activityNodeForType(
-  item: Record<string, unknown>,
-  type: string,
-) {
-  const base = {
-    id: item.id,
-    type,
-    description: item.description,
-    actorOrLane: item.actorOrLane,
-  };
-  const name = stringValue(item.name) || stringValue(item.question);
-  switch (type) {
-    case "activity":
-      return {
-        ...base,
-        name: name || "新活动",
-        actorOrLane: item.actorOrLane,
-        inputPins: item.inputPins,
-        outputPins: item.outputPins,
-        input: stringListValue(item.input),
-        output: stringListValue(item.output),
-      };
-    case "decision":
-      return {
-        ...base,
-        question: stringValue(item.question) || name || "条件判断",
-      };
-    case "object":
-      return { ...base, name: name || "对象", dataType: stringValue(item.dataType) || "Object", state: item.state };
-    case "flow_final":
-      return { ...base, name: name || "分支结束" };
-    case "start":
-      return { ...base, name: name || "开始" };
-    case "end":
-      return { ...base, name: name || "结束" };
-    case "merge":
-    case "fork":
-    case "join":
-      return { ...base, name: name || undefined };
-    default:
-      return item;
-  }
 }

@@ -8,7 +8,7 @@ import type {
   RequirementRule,
 } from "@uml-platform/contracts";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "./feasibility-example.js";
-import { getModelReviewProfile } from "@uml-platform/contracts";
+import { getModelReviewProfile, requirementBaselinePromptContext } from "@uml-platform/contracts";
 
 const JSON_ONLY = "只返回一个 JSON 对象，不要 Markdown、代码围栏或解释文字。";
 
@@ -17,7 +17,7 @@ function sourcePayload(
   requirementBaseline: RequirementBaseline | null,
   inputs: FeasibilityInputs,
 ) {
-  return JSON.stringify({ rules, requirementBaseline, inputs }, null, 2);
+  return JSON.stringify({ rules, requirementBaseline: requirementBaseline ? requirementBaselinePromptContext(requirementBaseline, true) : null, inputs });
 }
 
 export function buildGenerateFeasibilityContextPrompt(input: {
@@ -66,7 +66,7 @@ absenceDeclarations 的每一项必须完整包含 scope、reason、provenance�
 严格沿用以下完整有效对象形状；所有数组中的结构项都必须是对象，禁止把模块、里程碑、风险或结论简写成字符串。示例金额和方案内容不是输入事实，实际输出必须根据输入重新估算：
 ${JSON.stringify(FEASIBILITY_IMPLEMENTATION_EXAMPLE, null, 2)}
 输入：
-${JSON.stringify(input, null, 2)}`;
+${JSON.stringify({ ...input, requirementBaseline: input.requirementBaseline ? requirementBaselinePromptContext(input.requirementBaseline, true) : null })}`;
 }
 
 export function buildRepairFeasibilityJsonPrompt(input: {

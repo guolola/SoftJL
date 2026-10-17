@@ -48,6 +48,29 @@ test("semantic comparison catches deleted notification triggers", () => {
   assert.equal(labels.some((label) => label.includes("开始前1小时")), true);
 });
 
+test("semantic comparison keeps object wording moved into another field", () => {
+  const before = requirement({
+    action: "可通过手机端扫描教室内特定二维码，免登录快速选择故障类型并提交报修",
+    object: "通过手机端扫描教室内特定二维码",
+  });
+  const moved = requirement({
+    action: "通过手机端扫描教室内特定二维码，免登录快速选择故障类型并提交报修",
+    object: "设备故障报修信息",
+  });
+  const dropped = requirement({
+    action: "免登录快速选择故障类型并提交报修",
+    object: "设备故障报修信息",
+  });
+
+  assert.deepEqual(compareRequirementSemantics(before, moved).lostFacts, []);
+  assert.equal(
+    compareRequirementSemantics(before, dropped).lostFacts.some(
+      (fact) => fact.kind === "object",
+    ),
+    true,
+  );
+});
+
 test("semantic comparison normalizes equivalent inclusive boundaries", () => {
   const before = requirement({
     action: "参会人数50人以上或结束时间晚于21:00时进入审批",

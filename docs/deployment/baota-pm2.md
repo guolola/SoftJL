@@ -38,7 +38,7 @@ PM2 默认管理 `uml-web`、`uml-api` 和 `uml-render-service`，分别监听�
 
 ## 操作与维护
 
-1. 准备 Node.js 22、Java 21、Graphviz、PM2、PostgreSQL 和 Nginx；启用队列时另行准备 Redis。
+1. 准备 Node.js 22.19.0+、Java 21、Graphviz、PM2、PostgreSQL 和 Nginx；启用队列时另行准备 Redis。
 2. 在 `shared/source` 检出要发布的提交，在 `shared/production.env` 配置生产变量并限制为部署账号可读，参见[生产环境配置](production-environment.md)。
 3. 配置新站点或核对现有 Nginx 配置。可用 `bash scripts/deploy/check-nginx-access.sh <部署目录>` 检查现有权限；它不授予新权限或切换 release。
 4. 设置 `DEPLOY_PATH`、`SOURCE_DIR` 和 `RELEASE_SHA`，运行 `bash scripts/deploy/baota-pm2-git-deploy.sh`。脚本构建 release、执行数据库迁移、启动服务并检查健康、社区版入口跳转与抓取限制。

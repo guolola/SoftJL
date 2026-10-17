@@ -101,7 +101,7 @@ test("in-memory LLM scheduler cancels queued work before it calls the provider",
   assert.equal(queuedCalled, false);
 });
 
-test("scheduled LLM transport forwards abort signals to the provider transport", async () => {
+test("scheduled LLM transport forwards abort signals and composer reasoning to the provider transport", async () => {
   const scheduler = createInMemoryLlmScheduler({
     globalConcurrency: 1,
     providerConcurrency: 1,
@@ -126,6 +126,7 @@ test("scheduled LLM transport forwards abort signals to the provider transport",
   const chunks: string[] = [];
   for await (const chunk of scheduledTransport.streamChatCompletion({
     providerSettings,
+    reasoning: true,
     messages: [{ role: "user", content: "hello" }],
     abortSignal: controller.signal,
   })) {
@@ -134,6 +135,7 @@ test("scheduled LLM transport forwards abort signals to the provider transport",
 
   assert.deepEqual(chunks, ["ok"]);
   assert.equal(receivedInput?.abortSignal, controller.signal);
+  assert.equal(receivedInput?.reasoning, true);
 });
 
 test("stream scheduling applies backpressure until chunks are consumed", async () => {

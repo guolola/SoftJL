@@ -5,8 +5,6 @@ import {
   DOCUMENT_CONTENT_RESPONSE_FORMAT,
   EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT,
   HEALTHCHECK_RESPONSE_FORMAT,
-  REPAIR_REQUIREMENT_RULES_RESPONSE_FORMAT,
-  REPAIR_REQUIREMENT_RULE_RESPONSE_FORMAT,
 } from "./general-response-formats.js";
 
 function assertStrictObjectRequirements(schema: unknown, path = "schema") {
@@ -49,8 +47,6 @@ function assertStrictObjectRequirements(schema: unknown, path = "schema") {
 test("general response formats are valid for OpenAI strict JSON Schema", () => {
   for (const format of [
     EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT,
-    REPAIR_REQUIREMENT_RULE_RESPONSE_FORMAT,
-    REPAIR_REQUIREMENT_RULES_RESPONSE_FORMAT,
     DOCUMENT_CONTENT_RESPONSE_FORMAT,
       HEALTHCHECK_RESPONSE_FORMAT,
   ]) {

@@ -1,9 +1,13 @@
 // Resolves project-scoped run start commands into full pipeline request inputs.
 import {
+  createRequirementBaselineSnapshot,
+  requirementBaselineSchema,
+  requirementRulesSchema,
   buildAcceptedRequirementSnapshot,
   buildFeasibilityImplementationFingerprint,
   readFeasibilityBusinessFlowArtifact,
   designInputFingerprint,
+  designDependencies,
   normalizeSnapshotFingerprint,
   normalizeDesignInputFingerprint,
   snapshotInputFingerprint,
@@ -49,7 +53,7 @@ export type LoadProjectWorkspaceForRun = (
 ) => Promise<ProjectWorkspaceForRun | Record<string, unknown> | null | undefined>;
 
 type InputResolution<T> =
-  | { ok: true; input: T }
+  | { ok: true; input: T; workspaceState?: Record<string, unknown> }
   | { ok: false; statusCode: number; body: ApiErrorResponse };
 
 type ProjectGenerationPreflightKind =
@@ -101,18 +105,21 @@ function arrayValue(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+// Same contract as buildAcceptedRequirementSnapshot: every rule counts as generated.
 function acceptedFeasibilityRules(state: Record<string, unknown>) {
-  const rules = arrayValue(state.rules);
-  const baseline = recordValue(state.requirementBaseline);
-  const requirements = arrayValue(baseline.requirements);
-  if (requirements.length === 0) return rules;
-  const acceptedIds = new Set(
-    requirements
-      .filter((item) => recordValue(item).status === "accepted")
-      .map((item) => stringValue(recordValue(item).sourceRuleId))
-      .filter(Boolean),
-  );
-  return rules.filter((rule) => acceptedIds.has(stringValue(recordValue(rule).id)));
+  return arrayValue(state.rules);
+}
+
+// Old workspaces and external clients can still supply an outdated baseline.
+// Rebuild only the run input; retain the loaded state unchanged for race guards.
+function currentRequirementBaseline(state: Record<string, unknown>) {
+  const previous = requirementBaselineSchema.safeParse(state.requirementBaseline);
+  return createRequirementBaselineSnapshot({
+    runId: previous.success ? previous.data.runId : "workspace-rules",
+    requirementText: stringValue(state.requirementText),
+    rules: requirementRulesSchema.parse(state.rules ?? []),
+    previousBaseline: previous.success ? previous.data : null,
+  });
 }
 
 function stringValue(value: unknown) {
@@ -553,9 +560,6 @@ function rejectProjectGenerationPreflight(input: {
   state: Record<string, unknown>;
   designDiagrams?: DesignDiagramKind[];
 }): InputResolution<never> | null {
-  const blockedRequirementReviews =
-    rejectBlockingRequirementReviewsForProjectCommand(input.state);
-  if (blockedRequirementReviews) return blockedRequirementReviews;
 
   const requirementSourceMissing =
     stringValue(input.state.requirementText).trim().length === 0;
@@ -636,6 +640,24 @@ function rejectProjectGenerationPreflight(input: {
       state: input.state,
     });
     if (staleRequirements) return staleRequirements;
+    const existing = Object.entries(recordValue(input.state.designModels));
+    const plan = resolveDesignCommandTargets({ selectedDiagrams: input.designDiagrams ?? [], existingDesignModels: existing.map(([, model]) => model) });
+    const generated = new Set<string>(plan.selectedDiagrams);
+    const consumed = new Set<string>();
+    const visit = (kind: string) => {
+      for (const dependency of designDependencies[kind] ?? []) {
+        if (consumed.has(dependency)) continue;
+        consumed.add(dependency); visit(dependency);
+      }
+    };
+    plan.selectedDiagrams.forEach(visit);
+    const active = designInputFingerprint(presentRecordValues(input.state.models), arrayValue(input.state.requirementModelTraceability));
+    const stored = stringRecordValue(input.state.designInputFingerprints);
+    const stale = existing.filter(entry => {
+      const kind = designDiagramKindFromWorkspaceRecord(entry[1]);
+      return kind && consumed.has(kind) && !generated.has(kind) && recordValueForAnyKey(stored, modelKeysForWorkspaceRecord(entry)) !== active;
+    }).map(modelKeyForWorkspaceRecord);
+    if (stale.length) return runInputResolutionError(409, "DESIGN_MODELS_STALE", { details: { modelIds: stale } });
   } else {
     const staleDiagrams = staleRequirementModelDiagrams({
       diagrams: requirementModelDiagramsFromState(input.state),
@@ -719,65 +741,6 @@ function rejectProjectGenerationPreflight(input: {
   }
 
   return null;
-}
-
-const REVIEWABLE_REQUIREMENT_FIELDS = [
-  "actor",
-  "subject",
-  "action",
-  "object",
-  "condition",
-  "outcome",
-  "acceptanceCriteria",
-];
-
-function requirementHasPendingReviewField(requirement: Record<string, unknown>) {
-  const fieldProvenance = recordValue(requirement.fieldProvenance);
-  return REVIEWABLE_REQUIREMENT_FIELDS.some(
-    (field) => recordValue(fieldProvenance[field]).status === "pending-review",
-  );
-}
-
-function blockingRequirementReviewRuleIds(state: Record<string, unknown>) {
-  const baseline = recordValue(state.requirementBaseline);
-  const requirements = arrayValue(baseline.requirements);
-  if (requirements.length === 0) return [];
-  const candidates = recordValue(state.requirementReviewCandidates);
-  const blockedRuleIds = new Set<string>();
-  for (const requirementValue of requirements) {
-    const requirement = recordValue(requirementValue);
-    const sourceRuleId = stringValue(requirement.sourceRuleId);
-    if (!sourceRuleId) continue;
-    const candidateValue = candidates[sourceRuleId];
-    const hasCandidate = isPlainRecord(candidateValue);
-    if (!hasCandidate) continue;
-    const candidate = recordValue(candidateValue);
-    const candidatePending =
-      candidate.status === "pending" || candidate.status === "failed";
-    if (
-      candidatePending ||
-      requirement.status !== "accepted" ||
-      requirementHasPendingReviewField(requirement)
-    ) {
-      blockedRuleIds.add(sourceRuleId);
-    }
-  }
-  return Array.from(blockedRuleIds);
-}
-
-function rejectBlockingRequirementReviewsForProjectCommand(
-  state: Record<string, unknown>,
-): InputResolution<never> | null {
-  const blockedRuleIds = blockingRequirementReviewRuleIds(state);
-  if (blockedRuleIds.length === 0) return null;
-  return runInputResolutionError(
-    409,
-    "REQUIREMENT_REVIEWS_PENDING",
-    {
-      params: { count: blockedRuleIds.length },
-      details: { ruleIds: blockedRuleIds },
-    },
-  );
 }
 
 function compactRunInputText(value: unknown) {
@@ -879,7 +842,7 @@ export async function resolveRequirementRunInput(
   const requirementText = rulesOnly && command.requirementText !== undefined
     ? command.requirementText
     : stringValue(workspace.input.state.requirementText);
-  const preflight = rejectProjectGenerationPreflight({
+  const preflight = rulesOnly && command.attachments?.length ? null : rejectProjectGenerationPreflight({
     kind: "requirements",
     // A rules-only run commits the submitted draft after success. The saved
     // workspace can be empty before that first extraction.
@@ -903,14 +866,18 @@ export async function resolveRequirementRunInput(
   }
   return {
     ok: true,
+    workspaceState: structuredClone(workspace.input.state),
     input: startRunRequestSchema.parse({
       projectId: workspace.input.projectId,
       requirementText,
+      attachments: rulesOnly ? command.attachments : undefined,
+      reasoning: command.reasoning,
       selectedDiagrams: requirementTargets.selectedDiagrams,
       requestedDiagrams: requirementTargets.requestedDiagrams,
       dependencyDiagrams: requirementTargets.dependencyDiagrams,
       // A rules-only run must not carry old rules into failed snapshots.
       rules: rulesOnly ? [] : requirementSource.rules,
+      requirementBaseline: currentRequirementBaseline({ ...workspace.input.state, requirementText }),
       contextModels,
       contextRequirementModelTraceability: arrayValue(
         workspace.input.state.requirementModelTraceability,
@@ -930,7 +897,30 @@ export async function resolveDesignRunInput(
   if (legacy.success) {
     const filtered = filterReplacingDesignContext(legacy.data);
     const invalid = rejectInvalidModelStructures(filtered.requirementModels, "requirements") ?? rejectInvalidModelStructures(filtered.existingDesignModels, "design");
-    return invalid ?? { ok: true, input: filtered };
+    if (invalid) return invalid;
+    if (loadProjectWorkspace && (metadata?.projectId || filtered.projectId)) {
+      const workspace = await loadWorkspaceStateForCommand({ commandProjectId: filtered.projectId ?? metadata!.projectId!, metadata, loadProjectWorkspace });
+      if (!workspace.ok) return workspace;
+      // Complete legacy requests can seed a project with explicitly supplied
+      // sources. Freshness is enforceable once saved requirement models exist.
+      if (!presentRecordValues(workspace.input.state.models).length) {
+        return { ok: true, input: filtered, workspaceState: structuredClone(workspace.input.state) };
+      }
+      const preflight = rejectProjectGenerationPreflight({ kind: "design", state: workspace.input.state, designDiagrams: filtered.selectedDiagrams });
+      if (preflight) return preflight;
+      const currentRequirements = presentRecordValues(workspace.input.state.models);
+      if (designInputFingerprint(filtered.requirementModels, filtered.requirementModelTraceability) !== designInputFingerprint(currentRequirements, arrayValue(workspace.input.state.requirementModelTraceability))) {
+        return runInputResolutionError(409, "REQUIREMENT_MODELS_STALE");
+      }
+      const currentDesign = recordValue(workspace.input.state.designModels);
+      if (filtered.existingDesignModels.some(model => {
+        const current = currentDesign[model.modelId ?? model.diagramKind] ?? Object.values(currentDesign).find(value => recordValue(value).modelId === model.modelId && recordValue(value).diagramKind === model.diagramKind);
+        return snapshotInputFingerprint(model) !== snapshotInputFingerprint(current ?? null);
+      })) return runInputResolutionError(409, "DESIGN_MODELS_STALE");
+      filtered.requirementBaseline = currentRequirementBaseline(workspace.input.state);
+      return { ok: true, input: filtered, workspaceState: structuredClone(workspace.input.state) };
+    }
+    return { ok: true, input: filtered };
   }
 
   const command: StartDesignRunCommand = startDesignRunCommandSchema.parse(body);
@@ -957,7 +947,7 @@ export async function resolveDesignRunInput(
   if (preflight) return preflight;
   const input = filterReplacingDesignContext(startDesignRunRequestSchema.parse({
     projectId: workspace.input.projectId,
-    requirementBaseline: workspace.input.state.requirementBaseline,
+    requirementBaseline: currentRequirementBaseline(workspace.input.state),
     requirementModels,
     requirementModelTraceability: arrayValue(workspace.input.state.requirementModelTraceability),
     selectedDiagrams: designTargets.selectedDiagrams,
@@ -966,6 +956,7 @@ export async function resolveDesignRunInput(
     existingDesignModelTraceability: arrayValue(workspace.input.state.designModelTraceability),
     existingDesignPlantUml: designPlantUmlArtifactsFromWorkspace(workspace.input.state),
     existingDesignSvgArtifacts: presentRecordValues(workspace.input.state.designSvgArtifacts),
+    reasoning: command.reasoning,
     providerSettings: command.providerSettings,
   }));
   const invalidDesign = rejectInvalidModelStructures(input.existingDesignModels, "design");
@@ -973,6 +964,7 @@ export async function resolveDesignRunInput(
   return {
     ok: true,
     input,
+    workspaceState: structuredClone(workspace.input.state),
   };
 }
 
@@ -1029,11 +1021,12 @@ export async function resolveDocumentRunInput(
   const legacy = startDocumentRunRequestSchema.safeParse(body);
   if (legacy.success && legacy.data.documentKind !== "feasibilityStudy") {
     const invalid = rejectInvalidModelStructures(legacy.data.requirementModels ?? [], "requirements") ?? rejectInvalidModelStructures(legacy.data.designModels ?? [], "design");
-    return invalid ?? { ok: true, input: legacy.data };
+    return invalid ?? { ok: true, input: { ...legacy.data, requirementBaseline: currentRequirementBaseline(legacy.data) } };
   }
 
   // A full legacy request must not bypass feasibility dependencies or replace saved report inputs.
   const command: StartDocumentRunCommand = legacy.success ? {
+    reasoning: legacy.data.reasoning,
     projectId: legacy.data.projectId,
     documentKind: legacy.data.documentKind,
     providerSettings: legacy.data.providerSettings,
@@ -1053,6 +1046,7 @@ export async function resolveDocumentRunInput(
   if (preflight) return preflight;
   return {
     ok: true,
+    workspaceState: structuredClone(workspace.input.state),
     input: startDocumentRunRequestSchema.parse({
       projectId: workspace.input.projectId,
       documentKind: command.documentKind,
@@ -1061,7 +1055,7 @@ export async function resolveDocumentRunInput(
         (command.documentKind === "feasibilityStudy" ? "未提供/待确认" : ""),
       requirementBaseline: command.documentKind === "feasibilityStudy"
         ? buildAcceptedRequirementSnapshot(workspace.input.state.rules ?? [], workspace.input.state.requirementBaseline ?? null).baseline
-        : workspace.input.state.requirementBaseline ?? null,
+        : currentRequirementBaseline(workspace.input.state),
       rules: command.documentKind === "feasibilityStudy"
         ? acceptedFeasibilityRules(workspace.input.state)
         : arrayValue(workspace.input.state.rules),
@@ -1113,6 +1107,7 @@ export async function resolveDocumentRunInput(
       feasibilityInputs: workspace.input.state.feasibilityInputs ?? {},
       providerSettings: command.providerSettings,
       useAiText: command.useAiText,
+      reasoning: command.reasoning,
       documentStyle: command.documentStyle,
     }),
   };

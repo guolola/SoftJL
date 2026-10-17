@@ -7,6 +7,7 @@ import { createBusinessFlowArtifact } from "../../test-fixtures/feasibility/busi
 import { createRunRecordStore } from "../../runs/records/run-record-store.js";
 import { registerFeasibilityRoutes } from "./register-feasibility-routes.js";
 import { librarySeatDemoFixture } from "../../runs/demo/fixtures/library-seat-demo-fixture.js";
+import { ModelCatalog } from "../../provider-configs/model-catalog.js";
 
 function acceptedBaseline(condition: string | null = null) {
   return {
@@ -110,12 +111,18 @@ function registerTestRoutes(input: {
   outputs?: string[];
   state?: Record<string, unknown>;
   projectName?: string;
+  modelCatalog?: ModelCatalog;
+  onReasoning?: (reasoning: boolean | undefined) => void;
   renderClient?: Parameters<typeof registerFeasibilityRoutes>[0]["renderClient"];
   onSync?: (record: Parameters<NonNullable<Parameters<typeof registerFeasibilityRoutes>[0]["syncProjectWorkspace"]>>[0]) => Promise<void>;
 }) {
   const runs = createRunRecordStore();
   const outputs = [...(input.outputs ?? [contextOutput, businessFlowOutput, implementationOutput])];
   const prompts: string[] = [];
+  const onReasoning = input.onReasoning;
+  // Flow tests use a known large-capacity fake model; fallback/overflow is tested separately.
+  const catalog = input.modelCatalog ?? new ModelCatalog("unused-test-catalog.json");
+  if (!input.modelCatalog) catalog.resolve = () => ({ context: 1_000_000, output: 16384, source: "admin", matchedId: "test-model", updatedAt: null });
   const state = input.state ?? {
     name: "维修预约系统",
     rules: [{ id: "R9", category: "功能需求", text: "完成维护后计算总成本。", relatedDiagrams: ["context"] }],
@@ -127,11 +134,13 @@ function registerTestRoutes(input: {
     runs,
     renderClient: input.renderClient ?? (async (artifact) => ({ svg: `<svg>${artifact.diagramKind}</svg>`, renderMeta: { engine: "plantuml", generatedAt: "2026-07-19T00:00:00.000Z", sourceLength: artifact.source.length, durationMs: 1 } })),
     llmTransport: { async *streamChatCompletion(input) {
+      onReasoning?.(input.reasoning);
       const current = input.messages.at(-1)?.content;
       if (typeof current === "string" && /^核对 feasibility\.[a-z]+ 的结构与业务内容。/.test(current)) { yield '{"passed":true,"issues":[],"findings":[]}'; return; }
       prompts.push(input.messages.map((message) => message.content).join("\n")); yield outputs.shift() ?? "{}";
     } },
     providerConfigs: providerConfigs() as never,
+    modelCatalog: catalog,
     defaultSseAllowOrigin: "http://localhost:5173",
     resolveUserId: async (request) => request.headers.authorization === "Bearer test" ? "user-1" : null,
     canUpdateProject: async () => true,
@@ -141,6 +150,25 @@ function registerTestRoutes(input: {
   });
   return { runs, state, prompts };
 }
+
+for (const reasoning of [true, false]) for (const supported of [true, false]) test(`feasibility applies reasoning=${reasoning} only when supported=${supported}`, async t => {
+  const app = Fastify();
+  t.after(() => app.close());
+  const catalog = new ModelCatalog("unused-model-catalog.json");
+  catalog.resolve = () => ({ context: 128000, output: 8192, source: "modelpedia", matchedId: "test-model", updatedAt: null,
+    capabilities: { vision: false, reasoning: supported, toolCall: true } });
+  const calls: (boolean | undefined)[] = [];
+  registerTestRoutes({ app, modelCatalog: catalog, onReasoning: value => calls.push(value), outputs: [contextOutput] });
+  const response = await app.inject({ method: "POST", url: "/api/feasibility-runs", headers: { authorization: "Bearer test" }, payload: {
+    projectId: "project-1", selectedArtifacts: ["context"], reasoning, providerSettings: { providerConfigId: "provider-1", model: "test-model" },
+  } });
+  assert.equal(response.statusCode, 202, response.body);
+  const snapshot = await waitForTerminal(app, response.json().runId);
+  assert.equal(snapshot.status, "completed", JSON.stringify(snapshot.error));
+  assert.equal(snapshot.reasoning, supported ? reasoning : undefined);
+  assert.ok(calls.length > 0);
+  assert.ok(calls.every(value => value === (supported ? reasoning : undefined)));
+});
 
 test("real feasibility rejects absent models and demo placeholders before creating runs", async (t) => {
   const app = Fastify();
@@ -304,8 +332,8 @@ test("rejects missing or stale business flow and reuses both current diagrams as
   assert.equal(snapshot.status, "completed", JSON.stringify(snapshot.error));
   assert.equal(fixture.prompts.length, 1);
   assert.match(fixture.prompts[0]!, /"businessFlow"/);
-  assert.match(fixture.prompts[0]!, /"actorOrLane": "system"/);
-  assert.match(fixture.prompts[0]!, /"targetId": "process"/);
+  assert.match(fixture.prompts[0]!, /"actorOrLane":\s*"system"/);
+  assert.match(fixture.prompts[0]!, /"targetId":\s*"process"/);
   assert.deepEqual(snapshot.businessFlow, flow);
   await app.close();
 });
@@ -464,6 +492,9 @@ test("rejects feasibility render failures without requesting a source rewrite", 
 test("feasibility preserves business boundary questions and implementation receives the unchanged flow", async () => {
   const app = Fastify();
   const baseline = acceptedBaseline("数量>=10");
+  // The confirmed boundary belongs to this exact rule version, not an older
+  // baseline whose source text predates the added condition.
+  baseline.requirements[0]!.sourceFragment = "数量>=10时计算总成本";
   baseline.qualityReport.status = "passed";
   baseline.requirements[0]!.fieldProvenance = { condition: { source: "manual", status: "accepted" } };
   const flow = JSON.parse(businessFlowOutput);

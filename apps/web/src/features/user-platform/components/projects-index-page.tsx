@@ -10,7 +10,9 @@ import {
   Clock3,
   CircleHelp,
   FileText,
+  GitBranch,
   Lock,
+  MessagesSquare,
   Plus,
   Search,
   UserRound,
@@ -29,8 +31,9 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../../shared/ui/input-group";
 import { Label } from "../../../shared/ui/label";
 import { SelectControl } from "../../../shared/ui/select";
-import { EmptyState, PageContainer, PageHeader } from "../../../shared/template/layout/page";
+import { EmptyState, PageContainer, PageHeader, TablePagination } from "../../../shared/template/layout/page";
 import { cn } from "../../../shared/ui/utils";
+import { categoryChipTone } from "../../../shared/ui/category-tones";
 import { i18n as appI18n } from "../../../shared/i18n";
 import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
 import {
@@ -78,6 +81,8 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState("all");
   const [sort, setSort] = useState("generated");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const createDialogLocationRef = useRef<string | null>(null);
 
@@ -93,6 +98,7 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
         if (!active) return;
         setListError(false);
         setProjectRecords(response.projects);
+        setPage(1);
         setStatusKind(response.projects.length === 0 ? "empty" : "loaded");
         setStatusErrorMessage("");
       })
@@ -178,6 +184,11 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
         return right.updatedAt.localeCompare(left.updatedAt);
       });
   }, [locale, projects, scope, search, sort]);
+
+  // Paginate only after filtering and sorting so every project remains searchable.
+  const pageCount = Math.max(1, Math.ceil(visibleProjects.length / pageSize));
+  const currentPage = Math.min(Math.max(1, page), pageCount);
+  const pagedProjects = visibleProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const openCreateProject = () => {
     if (authRequired || listError) {
@@ -296,7 +307,7 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
                       aria-label={t(option.labelKey)}
                       aria-pressed={selected}
                       className="h-8 min-w-0 px-2 text-sm md:shrink-0 md:px-3"
-                      onClick={() => setScope(option.value)}
+                      onClick={() => { setScope(option.value); setPage(1); }}
                     >
                       <span className="md:hidden">{t(option.shortLabelKey)}</span>
                       <span className="hidden md:inline">{t(option.labelKey)}</span>
@@ -316,13 +327,13 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
                     id="projects-search"
                     placeholder={t("projects.searchPlaceholder")}
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => { setSearch(event.target.value); setPage(1); }}
                   />
                 </InputGroup>
                 <SelectControl
                   aria-label={t("projects.sortAria")}
                   value={sort}
-                  onValueChange={setSort}
+                  onValueChange={(value) => { setSort(value); setPage(1); }}
                   className="w-28 shrink-0 md:w-fit"
                   options={[
                     { value: "recent", label: t("projects.sort.recent") },
@@ -350,7 +361,7 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
             data-mobile-card-density="two-column"
             className="grid grid-cols-2 gap-3 md:gap-5 xl:grid-cols-3 xl:gap-6"
           >
-            {visibleProjects.map((project) => (
+            {pagedProjects.map((project) => (
               <PerspectiveCard
                 key={project.id}
                 data-background-key={project.background.key}
@@ -370,25 +381,23 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
                   <div className="absolute inset-0 bg-gradient-to-t from-background/35 to-transparent" />
                 </div>
                 <div className="relative z-10 flex flex-1 flex-col gap-2 p-4 md:p-5">
-                  <div className="flex min-w-0 items-start justify-between gap-2 md:gap-3">
-                    <h2 className="line-clamp-2 min-w-0 text-[15px] font-semibold leading-5 text-foreground md:text-xl md:leading-7">
+                  <div className="flex min-w-0 flex-col items-start justify-between gap-2 sm:flex-row md:gap-3">
+                    <h2 className="line-clamp-2 min-w-0 w-full flex-1 text-[15px] font-semibold leading-5 text-foreground sm:w-auto md:text-xl md:leading-7">
                       {project.name}
                     </h2>
-                    <Badge
-                      variant={project.status === "archived" ? "outline" : "secondary"}
-                      className={
-                        project.status === "archived"
-                          ? "shrink-0 px-1.5 py-0.5 text-[10px] leading-4 md:px-2 md:py-1 md:text-xs"
-                          : "shrink-0 px-1.5 py-0.5 text-[10px] leading-4 md:px-2 md:py-1 md:text-xs"
-                      }
-                    >
-                      {project.statusLabel}
-                    </Badge>
+                    <span className={cn(
+                      "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium md:px-2.5 md:text-sm",
+                      categoryChipTone(project.projectMode === "standard" ? 2 : 0),
+                    )}>
+                      {project.projectMode === "standard" ? <MessagesSquare className="size-4" aria-hidden="true" /> : <GitBranch className="size-4" aria-hidden="true" />}
+                      {t(`projects.createForm.mode.${project.projectMode === "standard" ? "standard" : "professional"}`)}
+                    </span>
                   </div>
-                  <p className="line-clamp-1 min-h-5 min-w-0 max-w-full overflow-hidden text-[12px] leading-5 text-muted-foreground md:line-clamp-2 md:min-h-10 md:text-sm md:leading-5">
+                  <p title={project.description} className="min-h-5 min-w-0 max-w-full truncate text-xs leading-5 text-muted-foreground md:text-sm">
                     {project.description}
                   </p>
                   <div className="grid gap-1 pt-0.5 text-[12px] leading-4 text-muted-foreground md:gap-2 md:pt-2 md:text-sm md:leading-5">
+                    {project.status === "archived" && <Badge variant="outline" className="w-fit">{project.statusLabel}</Badge>}
                     <span className="flex min-w-0 items-center gap-1.5 md:gap-2">
                       <UserRound className="size-3.5 shrink-0" />
                       <span className="min-w-0 truncate">
@@ -460,6 +469,20 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
               </PerspectiveCard>
             ))}
           </div>
+        )}
+
+        {!authRequired && !forbidden && !listError && visibleProjects.length > 0 && (
+          <TablePagination
+            total={visibleProjects.length}
+            page={currentPage}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            pageSizeOptions={[12, 24, 48]}
+            onPageChange={(value) => setPage(Math.min(Math.max(1, value), pageCount))}
+            onPageSizeChange={(value) => { setPageSize(value); setPage(1); }}
+            itemLabel={t("projects.pagination.itemLabel")}
+            className="px-0"
+          />
         )}
 
         {!authRequired && !forbidden && !listError && projects.length === 0 && (

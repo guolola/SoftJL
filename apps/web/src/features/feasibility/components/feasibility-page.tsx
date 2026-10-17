@@ -3,14 +3,12 @@ import {
   PageContainer,
   PageHeader,
 } from "../../../shared/template/layout/page";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Loader2,
   Network,
-  RefreshCw,
   Wrench,
-  Wand2,
 } from "lucide-react";
 import {
   contextDiagramSpecSchema,
@@ -21,8 +19,6 @@ import {
   type FeasibilityInputs,
 } from "@uml-platform/contracts";
 import { useWorkspaceRepository } from "../../../services/workspace-repository";
-import type { WorkspaceRecord } from "../../../entities/workspace/model";
-import { Button } from "../../../shared/ui/button";
 import { Badge } from "../../../shared/ui/badge";
 import {
   ContextDiagramView,
@@ -35,25 +31,20 @@ import { buildContextTraceability } from "../lib/context-traceability";
 import { useWorkspaceSession } from "../../workspace-session/state";
 import { ImplementationPlanDashboard } from "./implementation-plan-dashboard";
 import { ModelBentoCard } from "../../workspace-shell/components/model-bento-card";
+import { TargetSelectionActions } from "../../workspace-shell/components/target-selection-actions";
 import { MobileCompactGrid } from "../../workspace-shell/components/mobile-density";
 import { generationCardStatus } from "../../workspace-shell/lib/model-card-status";
-import { ModelPicker } from "../../../shared/ui/model-picker";
+import { GenerationModelControls } from "../../workspace-session/components/generation-model-controls";
+import { ModelingGenerationButton } from "../../../shared/ui/modeling-generation-button";
 import {
   USER_SETTINGS_CHANGED_EVENT,
   loadUserSettings,
-  patchUserSettings,
 } from "../../../shared/lib/user-settings";
-import { generationModelBlockedReason as readGenerationModelBlockedReason } from "../../../shared/lib/generation-model";
-import { createStartFeasibilityRunInput } from "../../../services/workspace-repository/start-inputs";
 import { ApiClientError } from "../../../services/api-client";
-import { localizeApiFailure } from "../../../shared/i18n/api-errors";
 import {
   FeedbackReopenButton,
-  useFeedbackDialog,
   type FeedbackDialogState,
 } from "../../../shared/ui/feedback-dialog";
-import { generationResultFeedback } from "../../workspace-session/components/generation-dialogs";
-import { failedRunResultDialog } from "../../workspace-session/lib/generation-dialog-actions";
 import { useWorkspaceShell } from "../../workspace-shell/state";
 import { BusinessFlowView } from "./business-flow-view";
 
@@ -68,10 +59,6 @@ export type FeasibilityView =
   | "elements"
   | "relations"
   | "implementation";
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 type ArtifactKind = FeasibilityArtifactKind;
 
@@ -90,7 +77,6 @@ export function FeasibilityPage({
 }) {
   const { t } = useTranslation();
   const repository = useWorkspaceRepository();
-  const { openFeedback } = useFeedbackDialog();
   const { openSystemRequirements, openFeasibilityHome } = useWorkspaceShell();
   const {
     syncFeasibilityArtifacts,
@@ -98,26 +84,18 @@ export function FeasibilityPage({
     setFeasibilityContextSaveStatus,
     canUpdateWorkspace,
     canStartRuns,
-    generationExecutionMode,
     generationModelBlockedReason,
     workspacePermissionReason,
-    beginFeasibilityGenerationTask,
-    attachFeasibilityGenerationRun,
-    updateFeasibilityGenerationTask,
-    failFeasibilityGenerationTask,
+    feasibilityGeneration,
   } = useWorkspaceSession();
-  const [workspace, setWorkspace] = useState<WorkspaceRecord | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [activeArtifacts, setActiveArtifacts] = useState<ArtifactKind[]>([]);
-  const [failedArtifacts, setFailedArtifacts] = useState<ArtifactKind[]>([]);
-  const [generationMessage, setGenerationMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [lastFailureFeedback, setLastFailureFeedback] =
-    useState<FeedbackDialogState | null>(null);
-  const [selectedArtifacts, setSelectedArtifacts] = useState<ArtifactKind[]>(
+  const { workspace, loading, generating, activeArtifacts, failedArtifacts,
+    generationMessage, setGenerationMessage, error, setError, lastFailureFeedback, reload, generate } = feasibilityGeneration;
+  const [selectedArtifactChoices, setSelectedArtifacts] = useState<ArtifactKind[]>(
     () => initialSelectedArtifacts ?? [],
   );
+  const selectedArtifacts = workspace
+    ? includeFeasibilityDependencies(selectedArtifactChoices, feasibilityArtifactState(workspace))
+    : selectedArtifactChoices;
   const [defaultModel, setDefaultModel] = useState(() => loadUserSettings().defaultModel);
   const appliedNavigationSelection = useRef<FeasibilityArtifactKind[] | undefined>(undefined);
 
@@ -134,150 +112,9 @@ export function FeasibilityPage({
     return () => window.removeEventListener(USER_SETTINGS_CHANGED_EVENT, syncSettings);
   }, []);
 
-  const reload = useCallback(async () => {
-    const next = await repository.loadWorkspace();
-    setWorkspace(next);
-    setSelectedArtifacts((current) => includeFeasibilityDependencies(current, feasibilityArtifactState(next)));
-    syncFeasibilityArtifacts(next);
-    setLoading(false);
-  }, [repository, syncFeasibilityArtifacts]);
-
   useEffect(() => {
-    void reload().catch((cause) => {
-      setError(cause instanceof ApiClientError ? cause.message : t("feasibility.errors.load"));
-      setLoading(false);
-    });
-  }, [reload, t]);
-
-  const generate = async (selectedArtifacts: ArtifactKind[]) => {
-    // Mirror the UI prerequisites for every entry point, including detail-view regeneration.
-    if (generating || !workspace) return;
-    const blockedReason = !canUpdateWorkspace || !canStartRuns
-      ? workspacePermissionReason ?? t("feasibility.runPermissionDenied")
-      : acceptedFeasibilityRules(workspace).length === 0 ? t("feasibility.prerequisiteRules")
-        : readGenerationModelBlockedReason(generationExecutionMode) ??
-          (selectedArtifacts.length === 0 ? t("feasibility.noArtifactSelected") : null);
-    if (blockedReason) { setError(blockedReason); return; }
-    if (selectedArtifacts.includes("implementation") &&
-      feasibilityArtifactState(workspace).missingDependencies.some((kind) => !selectedArtifacts.includes(kind))) {
-      setError(t("feasibility.dependencies.required"));
-      return;
-    }
-    if (!repository.startFeasibilityRun || !repository.getFeasibilityRunSnapshot) {
-      const message = t("feasibility.repositoryUnsupported");
-      setError(message);
-      const feedback: FeedbackDialogState = {
-        dedupeKey: "feasibility:unsupported",
-        tone: "destructive",
-        title: t("feasibility.feedback.failureTitle"),
-        message,
-      };
-      setLastFailureFeedback(feedback);
-      openFeedback(feedback);
-      return;
-    }
-    setGenerating(true);
-    setActiveArtifacts(selectedArtifacts);
-    setFailedArtifacts((current) => current.filter((artifact) => !selectedArtifacts.includes(artifact)));
-    setError(null);
-    let currentArtifact: ArtifactKind = selectedArtifacts[0] ?? "context";
-    let clientTaskId: string | null = null;
-    let runId: string | null = null;
-    let runFailureMessage: string | null = null;
-    try {
-      const input = createStartFeasibilityRunInput(selectedArtifacts, generationExecutionMode);
-      clientTaskId = beginFeasibilityGenerationTask({
-        providerModel: input.providerSettings.model,
-        startedAtMs: Date.now(),
-      });
-      ({ runId } = await repository.startFeasibilityRun(input));
-      attachFeasibilityGenerationRun(
-        clientTaskId,
-        runId,
-        input.providerSettings.model,
-      );
-      if (repository.subscribeToFeasibilityRun) {
-        await repository.subscribeToFeasibilityRun(runId, (event) => {
-          if (clientTaskId) updateFeasibilityGenerationTask(clientTaskId, event);
-          if (event.type === "stage_started" || event.type === "stage_progress") {
-            if (event.stage === "generate_implementation") currentArtifact = "implementation";
-            else if (event.stage === "generate_business_flow" || event.stage === "render_business_flow") currentArtifact = "business-flow";
-            else if (event.stage === "generate_context" || event.stage === "render_context") currentArtifact = "context";
-            setGenerationMessage(
-              currentArtifact === "business-flow"
-                ? t("feasibility.generation.businessFlow")
-                : event.stage === "generate_context"
-                ? t("feasibility.generation.context")
-                : event.stage === "render_context"
-                  ? t("feasibility.generation.rendering")
-                  : event.stage === "generate_implementation"
-                    ? t("feasibility.generation.implementation")
-                    : t("feasibility.generation.waiting"),
-            );
-          }
-          if (event.type === "failed") {
-            runFailureMessage = localizeApiFailure({ error: event.error }, 500);
-            setError(runFailureMessage);
-          }
-        });
-        if (runFailureMessage) throw new Error(runFailureMessage);
-      } else {
-        while (true) {
-          const snapshot = await repository.getFeasibilityRunSnapshot(runId);
-          if (snapshot.currentStage === "generate_implementation") currentArtifact = "implementation";
-          else if (snapshot.currentStage === "generate_business_flow" || snapshot.currentStage === "render_business_flow") currentArtifact = "business-flow";
-          else if (snapshot.currentStage === "generate_context" || snapshot.currentStage === "render_context") currentArtifact = "context";
-          if (snapshot.status === "completed") break;
-          if (snapshot.status === "failed" || snapshot.status === "cancelled") {
-            runFailureMessage = snapshot.status === "cancelled"
-              ? t("feasibility.errors.cancelled")
-              : localizeApiFailure(snapshot.error ? { error: snapshot.error } : null, 500);
-            throw new Error(runFailureMessage);
-          }
-          await sleep(700);
-        }
-      }
-      await sleep(200);
-      await reload();
-      window.dispatchEvent(
-        new CustomEvent("uml-generation-completed", {
-          detail: { kind: "feasibility", selectedArtifacts },
-        }),
-      );
-      setGenerationMessage(t("feasibility.generation.completed"));
-      setLastFailureFeedback(null);
-      openFeedback({
-        dedupeKey: "feasibility:generation:completed",
-        revision: runId,
-        tone: "success",
-        title: t("feasibility.feedback.successTitle"),
-        message: t("feasibility.feedback.successMessage", {
-          count: selectedArtifacts.length,
-        }),
-      });
-    } catch (cause) {
-      const message = runFailureMessage
-        ?? (cause instanceof ApiClientError ? cause.message : t("feasibility.errors.generate"));
-      if (clientTaskId) failFeasibilityGenerationTask(clientTaskId, message);
-      setFailedArtifacts((current) => Array.from(new Set([...current, currentArtifact])));
-      await reload().catch(() => undefined);
-      setGenerationMessage(null);
-      setError(message);
-      const feedback = generationResultFeedback(
-        failedRunResultDialog({
-          clientTaskId,
-          message,
-          runId,
-          stageLabel: t("feasibility.title"),
-        }),
-      );
-      setLastFailureFeedback(feedback);
-      openFeedback(feedback);
-    } finally {
-      setGenerating(false);
-      setActiveArtifacts([]);
-    }
-  };
+    if (workspace) setSelectedArtifacts((current) => includeFeasibilityDependencies(current, feasibilityArtifactState(workspace)));
+  }, [workspace]);
 
   const saveContext = async (model: ContextDiagramSpec) => {
     if (!workspace || !repository.renderStructuredModel) return;
@@ -326,7 +163,6 @@ export function FeasibilityPage({
       nextWorkspace.feasibilityImplementationFingerprint = patch.implementationFingerprint;
     }
     await repository.updateFeasibility?.(patch);
-    setWorkspace(nextWorkspace);
     syncFeasibilityArtifacts(nextWorkspace);
     setGenerationMessage(t("feasibility.workspaceSaved"));
   };
@@ -374,20 +210,18 @@ export function FeasibilityPage({
     ? null
     : {
         dedupeKey: "feasibility:source-consistency",
-        revision: `${workspace.rulesVersion}:${crossStageCoverage.unknownReferences.join(",")}:${crossStageCoverage.explicitAssumptions}`,
+        revision: `${workspace.rulesVersion}:${crossStageCoverage.staleArtifacts.join(",")}:${crossStageCoverage.unknownReferences.join(",")}`,
         tone: "warning",
         title: t("feasibility.sourceConsistency.title"),
         message: [
-          t("feasibility.sourceConsistency.coverage", {
-            covered: crossStageCoverage.rows.filter((row) =>
-              row.context || row.implementation || row.requirementModel || row.designModel).length,
-            total: crossStageCoverage.rows.length,
+          crossStageCoverage.staleArtifacts.length > 0 && t("feasibility.sourceConsistency.staleArtifacts", {
+            artifacts: crossStageCoverage.staleArtifacts.map((kind) =>
+              t(`feasibility.artifact.${kind === "business-flow" ? "businessFlow" : kind}`)).join("、"),
           }),
-          t("feasibility.sourceConsistency.assumptions", {
-            count: crossStageCoverage.explicitAssumptions,
+          crossStageCoverage.unknownReferences.length > 0 && t("feasibility.sourceConsistency.unknownReferences", {
+            ids: crossStageCoverage.unknownReferences.join("、"),
           }),
-          t("feasibility.sourceConsistency.disclaimer"),
-        ].join("；"),
+        ].filter(Boolean).join("\n"),
         keepReopenEntry: true,
       };
   const pageFeedbackItems = [
@@ -421,11 +255,6 @@ export function FeasibilityPage({
       return (["context", "business-flow", "implementation"] as const).filter((item) => next.has(item));
     });
   };
-  const updateModel = (model: string) => {
-    setDefaultModel(model);
-    patchUserSettings({ defaultModel: model });
-  };
-
   if (view === "trace") {
     return (
       <TraceabilityMatrixPage
@@ -479,15 +308,14 @@ export function FeasibilityPage({
           headerAction: (
             <div className="flex flex-wrap items-center gap-2">
             {artifactGenerationBlockedReason && <span role="status" className="text-xs text-muted-foreground">{artifactGenerationBlockedReason}</span>}
-            <Button
-              type="button"
+            <GenerationModelControls disabled={generating || !canUpdateWorkspace || !canStartRuns} />
+            <ModelingGenerationButton
+              label={t("common.generate")}
+              busy={generating}
               onClick={() => void generate(["context"])}
               disabled={generating || Boolean(artifactGenerationBlockedReason)}
               title={artifactGenerationBlockedReason ?? undefined}
-            >
-              {generating ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-              {contextExists ? t("feasibility.regenerate") : t("feasibility.generate")}
-            </Button>
+            />
             </div>
           ),
           onSave: saveContext,
@@ -534,31 +362,34 @@ export function FeasibilityPage({
 
         <section className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold">{t("feasibility.targetArtifacts")}</h2>
               <Badge variant="secondary" className="font-mono">
                 {selectedArtifacts.length}/3
               </Badge>
+              <TargetSelectionActions
+                disabled={generating || !canUpdateWorkspace || !canStartRuns}
+                onSelectAll={() => {
+                  if (generating || !canUpdateWorkspace || !canStartRuns) return;
+                  setSelectedArtifacts(["context", "business-flow", "implementation"]);
+                }}
+                onClear={() => {
+                  if (generating || !canUpdateWorkspace || !canStartRuns) return;
+                  setSelectedArtifacts([]);
+                }}
+              />
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {generationMessage && <span aria-live="polite" className="text-xs text-muted-foreground">{generationMessage}</span>}
-            <ModelPicker
-              value={defaultModel}
-              onValueChange={updateModel}
-              align="end"
-              disabled={generating || !canUpdateWorkspace || !canStartRuns}
-              triggerClassName="bg-card"
-            />
-            <Button
-              type="button"
+            <GenerationModelControls disabled={generating || !canUpdateWorkspace || !canStartRuns} />
+            <ModelingGenerationButton
+              label={t("common.generate")}
+              busy={generating}
               onClick={() => void generate(selectedArtifacts)}
               disabled={generating || Boolean(generationBlockedReason)}
               title={generationBlockedReason ?? undefined}
-            >
-              {generating ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
-              {t("feasibility.generateAnalysis")}
-            </Button>
+            />
           </div>
         </section>
 

@@ -24,10 +24,8 @@ import {
   HardDrive,
   Loader2,
   Palette,
-  RefreshCw,
   Search,
   SlidersHorizontal,
-  Sparkles,
 } from "lucide-react";
 import { Badge } from "../../../shared/ui/badge";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
@@ -43,6 +41,8 @@ import { cn } from "../../../shared/ui/utils";
 import { downloadBlobFile } from "../../../shared/lib/download";
 import { useWorkspaceRepository } from "../../../services/workspace-repository";
 import { useWorkspaceSession } from "../../workspace-session/state";
+import { GenerationModelControls } from "../../workspace-session/components/generation-model-controls";
+import { ModelingGenerationButton } from "../../../shared/ui/modeling-generation-button";
 import { useWorkspaceShell } from "../../workspace-shell/state";
 import {
   MobileCompactGrid,
@@ -54,6 +54,8 @@ import { OnlyOfficeEditorHost } from "./only-office-editor-host";
 import { cloneDefaultDocumentStyle } from "../lib/document-style";
 import { useTheme } from "../../../shared/ui/theme-provider";
 import { feasibilityArtifactState } from "../../feasibility/lib/feasibility-freshness";
+import { ModelBentoCard } from "../../workspace-shell/components/model-bento-card";
+import { TargetSelectionActions } from "../../workspace-shell/components/target-selection-actions";
 
 function onlyOfficeUiThemeForProjectTheme(theme: "light" | "dark"): OnlyOfficeUiTheme {
   return theme === "light" ? "theme-classic-light" : "theme-dark";
@@ -64,25 +66,29 @@ const DOCUMENT_DEFINITIONS = [
     kind: "feasibilityStudy",
     title: "可行性研究报告",
     fileName: "可行性研究报告.docx",
-    source: "Generated from Feasibility Analysis",
+    source: "uxReview.feasibilitySource",
+    english: "Feasibility Study Report",
   },
   {
     kind: "requirementsSpec",
     title: "需求规格说明书",
     fileName: "需求规格说明书.docx",
-    source: "Generated from Requirement Model",
+    source: "uxReview.requirementsSource",
+    english: "Software Requirements Specification",
   },
   {
     kind: "softwareDesignSpec",
     title: "软件设计说明书",
     fileName: "软件设计说明书.docx",
-    source: "Generated from Design Model",
+    source: "uxReview.designSource",
+    english: "Software Design Specification",
   },
 ] satisfies Array<{
   kind: DocumentKind;
   title: string;
   fileName: string;
   source: string;
+  english: string;
 }>;
 
 const IDLE_DOCUMENT_GENERATION_STATE: Record<DocumentKind, boolean> = {
@@ -134,14 +140,6 @@ function formatFullUpdatedAt(value: string | null | undefined, locale: string, t
   }).format(date);
 }
 
-function documentStyleSummary(style: DocumentStyleSettings, t: TFunction) {
-  return [
-    t(style.includeTableOfContents ? "documentsPage.style.toc" : "documentsPage.style.noToc"),
-    t(style.autoNumberHeadings ? "documentsPage.style.numbered" : "documentsPage.style.manual"),
-    style.body?.eastAsiaFont ?? t("documentsPage.style.defaultFont"),
-  ];
-}
-
 function localizedDocumentTitle(kind: DocumentKind, t: TFunction) {
   return t(`documentsPage.kinds.${kind}`);
 }
@@ -166,57 +164,6 @@ function feasibilityDisabledReason(
     return t("documentsPage.prerequisites.feasibilityImplementationStale");
   }
   return null;
-}
-
-function TemplatePreview({
-  definition,
-  documentStyle,
-  onOpenStyle,
-}: {
-  definition: (typeof DOCUMENT_DEFINITIONS)[number];
-  documentStyle: DocumentStyleSettings;
-  onOpenStyle: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex h-36 flex-col gap-2 bg-muted/60 px-3 py-3 sm:h-44 sm:px-6 sm:py-5">
-      <div className="flex items-start justify-between gap-3">
-        <Badge variant="secondary" className="text-[10px]">
-          {t("documentsPage.courseTemplate")}
-        </Badge>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="size-9 p-0 sm:h-8 sm:w-auto sm:px-3"
-          onClick={onOpenStyle}
-          title={t("documentsPage.documentStyle")}
-          aria-label={t("documentsPage.documentStyle")}
-        >
-          <Palette className="size-3.5" />
-          <span className="hidden sm:inline">{t("documentsPage.documentStyle")}</span>
-        </Button>
-      </div>
-      <div className="mt-auto space-y-3">
-        <div>
-          <p className="text-xs text-muted-foreground">{t("documentsPage.generationTemplate")}</p>
-          <p className="mt-1 line-clamp-2 text-sm font-semibold text-foreground sm:text-lg">
-            {localizedDocumentTitle(definition.kind, t)}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-1.5 sm:gap-2">
-          {documentStyleSummary(documentStyle, t).map((item) => (
-            <span
-              key={item}
-              className="rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground sm:px-2.5 sm:py-1 sm:text-[11px]"
-            >
-              {item}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function GeneratedDocumentPreview({
@@ -264,50 +211,6 @@ function GeneratedDocumentPreview({
   );
 }
 
-function TemplateDocumentCard({
-  definition,
-  disabledReason,
-  generating,
-  documentStyle,
-  onOpenStyle,
-  onGenerate,
-}: {
-  definition: (typeof DOCUMENT_DEFINITIONS)[number];
-  disabledReason: string | null;
-  generating: boolean;
-  documentStyle: DocumentStyleSettings;
-  onOpenStyle: () => void;
-  onGenerate: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Card as="article" className="gap-0 py-0 group flex min-h-[236px] flex-col overflow-hidden transition-colors sm:min-h-[270px]">
-      <TemplatePreview
-        definition={definition}
-        documentStyle={documentStyle}
-        onOpenStyle={onOpenStyle}
-      />
-      <div className="flex flex-1 flex-col justify-end border-t border-border bg-card p-3 sm:p-4">
-        <Button
-          type="button"
-          size="sm"
-          className="h-10 sm:h-9"
-          disabled={Boolean(disabledReason) || generating}
-          title={disabledReason ?? t("documentsPage.generateKind", { title: localizedDocumentTitle(definition.kind, t) })}
-          onClick={onGenerate}
-        >
-          {generating ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="size-3.5" />
-          )}
-          {t("documentsPage.generateAndOpen")}
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
 function GeneratedDocumentCard({
   definition,
   document,
@@ -335,7 +238,7 @@ function GeneratedDocumentCard({
               {document.fileName}
             </h3>
             <p className="mt-1 line-clamp-1 text-[11px] font-medium tracking-[0.02em] text-muted-foreground sm:mt-2 sm:text-xs">
-              {definition.source}
+              {t(definition.source)}
             </p>
             <p className="mt-1 text-[11px] text-muted-foreground">
               {formatUpdatedAt(document.updatedAt, locale, t)}
@@ -376,9 +279,16 @@ function GeneratedDocumentCard({
 }
 
 export function InstructionDocumentsPage({
-  activeDocumentId,
+  activeDocumentId, ordinary,
 }: {
   activeDocumentId?: string;
+  ordinary?: {
+    blockedReason: string | null;
+    disabled?: boolean;
+    revision?: string;
+    generate: (kind: "requirementsSpec" | "softwareDesignSpec", style: DocumentStyleSettings) => Promise<{ documentId?: string } | undefined>;
+    onOpen: (id: string) => void; onBack: () => void;
+  };
 }) {
   const { t } = useTranslation();
   const repository = useWorkspaceRepository();
@@ -391,14 +301,19 @@ export function InstructionDocumentsPage({
     generateSoftwareDesignSpec,
     generateFeasibilityStudy,
     generationModelBlockedReason,
+    canUpdateWorkspace,
+    canStartRuns,
   } = useWorkspaceSession();
   const {
     openDesignHome,
-    openDocumentsHome,
-    openDocumentEditor,
+    openDocumentsHome: professionalDocumentsHome,
+    openDocumentEditor: professionalDocumentEditor,
     openFeasibilityHome,
     openRequirementsText,
   } = useWorkspaceShell();
+  const openDocumentsHome = ordinary?.onBack ?? professionalDocumentsHome;
+  const openDocumentEditor = ordinary?.onOpen ?? professionalDocumentEditor;
+  const definitions = useMemo(() => ordinary ? DOCUMENT_DEFINITIONS.filter(item => item.kind !== "feasibilityStudy") : DOCUMENT_DEFINITIONS, [ordinary]);
   const [documents, setDocuments] = useState<DocumentLibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -411,11 +326,13 @@ export function InstructionDocumentsPage({
   const [editorError, setEditorError] = useState<string | null>(null);
   const [documentStyleDialogOpen, setDocumentStyleDialogOpen] = useState(false);
   const [documentStyle, setDocumentStyle] = useState(cloneDefaultDocumentStyle);
+  const [selectedDocumentKinds, setSelectedDocumentKinds] = useState<DocumentKind[]>([]);
+  const [documentBatchRunning, setDocumentBatchRunning] = useState(false);
+  const documentBatchRunningRef = useRef(false);
   const [documentGeneratingByKind, setDocumentGeneratingByKind] = useState(
     IDLE_DOCUMENT_GENERATION_STATE,
   );
   const activeDocumentGenerationsRef = useRef(IDLE_DOCUMENT_GENERATION_STATE);
-  const activeDocumentGenerationCountRef = useRef(0);
   const autoOpenClaimedRef = useRef(false);
   const hasRequirementModels = Object.values(models).some(Boolean);
   const hasDesignModels = Object.values(designModels).some(Boolean);
@@ -449,10 +366,11 @@ export function InstructionDocumentsPage({
 
   useEffect(() => {
     void loadDocuments();
+    if (ordinary) return;
     void repository.loadWorkspace().then((workspace) => {
       setFeasibilityState(feasibilityArtifactState(workspace));
     });
-  }, [loadDocuments, repository]);
+  }, [loadDocuments, repository, ordinary]);
 
   const filteredDocuments = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -514,25 +432,23 @@ export function InstructionDocumentsPage({
 
   const generateDocument = useCallback(
     async (kind: DocumentKind) => {
-      if (activeDocumentGenerationsRef.current[kind]) return;
+      if (activeDocumentGenerationsRef.current[kind] || (ordinary && (ordinary.blockedReason || kind === "feasibilityStudy"))) return;
 
-      if (activeDocumentGenerationCountRef.current === 0) {
-        autoOpenClaimedRef.current = false;
-      }
-      activeDocumentGenerationCountRef.current += 1;
       activeDocumentGenerationsRef.current = {
         ...activeDocumentGenerationsRef.current,
         [kind]: true,
       };
       setDocumentGeneratingByKind(activeDocumentGenerationsRef.current);
       try {
-        const snapshot =
+        const snapshot = ordinary && kind !== "feasibilityStudy" ? await ordinary.generate(kind, documentStyle) :
           kind === "requirementsSpec"
             ? await generateRequirementsSpec(documentStyle)
             : kind === "softwareDesignSpec"
               ? await generateSoftwareDesignSpec(documentStyle)
               : await generateFeasibilityStudy(documentStyle);
 
+        // Only this run's published artifact can claim the batch's single automatic editor navigation.
+        if (!snapshot?.documentId) return;
         const nextDocuments = await loadDocuments();
         const document =
           nextDocuments.find((item) => item.id === snapshot?.documentId) ??
@@ -541,28 +457,25 @@ export function InstructionDocumentsPage({
           autoOpenClaimedRef.current = true;
           openDocument(document);
         }
+      } catch {
+        floatingAlert.error(t("documentsPage.errors.generateFailed"));
       } finally {
-        activeDocumentGenerationCountRef.current = Math.max(
-          0,
-          activeDocumentGenerationCountRef.current - 1,
-        );
         activeDocumentGenerationsRef.current = {
           ...activeDocumentGenerationsRef.current,
           [kind]: false,
         };
         setDocumentGeneratingByKind(activeDocumentGenerationsRef.current);
-        if (activeDocumentGenerationCountRef.current === 0) {
-          autoOpenClaimedRef.current = false;
-        }
       }
     },
     [
+      ordinary,
       generateRequirementsSpec,
       generateSoftwareDesignSpec,
       generateFeasibilityStudy,
       documentStyle,
       loadDocuments,
       openDocument,
+      t,
     ],
   );
 
@@ -649,20 +562,50 @@ export function InstructionDocumentsPage({
     : t("documentsPage.prerequisites.design");
   const disabledReasonByKind = useMemo<Record<DocumentKind, string | null>>(
     () => ({
-      requirementsSpec: requirementDisabledReason ?? generationModelBlockedReason,
-      softwareDesignSpec: designDisabledReason ?? generationModelBlockedReason,
+      requirementsSpec: ordinary ? ordinary.blockedReason : requirementDisabledReason ?? generationModelBlockedReason,
+      softwareDesignSpec: ordinary ? ordinary.blockedReason : designDisabledReason ?? generationModelBlockedReason,
       feasibilityStudy: feasibilityDisabledReason(feasibilityState, t) ?? generationModelBlockedReason,
     }),
-    [designDisabledReason, feasibilityState, requirementDisabledReason, generationModelBlockedReason, t],
+    [designDisabledReason, feasibilityState, requirementDisabledReason, generationModelBlockedReason, t, ordinary],
   );
+  const selectedKinds = definitions.filter(definition => selectedDocumentKinds.includes(definition.kind)).map(definition => definition.kind);
+  const canGenerateDocuments = ordinary ? ordinary.disabled !== true : canUpdateWorkspace && canStartRuns;
+  const generationBlockedReason = !canGenerateDocuments
+    ? t("documentsPage.generationPermission")
+    : selectedKinds.length === 0
+      ? t("documentsPage.selectionRequired")
+      : selectedKinds.map(kind => disabledReasonByKind[kind]).find(Boolean) ?? null;
+  const selectionDisabled = loading || documentBatchRunning || !canGenerateDocuments;
+  const selectDocument = (kind: DocumentKind, selected: boolean) => {
+    if (selectionDisabled || documentBatchRunningRef.current) return;
+    setSelectedDocumentKinds(current => selected ? [...new Set([...current, kind])] : current.filter(item => item !== kind));
+  };
+  const generateSelectedDocuments = async () => {
+    // The same eligibility guard protects keyboard/click submission and the visible disabled state.
+    if (loading || documentBatchRunningRef.current || generationBlockedReason) return;
+    documentBatchRunningRef.current = true;
+    setDocumentBatchRunning(true);
+    autoOpenClaimedRef.current = false;
+    try {
+      // Ordinary projects own one active run; professional document pipelines support independent concurrent runs.
+      if (ordinary) {
+        for (const kind of selectedKinds) await generateDocument(kind);
+      } else {
+        await Promise.all(selectedKinds.map(kind => generateDocument(kind)));
+      }
+    } finally {
+      documentBatchRunningRef.current = false;
+      setDocumentBatchRunning(false);
+    }
+  };
   const prerequisiteFeedbackByKind = useMemo<
     Partial<Record<DocumentKind, FeedbackDialogState>>
   >(() => {
     const feedback: Partial<Record<DocumentKind, FeedbackDialogState>> = {};
-    for (const definition of DOCUMENT_DEFINITIONS) {
+    for (const definition of definitions) {
       const reason = disabledReasonByKind[definition.kind];
       if (!reason) continue;
-      const primaryAction = reason === generationModelBlockedReason ? undefined :
+      const primaryAction = ordinary || reason === generationModelBlockedReason ? undefined :
         definition.kind === "requirementsSpec"
           ? {
               label: t("feedback.actions.requirementModels"),
@@ -694,6 +637,8 @@ export function InstructionDocumentsPage({
     }
     return feedback;
   }, [
+    definitions,
+    ordinary,
     disabledReasonByKind,
     generationModelBlockedReason,
     feasibilityState,
@@ -705,7 +650,7 @@ export function InstructionDocumentsPage({
   // Keep every document's recovery action available through the single header notice.
   const pageNotices = [
     listErrorFeedback,
-    ...DOCUMENT_DEFINITIONS.map((definition) => prerequisiteFeedbackByKind[definition.kind]),
+    ...definitions.map((definition) => prerequisiteFeedbackByKind[definition.kind]),
   ].filter((notice): notice is FeedbackDialogState => Boolean(notice));
   if (activeDocumentId) {
     return (
@@ -734,16 +679,6 @@ export function InstructionDocumentsPage({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9"
-              onClick={() => void loadDocuments()}
-            >
-              <RefreshCw className="size-3.5" />
-              {t("documentsPage.refresh")}
-            </Button>
             {activeDocument && (
               <Button
                 type="button"
@@ -758,7 +693,8 @@ export function InstructionDocumentsPage({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 bg-muted">
+        {/* OnlyOffice sizes its frame to this box; a definite height keeps the page area from collapsing. */}
+        <div className="h-[calc(100dvh-8rem)] min-h-[480px] bg-muted">
           {editorLoading && (
             <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
@@ -791,48 +727,47 @@ export function InstructionDocumentsPage({
       <div className="flex w-full flex-col gap-6">
         <PageHeader
           title={t("documentsPage.title")}
-          description={t("documentsPage.description")}
+          description={ordinary ? t("standardProject.documentDescription") : t("documentsPage.description")}
           notice={<DocumentGuidanceDialog notices={pageNotices} />}
         />
 
-        <section>
-          <div className="flex flex-wrap items-center justify-between gap-2 w-full justify-between gap-4">
-            <div className="flex shrink-0 items-center gap-3">
-              <div className="relative w-96">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  className="h-10 pl-9"
-                  placeholder={t("documentsPage.search")}
-                />
-              </div>
-              <label className="inline-flex h-10 items-center gap-2 text-sm text-muted-foreground">
-                <SlidersHorizontal className="size-4" />
-                <SelectControl
-                  value={typeFilter}
-                  onValueChange={(value) => setTypeFilter(value as DocumentKind | "all")}
-                  className="h-10 min-w-44"
-                  aria-label={t("documentsPage.typeFilter")}
-                  options={[
-                    { value: "all", label: t("documentsPage.allTypes") },
-                    { value: "feasibilityStudy", label: localizedDocumentTitle("feasibilityStudy", t) },
-                    { value: "requirementsSpec", label: localizedDocumentTitle("requirementsSpec", t) },
-                    { value: "softwareDesignSpec", label: localizedDocumentTitle("softwareDesignSpec", t) },
-                  ]}
-                />
-              </label>
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-xl font-semibold tracking-normal">{t("documentsPage.targets")}</h2>
+              <Badge variant="secondary" className="border-0 px-3 py-1 font-mono text-xs">{selectedKinds.length}/{definitions.length}</Badge>
+              <TargetSelectionActions disabled={selectionDisabled}
+                onSelectAll={() => { if (!selectionDisabled) setSelectedDocumentKinds(definitions.map(definition => definition.kind)); }}
+                onClear={() => { if (!selectionDisabled) setSelectedDocumentKinds([]); }} />
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 shrink-0"
-              onClick={() => void loadDocuments()}
-            >
-              <RefreshCw className="size-4" />
-              {t("documentsPage.refresh")}
-            </Button>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={documentBatchRunning}
+                onClick={() => setDocumentStyleDialogOpen(true)}>
+                <Palette className="size-3.5" />{t("documentsPage.documentStyle")}
+              </Button>
+              <div className="flex min-w-0 items-center gap-2" data-testid="documents-generation-toolbar">
+                <GenerationModelControls ordinary={Boolean(ordinary)} disabled={selectionDisabled} />
+                <ModelingGenerationButton label={t("common.generate")} busy={documentBatchRunning}
+                  disabled={loading || documentBatchRunning || Boolean(generationBlockedReason)}
+                  title={generationBlockedReason ?? undefined} onClick={() => void generateSelectedDocuments()} />
+              </div>
+            </div>
           </div>
+          <MobileCompactGrid variant="model-targets">
+            {definitions.map((definition, index) => {
+              const title = localizedDocumentTitle(definition.kind, t);
+              const reason = disabledReasonByKind[definition.kind];
+              const selected = selectedKinds.includes(definition.kind);
+              const count = documents.filter(document => document.documentKind === definition.kind).length;
+              // Existing files do not imply that current inputs permit generating another version.
+              const status = documentGeneratingByKind[definition.kind] ? "running" : reason || !canGenerateDocuments ? "blocked" : count > 0 ? "completed" : "missing";
+              return <ModelBentoCard key={definition.kind} label={title} english={definition.english} description={t(definition.source)}
+                icon={FileText} categoryColorIndex={index} selected={selected} disabled={selectionDisabled}
+                countLabel={count} checkboxLabel={title} ariaLabel={t(selected ? "documentsPage.deselectDocument" : "documentsPage.selectDocument", { title })}
+                onSelectedChange={value => selectDocument(definition.kind, value)}
+                status={status} />;
+            })}
+          </MobileCompactGrid>
         </section>
 
         {loading ? (
@@ -842,28 +777,6 @@ export function InstructionDocumentsPage({
           </div>
         ) : (
           <>
-            <section>
-              <MobileCompactGrid
-                minWidth={760}
-                variant="document-cards"
-              >
-              {DOCUMENT_DEFINITIONS.map((definition) => {
-                const generating = documentGeneratingByKind[definition.kind];
-                return (
-                  <TemplateDocumentCard
-                    key={definition.kind}
-                    definition={definition}
-                    disabledReason={disabledReasonByKind[definition.kind]}
-                    generating={generating}
-                    documentStyle={documentStyle}
-                    onOpenStyle={() => setDocumentStyleDialogOpen(true)}
-                    onGenerate={() => void generateDocument(definition.kind)}
-                  />
-                );
-              })}
-              </MobileCompactGrid>
-            </section>
-
             <section className="flex flex-col gap-4">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-foreground">
@@ -872,6 +785,20 @@ export function InstructionDocumentsPage({
                 <span className="text-xs text-muted-foreground">
                   {t("documentsPage.documentCount", { count: filteredDocuments.length })}
                 </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative min-w-0 flex-1 sm:max-w-96">
+                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input value={query} onChange={event => setQuery(event.target.value)} className="h-10 pl-9" placeholder={t("documentsPage.search")} />
+                </div>
+                <label className="inline-flex h-10 items-center gap-2 text-sm text-muted-foreground">
+                  <SlidersHorizontal className="size-4" />
+                  <SelectControl value={typeFilter} onValueChange={value => setTypeFilter(value as DocumentKind | "all")}
+                    className="h-10 min-w-44" aria-label={t("documentsPage.typeFilter")} options={[
+                      { value: "all", label: t("documentsPage.allTypes") },
+                      ...definitions.map(definition => ({ value: definition.kind, label: localizedDocumentTitle(definition.kind, t) })),
+                    ]} />
+                </label>
               </div>
               {filteredDocuments.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">

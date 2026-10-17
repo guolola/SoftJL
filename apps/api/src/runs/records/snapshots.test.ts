@@ -20,8 +20,18 @@ test("createEmptySnapshot produces a RequirementBaseline for requirements runs",
   const snapshot = createEmptySnapshot("run-1", rule.text, ["usecase"], [rule]);
 
   assert.equal(snapshot.requirementBaseline?.runId, "run-1");
-  assert.equal(snapshot.requirementBaseline?.requirements[0]?.sourceFragment, rule.text);
+  assert.equal(snapshot.requirementBaseline?.rules?.[0]?.text, rule.text);
   assert.equal(snapshot.requirementBaseline?.qualityReport.status, "passed");
+});
+
+test("requirement modeling snapshots reuse the source baseline without sharing mutable data", () => {
+  const baseline = buildRequirementBaseline({ runId: "rules-run", requirementText: rule.text, rules: [rule] });
+  const snapshot = createEmptySnapshot("models-run", rule.text, ["usecase"], [rule], { requirementBaseline: baseline });
+  assert.equal(snapshot.runId, "models-run");
+  assert.deepEqual(snapshot.requirementBaseline, baseline);
+  assert.notEqual(snapshot.requirementBaseline, baseline);
+  snapshot.requirementBaseline!.rules![0]!.text = "不应回写的修改";
+  assert.notEqual(baseline.rules![0]!.text, "不应回写的修改");
 });
 
 test("createEmptyDesignSnapshot carries a RequirementBaseline into design runs", () => {
@@ -37,9 +47,27 @@ test("createEmptyDesignSnapshot carries a RequirementBaseline into design runs",
     requirementModelTraceability: [],
   });
 
-  assert.equal(snapshot.requirementBaseline?.requirements[0]?.id, "REQ-001");
+  assert.equal(snapshot.requirementBaseline?.rules?.[0]?.requirementId, "REQ-001");
   assert.equal(snapshot.requirementText, "");
   assert.deepEqual(snapshot.rules, []);
+});
+
+test("legacy model commands rebuild a versioned snapshot from current rules", () => {
+  const baseline = buildRequirementBaseline({ runId: "legacy-rules", requirementText: rule.text, rules: [rule] });
+  delete baseline.sourceInputFingerprint;
+  delete baseline.schemaVersion;
+  delete baseline.rules;
+  baseline.requirements = [{ id: "REQ-001", sourceRuleId: rule.id, sourceFragment: rule.text, type: "business-rule", actor: null, subject: null, action: null, object: null, condition: null, outcome: null, confidence: 0.8, status: "accepted", criticality: "high", acceptanceCriteria: [], fieldProvenance: {} }];
+  baseline.qualityReport.summary = "历史质量检查记录";
+  const snapshot = createEmptySnapshot("new-model", rule.text, ["usecase"], [rule], { requirementBaseline: baseline });
+  assert.equal(snapshot.requirementBaseline?.schemaVersion, 2);
+  assert.deepEqual(snapshot.requirementBaseline?.requirements, []);
+  assert.equal(snapshot.requirementBaseline?.rules?.[0]?.text, rule.text);
+  assert.equal(snapshot.requirementBaseline?.rules?.[0]?.requirementId, "REQ-001");
+  assert.ok(snapshot.requirementBaseline?.sourceInputFingerprint);
+  const changedRule = { ...rule, text: "管理员必须审批借阅申请。" };
+  const changed = createEmptySnapshot("changed-model", changedRule.text, ["usecase"], [changedRule], { requirementBaseline: baseline });
+  assert.equal(changed.requirementBaseline!.runId, "changed-model");
 });
 
 test("createEmptyDesignSnapshot preserves the requested design selection", () => {
@@ -71,5 +99,5 @@ test("createEmptyDocumentSnapshot preserves an empty baseline placeholder", () =
   });
 
   assert.equal(snapshot.requirementBaseline?.requirements.length, 0);
-  assert.equal(snapshot.requirementBaseline?.qualityReport.status, "pending-review");
+  assert.equal(snapshot.requirementBaseline?.qualityReport.status, "passed");
 });

@@ -37,66 +37,6 @@ const requirementRuleSchema = {
   required: ["id", "category", "text", "sourceFragment", "relatedDiagrams"],
 } as const;
 
-const requirementFieldProvenanceEntrySchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    source: {
-      type: "string",
-      enum: ["source-text", "ai-suggested", "heuristic", "manual"],
-    },
-    status: {
-      type: "string",
-      enum: ["accepted", "pending-review", "rejected"],
-    },
-    value: { type: ["string", "null"] },
-    originalValue: { type: ["string", "null"] },
-    rationale: { type: "string" },
-    issueIds: {
-      type: "array",
-      items: { type: "string" },
-    },
-  },
-  required: ["source", "status"],
-} as const;
-
-const repairableRequirementFieldsSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    actor: requirementFieldProvenanceEntrySchema,
-    subject: requirementFieldProvenanceEntrySchema,
-    action: requirementFieldProvenanceEntrySchema,
-    object: requirementFieldProvenanceEntrySchema,
-    condition: requirementFieldProvenanceEntrySchema,
-    outcome: requirementFieldProvenanceEntrySchema,
-    acceptanceCriteria: requirementFieldProvenanceEntrySchema,
-  },
-  required: [],
-} as const;
-
-const requirementRepairSuggestionSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    fields: repairableRequirementFieldsSchema,
-    confidence: { type: "number" },
-    status: {
-      type: "string",
-      enum: [
-        "accepted",
-        "ambiguous",
-        "conflict",
-        "pending-review",
-        "rejected",
-        "derived",
-      ],
-    },
-    rationale: { type: "string" },
-  },
-  required: ["fields"],
-} as const;
-
 const documentSectionTableSchema = {
   type: "object",
   additionalProperties: false,
@@ -152,33 +92,6 @@ export const EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT = strictResponseFormat(
   },
 );
 
-export const REPAIR_REQUIREMENT_RULE_RESPONSE_FORMAT = strictResponseFormat(
-  "requirement_rule_repair_suggestion",
-  requirementRepairSuggestionSchema,
-);
-
-export const REPAIR_REQUIREMENT_RULES_RESPONSE_FORMAT = strictResponseFormat(
-  "requirement_rule_batch_repair_suggestion",
-  {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      repairs: {
-        type: "array",
-        items: {
-          ...requirementRepairSuggestionSchema,
-          properties: {
-            ruleId: { type: "string" },
-            ...requirementRepairSuggestionSchema.properties,
-          },
-          required: ["ruleId", "fields"],
-        },
-      },
-    },
-    required: ["repairs"],
-  },
-);
-
 export const DOCUMENT_CONTENT_RESPONSE_FORMAT = strictResponseFormat(
   "document_content_result",
   {
@@ -222,14 +135,6 @@ export const HEALTHCHECK_RESPONSE_FORMAT = strictResponseFormat(
 
 export function getExtractRequirementRulesResponseFormat(model: ModelCapabilitySource) {
   return responseFormatIfSupported(model, EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT);
-}
-
-export function getRepairRequirementRuleResponseFormat(model: ModelCapabilitySource) {
-  return responseFormatIfSupported(model, REPAIR_REQUIREMENT_RULE_RESPONSE_FORMAT);
-}
-
-export function getRepairRequirementRulesResponseFormat(model: ModelCapabilitySource) {
-  return responseFormatIfSupported(model, REPAIR_REQUIREMENT_RULES_RESPONSE_FORMAT);
 }
 
 export function getDocumentContentResponseFormat(model: ModelCapabilitySource) {

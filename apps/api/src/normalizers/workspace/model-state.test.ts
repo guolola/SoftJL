@@ -1,7 +1,7 @@
 // Verifies that generated and manually edited models retain semantics across storage and downstream outputs.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { startDocumentRunRequestSchema, type DesignDiagramModelSpec } from "@uml-platform/contracts";
+import { startDocumentRunRequestSchema, createRequirementBaselineSnapshot, requirementBaselineSchema, type DesignDiagramModelSpec } from "@uml-platform/contracts";
 import { modelFixture, parallelObjectActivityFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
 import { parseDesignDiagramModelsOnly } from "../design/design-model-normalizer.js";
 import { parseRequirementDiagramModelsOnly } from "../requirements/requirement-model-normalizer.js";
@@ -10,7 +10,30 @@ import { normalizeWorkspaceModelState } from "./model-state.js";
 import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "../../plantuml.js";
 import { buildDocumentContext } from "../../documents/context/document-context.js";
 
+test("external rule edits rebuild the saved baseline and remove deleted rules", () => {
+  const rule = { id: "r1", category: "功能需求" as const, text: "用户查看订单", relatedDiagrams: ["usecase" as const] };
+  const old = createRequirementBaselineSnapshot({ runId: "old", requirementText: "订单系统", rules: [rule] });
+  const state = { requirementText: "订单系统", rules: [{ ...rule, text: "用户只能查看本人订单" }], requirementBaseline: old };
+  const saved = normalizeWorkspaceModelState(state);
+  const baseline = requirementBaselineSchema.parse(saved.requirementBaseline);
+  assert.equal(baseline.rules?.[0]?.text, state.rules[0]!.text);
+  assert.equal(baseline.rules?.[0]?.requirementId, old.rules![0]!.requirementId);
+  assert.equal(baseline.rules?.[0]?.origin, "manual-edited");
+  assert.deepEqual(requirementBaselineSchema.parse(normalizeWorkspaceModelState({ ...saved, rules: [] }).requirementBaseline).rules, []);
+  assert.equal(old.rules![0]!.text, rule.text);
+});
 
+
+
+test("workspace saves discard retired candidates without changing the supplied baseline", () => {
+  const baseline = { runId: "source-run", requirements: [{ id: "r1", actor: "原始角色" }] };
+  const state = { requirementBaseline: baseline, requirementReviewCandidates: { r1: { status: "accepted", afterRequirement: { actor: "候选角色" } } } };
+  const before = structuredClone(state);
+  const normalized = normalizeWorkspaceModelState(state);
+  assert.deepEqual(normalized.requirementReviewCandidates, {});
+  assert.deepEqual(normalized.requirementBaseline, baseline);
+  assert.deepEqual(state, before);
+});
 
 test("navigation generation, edit, persistence, redraw, trace and documents share the same model", () => {
   const model = modelFixture("design", "navigation");

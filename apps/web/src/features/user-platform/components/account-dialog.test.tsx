@@ -289,14 +289,14 @@ describe("AccountDialog generation usage", () => {
       String(input).includes("/api/billing/summary"),
     ).length;
     await user.click(within(accountDialog).getByRole("tab", { name: "模型配置" }));
-    expect(await within(accountDialog).findByLabelText("托管 Provider 配置")).not.toBeDisabled();
+    expect(await within(accountDialog).findByLabelText("模型来源")).not.toBeDisabled();
     expect(within(accountDialog).getByLabelText("默认模型")).not.toBeDisabled();
-    expect(within(accountDialog).getByLabelText("托管 Provider 配置")).toHaveTextContent("课程 OpenAI");
+    expect(within(accountDialog).getByLabelText("模型来源")).toHaveTextContent("课程 OpenAI");
     expect(within(accountDialog).getByLabelText("默认模型")).toHaveTextContent("gpt-5.6");
     expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/provider-configs"))).toHaveLength(providerRequestCount);
     expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/billing/summary"))).toHaveLength(billingRequestCount);
-    expect(within(accountDialog).queryByText("暂无可用托管 Provider 配置。")).not.toBeInTheDocument();
-    expect(within(accountDialog).queryByText("选择托管 Provider 后才能选择默认模型。")).not.toBeInTheDocument();
+    expect(within(accountDialog).queryByText("暂无可用模型来源。")).not.toBeInTheDocument();
+    expect(within(accountDialog).queryByText("选择平台模型 后才能选择默认模型。")).not.toBeInTheDocument();
   });
 
   it("does not show today's generation count for regular users", async () => {

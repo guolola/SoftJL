@@ -19,9 +19,6 @@ describe("documentRunCompletionDialog", () => {
       diagramFailureCount: 0,
       isRulesOnly: true,
       ignoredCount: 2,
-      qualityHintCount: 0,
-      repairFailedCount: 0,
-      repairPendingCount: 0,
       runId: "rules-with-skips",
     });
     expect(dialog.tone).toBe("warning");

@@ -738,7 +738,7 @@ function DiagramDetailView({
                 <div className="pt-4">
                   {isBusinessFlow && Array.isArray(model?.notes) && model.notes.length > 0 && (
                     <ul className="mb-4 list-disc pl-5 text-sm text-muted-foreground">
-                      {model.notes.map((note, index) => <li key={index}>{note}</li>)}
+                      {model.notes.map((note, index) => <li key={index}>{note.replace(/\bRequirementBaseline\b/g, t("uxReview.baseline"))}</li>)}
                     </ul>
                   )}
                   <ModelEditPanel

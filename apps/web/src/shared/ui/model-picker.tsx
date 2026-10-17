@@ -137,6 +137,9 @@ export function ModelPicker({
     ? t("modelPicker.noModels")
     : t("modelPicker.selectProvider");
 
+  // Hide only a valid, already selected sole option; invalid settings still need a recovery control.
+  if (providerSettings.providerConfigId && providerModels.length === 1 && providerModels[0] === value.trim()) return null;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="outline"

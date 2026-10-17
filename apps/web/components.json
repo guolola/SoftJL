@@ -19,6 +19,13 @@
     "hooks": "@/shared/hooks"
   },
   "registries": {
-    "@ss-components": "https://shadcnstudio.com/r/components/{style}/{name}.json"
+    "@ss-components": "https://shadcnstudio.com/r/components/{style}/{name}.json",
+    "@ss-illustrations": {
+      "url": "https://shadcnstudio.com/r/illustrations/{name}.json",
+      "params": {
+        "email": "${EMAIL}",
+        "license_key": "${LICENSE_KEY}"
+      }
+    }
   }
 }

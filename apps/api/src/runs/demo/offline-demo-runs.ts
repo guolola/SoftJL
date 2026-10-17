@@ -1,12 +1,12 @@
 // Owns the fixed offline demo lifecycle for the student onboarding recording branch.
 import {
   artifactReadyRunEventSchema,
+  reuseRequirementBaseline,
+  snapshotInputFingerprint,
   
   completedRunEventSchema,
   designTraceabilityTouchesDiagramKinds,
   designRunSnapshotSchema,
-  repairRequirementRuleResponseSchema,
-  repairRequirementRulesResponseSchema,
   runSnapshotSchema,
   stageProgressRunEventSchema,
   stageStartedRunEventSchema,
@@ -15,9 +15,6 @@ import {
   type DesignDiagramKind,
   type DesignRunSnapshot,
   type DiagramKind,
-  type RepairRequirementRuleRequest,
-  type RepairRequirementRulesRequest,
-  type RequirementBaseline,
   type RunSnapshot,
   type RunStage,
   
@@ -52,23 +49,10 @@ const fixture = {
   
 };
 
+export { isOfflineDemoProject, offlineDemoLlmTransport, offlineDemoProviderSettings } from "./offline-demo-config.js";
+
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function retargetBaseline(
-  baseline: RequirementBaseline | null | undefined,
-  runId: string,
-) {
-  if (!baseline) return baseline ?? null;
-  return {
-    ...baseline,
-    runId,
-    qualityReport: {
-      ...baseline.qualityReport,
-      runId,
-    },
-  };
 }
 
 function retargetSnapshotIds(
@@ -76,12 +60,6 @@ function retargetSnapshotIds(
   runId: string,
 ) {
   snapshot.runId = runId;
-  if ("requirementBaseline" in snapshot) {
-    snapshot.requirementBaseline = retargetBaseline(
-      snapshot.requirementBaseline,
-      runId,
-    );
-  }
   if (snapshot.coverageMatrix) {
     snapshot.coverageMatrix = { ...snapshot.coverageMatrix, runId };
   }
@@ -95,14 +73,6 @@ function selectedOrAvailable<T extends string>(requested: T[], available: T[]) {
   const availableSet = new Set(available);
   const selected = requested.filter((kind) => availableSet.has(kind));
   return selected.length > 0 ? selected : available;
-}
-
-function demoRequirementBaseline() {
-  const baseline = fixture.requirementSnapshot.requirementBaseline;
-  if (!baseline) {
-    throw new Error("Offline demo fixture is missing a requirement baseline.");
-  }
-  return baseline;
 }
 
 function requirementKinds(snapshot: RunSnapshot) {
@@ -230,6 +200,15 @@ export async function completeOfflineDemoRequirementRun(
   retargetSnapshotIds(snapshot, record.snapshot.runId);
   // Fixed demo artifacts still belong to the text submitted for this run.
   snapshot.requirementText = input.requirementText;
+  if (snapshot.requirementBaseline) {
+    // Demo tasks follow the same baseline identity rules as provider tasks.
+    snapshot.requirementBaseline = clone(reuseRequirementBaseline(input.requirementBaseline, {
+      ...snapshot.requirementBaseline,
+      runId: snapshot.runId,
+      sourceInputFingerprint: snapshotInputFingerprint({ requirementText: input.requirementText, rules: snapshot.rules }),
+      qualityReport: { ...snapshot.requirementBaseline.qualityReport, runId: snapshot.runId },
+    }));
+  }
   const availableKinds = requirementKinds(snapshot);
   const selectedKinds = selectedOrAvailable(input.selectedDiagrams, availableKinds);
   snapshot.selectedDiagrams = selectedKinds;
@@ -324,6 +303,7 @@ export async function completeOfflineDemoDesignRun(
   const stages = createStageLifecycle(record);
   const snapshot = clone(fixture.designSnapshot);
   retargetSnapshotIds(snapshot, record.snapshot.runId);
+  snapshot.requirementBaseline = clone(input.requirementBaseline ?? snapshot.requirementBaseline);
   const availableKinds = designKinds(snapshot);
   const requestedKinds = input.requestedDiagrams ?? input.selectedDiagrams;
   const selectedKinds = selectedOrAvailable(requestedKinds, availableKinds);
@@ -409,44 +389,5 @@ export function createOfflineDemoDocumentInput(input: StartDocumentRunRequest) {
     designPlantUml: designSnapshot.plantUml,
     designSvgArtifacts: designSnapshot.svgArtifacts,
     useAiText: false,
-  });
-}
-
-export function createOfflineDemoRequirementRuleRepair(
-  input: RepairRequirementRuleRequest,
-) {
-  const baseline = demoRequirementBaseline();
-  const requirement =
-    baseline.requirements.find(
-      (item) => item.sourceRuleId === input.rule.id || item.id === input.rule.id,
-    ) ?? baseline.requirements[0];
-  return repairRequirementRuleResponseSchema.parse({
-    requirement,
-    qualityReport: baseline.qualityReport,
-    repairRationale: "离线演示：使用预演项目中已确认的需求规则修复结果。",
-    blockingReasons: [],
-  });
-}
-
-export function createOfflineDemoRequirementRulesRepair(
-  input: RepairRequirementRulesRequest,
-) {
-  const baseline = demoRequirementBaseline();
-  const candidates = input.targetRuleIds.map((ruleId) => {
-    const requirement =
-      baseline.requirements.find(
-        (item) => item.sourceRuleId === ruleId || item.id === ruleId,
-      ) ?? baseline.requirements[0];
-    return {
-      ruleId,
-      requirement,
-      qualityReport: baseline.qualityReport,
-      repairRationale: "离线演示：使用预演项目中已确认的批量修复结果。",
-      blockingReasons: [],
-    };
-  });
-  return repairRequirementRulesResponseSchema.parse({
-    candidates,
-    failures: [],
   });
 }

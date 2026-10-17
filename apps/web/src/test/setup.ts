@@ -70,6 +70,11 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
+// assistant-ui's viewport uses element scrolling; JSDOM has no layout or native scrollTo.
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => {};
+}
+
 // ScrollArea reads Web Animations directly, while component exit animations should
 // complete synchronously in JSDOM so interaction state cannot leak between tests.
 if (!Element.prototype.getAnimations) {

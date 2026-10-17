@@ -14,6 +14,21 @@ import type { OpenAiCompatibleClientFactory } from "./llm.js";
 
 const resolvePublicHostname = async () => ["8.8.8.8"];
 
+test("engineering output reservations reach compatible and reasoning provider requests", async () => {
+  for (const model of ["gpt-4o", "gpt-5.5", "deepseek-chat"]) {
+    let body: Record<string, unknown> = {};
+    const clientFactory: OpenAiCompatibleClientFactory = () => ({
+      chat: { completions: { create: async (input) => {
+        body = input as unknown as Record<string, unknown>;
+        return (async function* () { yield { choices: [{ delta: { content: "{}" } }] }; })() as never;
+      } } }, models: { list: async () => ({ data: [] }) },
+    });
+    const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+    for await (const _ of transport.streamChatCompletion({ providerSettings: { apiBaseUrl: "https://provider.test", apiKey: "test", model }, messages: [{ role: "user", content: "模型" }], maxOutputTokens: 4096 })) {}
+    assert.equal(body[model === "gpt-5.5" ? "max_completion_tokens" : "max_tokens"], 4096);
+  }
+});
+
 test("normalizeStreamTokenUsage supports OpenAI and Responses-compatible fields", () => {
   assert.deepEqual(normalizeStreamTokenUsage({
     prompt_tokens: 120,

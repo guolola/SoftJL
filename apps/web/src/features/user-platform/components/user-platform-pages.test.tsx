@@ -28,7 +28,6 @@ function createRepository(): WorkspaceRepository {
     })),
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
-    restoreRunHistory: vi.fn(async () => null),
     deleteRunHistory: vi.fn(async () => []),
     clearRunHistory: vi.fn(async () => {}),
   };

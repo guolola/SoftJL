@@ -22,6 +22,14 @@ const optionalDescriptionSchema = z.preprocess(
 export const projectVisibilitySchema = z.enum(["private", "team", "public"]);
 export type ProjectVisibility = z.infer<typeof projectVisibilitySchema>;
 
+// The project mode is immutable and independent of billing. Missing legacy values
+// retain the professional workflow instead of silently weakening its checks.
+export const projectModeSchema = z.enum(["standard", "professional"]);
+export type ProjectMode = z.infer<typeof projectModeSchema>;
+export function resolveProjectMode(value: unknown): ProjectMode {
+  return value === "standard" ? "standard" : "professional";
+}
+
 export const projectStatusSchema = z.enum(["active", "archived", "deleted"]);
 export type ProjectStatus = z.infer<typeof projectStatusSchema>;
 
@@ -118,6 +126,7 @@ const optionalProjectBackgroundKeySchema = z
 
 export const projectDtoSchema = z
   .object({
+    projectMode: projectModeSchema.default("professional"),
     id: z.string().min(1),
     name: publicNameSchema,
     description: optionalDescriptionSchema,
@@ -155,6 +164,7 @@ export const projectDtoSchema = z
 export type ProjectDto = z.infer<typeof projectDtoSchema>;
 
 export const projectCreateRequestSchema = z.object({
+  projectMode: projectModeSchema.default("standard"),
   name: publicNameSchema,
   description: optionalDescriptionSchema.default(null),
   visibility: projectVisibilitySchema.default("private"),

@@ -73,39 +73,6 @@ function blockedDocumentInput(): StartDocumentRunRequest {
   };
 }
 
-test("runDocumentStagePipeline rejects blocked requirement baselines before DOCX assembly", async () => {
-  const input = blockedDocumentInput();
-  const record: RunRecord = {
-    snapshot: createEmptyDocumentSnapshot("run-blocked-document", input),
-    events: [],
-    listeners: new Set(),
-    terminal: false,
-  };
-  const documentLibrary = {
-    saveGeneratedDocument: async () => {
-      throw new Error("document library should not be called for blocked baselines");
-    },
-  } as unknown as DocumentLibrary;
-
-  await assert.rejects(
-    () =>
-      runDocumentStagePipeline(
-        record,
-        input,
-        documentLibrary,
-        "workspace-test",
-        providerSettings,
-        {} as LlmTransport,
-        (async () => {
-          throw new Error("PNG renderer should not be called for blocked baselines");
-        }) as PngRenderClient,
-      ),
-    /RequirementBaseline blocked downstream generation: 公开活动日历查看规则互相冲突/u,
-  );
-  assert.equal(record.snapshot.status, "queued");
-  assert.equal(record.events.length, 0);
-});
-
 test("document chapters run with concurrency four and merge in template order before whole-document export", async () => {
   const input = blockedDocumentInput();
   input.requirementBaseline = buildRequirementBaseline({ runId: "valid", requirementText: "用户可以查看日历。", rules: [{ id: "R1", category: "功能需求", text: "用户可以查看日历。", relatedDiagrams: ["usecase"] }] });

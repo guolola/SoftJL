@@ -8,6 +8,21 @@ import type { RunRecord } from "../records/run-record-store.js";
 import { librarySeatDemoFixture } from "./fixtures/library-seat-demo-fixture.js";
 import { completeOfflineDemoRequirementRun } from "./offline-demo-runs.js";
 
+test("repeated offline model generation preserves the existing baseline identity", async (t) => {
+  const previousDelay = process.env.UML_DEMO_OFFLINE_STAGE_DELAY_MS;
+  process.env.UML_DEMO_OFFLINE_STAGE_DELAY_MS = "0";
+  t.after(() => { if (previousDelay === undefined) delete process.env.UML_DEMO_OFFLINE_STAGE_DELAY_MS; else process.env.UML_DEMO_OFFLINE_STAGE_DELAY_MS = previousDelay; });
+  const source = runSnapshotSchema.parse(librarySeatDemoFixture.requirementSnapshot);
+  const record: RunRecord = { snapshot: createEmptySnapshot("demo-model-task", source.requirementText, ["usecase"], source.rules),
+    events: [], listeners: new Set(), terminal: false };
+  const baseline = source.requirementBaseline;
+  await completeOfflineDemoRequirementRun(record, startRunRequestSchema.parse({
+    requirementText: source.requirementText, rules: source.rules, selectedDiagrams: ["usecase"], requirementBaseline: baseline,
+  }));
+  assert.equal(record.snapshot.runId, "demo-model-task");
+  assert.deepEqual(record.snapshot.requirementBaseline, baseline);
+});
+
 test("demo requirements cover every traceable element used by design prerequisites", () => {
   const snapshot = runSnapshotSchema.parse(librarySeatDemoFixture.requirementSnapshot);
   // Analysis sequences are traced through their source use case, outside the rule-to-model gate.

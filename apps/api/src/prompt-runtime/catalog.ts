@@ -21,8 +21,6 @@ export const catalog: CatalogEntry[] = [
   entry("requirements.trace-repair", ["需求建模", "追踪关系修复"], "请修复需求模型元素级可追踪关系 JSON。", "model-prompts.ts"),
   entry("requirements.activity-compact", ["需求建模", "超时重试", "总体业务流程"], "请只生成需求阶段总体业务流程 activity 模型。", "requirements-pipeline.ts"),
   entry("requirements.analysis-compact", ["需求建模", "超时重试", "需求分析"], "请只为单个用例生成需求分析顺序图 analysis 模型。", "requirements-pipeline.ts"),
-  entry("requirements.rule-repair", ["需求建模", "规则修复", "单条"], "你是需求规则字段级修复助手。只修复当前一条需求规则的结构化字段，不改写原始需求文本，不重新生成全部规则。输出必须是 JSON。", "requirement-rule-repair.ts"),
-  entry("requirements.rules-repair", ["需求建模", "规则修复", "批量"], "你是需求规则批量字段级修复助手。一次性为多条需求规则生成结构化字段修复候选，不改写原始需求文本，不重新生成全部规则。输出必须是 JSON。", "requirement-rule-repair.ts"),
   entry("feasibility.context", ["可行性分析", "系统环境图"], "根据已确认需求生成系统上下文结构。", "feasibility-prompts.ts"),
   entry("feasibility.business-flow", ["可行性分析", "业务与系统流程图"], "根据已确认需求规则生成可行性分析阶段的“业务与系统流程图”，使用一张 UML 泳道活动图展示目标系统参与的核心端到端业务流程。", "feasibility-business-flow-prompt.ts"),
   entry("feasibility.implementation", ["可行性分析", "实现方案"], "根据系统环境图、业务与系统流程图、需求基线和补充资料生成恰好 2 个可执行候选方案，两个候选都必须包含完整 implementation；recommendedCandidateId 必须引用其中一个候选方案。", "feasibility-prompts.ts"),

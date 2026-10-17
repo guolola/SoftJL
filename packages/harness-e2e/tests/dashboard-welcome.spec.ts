@@ -44,14 +44,17 @@ function dashboardElements(page: Page) {
   };
 }
 
-async function expectFloating(page: Page, count: number) {
+async function expectFloating(page: Page, count?: number) {
   const { stage, cards, heading, confirm } = dashboardElements(page);
   await expect(stage).toHaveAttribute("data-welcome-phase", "floating");
   await expect(heading).toBeVisible();
   await expect(confirm).toBeVisible();
   await expect(cards).toHaveCount(12);
-  await expect.poll(() => cards.evaluateAll(elements => elements.map(element => Number(getComputedStyle(element).opacity) > 0.01)))
-    .toEqual(Array.from({ length: 12 }, (_, index) => index < count));
+  await expect.poll(() => cards.evaluateAll((elements, fixedCount) => {
+    // Sidebar resizing can cross the stage breakpoint after setViewportSize resolves.
+    const expectedCount = fixedCount ?? (elements[0].closest('[data-testid="welcome-stage"]')!.clientWidth < 768 ? 4 : 8);
+    return elements.map((element, index) => (Number(getComputedStyle(element).opacity) > 0.01) === (index < expectedCount));
+  }, count)).toEqual(Array(12).fill(true));
 }
 
 async function expectSettled(page: Page) {
@@ -225,18 +228,19 @@ test("floating and returning remain usable across narrow, tablet, and desktop re
   const { stage, cards, heading, confirm } = dashboardElements(page);
   for (const [width, height] of [[390, 844], [768, 1000], [971, 552], [1440, 1000], [1920, 1000]]) {
     await page.setViewportSize({ width, height });
-    const floatingCount = await stage.evaluate(element => element.clientWidth < 768 ? 4 : 8);
-    await expectFloating(page, floatingCount);
+    await expectFloating(page);
     await expectNoOverflow(page);
-    await expect.poll(() => cards.evaluateAll((elements, count) => {
-      const stageBounds = elements[0].closest('[data-testid="welcome-stage"]')!.getBoundingClientRect();
+    await expect.poll(() => cards.evaluateAll((elements) => {
+      const stage = elements[0].closest('[data-testid="welcome-stage"]')!;
+      const count = stage.clientWidth < 768 ? 4 : 8;
+      const stageBounds = stage.getBoundingClientRect();
       return elements.slice(0, count).flatMap((element, index) => {
         const cardBounds = element.querySelector('[data-slot="card"]')!.getBoundingClientRect();
         const clipped = cardBounds.left < stageBounds.left - 1 || cardBounds.right > stageBounds.right + 1
           || cardBounds.top < stageBounds.top - 1 || cardBounds.bottom > stageBounds.bottom + 1;
         return clipped ? [index] : [];
       });
-    }, floatingCount), { message: `Original cards stay inside the welcome stage at ${width}×${height}` }).toEqual([]);
+    }), { message: `Original cards stay inside the welcome stage at ${width}×${height}` }).toEqual([]);
     for (const element of [heading, confirm]) {
       await expect.poll(async () => {
         const box = await element.boundingBox();

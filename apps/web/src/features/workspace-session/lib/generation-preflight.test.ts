@@ -6,14 +6,9 @@ import { modelFixture } from "../../../../../../packages/contracts/dist/testing/
 import type { DesignDiagramType } from "../../../entities/diagram/model";
 import { createEmptyWorkspace } from "../../../services/workspace-repository/workspace-state";
 import { designInputFingerprint } from "../../../shared/lib/fingerprint";
-import { createRequirementBaseline } from "../../../test/workspace-test-utils";
 import { analyzeDesignGenerationPreflight } from "./generation-preflight";
 import { analyzeRequirementGenerationPreflight } from "./generation-preflight";
-import {
-  clearRequirementRuleRequest,
-  pendingRequirementRuleRequest,
-  PROJECT_WORKSPACE_TARGET_REQUEST_EVENT,
-} from "../../../shared/lib/app-navigation";
+import { PROJECT_WORKSPACE_TARGET_REQUEST_EVENT } from "../../../shared/lib/app-navigation";
 
 function designModel(diagramKind: DesignDiagramModelSpec["diagramKind"]) {
   return {
@@ -149,40 +144,6 @@ describe("analyzeDesignGenerationPreflight", () => {
 });
 
 describe("preflight blocker navigation", () => {
-  it("opens the pending rule review dialog request", () => {
-    const { selectedDesignDiagrams: _selectedDesignDiagrams, designDiagramErrors: _designDiagramErrors,
-      designInputFingerprints: _designInputFingerprints, designModels: _designModels,
-      designSvgArtifacts: _designSvgArtifacts, ...shared } = basePreflightInput();
-    const requirement = createRequirementBaseline().requirements[0]!;
-    const preflight = analyzeRequirementGenerationPreflight({
-      ...shared,
-      requirementText: "用户必须登录。",
-      requirementBaseline: createRequirementBaseline(),
-      requirementReviewCandidates: {
-        r1: {
-          ruleId: "r1",
-          beforeRequirement: requirement,
-          afterRequirement: requirement,
-          repairRationale: "待确认",
-          blockingReasons: ["待确认"],
-          status: "pending",
-          errorMessage: null,
-          createdAt: "2026-09-29T00:00:00.000Z",
-        },
-      },
-      selectedDiagrams: ["usecase"],
-    });
-    expect(preflight.status).toBe("blocked");
-    if (preflight.status !== "blocked") return;
-    expect(preflight.block.primaryAction?.label).toBe("查看待确认规则");
-    try {
-      preflight.block.primaryAction?.onSelect?.();
-      expect(pendingRequirementRuleRequest()).toBe("r1");
-    } finally {
-      clearRequirementRuleRequest("r1");
-    }
-  });
-
   it("opens system requirements for a missing requirement source", () => {
     const { selectedDesignDiagrams: _selectedDesignDiagrams, designDiagramErrors: _designDiagramErrors,
       designInputFingerprints: _designInputFingerprints, designModels: _designModels,

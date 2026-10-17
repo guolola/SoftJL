@@ -26,6 +26,8 @@ for (const width of [1440, 390]) for (const colorScheme of ["light", "dark"] as 
       await page.goto(`/projects/${projectId}`);
       await page.getByRole("button", { name: "生成任务", exact: true }).click();
       const transcript = page.getByTestId("generation-transcript");
+      // The task drawer starts folded; streaming must respect the reader's disclosure choice.
+      await transcript.getByRole("button", { name: "正在思考", exact: true }).click();
       const heading = transcript.locator("h3").getByText("生成需求模型", { exact: true });
       await expect(heading).toBeVisible();
       const spinner = transcript.getByTestId("generation-task-step").first().locator("svg.animate-spin");
@@ -97,6 +99,9 @@ for (const width of [1440, 390]) for (const colorScheme of ["light", "dark"] as 
       await expect(transcript.getByText("可行性分析生成", { exact: true })).toHaveCount(0);
       const chain = transcript.locator('[data-slot="chain-of-thought"]');
       await expect(chain).toHaveCount(1);
+      await expect(chain.getByRole("heading", { name: "视觉检查", exact: true })).toBeHidden();
+      await chain.getByRole("button", { name: "思考过程", exact: true }).click();
+      await expect(chain.getByRole("heading", { name: "视觉检查", exact: true })).toBeVisible();
       await expect(chain.getByTestId("generation-task-step")).toHaveCount(3);
       await expect(chain.locator("h3")).toHaveText(["生成系统环境图", "渲染系统环境图", "视觉检查"]);
       await expect(chain.getByText("展示学生和管理员与图书馆座位预约系统的交互关系。", { exact: true })).toHaveCount(0);

@@ -1,10 +1,12 @@
 // Verifies project run commands derive trusted inputs and accept only explicit rule-extraction drafts.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { snapshotInputFingerprint, buildFeasibilityImplementationFingerprint } from "@uml-platform/contracts";
+import { snapshotInputFingerprint, designInputFingerprint, buildFeasibilityImplementationFingerprint } from "@uml-platform/contracts";
 import { createBusinessFlowArtifact } from "../../test-fixtures/feasibility/business-flow.js";
 import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
 import { resolveDesignRunInput, resolveDocumentRunInput, resolveRequirementRunInput } from "./run-input-resolution.js";
+
+import { buildRequirementBaseline } from "../../runs/baselines/requirement-baseline.js";
 
 const rules = [{
   id: "R1",
@@ -12,6 +14,49 @@ const rules = [{
   text: "用户可以提交维修预约。",
   relatedDiagrams: ["usecase"],
 }];
+
+test("document inputs reconcile an outdated baseline from the complete explicit rule list", async () => {
+  const requirementText = "用户可以提交维修预约。";
+  const baseline = buildRequirementBaseline({ runId: "old", requirementText, rules: rules as never });
+  const changed = [{ ...rules[0]!, text: "用户只能取消本人的预约。" }];
+  const result = await resolveDocumentRunInput({ documentKind: "requirementsSpec", requirementText, rules: changed, requirementBaseline: baseline }, undefined);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.input.requirementBaseline?.rules?.[0]?.text, changed[0]!.text);
+});
+
+test("design commands rebuild obsolete baseline facts without changing the captured workspace", async () => {
+  const requirementText = "订单系统";
+  const old = buildRequirementBaseline({ runId: "old", requirementText, rules: rules as never });
+  const currentRules = [{ ...rules[0]!, text: "用户只能取消本人的预约。" }];
+  const model = modelFixture("requirements", "function");
+  const state = { requirementText, rules: currentRules, requirementBaseline: old,
+    models: { function: model }, modelInputFingerprints: { function: snapshotInputFingerprint({ requirementText, rules: currentRules }) },
+    requirementModelTraceability: [{ ruleId: "R1", target: { diagramKind: "function", elementId: "a", elementKind: "node", label: "功能" } }],
+  };
+  const result = await resolveDesignRunInput({ projectId: "p", selectedDiagrams: ["architecture"] }, { projectId: "p" }, async () => ({ state }));
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.input.requirementBaseline.rules?.[0]?.text, currentRules[0]!.text);
+    assert.deepEqual(result.workspaceState, state);
+  }
+  assert.equal(old.rules?.[0]?.text, rules[0]!.text);
+});
+
+test("server rejects stale design dependencies before invoking a generator", async () => {
+  const usecase = modelFixture("requirements", "usecase");
+  const designClass = modelFixture("design", "class");
+  const sequence = modelFixture("design", "sequence");
+  const baseline = buildRequirementBaseline({ runId: "baseline", requirementText: "用户下单", rules: rules as never });
+  const state = { requirementText: "用户下单", rules, requirementBaseline: baseline,
+    models: { usecase }, requirementModelTraceability: [],
+    modelInputFingerprints: { usecase: snapshotInputFingerprint({ requirementText: "用户下单", rules }) },
+    designModels: { class: designClass, sequence },
+    designInputFingerprints: { class: "stale:old", sequence: designInputFingerprint([usecase], []) },
+  };
+  const result = await resolveDesignRunInput({ projectId: "p", selectedDiagrams: ["table"] }, { projectId: "p" }, async () => ({ state }));
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.body.error.code, "DESIGN_MODELS_STALE");
+});
 
 const contextModel = {
   diagramKind: "context",
@@ -142,6 +187,36 @@ test("project design commands reject invalid source structure before traceabilit
     async () => ({ state: { requirementText: "用户可以下单", rules, models: { usecase }, manualModelEditStatus: { usecase: "confirmed" } } }));
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.body.error.code, "MODEL_STRUCTURE_INVALID");
+});
+
+test("project model commands use the saved baseline rather than caller task metadata", async () => {
+  const requirementText = "用户可以提交维修预约。";
+  const baseline = buildRequirementBaseline({ runId: "baseline-run", requirementText, rules: rules as never });
+  const result = await resolveRequirementRunInput(
+    { projectId: "project-a", selectedDiagrams: ["usecase"] },
+    { projectId: "project-a" },
+    async () => ({ state: { requirementText, rules, requirementBaseline: baseline } }),
+  );
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.input.requirementBaseline, baseline);
+});
+
+test("requirement commands rebuild legacy baselines from current rules without changing workspace state", async () => {
+  const requirementText = "用户可以提交维修预约。";
+  const baseline = buildRequirementBaseline({ runId: "old", requirementText, rules: rules as never });
+  delete baseline.schemaVersion;
+  delete baseline.sourceInputFingerprint;
+  delete baseline.rules;
+  const currentRules = [{ ...rules[0]!, text: "用户只能取消本人的预约。" }];
+  const state = { requirementText, rules: currentRules, requirementBaseline: baseline };
+  const result = await resolveRequirementRunInput({ projectId: "p", selectedDiagrams: ["usecase"] }, { projectId: "p" }, async () => ({ state }));
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.input.requirementBaseline?.schemaVersion, 2);
+    assert.equal(result.input.requirementBaseline?.rules?.[0]?.text, currentRules[0]!.text);
+    assert.deepEqual(result.workspaceState, state);
+  }
+  assert.equal(baseline.schemaVersion, undefined);
 });
 
 test("rules-only extraction uses the draft text but excludes persisted old rules", async () => {

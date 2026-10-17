@@ -1,10 +1,8 @@
-// Owns project run history filtering, actions, snapshot restore, and document download flows.
-import { Alert } from '../../../shared/ui/alert';
+// Displays business operation history with snapshot inspection and record deletion.
 import { Card } from "../../../shared/ui/card";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
-import { Download, RotateCw, Trash2 } from "lucide-react";
+import { Eye, Trash2 } from "lucide-react";
 import { Badge } from "../../../shared/ui/badge";
 import { Button } from "../../../shared/ui/button";
 import { SelectControl } from "../../../shared/ui/select";
@@ -17,18 +15,13 @@ import {
   TableRow,
 } from "../../../shared/ui/table";
 import { TablePagination, TableToolbar } from "../../../shared/template/layout/page";
-import { downloadBlobFile } from "../../../shared/lib/download";
-import { useWorkspaceRepository } from "../../../services/workspace-repository";
-import { isDocumentRunSnapshot } from "../../../entities/run-history";
 import { useWorkspaceSession } from "../../workspace-session/state";
 import {
   formatDateTime,
   getProjectRunDisplayTime,
-  getProjectRunKind,
   getProjectRunModelLabel,
   getProjectRunOperatorLabel,
   getProjectRunOperatorSearchText,
-  getProjectRunStageLabel,
   getProjectRunStatusClasses,
   getProjectRunStatusLabel,
 } from "../lib/project-workspace-presentation";
@@ -39,26 +32,12 @@ import {
 } from "../services/platform-api";
 import { useAppI18n } from "../../../shared/i18n/i18n-provider";
 import {
-  localizeApiFailure,
   localizeCaughtFailure,
 } from "../../../shared/i18n/api-errors";
 import { useFloatingAlert } from "../../../shared/ui/floating-alert";
-
-function runActionLabel(action: string | null | undefined, t: TFunction) {
-  if (action === "retry") return t("projectShell.historyUi.retry");
-  if (action === "rerun") return t("projectShell.historyUi.rerun");
-  return t("projectShell.historyUi.derived");
-}
-
-function runRelationText(run: PlatformRunSummary, t: TFunction) {
-  const parts = [
-    run.sourceRunId ? t("projectShell.historyUi.relationSource", { action: runActionLabel(run.sourceAction, t), runId: run.sourceRunId }) : null,
-    run.latestActionRunId
-      ? t("projectShell.historyUi.relationDerived", { action: runActionLabel(run.latestAction, t), runId: run.latestActionRunId })
-      : null,
-  ].filter(Boolean);
-  return parts.join(" · ");
-}
+import { getHistoryOperation, HISTORY_OPERATIONS } from "../lib/project-history-details";
+import { ProjectRunDetailDialog } from "./project-run-detail-dialog";
+import { runTokenConsumptionPresentation } from "../lib/run-token-consumption";
 
 export function ProjectHistory({
   projectId,
@@ -78,15 +57,11 @@ export function ProjectHistory({
   const [stageFilter, setStageFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchFilter, setSearchFilter] = useState("");
-  const [selectedErrorRunId, setSelectedErrorRunId] = useState("");
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [deletingRunIds, setDeletingRunIds] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const {
-    historyItems,
-    restoreRunHistory,
-    deleteRunHistory,
-  } = useWorkspaceSession();
-  const repository = useWorkspaceRepository();
+  const { deleteRunHistory } = useWorkspaceSession();
 
   useEffect(() => {
     setRuns(initialRuns);
@@ -96,123 +71,10 @@ export function ProjectHistory({
   const notifySuccess = (title: string) => showAlert({ id: "project-history-success", title, tone: "success" });
   const notifyError = (title: string) => showAlert({ id: "project-history-error", title, tone: "destructive" });
 
-  const cancelRun = async (runId: string) => {
-    try {
-      const response = await platformApi.cancelProjectRun(projectId, runId);
-      const nextRun =
-        response.run ??
-        ({
-          runId: response.runId ?? runId,
-          status: response.status ?? "cancelled",
-        } satisfies PlatformRunSummary);
-      setRuns((current) =>
-        current.map((run) =>
-          run.runId === runId ? { ...run, ...nextRun } : run,
-        ),
-      );
-      notifySuccess(t("projectShell.historyUi.cancelled"));
-    } catch (cancelError) {
-      notifyError(localizeCaughtFailure(cancelError, t("projectShell.historyUi.cancelFailed")));
-    }
-  };
-
-  
-
-  const runAction = async (
-    runId: string,
-    action: "retry" | "rerun",
-  ) => {
-    try {
-      const response =
-        action === "retry"
-          ? await platformApi.retryProjectRun(projectId, runId)
-          : await platformApi.rerunProjectRun(projectId, runId);
-      const sourceRun = runs.find((run) => run.runId === runId);
-      const responseAction = response.action ?? action;
-      const nextRun = {
-        ...(
-          response.run ??
-          ({
-            runId: response.runId ?? runId,
-            status: response.status ?? "queued",
-          } satisfies PlatformRunSummary)
-        ),
-        sourceRunId: response.run?.sourceRunId ?? response.sourceRunId ?? runId,
-        sourceAction: response.run?.sourceAction ?? responseAction,
-        sourceRunStatus:
-          response.run?.sourceRunStatus ?? sourceRun?.status ?? null,
-      } satisfies PlatformRunSummary;
-      if (nextRun.runId !== runId) {
-        setRuns((current) => [
-          nextRun,
-          ...current.map((run) =>
-            run.runId === runId
-              ? {
-                  ...run,
-                  derivedRunIds: [
-                    ...(run.derivedRunIds ?? []).filter((id) => id !== nextRun.runId),
-                    nextRun.runId,
-                  ],
-                  latestAction: responseAction,
-                  latestActionRunId: nextRun.runId,
-                  latestActionAt: nextRun.updatedAt ?? nextRun.startedAt ?? nextRun.createdAt ?? null,
-                }
-              : run,
-          ),
-        ]);
-      } else {
-        setRuns((current) =>
-          current.map((run) =>
-            run.runId === runId ? { ...run, ...nextRun } : run,
-          ),
-        );
-      }
-      notifySuccess(t("projectShell.historyUi.requeued"));
-    } catch (actionError) {
-      notifyError(
-        localizeCaughtFailure(
-          actionError,
-          action === "retry"
-            ? t("projectShell.historyUi.retryFailed")
-            : t("projectShell.historyUi.rerunFailed"),
-        ),
-      );
-    }
-  };
-
-  const restoreSnapshot = async (runId: string) => {
-    try {
-      await restoreRunHistory(runId);
-      notifySuccess(t("projectShell.historyUi.restored"));
-    } catch (restoreError) {
-      notifyError(localizeCaughtFailure(restoreError, t("projectShell.historyUi.restoreFailed")));
-    }
-  };
-
-  const downloadDocumentRun = async (runId: string) => {
-    const historyItem = historyItems.find((item) => item.id === runId);
-    const run = runs.find((item) => item.runId === runId);
-    if (!repository.downloadDocumentRun) {
-      notifyError(t("projectShell.historyUi.downloadUnsupported"));
-      return;
-    }
-    try {
-      const downloaded = await repository.downloadDocumentRun(
-        runId,
-        run?.documentFileName ??
-          historyItem?.documentFileName ??
-          (historyItem?.snapshot && isDocumentRunSnapshot(historyItem.snapshot)
-          ? historyItem.snapshot.fileName ?? undefined
-          : undefined),
-      );
-      downloadBlobFile(downloaded.fileName, downloaded.blob);
-      notifySuccess(t("projectShell.historyUi.downloaded", { file: downloaded.fileName }));
-    } catch (downloadError) {
-      notifyError(localizeCaughtFailure(downloadError, t("projectShell.historyUi.downloadFailed")));
-    }
-  };
-
   const deleteRun = async (runId: string) => {
+    const run = runs.find((item) => item.runId === runId);
+    if (!run || run.status === "running" || run.status === "queued" || deletingRunIds.includes(runId)) return;
+    setDeletingRunIds((current) => [...current, runId]);
     try {
       await platformApi.deleteProjectRun(projectId, runId);
       await deleteRunHistory(runId).catch(() => []);
@@ -220,26 +82,24 @@ export function ProjectHistory({
       notifySuccess(t("projectShell.historyUi.deleted"));
     } catch (deleteError) {
       notifyError(localizeCaughtFailure(deleteError, t("projectShell.historyUi.deleteFailed")));
+    } finally {
+      setDeletingRunIds((current) => current.filter((id) => id !== runId));
     }
   };
 
+  const historyRuns = useMemo(() => runs.filter((run) => getHistoryOperation(run) !== null), [runs]);
   const statuses = useMemo(
-    () => Array.from(new Set(runs.map((run) => run.status).filter(Boolean))),
-    [runs],
+    () => Array.from(new Set(historyRuns.map((run) => run.status).filter(Boolean))),
+    [historyRuns],
   );
   const categories = [
     ["all", t("projectShell.historyUi.allCategories")],
-    ["requirements", t("projectShell.historyUi.requirements")],
-    ["feasibility", t("projectShell.historyUi.feasibility")],
-    ["design", t("projectShell.historyUi.models")],
-    [ t("projectShell.historyUi.code")],
-    ["document", t("projectShell.historyUi.documents")],
+    ...HISTORY_OPERATIONS.map((operation) => [operation, t(`projectShell.historyUi.operations.${operation}`)] as const),
   ] as const;
-  const filteredRuns = runs.filter((run) => {
+  const filteredRuns = historyRuns.filter((run) => {
     if (
       stageFilter !== "all" &&
-      run.stage !== stageFilter &&
-      getProjectRunKind(run) !== stageFilter
+      getHistoryOperation(run) !== stageFilter
     ) {
       return false;
     }
@@ -264,121 +124,28 @@ export function ProjectHistory({
   });
 
   const pageCount = Math.max(1, Math.ceil(filteredRuns.length / pageSize));
-  const pagedRuns = filteredRuns.slice((page - 1) * pageSize, page * pageSize);
+  const safePage = Math.min(page, pageCount);
+  const pagedRuns = filteredRuns.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  const renderRunActions = ({
-    run,
-    hasSnapshot,
-    hasDocumentSnapshot,
-    size,
-    withIcons = false,
-  }: {
-    run: PlatformRunSummary;
-    hasSnapshot: boolean;
-    hasDocumentSnapshot: boolean | undefined;
-    size?: "sm";
-    withIcons?: boolean;
-  }) => {
+  // Active records cannot be deleted until the task finishes.
+  const renderRunActions = (run: PlatformRunSummary) => {
     const running = run.status === "running" || run.status === "queued";
-    const retryable =
-      run.status === "failed" ||
-      run.status === "cancelled" ||
-      run.status === "interrupted";
-    const documentRun = getProjectRunKind(run) === "document" || Boolean(hasDocumentSnapshot);
-    const feasibilityRun = getProjectRunKind(run) === "feasibility";
-    const canUseSnapshot =
-      !documentRun &&
-      !feasibilityRun &&
-      (hasSnapshot || run.canRestore) &&
-      !running;
-    const canDownloadDocument =
-      run.status === "completed" &&
-      run.documentDownloadAvailable !== false &&
-      (Boolean(hasDocumentSnapshot) || Boolean(run.documentDownloadAvailable));
-    const canRerun = !running;
-    const canDelete = !running;
-    const buttonSizeProps = size ? { size } : {};
-
     return (
-      <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap [&>button]:shrink-0">
-        {running && (
-          <Button
-            type="button"
-            variant="outline"
-            {...buttonSizeProps}
-            onClick={() => void cancelRun(run.runId)}
-          >
-            {t("projectShell.historyUi.cancel")}
-          </Button>
-        )}
-        {!running && (run.error || run.errorMessage) && (
-          <Button
-            type="button"
-            variant="outline"
-            {...buttonSizeProps}
-            onClick={() => setSelectedErrorRunId(run.runId)}
-          >
-            {t("projectShell.historyUi.viewError")}
-          </Button>
-        )}
-        {!running && retryable && (
-          <Button
-            type="button"
-            variant="outline"
-            {...buttonSizeProps}
-            onClick={() => void runAction(run.runId, "retry")}
-          >
-            {t("projectShell.historyUi.retry")}
-          </Button>
-        )}
-        {canRerun && (
-          <Button
-            type="button"
-            variant="outline"
-            {...buttonSizeProps}
-            onClick={() => void runAction(run.runId, "rerun")}
-          >
-            {t("projectShell.historyUi.rerun")}
-          </Button>
-        )}
-        {canUseSnapshot && (
-          <Button
-            type="button"
-            variant="outline"
-            {...buttonSizeProps}
-            onClick={() => void restoreSnapshot(run.runId)}
-          >
-            {withIcons && <RotateCw className="size-3.5" />}
-            {t("projectShell.historyUi.restore")}
-          </Button>
-        )}
-        {canDownloadDocument && (
-          <Button
-            type="button"
-            variant="outline"
-            {...buttonSizeProps}
-            onClick={() => void downloadDocumentRun(run.runId)}
-          >
-            {withIcons && <Download className="size-3.5" />}
-            {t("projectShell.historyUi.download")}
-          </Button>
-        )}
-        {canDelete && (
-          <Button
-            type="button"
-            variant="outline"
-            {...buttonSizeProps}
-            className=""
-            onClick={() => void deleteRun(run.runId)}
-          >
-            {withIcons && <Trash2 className="size-3.5" />}
-            {t("projectShell.historyUi.delete")}
-          </Button>
-        )}
+      <div className="flex items-center justify-center gap-1">
+        <Button type="button" variant="outline" size="sm" className="h-7 px-1 md:h-8 md:px-2"
+          aria-label={t("projectShell.historyUi.viewAria", { id: run.runId })}
+          title={t("projectShell.historyUi.view")}
+          onClick={() => setSelectedRunId(run.runId)}><Eye className="size-3.5" /></Button>
+        <Button type="button" variant="destructive" size="sm" className="h-7 px-1 md:h-8 md:px-2"
+          aria-label={t("projectShell.historyUi.deleteAria", { id: run.runId })}
+          title={running ? t("projectShell.historyUi.deleteBlocked") : t("projectShell.historyUi.delete")}
+          disabled={running || deletingRunIds.includes(run.runId)}
+          onClick={() => void deleteRun(run.runId)}><Trash2 className="size-3.5" /></Button>
+        {running && <span className="sr-only">{t("projectShell.historyUi.deleteBlocked")}</span>}
       </div>
     );
   };
-  const selectedErrorRun = runs.find((run) => run.runId === selectedErrorRunId);
+  const selectedRun = historyRuns.find((run) => run.runId === selectedRunId);
 
   const formatRunDuration = (run: PlatformRunSummary) => {
     if (!run.startedAt) return t("projectShell.historyUi.noTime");
@@ -451,30 +218,26 @@ export function ProjectHistory({
           </>
         }
       />
-      <Table className="table-fixed">
+      <Table className="min-w-[1000px] table-fixed">
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[15%]">{t("projectShell.historyUi.columns.time")}</TableHead>
-            <TableHead className="w-[14%]">{t("projectShell.historyUi.columns.kind")}</TableHead>
-            <TableHead className="w-[11%]">{t("projectShell.historyUi.columns.model")}</TableHead>
-            <TableHead className="w-[9%]">{t("projectShell.historyUi.columns.status")}</TableHead>
-            <TableHead className="w-[11%]">{t("projectShell.historyUi.columns.operator")}</TableHead>
-            <TableHead className="w-[8%]">{t("projectShell.historyUi.columns.duration")}</TableHead>
-            <TableHead className="w-[32%]">{t("projectShell.historyUi.columns.actions")}</TableHead>
+            <TableHead className="w-[18%]">{t("projectShell.historyUi.columns.time")}</TableHead>
+            <TableHead className="w-[15%]">{t("projectShell.historyUi.columns.kind")}</TableHead>
+            <TableHead className="w-[15%]">{t("projectShell.historyUi.columns.model")}</TableHead>
+            <TableHead className="w-[10%]">{t("projectShell.historyUi.columns.status")}</TableHead>
+            <TableHead className="w-[10%]">{t("projectShell.historyUi.columns.operator")}</TableHead>
+            <TableHead className="w-[10%]">{t("projectShell.historyUi.columns.duration")}</TableHead>
+            <TableHead className="w-[12%]">{t("projectShell.historyUi.columns.tokens")}</TableHead>
+            <TableHead className="w-[10%] text-center">{t("projectShell.historyUi.columns.actions")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {pagedRuns.map((run) => {
-            const historyItem = historyItems.find((item) => item.id === run.runId);
-            const hasSnapshot = Boolean(historyItem) || Boolean(run.snapshotAvailable);
-            const hasDocumentSnapshot =
-              Boolean(run.documentDownloadAvailable) ||
-              Boolean(historyItem?.snapshot && isDocumentRunSnapshot(historyItem.snapshot));
-            const stageLabel = getProjectRunStageLabel(run, t);
+            const stageLabel = t(`projectShell.historyUi.operations.${getHistoryOperation(run)}`);
             const statusLabel = getProjectRunStatusLabel(run.status, t);
             const statusClasses = getProjectRunStatusClasses(run.status);
             const displayTime = getProjectRunDisplayTime(run);
-            const relation = runRelationText(run, t);
+            const tokenUsage = runTokenConsumptionPresentation(run.tokenConsumption);
             return (
               <TableRow key={run.runId} className="align-top">
                 <TableCell className="overflow-hidden text-ellipsis text-muted-foreground whitespace-nowrap">
@@ -486,14 +249,9 @@ export function ProjectHistory({
                   <div className="truncate font-medium" title={stageLabel}>
                     {stageLabel}
                   </div>
-                  {relation && (
-                    <div className="text-muted-foreground truncate text-xs" title={relation}>
-                      {relation}
-                    </div>
-                  )}
                 </TableCell>
-                <TableCell className="overflow-hidden text-ellipsis" title={getProjectRunModelLabel(run)}>
-                  {getProjectRunModelLabel(run)}
+                <TableCell className="overflow-hidden text-ellipsis" title={getProjectRunModelLabel(run, t)}>
+                  {getProjectRunModelLabel(run, t)}
                 </TableCell>
                 <TableCell>
                   <Badge variant="outline" className={statusClasses.badge}>
@@ -506,30 +264,28 @@ export function ProjectHistory({
                 <TableCell className="text-muted-foreground whitespace-nowrap">
                   {formatRunDuration(run)}
                 </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  <span className="font-mono tabular-nums">{tokenUsage.metrics.total ?? t("projectShell.historyUi.tokens.unknown")}</span>
+                  {tokenUsage.partial && <span className="block text-xs text-warning">{t("projectShell.historyUi.tokens.partial")}</span>}
+                </TableCell>
                 <TableCell className="overflow-hidden">
-                  {renderRunActions({
-                    run,
-                    hasSnapshot,
-                    hasDocumentSnapshot,
-                    size: "sm",
-                    withIcons: true,
-                  })}
+                  {renderRunActions(run)}
                 </TableCell>
               </TableRow>
             );
           })}
-          {runs.length === 0 && (
+          {historyRuns.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7}>
+              <TableCell colSpan={8}>
                 <div className="text-muted-foreground p-4 text-center text-sm">
                   {t("projectShell.historyUi.empty")}
                 </div>
               </TableCell>
             </TableRow>
           )}
-          {runs.length > 0 && filteredRuns.length === 0 && (
+          {historyRuns.length > 0 && filteredRuns.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7}>
+              <TableCell colSpan={8}>
                 <div className="text-muted-foreground p-4 text-center text-sm">
                   {t("projectShell.historyUi.noMatches")}
                 </div>
@@ -540,7 +296,7 @@ export function ProjectHistory({
       </Table>
       <TablePagination
         total={filteredRuns.length}
-        page={page}
+        page={safePage}
         pageCount={pageCount}
         pageSize={pageSize}
         onPageChange={setPage}
@@ -549,31 +305,10 @@ export function ProjectHistory({
     </Card>
   );
 
-  if (layout === "drawer") {
-    return (
-      <div className="grid min-w-0 gap-4">
-        {runTable}
-        {selectedErrorRun && (
-          <Alert variant="destructive" className="grid gap-2 text-xs">
-            <div>{localizeApiFailure(selectedErrorRun.error ? { error: selectedErrorRun.error } : null, 500)}</div>
-            <div className="text-muted-foreground">任务编号：{selectedErrorRun.runId}</div>
-          </Alert>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="grid min-w-0 gap-4">
+    <div className="grid min-w-0 gap-4" data-layout={layout}>
       {runTable}
-      {selectedErrorRun && (
-        <Alert variant="destructive" className="grid gap-2 text-sm">
-          <div>{selectedErrorRun.error || selectedErrorRun.errorMessage
-            ? localizeApiFailure(selectedErrorRun.error ? { error: selectedErrorRun.error } : null, 500)
-            : t("errors.http.unknown")}</div>
-          <div className="text-muted-foreground text-xs">任务编号：{selectedErrorRun.runId}</div>
-        </Alert>
-      )}
+      {selectedRun && <ProjectRunDetailDialog key={`${projectId}:${selectedRun.runId}`} projectId={projectId} run={selectedRun} onClose={() => setSelectedRunId("")} />}
     </div>
   );
 }

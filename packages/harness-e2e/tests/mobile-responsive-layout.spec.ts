@@ -165,6 +165,8 @@ test("community entry, dashboard, projects, and MFA fit the mobile viewport", as
 
 test("workspace stages, details, tests, and account dialog fit the responsive viewport matrix", async ({ page }, info) => {
   await mockProjectApi(page, {
+    // Successful checks no longer create a notice; supply a real warning for dialog geometry.
+    visualReviews: { "requirements:usecase": { status: "pending_review", issues: ["标签不可读"], reason: "请人工确认图中标签。", attempts: 1, checkedAt: "2026-10-17T08:00:00.000Z" } },
     testCases: [{
       id: "TC-1",
       title: "预约座位成功",

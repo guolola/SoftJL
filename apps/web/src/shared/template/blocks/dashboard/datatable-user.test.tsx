@@ -8,8 +8,8 @@ import { i18n } from '@/shared/i18n'
 import UserDatatable, { type Item } from './datatable-user'
 
 const rows: Item[] = [
-  { id: 'one', avatar: '', fallback: 'ON', user: '订单系统', email: 'Guest', role: 'editor', plan: 'enterprise', billing: 'manual-cash', status: 'pending' },
-  { id: 'two', avatar: '', fallback: 'LI', user: '图书馆系统', email: 'Owner', role: 'admin', plan: 'team', billing: 'auto-debit', status: 'active' },
+  { id: 'one', avatar: '', fallback: 'ON', user: '订单系统', email: 'Guest', role: 'editor', plan: 'enterprise', status: 'pending' },
+  { id: 'two', avatar: '', fallback: 'LI', user: '图书馆系统', email: 'Owner', role: 'admin', plan: 'team', status: 'active' },
 ]
 
 afterEach(async () => {
@@ -41,7 +41,7 @@ describe('UserDatatable localization', () => {
     expect(screen.getByRole('columnheader', { name: '用户' })).toBeInTheDocument()
     expect(screen.getByText('编辑者')).toBeInTheDocument()
     expect(screen.getByText('企业版')).toBeInTheDocument()
-    expect(screen.getByText('手动—现金')).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: '账单' })).not.toBeInTheDocument()
     expect(screen.getByText('待生成')).toBeInTheDocument()
     expect(screen.getByText('显示第 1–2 条，共 2 条')).toBeInTheDocument()
     expect(screen.queryByText('Select Role')).not.toBeInTheDocument()

@@ -1,4 +1,6 @@
 // Shares system-aware light/dark mode and AdminCN color presets across application surfaces.
+'use client';
+
 import {
   createContext,
   useContext,
@@ -91,6 +93,9 @@ function WorkspaceThemeController({ children }: { children: ReactNode }) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  const inherited = useContext(WorkspaceThemeContext);
+  // The document owns initialization; standalone application/test surfaces may still provide their own theme.
+  if (inherited) return children;
   return (
     <TemplateThemeProvider
       attribute="class"

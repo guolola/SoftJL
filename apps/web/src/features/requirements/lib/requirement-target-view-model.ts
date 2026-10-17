@@ -33,24 +33,16 @@ export function requirementDiagramsButtonLabel(input: {
   staleDiagrams: DiagramType[];
   t?: TFunction;
 }) {
-  const { generatedDiagrams, selectedDiagrams, staleDiagrams, t } = input;
+  const { generatedDiagrams, selectedDiagrams, t } = input;
   const toAdd = selectedDiagrams.filter(
     (diagram) => !generatedDiagrams.includes(diagram),
   ).length;
-  const toKeep = generatedDiagrams.filter(
-    (diagram) => !selectedDiagrams.includes(diagram),
-  ).length;
-  const stale = staleDiagrams.filter((diagram) =>
-    selectedDiagrams.includes(diagram),
-  ).length;
-  if (generatedDiagrams.length === 0) return t ? t("requirements.generation.generate") : "生成模型";
+  const updates = selectedDiagrams.length - toAdd;
+  if (selectedDiagrams.length === 0) return t ? t("uxReview.selectModels") : "勾选要生成或更新的模型";
   const parts: string[] = [];
-  if (toAdd) parts.push(t ? t("requirements.generation.add", { count: toAdd }) : `新增${toAdd}`);
-  if (toKeep) parts.push(t ? t("requirements.generation.keep", { count: toKeep }) : `保留${toKeep}`);
-  if (stale) parts.push(t ? t("requirements.generation.update", { count: stale }) : `更新${stale}`);
-  return parts.length
-    ? (t ? t("requirements.generation.apply", { changes: parts.join("·") }) : `应用变更（${parts.join("·")}）`)
-    : (t ? t("requirements.generation.regenerate") : "重新生成");
+  if (toAdd) parts.push(t ? t("uxReview.generateCount", { count: toAdd }) : `生成 ${toAdd} 个`);
+  if (updates) parts.push(t ? t("uxReview.updateCount", { count: updates }) : `更新 ${updates} 个`);
+  return parts.join("，");
 }
 
 export function requirementTargetBlockReason(input: {

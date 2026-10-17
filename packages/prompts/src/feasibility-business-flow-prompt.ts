@@ -1,4 +1,5 @@
 // Defines a rule-driven, high-level activity workflow independent of later requirement models.
+import { requirementBaselinePromptContext } from "@uml-platform/contracts";
 import type { RequirementBaseline, RequirementRule } from "@uml-platform/contracts";
 import { getModelReviewProfile } from "@uml-platform/contracts";
 
@@ -19,5 +20,5 @@ traceability 中 requirementId 只能取自输入 rules.id；每个 activity 和
 modelId 固定为 feasibility-business-flow，title 使用“<系统名称>业务与系统流程图”。严格使用以下对象形状，示例仅说明结构，不是输入事实：
 {"model":{"diagramKind":"activity","modelId":"feasibility-business-flow","title":"示例系统业务与系统流程图","summary":"核心业务闭环","notes":[],"swimlanes":[{"id":"system","name":"目标系统"}],"nodes":[{"id":"start","type":"start","name":"开始"},{"id":"process","type":"activity","name":"处理业务","actorOrLane":"system","input":[],"output":[]},{"id":"end","type":"end","name":"结束"}],"relationships":[{"id":"flow-1","type":"control_flow","sourceId":"start","targetId":"process"},{"id":"flow-2","type":"control_flow","sourceId":"process","targetId":"end"}]},"traceability":[{"requirementId":"R1","targetId":"process","targetKind":"node"}]}
 输入：
-${JSON.stringify(input, null, 2)}`;
+${JSON.stringify({ ...input, requirementBaseline: input.requirementBaseline ? requirementBaselinePromptContext(input.requirementBaseline, true) : null })}`;
 }

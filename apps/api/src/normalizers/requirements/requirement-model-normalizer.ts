@@ -82,23 +82,6 @@ export function parseRequirementDiagramModelsOnly(value: string, deferParticipat
   return parseRequirementDiagramModelsOnlyFromParsed(parseJson<unknown>(value), [], deferParticipationRepairs);
 }
 
-export function parseRequirementTraceabilityResult(
-  value: string,
-  rules: RequirementRule[],
-  models: DiagramModelSpec[],
-) {
-  const coverage = parseRequirementTraceabilityCoverageResult(value, rules, models);
-  if (coverage.traceability.length === 0) {
-    throw new Error(
-      "generate_models must return non-empty requirementModelTraceability with valid rule-to-element references",
-    );
-  }
-  if (coverage.missingTargets.length > 0) {
-    throw new Error(formatTraceabilityMissingRefs("requirement", coverage.missingTargets));
-  }
-  return { requirementModelTraceability: coverage.traceability };
-}
-
 export function parseRequirementTraceabilityCoverageResult(
   value: string,
   rules: RequirementRule[],

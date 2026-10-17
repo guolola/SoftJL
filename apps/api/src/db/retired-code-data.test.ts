@@ -10,7 +10,7 @@ import { normalizeWorkspaceModelState } from "../normalizers/workspace/model-sta
 
 test("workspace writes strip retired payloads and old snapshots cannot be restored", () => {
   const output = normalizeWorkspaceModelState({ codeFiles: { "/src/App.tsx": "obsolete" }, requirementText: "keep", error: { code: "KEEP" } });
-  assert.deepEqual(output, { requirementText: "keep", error: { code: "KEEP" } });
+  assert.deepEqual(output, { requirementText: "keep", error: { code: "KEEP" }, requirementReviewCandidates: {} });
   assert.equal(isRestorableRunSnapshot({ files: {}, entryFile: null } as never), false);
 });
 
