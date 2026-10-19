@@ -1,11 +1,14 @@
 // Derives target-model card state and traceability proof rows for requirement generation.
+import { candidateRulesForDiagram } from "@uml-platform/contracts";
 import type { TFunction } from "i18next";
+import { requirementModelSources, type DiagramModelSpec, type RequirementModelTraceabilityEntry } from "@uml-platform/contracts";
 import { DIAGRAM_META, type DiagramType } from "../../../entities/diagram/model";
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
 import { pendingAutoReviewsForRequirementDiagram } from "./requirement-review-view-model";
 
 export const STALE_USECASE_BLOCK_REASON = "用例模型已存在但基于旧规则，请先更新用例模型";
+export const MISSING_USECASE_BLOCK_REASON = "缺少上游模型：用例模型，请先生成";
 
 export interface RequirementModelRepairRecord {
   id: string;
@@ -25,6 +28,8 @@ export interface RequirementTargetCardStateInput {
   rules: RequirementRule[];
   selectedDiagrams: DiagramType[];
   staleDiagrams: DiagramType[];
+  models: DiagramModelSpec[] | Partial<Record<string, DiagramModelSpec>>;
+  traceability?: RequirementModelTraceabilityEntry[];
 }
 
 export function requirementDiagramsButtonLabel(input: {
@@ -33,28 +38,21 @@ export function requirementDiagramsButtonLabel(input: {
   staleDiagrams: DiagramType[];
   t?: TFunction;
 }) {
-  const { generatedDiagrams, selectedDiagrams, staleDiagrams, t } = input;
+  const { generatedDiagrams, selectedDiagrams, t } = input;
   const toAdd = selectedDiagrams.filter(
     (diagram) => !generatedDiagrams.includes(diagram),
   ).length;
-  const toKeep = generatedDiagrams.filter(
-    (diagram) => !selectedDiagrams.includes(diagram),
-  ).length;
-  const stale = staleDiagrams.filter((diagram) =>
-    selectedDiagrams.includes(diagram),
-  ).length;
-  if (generatedDiagrams.length === 0) return t ? t("requirements.generation.generate") : "生成模型";
+  const updates = selectedDiagrams.length - toAdd;
+  if (selectedDiagrams.length === 0) return t ? t("uxReview.selectModels") : "勾选要生成或更新的模型";
   const parts: string[] = [];
-  if (toAdd) parts.push(t ? t("requirements.generation.add", { count: toAdd }) : `新增${toAdd}`);
-  if (toKeep) parts.push(t ? t("requirements.generation.keep", { count: toKeep }) : `保留${toKeep}`);
-  if (stale) parts.push(t ? t("requirements.generation.update", { count: stale }) : `更新${stale}`);
-  return parts.length
-    ? (t ? t("requirements.generation.apply", { changes: parts.join("·") }) : `应用变更（${parts.join("·")}）`)
-    : (t ? t("requirements.generation.regenerate") : "重新生成");
+  if (toAdd) parts.push(t ? t("uxReview.generateCount", { count: toAdd }) : `生成 ${toAdd} 个`);
+  if (updates) parts.push(t ? t("uxReview.updateCount", { count: updates }) : `更新 ${updates} 个`);
+  return parts.join("，");
 }
 
 export function requirementTargetBlockReason(input: {
   diagram: DiagramType;
+  models: RequirementTargetCardStateInput["models"];
   generatedDiagrams: DiagramType[];
   hasRequirementSourceText: boolean;
   isRulesStale: boolean;
@@ -64,7 +62,6 @@ export function requirementTargetBlockReason(input: {
   const {
     diagram,
     generatedDiagrams,
-    hasRequirementSourceText,
     isRulesStale,
     rules,
     staleDiagrams,
@@ -72,12 +69,13 @@ export function requirementTargetBlockReason(input: {
   if (isRulesStale && rules.length > 0) {
     return "需求规则已过期，请先更新需求规则";
   }
-  if (rules.length === 0 && !hasRequirementSourceText) {
-    const canGenerateAnalysisFromUseCase =
-      diagram === "analysis" && generatedDiagrams.includes("usecase");
-    if (!canGenerateAnalysisFromUseCase) {
-      return "请先输入需求描述或添加需求规则";
-    }
+  const ruleDiagram = diagram === "analysis" ? "usecase" : diagram;
+  if (candidateRulesForDiagram(rules, ruleDiagram).length === 0) {
+    return `${DIAGRAM_META[ruleDiagram].label}没有对应类型的需求，请先添加或生成需求规则。`;
+  }
+  // A selected target or a historical receipt cannot replace an actual saved upstream model.
+  if (diagram === "analysis" && !Object.values(input.models).some(model => model?.diagramKind === "usecase")) {
+    return MISSING_USECASE_BLOCK_REASON;
   }
   if (
     diagram === "analysis" &&
@@ -102,33 +100,22 @@ export function requirementTargetCardState(input: RequirementTargetCardStateInpu
     staleDiagrams,
   } = input;
   const checked = selectedDiagrams.includes(diagram);
-  const linkedRules = rules.filter((rule) => rule.relatedDiagrams.includes(diagram));
+  const sources = requirementModelSources({ diagram, rules, models: input.models, traceability: input.traceability ?? [], stale: isRulesStale || staleDiagrams.includes(diagram) });
+  const linkedRules = sources.rules;
   const isAnalysisDiagram = diagram === "analysis";
   const isExistingRequirementModel = generatedDiagrams.includes(diagram);
-  const canGenerateSelectedUseCase =
-    selectedDiagrams.includes("usecase") &&
-    (rules.length > 0 || hasRequirementSourceText);
   const hasUseCaseSourceForAnalysis =
-    generatedDiagrams.includes("usecase") || canGenerateSelectedUseCase;
+    Object.values(input.models).some(model => model?.diagramKind === "usecase");
   const blockReason = requirementTargetBlockReason({
     diagram,
+    models: input.models,
     generatedDiagrams,
     hasRequirementSourceText,
     isRulesStale,
     rules,
     staleDiagrams,
   });
-  const autoFillLabels = [
-    !isAnalysisDiagram && rules.length === 0 && hasRequirementSourceText
-      ? "需求规则"
-      : null,
-    !isAnalysisDiagram && rules.length > 0 && linkedRules.length === 0
-      ? "规则映射"
-      : null,
-    isAnalysisDiagram && !hasUseCaseSourceForAnalysis
-      ? DIAGRAM_META.usecase.label
-      : null,
-  ].filter((label): label is string => Boolean(label));
+  const autoFillLabels: string[] = [];
   const pendingAutoReviews = pendingAutoReviewsForRequirementDiagram(
     autoGeneratedUpstreamReviews,
     diagram,
@@ -138,6 +125,7 @@ export function requirementTargetCardState(input: RequirementTargetCardStateInpu
     blockReason,
     canSelectDiagram:
       canEditRequirements &&
+      (!isAnalysisDiagram || hasUseCaseSourceForAnalysis) &&
       (!blockReason ||
         (isRulesStale && rules.length > 0 && isExistingRequirementModel)),
     checked,
@@ -145,6 +133,8 @@ export function requirementTargetCardState(input: RequirementTargetCardStateInpu
     hasUseCaseSourceForAnalysis,
     isAnalysisDiagram,
     linkedRules,
+    associationMode: sources.mode,
+    pendingReferenceCount: sources.pendingCount,
     pendingAutoReviews,
     sourceCount: isAnalysisDiagram
       ? Number(hasUseCaseSourceForAnalysis)

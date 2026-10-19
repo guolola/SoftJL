@@ -10,16 +10,18 @@ import { createEmptyDiagnostics } from "./diagnostics";
 import { createEmptyRunUiState } from "./run-ui-state";
 import { deriveWorkspaceStatus } from "./workspace-derived-status";
 import {
-  describeDesignTraceabilityGap,
+  describeMissingDesignSources,
   designInputFingerprintFor,
   requirementInputFingerprintFor,
+  isRequirementDiagramStale,
 } from "./workspace-context";
+import { createEmptyWorkspace } from "../../../services/workspace-repository/workspace-state";
 
 const rule: RequirementRule = {
   id: "r1",
-  category: "业务规则",
+  type: "business-rule" as const,
   text: "系统需要管理订单。",
-  relatedDiagrams: ["class"],
+
 };
 
 const requirementClassModel = {
@@ -76,6 +78,16 @@ const designTableModel = {
 } as unknown as DesignDiagramModelSpec;
 
 describe("deriveWorkspaceStatus", () => {
+  it("requires a model receipt even when no generated flag or version is stored", () => {
+    const workspace = createEmptyWorkspace();
+    expect(isRequirementDiagramStale({
+      ...workspace,
+      diagram: "class",
+      activeRequirementFingerprint: requirementInputFingerprintFor("订单需求", [rule]),
+      generatedDiagrams: [],
+      models: { class: requirementClassModel },
+    })).toBe(true);
+  });
   it("keeps fresh design models current while tracking incomplete design traces separately", () => {
     const requirementFingerprint = requirementInputFingerprintFor("订单需求", [rule]);
     const designFingerprint = designInputFingerprintFor(
@@ -117,7 +129,7 @@ describe("deriveWorkspaceStatus", () => {
       requirementBaseline: null,
       requirementInputFingerprint: requirementFingerprint,
       requirementModelTraceability: requirementTrace,
-      requirementReviewCandidates: {},
+
       requirementText: "订单需求",
       rules: [rule],
       rulesBasedOnTextVersion: 1,
@@ -127,7 +139,7 @@ describe("deriveWorkspaceStatus", () => {
       visibleGenerationTask: null,
     });
 
-    expect(status.designTraceabilityStale).toBe(true);
+    expect(status.designTraceabilityStale).toBe(false);
     expect(status.staleDesignModelIds).toEqual([]);
     expect(status.staleDesignDiagrams).toEqual([]);
     expect(status.designStaleReasons["design-table"]).toBeUndefined();
@@ -173,7 +185,7 @@ describe("deriveWorkspaceStatus", () => {
       requirementBaseline: null,
       requirementInputFingerprint: requirementFingerprint,
       requirementModelTraceability: requirementTrace,
-      requirementReviewCandidates: {},
+
       requirementText: "",
       rules: [rule],
       rulesBasedOnTextVersion: 1,
@@ -191,15 +203,14 @@ describe("deriveWorkspaceStatus", () => {
   });
 });
 
-describe("describeDesignTraceabilityGap", () => {
+describe("describeMissingDesignSources", () => {
   it("names the missing design element mapping instead of returning a generic stale state", () => {
-    const details = describeDesignTraceabilityGap({
+    const details = describeMissingDesignSources({
       models: [designTableModel],
       traceability: [],
       requirementModels: [requirementClassModel],
     });
 
-    expect(details).toContain("缺少映射");
-    expect(details).toContain("design-table:table:tbl-order.col-order-id");
+    expect(details).toContain("缺少首次生成的来源声明");
   });
 });

@@ -24,5 +24,5 @@ test("rejects an invalid relationship endpoint", () => {
 
 test("rejects duplicate elements and unknown rule references", () => {
   assert.throws(() => normalizeContextDiagram({ ...validModel, externalSystems: [{ id: "customer", name: "重复", sourceRequirementIds: ["R1"] }] }, new Set(["R1"])), /duplicate-id/u);
-  assert.throws(() => normalizeContextDiagram({ ...validModel, people: [{ ...validModel.people[0], sourceRequirementIds: ["R404"] }] }, new Set(["R1"])), /不存在的需求规则/u);
+  assert.equal(normalizeContextDiagram({ ...validModel, people: [{ ...validModel.people[0], sourceRequirementIds: ["R404"] }] }, new Set(["R1"])).people[0]!.sourceRequirementIds[0], "R404");
 });

@@ -1,11 +1,11 @@
 // Projects provenance only when the current artifact and its own timed generation events agree.
-import { runEventSchema, type RunEvent } from '@uml-platform/contracts';
+import { runEventSchema, type RunEvent, type FeasibilityRunSnapshot } from '@uml-platform/contracts';
 import type { PlatformDocument, PlatformProjectMember, PlatformRunSummary } from '../../user-platform/services/platform-api';
 import type { RunHistorySnapshot } from '../../../entities/run-history';
 import type { WorkspaceSessionState } from '../../workspace-session/model/session-state';
 import type { LineageGraph, LineageNode } from './lineage-graph-model';
 
-export type LineageRunDetail = { run: PlatformRunSummary; snapshot?: RunHistorySnapshot; events?: unknown[] };
+export type LineageRunDetail = { run: PlatformRunSummary; snapshot?: RunHistorySnapshot | FeasibilityRunSnapshot; events?: unknown[] };
 export type GenerationInfo = {
   instanceId: string; label: string; generated: boolean; updatedAt?: string;
   runId?: string; userId?: string; member?: PlatformProjectMember;
@@ -70,7 +70,6 @@ function timing(target: Target, events: RunEvent[]) {
   const ends = events.filter(event => event.type === 'artifact_ready' && (target.scope === 'instance'
     ? event.artifactKind === (target.svg ? 'svg' : 'model') && ownEvent(event, target)
     : event.artifactKind === (target.scope === 'rules-batch' ? 'rules' : 'document')));
-  // Untimed legacy events must not imply ownership or a fabricated zero duration.
   // Events arrive in emission order. A later repair/progress timestamp cannot replace a missing first start.
   const start = starts[0]?.createdAt;
   const end = ends.at(-1)?.createdAt;
@@ -81,7 +80,7 @@ function timing(target: Target, events: RunEvent[]) {
   return { startedAt: start!, completedAt: end!, durationMs: Date.parse(end!) - Date.parse(start!) };
 }
 export function projectLineageGeneration(graph: LineageGraph, workspace: GenerationWorkspace, details: LineageRunDetail[], members: PlatformProjectMember[], documents: PlatformDocument[] = []): Record<string, NodeGenerationInfo> {
-  const parsed = details.map(detail => ({ detail, events: (detail.events ?? []).flatMap(value => { const result = runEventSchema.safeParse(value); return result.success ? [result.data] : []; }) }));
+  const parsed = details.map(detail => ({ detail, events: (detail.events ?? []).map(value => runEventSchema.parse(value)) }));
   return Object.fromEntries(graph.nodes.map(node => {
     const current = targets(node, workspace, documents);
     if (!current.length && node.hasViewableArtifact) current.push({ instanceId: node.id, label: node.label, generated: true, scope: node.kind === 'rule' ? 'rules-batch' : node.kind === 'document' ? 'document' : 'instance' });

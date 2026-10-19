@@ -4,7 +4,6 @@ import {
   GENERATION_COMPLETED_EVENT,
   notifyGenerationCompleted,
   notifyGenerationResultStale,
-  notifyGenerationStarted,
 } from "./notifications";
 
 const { toastMessage } = vi.hoisted(() => ({
@@ -20,16 +19,6 @@ vi.mock("../../../shared/ui/floating-alert", async (importOriginal) => {
 });
 
 describe("workspace generation notifications", () => {
-  it("keeps generation start silent for all stages", () => {
-    toastMessage.mockClear();
-
-    notifyGenerationStarted("requirements");
-    notifyGenerationStarted("design");
-    notifyGenerationStarted("document", "requirementsSpec");
-    notifyGenerationStarted("document", "softwareDesignSpec");
-
-    expect(toastMessage).not.toHaveBeenCalled();
-  });
 
   it("still emits completion events for sidebar expansion without toast", () => {
     toastMessage.mockClear();

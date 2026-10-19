@@ -12,7 +12,6 @@ import {
   createRunRecordStore,
   type RunRecordStore,
 } from "../../runs/records/run-record-store.js";
-import { createEmptyDocumentSnapshot } from "../../runs/records/snapshots.js";
 
 async function createTestApp(mailAdapter?: MailAdapter, runs?: RunRecordStore) {
   const app = Fastify();
@@ -21,7 +20,6 @@ async function createTestApp(mailAdapter?: MailAdapter, runs?: RunRecordStore) {
     app,
     authStore,
     ...(mailAdapter ? { mailAdapter } : {}),
-    ...(runs ? { runs } : {}),
   });
   return { app, authStore };
 }
@@ -89,7 +87,9 @@ test("project execution mode is read-only and reflects server demo configuration
   const { app, authStore } = await createTestApp();
   t.after(() => app.close());
   const { cookie } = await registerUser({ authStore, email: "mode@example.edu", displayName: "Mode" });
-  const project = await createProject({ app, cookie, name: "Library Demo", payload: { generationExecutionMode: "offline-demo" } });
+  const forged = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "Library Demo", generationExecutionMode: "offline-demo" } });
+  assert.equal(forged.statusCode, 400);
+  const project = await createProject({ app, cookie, name: "Library Demo" });
   const read = () => app.inject({ method: "GET", url: `/api/projects/${project.id}`, headers: { cookie } });
   assert.equal((await read()).json().generationExecutionMode, "provider");
   process.env.UML_DEMO_OFFLINE_PROJECT_IDS = project.id;
@@ -98,8 +98,51 @@ test("project execution mode is read-only and reflects server demo configuration
   process.env.UML_DEMO_OFFLINE_PROJECT_NAME_PATTERNS = "Library Demo";
   assert.equal((await read()).json().generationExecutionMode, "offline-demo");
   const updated = await app.inject({ method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie }, payload: { name: "Real Project", generationExecutionMode: "offline-demo" } });
-  assert.equal(updated.json().generationExecutionMode, "provider");
+  assert.equal(updated.statusCode, 400);
+  await app.inject({ method: "PATCH", url: `/api/projects/${project.id}`, headers: { cookie }, payload: { name: "Real Project" } });
   assert.equal((await read()).json().generationExecutionMode, "provider");
+});
+
+test("retired history restore endpoint returns 404 without changing workspace", async () => {
+  const { app, authStore } = await createTestApp();
+  const owner = await registerUser({ authStore, email: "history-owner@example.com", displayName: "History Owner" });
+  const project = await createProject({ app, cookie: owner.cookie, name: "History Project" });
+  const before = await authStore.getProjectWorkspace(project.id);
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/projects/${project.id}/runs/old-run/restore-workspace`,
+    headers: { cookie: owner.cookie },
+    payload: { mode: "restore" },
+  });
+  assert.equal(response.statusCode, 404);
+  assert.deepEqual(await authStore.getProjectWorkspace(project.id), before);
+  await app.close();
+});
+
+test("workspace reads reject obsolete persisted artifacts without rewriting storage", async (t) => {
+  const { app, authStore } = await createTestApp();
+  t.after(() => app.close());
+  const owner = await registerUser({ authStore, email: "invalid-workspace@example.test", displayName: "Owner" });
+  const project = await createProject({ app, cookie: owner.cookie });
+  const state = { rules: [], models: { usecase: { diagramKind: "usecase", title: "obsolete" } } };
+  await authStore.saveProjectWorkspace({ projectId: project.id, baseVersion: 0, state, updatedByUserId: owner.user.id });
+  const before = structuredClone(await authStore.getProjectWorkspace(project.id));
+  const response = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspace`, headers: { cookie: owner.cookie } });
+  assert.equal(response.statusCode, 409);
+  assert.equal(response.json().error.code, "RESOURCE_CONFLICT");
+  assert.deepEqual(await authStore.getProjectWorkspace(project.id), before);
+});
+
+test("workspace writes reject obsolete non-model payloads even when rules are omitted", async (t) => {
+  const { app, authStore } = await createTestApp();
+  t.after(() => app.close());
+  const owner = await registerUser({ authStore, email: "invalid-facts@example.test", displayName: "Owner" });
+  const project = await createProject({ app, cookie: owner.cookie });
+  for (const state of [{ requirementBaseline: { requirements: [] } }, { feasibilityImplementationPlan: { architecture: {} } }]) {
+    const response = await app.inject({ method: "PUT", url: `/api/projects/${project.id}/workspace`, headers: { cookie: owner.cookie }, payload: { baseVersion: 0, state } });
+    assert.equal(response.statusCode, 400);
+    assert.equal((await authStore.getProjectWorkspace(project.id)).version, 0);
+  }
 });
 
 test("project governance actions archive restore retention and transfer ownership with audit", async () => {
@@ -219,7 +262,7 @@ test("project workspace persists shared state with optimistic version conflicts"
       baseVersion: 0,
       state: {
         requirementText: "FR1. 日历仅供公众使用。",
-        rules: [{ id: "FR1", text: "日历仅供公众使用。", category: "业务规则", relatedDiagrams: ["usecase"] }],
+        rules: [{ id: "FR1", text: "日历仅供公众使用。", type: "business-rule" as const,  }],
         selectedDiagramTypes: ["usecase"],
       },
       sourceRunId: "run-requirements-1",
@@ -240,7 +283,7 @@ test("project workspace persists shared state with optimistic version conflicts"
     },
   });
   assert.equal(stale.statusCode, 409);
-  assert.equal(stale.json().currentVersion, 1);
+  assert.equal(stale.json().error.details.currentVersion, 1);
 
   const viewerSave = await app.inject({
     method: "PUT",
@@ -288,251 +331,10 @@ test("project workspace save reports invalid source run ids as bad requests", as
   });
 
   assert.equal(response.statusCode, 400);
-  assert.equal(response.json().message, "Source run not found for project workspace");
+  assert.equal(response.json().error.code, "VALIDATION_FAILED");
   await app.close();
 });
 
-test("project workspace restore rejects completed design snapshots without changing workspace", async () => {
-  const runs = createRunRecordStore();
-  const { app, authStore } = await createTestApp(undefined, runs);
-  const owner = await registerUser({
-    authStore,
-    email: "workspace-restore-owner@example.com",
-    displayName: "Workspace Restore Owner",
-  });
-  const project = await createProject({ app, cookie: owner.cookie, name: "Workspace Restore Project" });
-  const runId = "design-restore-run";
-  const createdAt = "2026-05-30T08:00:00.000Z";
-  runs.set(runId, {
-    snapshot: {
-      runId,
-      requirementText: "用户可以筛选日期并预约座位。",
-      selectedDiagrams: ["architecture", "sequence", "class", "activity", "table", "component", "deployment"],
-      requestedDiagrams: ["architecture", "sequence", "class", "activity", "table", "component", "deployment"],
-      rules: [
-        {
-          id: "FR1",
-          category: "功能需求",
-          text: "用户可以筛选日期并预约座位。",
-          relatedDiagrams: ["usecase", "activity"],
-        },
-      ],
-      requirementBaseline: null,
-      coverageMatrix: null,
-      traceabilityMatrix: null,
-      requirementModels: [
-        {
-          diagramKind: "usecase",
-          title: "用例模型",
-          summary: "座位预约用例。",
-          notes: [],
-          actors: [],
-          useCases: [],
-          systemBoundaries: [],
-          relationships: [],
-        },
-      ],
-      requirementModelTraceability: [],
-      models: [
-        {
-          diagramKind: "architecture",
-          modelId: "architecture",
-          title: "总体架构图",
-          summary: "预约系统架构分层。",
-          notes: [],
-          packages: [],
-          components: [],
-          relationships: [],
-        },
-        {
-          diagramKind: "sequence",
-          modelId: "sequence:uc_filter_date",
-          sourceUseCaseId: "uc_filter_date",
-          sourceUseCaseName: "日期筛选",
-          title: "日期筛选顺序图",
-          summary: "用户筛选未来日期。",
-          notes: [],
-          participants: [],
-          messages: [],
-          fragments: [],
-        },
-        {
-          diagramKind: "class",
-          modelId: "class",
-          title: "设计类图",
-          summary: "预约领域类。",
-          notes: [],
-          classes: [],
-          interfaces: [],
-          enums: [],
-          relationships: [],
-        },
-        {
-          diagramKind: "activity",
-          modelId: "activity",
-          title: "活动图",
-          summary: "预约流程。",
-          notes: [],
-          swimlanes: [],
-          nodes: [],
-          relationships: [],
-        },
-        {
-          diagramKind: "table",
-          modelId: "table",
-          title: "表关系图",
-          summary: "预约数据表。",
-          notes: [],
-          tables: [
-            {
-              id: "reservation",
-              name: "预约表",
-              columns: [
-                {
-                  id: "id",
-                  name: "ID",
-                  dataType: "uuid",
-                  isPrimaryKey: true,
-                  isForeignKey: false,
-                  nullable: false,
-                },
-              ],
-            },
-          ],
-          relationships: [],
-        },
-        {
-          diagramKind: "component",
-          modelId: "component",
-          title: "组件关系图",
-          summary: "预约组件与接口关系。",
-          notes: [],
-          components: [],
-          interfaces: [],
-          relationships: [],
-        },
-        {
-          diagramKind: "deployment",
-          modelId: "deployment",
-          title: "部署图",
-          summary: "小程序部署。",
-          notes: [],
-          nodes: [],
-          databases: [],
-          components: [],
-          externalSystems: [],
-          artifacts: [],
-          relationships: [],
-        },
-      ],
-      designModelTraceability: [],
-      plantUml: [
-        { modelId: "architecture", diagramKind: "architecture", source: "@startuml\n@enduml" },
-        {
-          modelId: "sequence:uc_filter_date",
-          diagramKind: "sequence",
-          source: "@startuml\n@enduml",
-        },
-        { modelId: "class", diagramKind: "class", source: "@startuml\n@enduml" },
-        { modelId: "activity", diagramKind: "activity", source: "@startuml\n@enduml" },
-        { modelId: "table", diagramKind: "table", source: "@startuml\n@enduml" },
-        { modelId: "component", diagramKind: "component", source: "@startuml\n@enduml" },
-        { modelId: "deployment", diagramKind: "deployment", source: "@startuml\n@enduml" },
-      ],
-      svgArtifacts: [
-        {
-          modelId: "sequence:uc_filter_date",
-          diagramKind: "sequence",
-          svg: "<svg />",
-          renderMeta: {
-            engine: "plantuml",
-            generatedAt: createdAt,
-            sourceLength: 16,
-            durationMs: 1,
-          },
-        },
-      ],
-      diagramErrors: {},
-      designTrace: [],
-      currentStage: "render_svg",
-      status: "completed",
-      errorMessage: null,
-    },
-    events: [],
-    listeners: new Set(),
-    terminal: true,
-    metadata: { projectId: project.id, userId: owner.user.id, createdAt },
-  });
-  const before = await authStore.getProjectWorkspace(project.id);
-
-  const response = await app.inject({
-    method: "POST",
-    url: `/api/projects/${project.id}/runs/${runId}/restore-workspace`,
-    headers: { cookie: owner.cookie },
-    payload: { mode: "restore" },
-  });
-
-  assert.equal(response.statusCode, 410);
-  assert.match(response.json().message, /历史快照暂仅支持查看/);
-  const after = await authStore.getProjectWorkspace(project.id);
-  assert.equal(after.version, before.version);
-  assert.deepEqual(after.state, before.state);
-
-  const logs = await authStore.listAuditLogs();
-  assert.equal(logs.some((entry) => entry.action === "project.workspace.restore"), false);
-  await app.close();
-});
-
-test("project workspace restore rejects completed document run snapshots without changing workspace", async () => {
-  const runs = createRunRecordStore();
-  const { app, authStore } = await createTestApp(undefined, runs);
-  const owner = await registerUser({
-    authStore,
-    email: "document-restore-owner@example.com",
-    displayName: "Document Restore Owner",
-  });
-  const project = await createProject({
-    app,
-    cookie: owner.cookie,
-    name: "Document Restore Project",
-  });
-  const before = await authStore.getProjectWorkspace(project.id);
-  const snapshot = createEmptyDocumentSnapshot("run-document-restore", {
-    documentKind: "requirementsSpec",
-    requirementText: "说明书快照不恢复工作台",
-  });
-  snapshot.status = "completed";
-  snapshot.currentStage = "render_document_file";
-  snapshot.documentId = "doc-restore";
-  snapshot.fileName = "requirements.docx";
-  snapshot.byteLength = 128;
-  runs.set(snapshot.runId, {
-    snapshot,
-    events: [],
-    listeners: new Set(),
-    terminal: true,
-    metadata: {
-      projectId: project.id,
-      userId: owner.user.id,
-      createdAt: "2026-06-21T00:00:00.000Z",
-    },
-  });
-
-  const response = await app.inject({
-    method: "POST",
-    url: `/api/projects/${project.id}/runs/${snapshot.runId}/restore-workspace`,
-    headers: { cookie: owner.cookie },
-    payload: { mode: "restore" },
-  });
-  const after = await authStore.getProjectWorkspace(project.id);
-
-  assert.equal(response.statusCode, 400);
-  assert.match(response.json().message, /说明书快照不能恢复为项目工作台/);
-  assert.equal(after.version, before.version);
-  assert.deepEqual(after.state, before.state);
-
-  await app.close();
-});
 
 test("project governance actions require owner-level project settings permission", async () => {
   const { app, authStore } = await createTestApp();
@@ -564,55 +366,56 @@ test("project governance actions require owner-level project settings permission
   await app.close();
 });
 
-test("project create and update persist academic binding and ignore default provider metadata", async () => {
+test("project create and update reject retired fields and preserve current settings", async () => {
   const { app, authStore } = await createTestApp();
   const owner = await registerUser({
     authStore,
     email: "owner@example.com",
     displayName: "Owner User",
   });
+  const retiredCreate = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: owner.cookie }, payload: { name: "旧配置", defaultProviderConfigId: "provider-1" } });
+  assert.equal(retiredCreate.statusCode, 400);
 
+  for (const field of ["organizationId", "courseId", "classId", "teamId"]) {
+    const response = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: owner.cookie }, payload: { name: "旧归属", [field]: "retired-id" } });
+    assert.equal(response.statusCode, 400, field);
+  }
+  const removedOptions = await app.inject({ method: "GET", url: "/api/academic-options", headers: { cookie: owner.cookie } });
+  assert.equal(removedOptions.statusCode, 404);
   const created = await app.inject({
     method: "POST",
     url: "/api/projects",
     headers: { cookie: owner.cookie },
     payload: {
-      name: "课程项目",
-      description: "绑定课程班级 team",
-      visibility: "team",
-      organizationId: "org-1",
-      courseId: "course-1",
-      classId: "class-1",
-      teamId: "team-1",
-      defaultProviderConfigId: "provider-1",
+      name: "协作项目",
+      description: "通过项目成员共同协作",
+      visibility: "private",
       backgroundKey: "booking",
     },
   });
   assert.equal(created.statusCode, 201);
-  assert.equal(created.json().project.organizationId, "org-1");
-  assert.equal(created.json().project.courseId, "course-1");
-  assert.equal(created.json().project.classId, "class-1");
-  assert.equal(created.json().project.teamId, "team-1");
-  assert.equal(created.json().project.defaultProviderConfigId, null);
+  assert.equal("defaultProviderConfigId" in created.json().project, false);
   assert.equal(created.json().project.backgroundKey, "booking");
+  for (const field of ["organizationId", "courseId", "classId", "teamId"]) {
+    assert.equal(field in created.json().project, false);
+    const response = await app.inject({ method: "PATCH", url: `/api/projects/${created.json().project.id}`, headers: { cookie: owner.cookie }, payload: { [field]: "retired-id" } });
+    assert.equal(response.statusCode, 400, field);
+  }
+  const retiredVisibility = await app.inject({ method: "PATCH", url: `/api/projects/${created.json().project.id}`, headers: { cookie: owner.cookie }, payload: { visibility: "team" } });
+  assert.equal(retiredVisibility.statusCode, 400);
+  const retiredUpdate = await app.inject({ method: "PATCH", url: `/api/projects/${created.json().project.id}`, headers: { cookie: owner.cookie }, payload: { defaultProviderConfigId: "provider-2" } });
+  assert.equal(retiredUpdate.statusCode, 400);
 
   const updated = await app.inject({
     method: "PATCH",
     url: `/api/projects/${created.json().project.id}`,
     headers: { cookie: owner.cookie },
     payload: {
-      courseId: "course-2",
-      classId: null,
-      teamId: null,
-      defaultProviderConfigId: "provider-2",
       backgroundKey: "quality_traceability",
     },
   });
   assert.equal(updated.statusCode, 200);
-  assert.equal(updated.json().project.courseId, "course-2");
-  assert.equal(updated.json().project.classId, null);
-  assert.equal(updated.json().project.teamId, null);
-  assert.equal(updated.json().project.defaultProviderConfigId, null);
+  assert.equal("defaultProviderConfigId" in updated.json().project, false);
   assert.equal(updated.json().project.backgroundKey, "quality_traceability");
 
   const automatic = await app.inject({
@@ -795,7 +598,7 @@ test("project invitation token can be inspected and accepted by the invited sign
     url: `/api/invitations/${created.json().devToken}/accept`,
   });
   assert.equal(anonymousAccept.statusCode, 401);
-  assert.match(anonymousAccept.json().message, /Log in/i);
+  assert.equal(anonymousAccept.json().error.code, "AUTHENTICATION_REQUIRED");
 
   const invitee = await registerUser({
     authStore,

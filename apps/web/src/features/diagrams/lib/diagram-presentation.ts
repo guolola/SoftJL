@@ -1,4 +1,4 @@
-// Maps language-neutral diagram kinds and legacy field identifiers to localized platform labels.
+// Localizes the Chinese detail labels emitted by the current model-details view model.
 import type { TFunction } from "i18next";
 import type { SemanticElementKind } from "../../../entities/diagram/lib/model-details";
 

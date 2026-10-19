@@ -1,19 +1,38 @@
 // Verifies run-local chat history and independent concurrent branch context.
+import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ChatMessage, LlmTransport } from "../../../llm.js";
-import { createContextualLlmTransport, withConversationBranch, withIsolatedConversationBranch } from "./conversation-context.js";
+import { createContextualLlmTransport, systemNameFromProjectName, withConversationBranch, withIsolatedConversationBranch } from "./conversation-context.js";
 
 async function request(transport: LlmTransport, prompt: string) {
   let output = "";
   for await (const chunk of transport.streamChatCompletion({
-    providerSettings: { apiBaseUrl: "https://example.test", apiKey: "test", model: "test" },
+    providerSettings: { modelCapability: strictTestModelCapability("test"), apiBaseUrl: "https://example.test", apiKey: "test", model: "test" },
     messages: [{ role: "system", content: "JSON only" }, { role: "user", content: prompt }],
   })) output += chunk;
   return output;
 }
 
-test("subsequent calls resend prior assistant and user turns", async () => {
+test("every stage carries the project's canonical system name", async () => {
+  const calls: ChatMessage[][] = [];
+  const context = createContextualLlmTransport(
+    { async *streamChatCompletion(input) { calls.push(input.messages); yield "{}"; } },
+    { systemName: "高校教室管理系统" },
+  );
+  await request(context.transport, "Generate use cases");
+  await request(context.transport, "Generate activity");
+  for (const messages of calls) {
+    const system = messages.find((message) => message.role === "system");
+    assert.match(String(system?.content), /^JSON only/u);
+    assert.equal(String(system?.content).split("系统名称约束：").length, 2);
+    assert.match(String(system?.content), /高校教室管理系统/u);
+  }
+  assert.equal(systemNameFromProjectName("高校教室管理系统"), "高校教室管理系统");
+  assert.equal(systemNameFromProjectName("课程 UML 实验项目"), undefined);
+});
+
+test("subsequent calls use only their explicit inputs", async () => {
   const calls: ChatMessage[][] = [];
   const base: LlmTransport = {
     async *streamChatCompletion(input) {
@@ -24,8 +43,8 @@ test("subsequent calls resend prior assistant and user turns", async () => {
   const context = createContextualLlmTransport(base);
   await request(context.transport, "Generate model");
   await request(context.transport, "Fix invalid relationship");
-  assert.deepEqual(calls[1]?.map((message) => message.role), ["system", "user", "assistant", "user"]);
-  assert.equal(calls[1]?.[2]?.content, '{"draft":true}');
+  assert.deepEqual(calls[1]?.map((message) => message.role), ["system", "user"]);
+  assert.doesNotMatch(JSON.stringify(calls[1]), /Generate model|draft/);
 });
 
 test("all current input stays complete when zero, one or two prior turns exceed the history budget", async () => {
@@ -40,7 +59,7 @@ test("all current input stays complete when zero, one or two prior turns exceed 
   }
 });
 
-test("parallel diagram branches do not see sibling output and merge only validated summaries", async () => {
+test("parallel diagram branches never inherit screening or validated sibling output", async () => {
   const calls: Array<{ branch: string; messages: ChatMessage[] }> = [];
   const base: LlmTransport = {
     async *streamChatCompletion(input) {
@@ -59,11 +78,11 @@ test("parallel diagram branches do not see sibling output and merge only validat
   assert.equal(JSON.stringify(calls[2]?.messages).includes("Use case"), false);
   context.commitValidatedBranch("usecase", "Validated use case model");
   await request(context.transport, "Next stage");
-  assert.match(JSON.stringify(calls.at(-1)?.messages), /Validated use case model/);
+  assert.doesNotMatch(JSON.stringify(calls.at(-1)?.messages), /Validated use case model|Shared rules/);
   assert.doesNotMatch(JSON.stringify(calls.at(-1)?.messages), /已验证子任务 class/);
 });
 
-test("queued parallel branches keep the common history even after another branch commits", async () => {
+test("queued and lazy branches are independent of sibling completion order", async () => {
   const calls: ChatMessage[][] = [];
   const context = createContextualLlmTransport({ async *streamChatCompletion(input) {
     calls.push(input.messages);
@@ -75,7 +94,9 @@ test("queued parallel branches keep the common history even after another branch
   context.commitValidatedBranch("first", "First validated diagram");
   await withConversationBranch("queued", () => request(context.transport, "Queued diagram"));
   assert.doesNotMatch(JSON.stringify(calls.at(-1)), /First validated diagram/);
-  assert.match(JSON.stringify(calls.at(-1)), /Shared rules/);
+  assert.doesNotMatch(JSON.stringify(calls.at(-1)), /Shared rules/);
+  await withConversationBranch("lazy", () => request(context.transport, "Lazy diagram"));
+  assert.doesNotMatch(JSON.stringify(calls.at(-1)), /Shared rules|First validated diagram/);
 });
 
 test("current stage system constraints supersede earlier response contracts", async () => {
@@ -85,7 +106,7 @@ test("current stage system constraints supersede earlier response contracts", as
   } });
   for (const instruction of ["Classify input", "Generate UML model"]) {
     for await (const _ of context.transport.streamChatCompletion({
-      providerSettings: { apiBaseUrl: "https://example.test", apiKey: "test", model: "test" },
+      providerSettings: { modelCapability: strictTestModelCapability("test"), apiBaseUrl: "https://example.test", apiKey: "test", model: "test" },
       messages: [{ role: "system", content: instruction }, { role: "user", content: "input" }],
     })) { /* Drain the stream to retain the completed turn. */ }
   }

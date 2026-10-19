@@ -1,9 +1,19 @@
 // Verifies generation planning keeps design dependencies ordered before downstream models.
 import { describe, expect, it } from "vitest";
-import { resolveDesignGenerationDiagrams } from "./generation-planning";
+import { planRequirementAutoUpstream, resolveDesignGenerationDiagrams } from "./generation-planning";
 import { runSnapshotSchema } from "@uml-platform/contracts";
 import { librarySeatDemoFixture } from "../../../../../api/src/runs/demo/fixtures/library-seat-demo-fixture";
 import { designGenerationSubtasks, requirementGenerationSubtasks, planDesignRequirementAutoUpstream } from "./generation-planning";
+
+describe("candidate input planning", () => {
+  const rule = { id: "r1", type: "functional" as const, text: "用户查看信息",  };
+
+  it("accepts functional candidates without stored model associations", () => {
+    const plan = planRequirementAutoUpstream({ requestedDiagrams: ["function"], existingModels: {}, rules: [rule] });
+    expect(plan.needsRulesRun).toBe(false);
+  });
+
+});
 
 describe("resolveDesignGenerationDiagrams", () => {
   it("reuses custom requirement IDs and enumerates each use case for generation", () => {
@@ -29,12 +39,19 @@ describe("resolveDesignGenerationDiagrams", () => {
     const plan = resolveDesignGenerationDiagrams(["deployment"], []);
 
     expect(plan.effectiveDiagrams).toEqual([
-      "sequence",
       "class",
       "component",
       "deployment",
     ]);
-    expect(plan.dependencyDiagrams).toEqual(["sequence", "class", "component"]);
+    expect(plan.dependencyDiagrams).toEqual(["class", "component"]);
+  });
+
+  it.each(["class", "navigation", "table"] as const)("does not add sequence generation for %s", (kind) => {
+    const plan = resolveDesignGenerationDiagrams([kind], []);
+    expect(plan.effectiveDiagrams).toEqual(kind === "table" ? ["class", "table"] : [kind]);
+    expect(plan.effectiveDiagrams).not.toContain("sequence");
+    const requirements = planDesignRequirementAutoUpstream({ requestedDesignDiagrams: plan.effectiveDiagrams, requirementModels: {}, rules: [] });
+    expect(requirements.effectiveDiagrams).toEqual(kind === "navigation" ? ["prototype"] : ["usecase", "class"]);
   });
 
   it("keeps all-selected design diagrams in dependency-safe order", () => {

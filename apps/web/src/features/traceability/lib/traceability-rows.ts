@@ -1,6 +1,7 @@
+import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
+import { requirementTypeAppliesToModel } from "@uml-platform/contracts";
 // Builds traceability matrix rows from workspace state without rendering UI.
 import type {
-  CoverageMatrix,
   DesignDiagramKind,
   DiagramKind,
   DiagramModelSpec,
@@ -229,11 +230,6 @@ function refKey(ref: Pick<ModelElementRef, "diagramKind" | "elementId" | "modelI
   return `${scope}:${ref.diagramKind}:${ref.elementId}`.toLowerCase();
 }
 
-function trustedRefId(
-  ref: Pick<ModelElementRef, "diagramKind" | "elementId" | "modelId">,
-) {
-  return `${ref.modelId ? `${ref.modelId}:` : ""}${ref.diagramKind}:${ref.elementId}`.toLowerCase();
-}
 
 export function formatRuleId(id: string) {
   const value = id.trim();
@@ -478,7 +474,10 @@ function buildAnalysisRequirementRows(
         }
       : null;
     const flowLines = source ? eventFlowLines(source.useCase, copy) : [];
-    const mapped = Boolean(sourceRef && flowLines.length > 0);
+    const analysis = Object.values(models).find(model => model?.diagramKind === "analysis" && getRequirementModelId(model) === ref.modelId);
+    const element = analysis?.diagramKind === "analysis" ? [...analysis.participants, ...analysis.messages, ...analysis.fragments].find(item => item.id === ref.elementId) : undefined;
+    const sourceRefs: ModelElementRef[] = (element?.sourceElementIds ?? []).map(elementId => ({ modelId: source?.useCaseModel.modelId, diagramKind: "usecase", elementId, elementKind: "element", label: elementId }));
+    const mapped = sourceRefs.length > 0;
     return {
       id: refKey(ref),
       label: ref.label,
@@ -488,9 +487,9 @@ function buildAnalysisRequirementRows(
       groupLabel: requirementGroupLabel(ref.diagramKind, copy),
       scopeKey: ref.modelId ?? ref.diagramKind,
       status: mapped ? "mapped" : "unmapped",
-      mappingNote: mapped ? copy.derivedFromSourceUseCaseFlow : copy.missingSourceUseCaseOrEventFlow,
+      mappingNote: null,
       requirementRules: [],
-      requirementElements: sourceRef ? [sourceRef] : [],
+      requirementElements: sourceRefs,
       upstreamDesignElements: [],
       detailLines: [
         ...(sourceRef ? [copy.sourceUseCase(sourceRef.label)] : [copy.sourceUseCaseMissing]),
@@ -506,12 +505,12 @@ export function buildRequirementRows(
   traceability: ReturnType<typeof useWorkspaceSession>["requirementModelTraceability"],
   scope?: MatrixScope,
   copy = DEFAULT_TRACEABILITY_ROW_COPY,
-  coverageMatrix?: CoverageMatrix | null,
 ): ElementRow[] {
   if (scope?.diagramKind === "analysis") {
     return buildAnalysisRequirementRows(models, scope, copy);
   }
   const rulesById = new Map(rules.map((rule) => [rule.id.toLowerCase(), rule]));
+  const currentRefs = refsForRequirementModels(models, undefined, copy).map(item => item.ref);
   const traceByTarget = new Map<
     string,
     Array<{
@@ -522,25 +521,14 @@ export function buildRequirementRows(
       rationale?: string;
     }>
   >();
-  const trustedModelElements = coverageMatrix
-    ? new Set(
-        coverageMatrix.rows.flatMap((row) =>
-          row.modelElements.map((elementId) => elementId.toLowerCase()),
-        ),
-      )
-    : null;
   for (const entry of traceability) {
     const rule = rulesById.get(entry.ruleId.toLowerCase());
-    if (!rule) continue;
-    // Raw mappings remain visible in run evidence, but only semantically
-    // validated targets contribute to the user-facing coverage matrix.
-    if (
-      trustedModelElements &&
-      !trustedModelElements.has(trustedRefId(entry.target))
-    ) {
-      continue;
-    }
-    const key = refKey(entry.target);
+    if (!rule || !requirementTypeAppliesToModel(rule.type, entry.target.diagramKind as DiagramKind)) continue;
+    const candidates = currentRefs.filter(ref => ref.diagramKind === entry.target.diagramKind &&
+      ref.elementId.toLowerCase() === entry.target.elementId.toLowerCase() &&
+      (!entry.target.modelId || (ref.modelId ?? ref.diagramKind).toLowerCase() === entry.target.modelId.toLowerCase()));
+    if (candidates.length !== 1) continue;
+    const key = refKey(candidates[0]);
     traceByTarget.set(key, [
       ...(traceByTarget.get(key) ?? []),
       {
@@ -553,12 +541,16 @@ export function buildRequirementRows(
     ]);
   }
 
+  const analysisRows = new Map(buildAnalysisRequirementRows(models, { diagramKind: "analysis" }, copy).map(row => [row.id, row]));
   return refsForRequirementModels(models, scope, copy).map(({ ref, typeLabel, description }) => {
-    const mappedEntries = uniqueBy(
-      traceByTarget.get(refKey(ref)) ?? [],
-      (entry) => entry.rule.id,
+    if (ref.diagramKind === "analysis") return analysisRows.get(refKey(ref))!;
+    const mappedEntries = traceByTarget.get(refKey(ref)) ?? [];
+    const confirmedEntries = mappedEntries.filter(entry =>
+      entry.confidence !== "low" && entry.reviewStatus !== "pending" &&
+      entry.mappingSource !== "auto-filled-pending-review",
     );
-    const mappedRules = mappedEntries.map((entry) => entry.rule);
+    // Use current explicit mappings. Historical coverage may have used retired semantic slots.
+    const mappedRules = uniqueBy(mappedEntries.map((entry) => entry.rule), rule => rule.id);
     const pendingEntry = mappedEntries.find(
       (entry) =>
         entry.mappingSource === "auto-filled-pending-review" ||
@@ -572,7 +564,7 @@ export function buildRequirementRows(
       groupKey: ref.modelId ?? ref.diagramKind,
       groupLabel: requirementGroupLabel(ref.diagramKind, copy),
       scopeKey: ref.modelId ?? ref.diagramKind,
-      status: mappedRules.length > 0 ? "mapped" : "unmapped",
+      status: confirmedEntries.length > 0 && !/placeholder|todo|unknown|占位|未命名|孤立/iu.test(`${ref.label} ${ref.elementId}`) ? "mapped" : "unmapped",
       mappingNote: pendingEntry
         ? traceabilityDisplayNote(pendingEntry.rationale, copy.autoFilledPendingReviewNote)
         : null,
@@ -587,43 +579,10 @@ export function buildRequirementRows(
           .filter((entry) => entry.confidence)
           .map((entry) => copy.confidence(entry.confidence ?? "")),
         ...mappedRules.map(
-        (rule) => `${formatRuleId(rule.id)} [${rule.category}] ${rule.text}`,
+        (rule) => `${formatRuleId(rule.id)} [${getRuleDisplayLabel(rule)}] ${rule.text}`,
         ),
       ],
     };
-  });
-}
-
-function deriveVisibleUpstreamDesignRefs(
-  traceability: ReturnType<typeof useWorkspaceSession>["designModelTraceability"],
-) {
-  const sequenceSourcesByTarget = new Map<string, ModelElementRef[]>();
-  for (const entry of traceability) {
-    if (entry.source.diagramKind !== "sequence") continue;
-    for (const target of entry.targets) {
-      const key = refKey(target);
-      sequenceSourcesByTarget.set(key, [
-        ...(sequenceSourcesByTarget.get(key) ?? []),
-        entry.source,
-      ]);
-    }
-  }
-  if (sequenceSourcesByTarget.size === 0) return traceability;
-
-  return traceability.map((entry) => {
-    if (entry.source.diagramKind === "sequence") return entry;
-    const upstreamDesignRefs = new Map<string, ModelElementRef>();
-    for (const ref of entry.upstreamDesignRefs ?? []) {
-      upstreamDesignRefs.set(refKey(ref), ref);
-    }
-    for (const target of entry.targets) {
-      for (const source of sequenceSourcesByTarget.get(refKey(target)) ?? []) {
-        upstreamDesignRefs.set(refKey(source), source);
-      }
-    }
-    return upstreamDesignRefs.size > 0
-      ? { ...entry, upstreamDesignRefs: Array.from(upstreamDesignRefs.values()) }
-      : entry;
   });
 }
 
@@ -635,7 +594,6 @@ export function buildDesignRows(
   designTraceability: ReturnType<typeof useWorkspaceSession>["designModelTraceability"],
   scope?: MatrixScope,
   copy = DEFAULT_TRACEABILITY_ROW_COPY,
-  coverageMatrix?: CoverageMatrix | null,
 ): ElementRow[] {
   const requirementRefMap = new Map(
     refsForRequirementModels(requirementModels, undefined, copy).map(({ ref }) => [refKey(ref), ref]),
@@ -644,23 +602,11 @@ export function buildDesignRows(
     string,
     ReturnType<typeof useWorkspaceSession>["designModelTraceability"][number]
   >();
-  const trustedDesignElements = coverageMatrix
-    ? new Set(
-        coverageMatrix.rows.flatMap((row) =>
-          row.designElements.map((elementId) => elementId.toLowerCase()),
-        ),
-      )
-    : null;
-  for (const entry of deriveVisibleUpstreamDesignRefs(designTraceability)) {
-    if (
-      trustedDesignElements &&
-      !trustedDesignElements.has(trustedRefId(entry.source))
-    ) {
-      continue;
-    }
-    traceBySource.set(entry.source.elementId ? refKey(entry.source) : "", entry);
+  for (const entry of designTraceability) {
+    traceBySource.set(refKey(entry.source), entry);
   }
 
+  const designRefKeys = new Set(refsForDesignModels(designModels, undefined, copy).map(item => refKey(item.ref)));
   return refsForDesignModels(designModels, scope, copy).map(({ ref, typeLabel, description }) => {
     const traceEntry = traceBySource.get(refKey(ref));
     const targets = uniqueBy<ModelElementRef>(
@@ -668,9 +614,9 @@ export function buildDesignRows(
         .map((target) => requirementRefMap.get(refKey(target)) ?? target),
       refKey,
     );
+    const isDesignTarget = (target: ModelElementRef) => designRefKeys.has(refKey(target));
     const upstreamDesignElements = uniqueBy<ModelElementRef>(
-      traceEntry?.upstreamDesignRefs ?? [],
-      refKey,
+      [...traceEntry?.upstreamDesignRefs ?? [], ...targets.filter(isDesignTarget)], refKey,
     );
     return {
       id: refKey(ref),
@@ -689,7 +635,7 @@ export function buildDesignRows(
             ? traceabilityDisplayNote(traceEntry.rationale, copy.endpointDerived)
             : null,
       requirementRules: [],
-      requirementElements: targets,
+      requirementElements: targets.filter(target => !isDesignTarget(target)),
       upstreamDesignElements,
       detailLines: [
         ...(traceEntry?.mappingSource === "auto-filled-pending-review" ||
@@ -726,7 +672,7 @@ export function includesQuery(row: ElementRow, query: string) {
     ...row.requirementElements.map((ref) => ref.label),
     ...row.requirementRules.flatMap((rule) => [
       formatRuleId(rule.id),
-      rule.category,
+      getRuleDisplayLabel(rule),
       rule.text,
     ]),
   ]

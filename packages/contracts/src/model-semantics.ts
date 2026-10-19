@@ -1,6 +1,6 @@
 // Owns phase-specific graph semantics shared by generation, rendering and manual editing.
 import { validateSequenceLifecycle } from "./sequence-lifecycle.js";
-import { unknownContractFields } from "./model-json-schema.js";
+import { contractFieldSchema, unknownContractFields } from "./model-json-schema.js";
 import { useCaseParticipationGaps } from "./usecase-participation.js";
 import {
   diagramModelSpecSchema, designDiagramModelSpecSchema, feasibilityActivityDiagramSpecSchema, contextDiagramSpecSchema,
@@ -14,6 +14,10 @@ export interface ModelDiagnostic {
   diagramKind: string;
   code: string;
   path: string;
+  responsePath?: string;
+  /** Model-relative references that must remain consistent when this identifier changes. */
+  relatedPaths?: string[];
+  expectedSchema?: Record<string, unknown>;
   elementId?: string;
   severity: "error" | "warning";
   message: string;
@@ -36,7 +40,7 @@ export function getModelGraphElements(model: AnyDiagramModel): ModelGraphElement
     items.forEach((item, i) => result.push({ id: item.id, name: item.name ?? item.id, kind: typeof kind === "string" ? kind : kind(item), path: `${collection}.${i}` }));
   };
   switch (model.diagramKind) {
-    case "context": add([model.system], "system", "system"); add(model.people, "people", "person"); add(model.externalSystems, "externalSystems", "external"); break;
+    case "context": result.push({ id: model.system.id, name: model.system.name, kind: "system", path: "system" }); add(model.people, "people", "person"); add(model.externalSystems, "externalSystems", "external"); break;
     case "function": add(model.nodes, "nodes", "function"); break;
     case "usecase": add(model.actors, "actors", "actor"); add(model.useCases, "useCases", "usecase"); break;
     case "class": add(model.classes, "classes", "class"); add(model.interfaces, "interfaces", "interface"); add(model.enums, "enums", "enum"); break;
@@ -97,6 +101,38 @@ export function isModelRelationshipAllowed(kind: string, type: string, source: s
   }
 }
 
+// Reference namespaces matter: a swimlane rename must not retarget a node with the same ID.
+function identifierReferencePaths(model: AnyDiagramModel, declaration: string, id: string): string[] {
+  const fields: Record<string, string[]> = {
+    swimlanes: ["actorOrLane"], messages: ["messageIds", "startMessageId", "endMessageId"],
+    fragments: ["parentFragmentId"], activations: [], relationships: [], systemBoundaries: ["systemBoundaryId"],
+    participants: ["sourceId", "targetId", "participantId"], actors: ["sourceId", "targetId", "primaryActorId", "supportingActorIds"],
+    packages: ["sourceId", "targetId", "packageId", "parentId"], nodes: ["sourceId", "targetId", "parentId"],
+    tables: ["referenceTableId", "sourceTableId", "targetTableId"],
+  };
+  const column = /^tables\.(\d+)\.columns\./.exec(declaration);
+  const extension = /^useCases\.(\d+)\.extensionPoints\./.exec(declaration);
+  const branch = /^fragments\.(\d+)\.branches\./.exec(declaration);
+  const keys = new Set(column ? ["columnIds", "referenceColumnIds", "sourceColumnIds", "targetColumnIds"] : extension ? ["extensionPointIds"] : branch ? ["parentBranchId"] : fields[declaration.split(".")[0]!] ?? ["sourceId", "targetId"]);
+  const paths: string[] = [];
+  const visit = (value: unknown, path: string, field = "", owner: Record<string, any> = {}) => {
+    if (Array.isArray(value)) value.forEach((item, i) => visit(item, `${path}.${i}`, field, owner));
+    else if (value && typeof value === "object") for (const [key, item] of Object.entries(value)) visit(item, path ? `${path}.${key}` : key, key, value);
+    else if (value === id && keys.has(field)) {
+      if (column && model.diagramKind === "table") {
+        const tableId = model.tables[Number(column[1])]!.id;
+        const local = path.startsWith(`tables.${column[1]}.`);
+        if (!(field === "columnIds" && local || field === "referenceColumnIds" && owner.referenceTableId === tableId || field === "sourceColumnIds" && owner.sourceTableId === tableId || field === "targetColumnIds" && owner.targetTableId === tableId)) return;
+      }
+      if (extension && model.diagramKind === "usecase" && owner.targetId !== model.useCases[Number(extension[1])]!.id) return;
+      if (branch && (model.diagramKind === "sequence" || model.diagramKind === "analysis") && owner.parentFragmentId !== model.fragments[Number(branch[1])]!.id) return;
+      paths.push(path);
+    }
+  };
+  visit(model, "");
+  return paths;
+}
+
 export function validateModelSemantics(model: AnyDiagramModel, stage: ModelingStage): ModelDiagnostic[] {
   const issues: ModelDiagnostic[] = [];
   const report = (code: string, path: string, message: string, elementId?: string) => issues.push({ modelId: "modelId" in model ? model.modelId ?? model.diagramKind : model.diagramKind, diagramKind: model.diagramKind, code, path, message, elementId, severity: "error" });
@@ -108,19 +144,27 @@ export function validateModelSemantics(model: AnyDiagramModel, stage: ModelingSt
   model = parsed.data as AnyDiagramModel;
   const elements = getModelGraphElements(model);
   const byId = new Map(elements.map((element) => [element.id, element]));
-  const unique = (items: Array<{ id: string }>, path: string) => {
+  const unique = <T extends { id: string }>(items: T[], path: string | ((item: T, index: number) => string)) => {
     const ids = new Set<string>();
-    items.forEach((item, i) => { if (ids.has(item.id)) report("duplicate-id", `${path}.${i}.id`, `标识重复：${item.id}`, item.id); ids.add(item.id); });
+    items.forEach((item, i) => {
+      if (ids.has(item.id)) {
+        const declaration = `${typeof path === "string" ? `${path}.${i}` : path(item, i)}.id`;
+        report("duplicate-id", declaration, `标识重复：${item.id}`, item.id);
+        issues.at(-1)!.relatedPaths = identifierReferencePaths(model, declaration, item.id);
+      }
+      ids.add(item.id);
+    });
   };
-  unique(elements, "elements");
   const ref = (id: string | undefined, ids: Set<string>, path: string) => { if (id && !ids.has(id)) report("missing-reference", path, `引用不存在：${id}`, id); };
   // A table edit may carry an outdated display projection; validate its constraint-derived edges.
   const edges = model.diagramKind === "table" ? deriveTableModel(model).relationships : model.diagramKind === "sequence" || model.diagramKind === "analysis" ? model.messages : model.relationships;
   const edgeCollection = model.diagramKind === "sequence" || model.diagramKind === "analysis" ? "messages" : "relationships";
-  unique(edges, edgeCollection);
   // Graph and auxiliary IDs share one namespace; nested extension points and table columns are owner-scoped.
   const auxiliary = model.diagramKind === "usecase" ? model.systemBoundaries : model.diagramKind === "activity" ? model.swimlanes : model.diagramKind === "sequence" || model.diagramKind === "analysis" ? [...model.fragments, ...model.activations ?? []] : [];
-  unique([...elements, ...edges, ...auxiliary], "identifiers");
+  const auxiliaryPaths = model.diagramKind === "usecase" ? model.systemBoundaries.map((_, i) => `systemBoundaries.${i}`) : model.diagramKind === "activity" ? model.swimlanes.map((_, i) => `swimlanes.${i}`) : model.diagramKind === "sequence" || model.diagramKind === "analysis" ? [...model.fragments.map((_, i) => `fragments.${i}`), ...(model.activations ?? []).map((_, i) => `activations.${i}`)] : [];
+  // Never expose the temporary concatenation's indexes as repair locations.
+  const identifiers = [...elements, ...edges.map((item, i) => ({ id: item.id, path: `${edgeCollection}.${i}` })), ...auxiliary.map((item, i) => ({ id: item.id, path: auxiliaryPaths[i]! }))];
+  unique(identifiers, item => item.path);
   const cyclic = (links: Array<{ sourceId: string; targetId: string }>, path: string) => {
     const children = new Map<string, string[]>();
     for (const edge of links) children.set(edge.sourceId, [...children.get(edge.sourceId) ?? [], edge.targetId]);
@@ -154,7 +198,6 @@ export function validateModelSemantics(model: AnyDiagramModel, stage: ModelingSt
       cyclic(model.relationships, "relationships"); break;
     }
     case "usecase": {
-      unique(model.systemBoundaries, "systemBoundaries");
       const boundaries = new Set(model.systemBoundaries.map((item) => item.id));
       const actors = new Set(model.actors.map((item) => item.id));
       model.useCases.forEach((item, i) => {
@@ -193,7 +236,6 @@ export function validateModelSemantics(model: AnyDiagramModel, stage: ModelingSt
       }); break;
     }
     case "activity": {
-      unique(model.swimlanes, "swimlanes");
       const lanes = new Set(model.swimlanes.map((item) => item.id));
       const initial = model.nodes.filter((node) => node.type === "start");
       if (!initial.length || (stage === "feasibility" && initial.length !== 1)) report("activity-initial", "nodes", stage === "feasibility" ? "可行性业务流程约定恰有一个起点" : "活动需要起点");
@@ -240,7 +282,6 @@ export function validateModelSemantics(model: AnyDiagramModel, stage: ModelingSt
       const messageIds = new Set(model.messages.map((message) => message.id));
       const positions = new Map(model.messages.map((message, i) => [message.id, i]));
       const fragments = new Map(model.fragments.map((fragment) => [fragment.id, fragment]));
-      unique(model.fragments, "fragments"); unique(model.activations ?? [], "activations");
       const spans = new Map<string, [number, number]>();
       model.fragments.forEach((fragment, i) => {
         const indices = fragment.messageIds.map((id) => positions.get(id)).filter((index): index is number => index !== undefined).sort((a, b) => a - b);
@@ -380,7 +421,7 @@ export function deriveTableModel(model: TableDiagramSpec): TableDiagramSpec {
 }
 
 export class ModelSemanticError extends Error {
-  constructor(public readonly diagnostics: ModelDiagnostic[]) { super(diagnostics.map((issue) => `[${issue.code}] ${issue.path}: ${issue.message}`).join("\n")); this.name = "ModelSemanticError"; }
+  constructor(public readonly diagnostics: ModelDiagnostic[]) { super(diagnostics.map((issue) => `[${issue.code}] ${issue.responsePath ?? issue.path}: ${issue.message}`).join("\n")); this.name = "ModelSemanticError"; }
 }
 
 export function assertValidModel(model: AnyDiagramModel, stage: ModelingStage): void {
@@ -402,7 +443,7 @@ export function validateModelInput(value: unknown, stage: ModelingStage): ModelD
   };
   const schema = getStageModelSchema(stage, kind);
   const parsed = schema?.safeParse(value);
-  if (!parsed?.success) return (parsed?.error.issues ?? [{ path: ["diagramKind"], message: "当前阶段不支持此模型" }]).map((issue) => ({ modelId, diagramKind: kind, code: "contract", path: issue.path.join("."), elementId: ownerId(issue.path.join(".")), message: issue.message, severity: "error" }));
+  if (!parsed?.success) return (parsed?.error.issues ?? [{ path: ["diagramKind"], message: "当前阶段不支持此模型" }]).map((issue) => ({ modelId, diagramKind: kind, code: "contract", path: issue.path.join("."), elementId: ownerId(issue.path.join(".")), message: issue.message, severity: "error", expectedSchema: schema ? contractFieldSchema(schema, value, issue.path.join(".")) : { type: "string", enum: getStageModelSchemas(stage).map(item => item.shape.diagramKind.value) } }));
   const unknown = schema ? unknownContractFields(schema, value).map((path): ModelDiagnostic => ({ modelId, diagramKind: kind, code: "unsupported-field", path, elementId: ownerId(path), message: "此阶段模型不支持该字段", severity: "error" })) : [];
   return [...unknown, ...validateModelSemantics(parsed.data as AnyDiagramModel, stage)];
 }

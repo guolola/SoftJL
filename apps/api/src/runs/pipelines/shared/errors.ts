@@ -31,6 +31,11 @@ const RUN_ERROR_DEFAULTS: Record<
   RunErrorCode,
   { category: RunErrorCategory; retryable: boolean; message: string }
 > = {
+  RUN_CONTEXT_LIMIT_EXCEEDED: {
+    category: "generation",
+    retryable: false,
+    message: "本次任务输入及输出预留超过模型上下文容量，请选择更大上下文模型或缩小生成范围。",
+  },
   USER_ENTITLEMENT_REQUIRED: {
     category: "user_entitlement",
     retryable: false,
@@ -116,11 +121,6 @@ const RUN_ERROR_DEFAULTS: Record<
     retryable: true,
     message: "生成任务失败，请稍后重试。",
   },
-  RUN_LEGACY_FAILURE: {
-    category: "internal",
-    retryable: false,
-    message: "历史运行失败。",
-  },
 };
 
 export function createRunError(
@@ -167,6 +167,7 @@ export function normalizeRunError(error: unknown): RunError {
   const semanticError = error instanceof ModelSemanticError ? error : error instanceof Error && error.cause instanceof ModelSemanticError ? error.cause : null;
   if (semanticError) return createRunError("RUN_STRUCTURED_OUTPUT_INVALID", message, { details: { diagnostics: semanticError.diagnostics } });
   const lower = message.toLowerCase();
+  if (message.includes("上下文容量不足：")) return createRunError("RUN_CONTEXT_LIMIT_EXCEEDED", message);
 
   if (
     /http\s+402/.test(lower) ||

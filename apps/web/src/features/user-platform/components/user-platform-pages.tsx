@@ -20,15 +20,16 @@ import { useTranslation } from "react-i18next";
 import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
 import {
   Activity,
-  BookOpen,
   Clock3,
   Loader2,
   Settings,
   Users,
   X,
 } from "lucide-react";
+
 import { Button } from "../../../shared/ui/button";
 import { PageHeader } from "../../../shared/template/layout/page";
+
 import { cn } from "../../../shared/ui/utils";
 import {
   ProjectGenerationTasksDrawerContent,
@@ -52,14 +53,12 @@ import {
 } from "./platform-loading-screen";
 import { AuthenticatedRouteSessionProvider } from "./authenticated-route-session";
 import { ManagedProviderSettingsSync } from "./managed-provider-settings-sync";
-import { ProjectDocuments } from "./project-documents";
 import { ProjectHistory } from "./project-history";
 import { ProjectMembers } from "./project-members";
 import { PageFrame, SectionCard } from "./project-page-layout";
 import { ProjectSettings } from "./project-settings";
 import { buildLoginRedirectPath } from "../lib/auth-page-routing";
 export { AuthPage } from "./auth-page";
-export { AccountPage, AccountSecurityPage } from "./account-pages";
 export { InvitationAcceptPage } from "./invitation-accept-page";
 export { ProjectNewPage } from "./project-new-page";
 export { ProjectsIndexPage } from "./projects-index-page";
@@ -68,7 +67,7 @@ type Navigate = (path: string) => void;
 
 const ACTIVE_RUNS_REFRESH_MS = 8_000;
 
-export type ProjectDrawerKind = "tasks" | "members" | "history" | "documents" | "settings";
+export type ProjectDrawerKind = "tasks" | "members" | "history" | "settings";
 
 type ProjectOverviewState = {
   loading: boolean;
@@ -98,10 +97,6 @@ const emptyProjectOverview: ProjectOverviewState = {
 
 const ProjectOverviewContext =
   createContext<{ projectId: string; overview: ProjectOverviewState } | null>(null);
-
-export function useCurrentProjectOverview() {
-  return useContext(ProjectOverviewContext);
-}
 
 export function useProjectOverview(projectId: string) {
   const { t } = useTranslation();
@@ -401,7 +396,7 @@ export function ProjectSectionPage({
   onNavigate,
 }: {
   projectId: string;
-  section: "settings" | "members" | "history" | "documents";
+  section: "settings" | "members" | "history";
   onNavigate: Navigate;
 }) {
   const { t } = useTranslation();
@@ -410,7 +405,6 @@ export function ProjectSectionPage({
     settings: t("projectShell.sections.settings"),
     members: t("projectShell.sections.members"),
     history: t("projectShell.sections.history"),
-    documents: t("projectShell.sections.documents"),
   }[section];
   const projectName =
     overview.project?.name ??
@@ -420,12 +414,12 @@ export function ProjectSectionPage({
   return (
     <PageFrame onNavigate={onNavigate}>
       <section aria-label={sectionTitle} className="flex min-w-0 flex-col gap-6">
-        {section !== "settings" && section !== "documents" && <PageHeader
+        {section !== "settings" && <PageHeader
           title={sectionTitle}
           description={t(`projectShell.sectionDescriptions.${section}`, { project: projectName })}
-          actions={<Button type="button" variant="outline" onClick={() => onNavigate(`/projects/${encodeURIComponent(projectId)}`)}>
+          actions={section !== "history" ? <Button type="button" variant="outline" onClick={() => onNavigate(`/projects/${encodeURIComponent(projectId)}`)}>
             {t("projectShell.backToWorkspace")}
-          </Button>}
+          </Button> : undefined}
         />}
         {overview.loading && (
           <SectionCard>
@@ -449,9 +443,6 @@ export function ProjectSectionPage({
         )}
         {!overview.loading && !accessMessage && overview.project && section === "history" && (
           <ProjectHistory projectId={projectId} initialRuns={overview.runs} members={overview.members} />
-        )}
-        {!overview.loading && !accessMessage && overview.project && section === "documents" && (
-          <ProjectDocuments projectId={projectId} documents={overview.documents} pageTitle={sectionTitle} />
         )}
       </section>
     </PageFrame>
@@ -484,12 +475,6 @@ const projectDrawerMeta: Record<
     descriptionKey: "projectShell.drawer.historyDescription",
     icon: Clock3,
     width: "history",
-  },
-  documents: {
-    titleKey: "projectShell.drawer.documents",
-    descriptionKey: "projectShell.drawer.documentsDescription",
-    icon: BookOpen,
-    width: "compact",
   },
   settings: {
     titleKey: "projectShell.drawer.settings",
@@ -594,7 +579,6 @@ function ProjectDrawerShell({
   );
 }
 
-
 export function ProjectWorkspaceDrawer({
   projectId,
   activeDrawer,
@@ -637,7 +621,6 @@ export function ProjectWorkspaceDrawer({
     content = (
       <ProjectGenerationTasksDrawerContent
         projectId={projectId}
-        onViewResult={onClose}
         projectRuns={overview.runs}
         preferredRunId={preferredTaskRunId}
       />
@@ -660,7 +643,7 @@ export function ProjectWorkspaceDrawer({
         layout="drawer"
       />
     );
-  } else if (drawerKind === "history") {
+  } else {
     content = (
       <ProjectHistory
         projectId={projectId}
@@ -669,8 +652,6 @@ export function ProjectWorkspaceDrawer({
         layout="drawer"
       />
     );
-  } else {
-    content = <ProjectDocuments projectId={projectId} documents={overview.documents} layout="drawer" />;
   }
 
   return (

@@ -1,40 +1,42 @@
 // Owns the fixed offline demo lifecycle for the student onboarding recording branch.
 import {
   artifactReadyRunEventSchema,
-  
+  reuseRequirementBaseline,
+  snapshotInputFingerprint,
+  candidateRulesForDiagram,
+
   completedRunEventSchema,
   designTraceabilityTouchesDiagramKinds,
   designRunSnapshotSchema,
-  repairRequirementRuleResponseSchema,
-  repairRequirementRulesResponseSchema,
   runSnapshotSchema,
   stageProgressRunEventSchema,
   stageStartedRunEventSchema,
   startDocumentRunRequestSchema,
-  
+
   type DesignDiagramKind,
   type DesignRunSnapshot,
   type DiagramKind,
-  type RepairRequirementRuleRequest,
-  type RepairRequirementRulesRequest,
-  type RequirementBaseline,
+  type ProviderSettings,
   type RunSnapshot,
   type RunStage,
-  
+
   type StartDesignRunRequest,
   type StartDocumentRunRequest,
   type StartRunRequest,
 } from "@uml-platform/contracts";
+import type { LlmTransport } from "../../llm.js";
 import {
   generateDesignPlantUmlArtifacts,
   generatePlantUmlArtifacts,
-} from "../../plantuml.js";
+} from "../../adapters/plantuml/model-renderer.js";
 import { emitEvent, type RunRecord } from "../records/run-record-store.js";
 import { throwIfRunCancelled } from "../records/run-cancellation.js";
 import { emitOfflineDemoActivity } from "./offline-demo-activity.js";
 import { emitOfflineDemoDiagramReviews } from "./offline-demo-diagram-review.js";
 import { createStageLifecycle } from "../pipelines/shared/stage-lifecycle.js";
 import { stageProgressValue } from "../pipelines/shared/pipeline-events.js";
+import { createRunError } from "../pipelines/shared/errors.js";
+import { buildRequirementStageTrustedChain } from "../traceability/trusted-chain-traceability.js";
 import { librarySeatDemoFixture } from "./fixtures/library-seat-demo-fixture.js";
 import {
   librarySeatRequirementPlantUmlArtifacts,
@@ -49,26 +51,58 @@ const fixture = {
   designSnapshot: designRunSnapshotSchema.parse(
     librarySeatDemoFixture.designSnapshot,
   ),
-  
+
 };
+
+export const offlineDemoProviderSettings: ProviderSettings = {
+  apiBaseUrl: "https://offline-demo.local",
+  apiKey: "offline-demo",
+  model: "offline-demo-fixed-artifacts",
+  // The offline adapter serves deterministic validated JSON, with no provider discovery or credentials.
+  modelCapability: {
+    id: "offline-demo-fixed-artifacts", category: "text_chat", structuredOutputMode: "strict_json",
+    supportsJsonSchema: true, supportsJsonObject: true, strictJson: true, modeLabel: "严格 JSON", probeStatus: "strict",
+  },
+};
+
+export const offlineDemoLlmTransport: LlmTransport = {
+  async *streamChatCompletion() {
+    throw new Error("Offline demo mode must not call an LLM provider.");
+  },
+};
+
+function configuredOfflineDemoProjectIds() {
+  return new Set(
+    (process.env.UML_DEMO_OFFLINE_PROJECT_IDS ?? "")
+      .split(",")
+      .map((projectId) => projectId.trim())
+      .filter(Boolean),
+  );
+}
+
+function configuredOfflineDemoProjectNamePatterns() {
+  return (process.env.UML_DEMO_OFFLINE_PROJECT_NAME_PATTERNS ?? "")
+    .split(",")
+    .map((pattern) => pattern.trim().toLocaleLowerCase())
+    .filter(Boolean);
+}
+
+export function isOfflineDemoProject(
+  projectId: string | null | undefined,
+  projectName?: string | null,
+) {
+  if (projectId && configuredOfflineDemoProjectIds().has(projectId)) {
+    return true;
+  }
+  const name = projectName?.trim().toLocaleLowerCase();
+  if (!name) return false;
+  return configuredOfflineDemoProjectNamePatterns().some((pattern) =>
+    name.includes(pattern),
+  );
+}
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function retargetBaseline(
-  baseline: RequirementBaseline | null | undefined,
-  runId: string,
-) {
-  if (!baseline) return baseline ?? null;
-  return {
-    ...baseline,
-    runId,
-    qualityReport: {
-      ...baseline.qualityReport,
-      runId,
-    },
-  };
 }
 
 function retargetSnapshotIds(
@@ -76,12 +110,6 @@ function retargetSnapshotIds(
   runId: string,
 ) {
   snapshot.runId = runId;
-  if ("requirementBaseline" in snapshot) {
-    snapshot.requirementBaseline = retargetBaseline(
-      snapshot.requirementBaseline,
-      runId,
-    );
-  }
   if (snapshot.coverageMatrix) {
     snapshot.coverageMatrix = { ...snapshot.coverageMatrix, runId };
   }
@@ -97,13 +125,6 @@ function selectedOrAvailable<T extends string>(requested: T[], available: T[]) {
   return selected.length > 0 ? selected : available;
 }
 
-function demoRequirementBaseline() {
-  const baseline = fixture.requirementSnapshot.requirementBaseline;
-  if (!baseline) {
-    throw new Error("Offline demo fixture is missing a requirement baseline.");
-  }
-  return baseline;
-}
 
 function requirementKinds(snapshot: RunSnapshot) {
   return Array.from(
@@ -191,7 +212,7 @@ async function emitDemoStage(record: RunRecord, stages: ReturnType<typeof create
   stages.advance(stage);
   record.snapshot.currentStage = stage;
   record.snapshot.status = "running";
-  emitEvent(record, stageStartedRunEventSchema.parse({ type: "stage_started", stage, tracksCompletion: true }));
+  emitEvent(record, stageStartedRunEventSchema.parse({ type: "stage_started", stage }));
   emitEvent(
     record,
     stageProgressRunEventSchema.parse({
@@ -230,6 +251,15 @@ export async function completeOfflineDemoRequirementRun(
   retargetSnapshotIds(snapshot, record.snapshot.runId);
   // Fixed demo artifacts still belong to the text submitted for this run.
   snapshot.requirementText = input.requirementText;
+  if (snapshot.requirementBaseline) {
+    // Demo tasks follow the same baseline identity rules as provider tasks.
+    snapshot.requirementBaseline = clone(reuseRequirementBaseline(input.requirementBaseline, {
+      ...snapshot.requirementBaseline,
+      runId: snapshot.runId,
+      sourceInputFingerprint: snapshotInputFingerprint({ requirementText: input.requirementText, rules: snapshot.rules }),
+      qualityReport: { ...snapshot.requirementBaseline.qualityReport, runId: snapshot.runId },
+    }));
+  }
   const availableKinds = requirementKinds(snapshot);
   const selectedKinds = selectedOrAvailable(input.selectedDiagrams, availableKinds);
   snapshot.selectedDiagrams = selectedKinds;
@@ -241,7 +271,9 @@ export async function completeOfflineDemoRequirementRun(
     snapshot.diagramErrors = {};
     snapshot.currentStage = "extract_rules";
   } else {
-    const selected = new Set(selectedKinds);
+    // Frozen demos obey the same type prerequisites and must expose unsupported model requests.
+    const missingKinds = selectedKinds.filter(diagram => candidateRulesForDiagram(snapshot.rules, diagram).length === 0);
+    const selected = new Set(selectedKinds.filter(diagram => !missingKinds.includes(diagram)));
     snapshot.models = snapshot.models.filter((model) =>
       selected.has(model.diagramKind),
     );
@@ -260,9 +292,19 @@ export async function completeOfflineDemoRequirementRun(
         selected.has(kind as DiagramKind),
       ),
     ) as RunSnapshot["diagramErrors"];
+    for (const diagram of missingKinds) snapshot.diagramErrors[diagram] = {
+      stage: "generate_models",
+      error: createRunError("RUN_MODEL_OUTPUT_EMPTY", `${diagram} 没有对应类型的需求规则，请先补充需求。`),
+    };
+    snapshot.outputManifest = snapshot.outputManifest.filter(output => output.kind !== "model" ||
+      snapshot.models.some(model => (model.modelId ?? model.diagramKind) === output.id));
     ensureRequirementArtifacts(snapshot);
     snapshot.currentStage = "render_svg";
   }
+  if (snapshot.requirementBaseline) Object.assign(snapshot, buildRequirementStageTrustedChain({
+    runId: snapshot.runId, baseline: snapshot.requirementBaseline,
+    models: snapshot.models, requirementModelTraceability: snapshot.requirementModelTraceability,
+  }));
   snapshot.status = "queued";
   record.snapshot = snapshot;
   await emitDemoStage(record, stages, "extract_rules", "离线演示：正在整理固定需求规则");
@@ -311,7 +353,7 @@ export async function completeOfflineDemoRequirementRun(
     );
   }
   if (selectedKinds.length > 0) {
-    await emitDemoStage(record, stages, "verify_diagram_visual", "离线演示：核对结构、修复有依据的问题并复查图片");
+    await emitDemoStage(record, stages, "verify_diagram_visual", "离线演示：核对结构、修复有依据的问题");
     await emitOfflineDemoDiagramReviews(record);
   }
   completeRecord(record, runSnapshotSchema.parse(snapshot));
@@ -324,6 +366,7 @@ export async function completeOfflineDemoDesignRun(
   const stages = createStageLifecycle(record);
   const snapshot = clone(fixture.designSnapshot);
   retargetSnapshotIds(snapshot, record.snapshot.runId);
+  snapshot.requirementBaseline = clone(input.requirementBaseline ?? snapshot.requirementBaseline);
   const availableKinds = designKinds(snapshot);
   const requestedKinds = input.requestedDiagrams ?? input.selectedDiagrams;
   const selectedKinds = selectedOrAvailable(requestedKinds, availableKinds);
@@ -377,12 +420,11 @@ export async function completeOfflineDemoDesignRun(
     }),
   );
   if (snapshot.models.length > 0) {
-    await emitDemoStage(record, stages, "verify_diagram_visual", "离线演示：核对设计约束、记录结构纠错及图片复查");
+    await emitDemoStage(record, stages, "verify_diagram_visual", "离线演示：核对设计约束、记录结构纠错");
     await emitOfflineDemoDiagramReviews(record);
   }
   completeRecord(record, designRunSnapshotSchema.parse(snapshot));
 }
-
 
 
 export function createOfflineDemoDocumentInput(input: StartDocumentRunRequest) {
@@ -409,44 +451,5 @@ export function createOfflineDemoDocumentInput(input: StartDocumentRunRequest) {
     designPlantUml: designSnapshot.plantUml,
     designSvgArtifacts: designSnapshot.svgArtifacts,
     useAiText: false,
-  });
-}
-
-export function createOfflineDemoRequirementRuleRepair(
-  input: RepairRequirementRuleRequest,
-) {
-  const baseline = demoRequirementBaseline();
-  const requirement =
-    baseline.requirements.find(
-      (item) => item.sourceRuleId === input.rule.id || item.id === input.rule.id,
-    ) ?? baseline.requirements[0];
-  return repairRequirementRuleResponseSchema.parse({
-    requirement,
-    qualityReport: baseline.qualityReport,
-    repairRationale: "离线演示：使用预演项目中已确认的需求规则修复结果。",
-    blockingReasons: [],
-  });
-}
-
-export function createOfflineDemoRequirementRulesRepair(
-  input: RepairRequirementRulesRequest,
-) {
-  const baseline = demoRequirementBaseline();
-  const candidates = input.targetRuleIds.map((ruleId) => {
-    const requirement =
-      baseline.requirements.find(
-        (item) => item.sourceRuleId === ruleId || item.id === ruleId,
-      ) ?? baseline.requirements[0];
-    return {
-      ruleId,
-      requirement,
-      qualityReport: baseline.qualityReport,
-      repairRationale: "离线演示：使用预演项目中已确认的批量修复结果。",
-      blockingReasons: [],
-    };
-  });
-  return repairRequirementRulesResponseSchema.parse({
-    candidates,
-    failures: [],
   });
 }

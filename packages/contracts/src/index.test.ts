@@ -9,19 +9,12 @@ import {
   designTraceEntrySchema,
   type DesignModelTraceabilityEntry,
   designDiagramModelsResultSchema,
-  
-  
-  
-  
-  
-  
-  
-  
-  
+
+
   coverageMatrixSchema,
   traceabilityMatrixSchema,
-  
-  
+
+
   renderStructuredModelRequestSchema,
   renderStructuredModelResponseSchema,
   renderSvgResponseSchema,
@@ -31,7 +24,6 @@ import {
   documentStyleSettingsSchema,
   documentLibraryListResponseSchema,
   documentRunSnapshotSchema,
-  onlyOfficeEditorConfigResponseSchema,
   accountProfileUpdateRequestSchema,
   accountSecurityUpdateRequestSchema,
   accountProfileResponseSchema,
@@ -44,18 +36,6 @@ import {
   adminRateLimitPolicyUpdateRequestSchema,
   adminProviderQuotaListResponseSchema,
   adminProviderUsageListResponseSchema,
-  adminOrganizationDtoSchema,
-  adminOrganizationCreateRequestSchema,
-  adminCourseDtoSchema,
-  adminCourseCreateRequestSchema,
-  adminClassDtoSchema,
-  adminClassCreateRequestSchema,
-  adminTeamDtoSchema,
-  adminTeamCreateRequestSchema,
-  adminOrganizationMembershipDtoSchema,
-  adminOrganizationMembershipCreateRequestSchema,
-  adminQuotaDtoSchema,
-  adminQuotaCreateRequestSchema,
   providerConfigListResponseSchema,
   providerConfigTestRequestSchema,
   systemNoticeCreateRequestSchema,
@@ -74,8 +54,8 @@ import {
   projectMemberRolePermissions,
   runEventSchema,
   runSnapshotSchema,
-  
-  
+
+
   startDesignRunCommandSchema,
   startDesignRunRequestSchema,
   startDocumentRunCommandSchema,
@@ -259,14 +239,19 @@ test("contracts describe structured model rerender requests", () => {
 
 test("contracts describe source-attributed requirement baselines", () => {
   const baseline = requirementBaselineSchema.parse({
+      id: "baseline-test",
+      version: 1,
+      sourceInputFingerprint: "test-source-input",
     runId: "run-baseline",
     sourceDocumentId: "inline-requirement",
-    requirements: [
+    schemaVersion: 3 as const,
+
+      rules: ([
       {
         id: "REQ-001",
         sourceFragment: "借阅者必须登录后才能借书。",
         sourceLocation: { startOffset: 0, endOffset: 12, section: "input" },
-        type: "functional",
+        type: "functional" as const,
         actor: "借阅者",
         subject: "借阅者",
         action: "借书",
@@ -293,7 +278,7 @@ test("contracts describe source-attributed requirement baselines", () => {
           },
         },
       },
-    ],
+    ]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
     assumptions: [
       {
         id: "ASM-001",
@@ -333,50 +318,10 @@ test("contracts describe source-attributed requirement baselines", () => {
     createdAt: "2026-05-24T00:00:00.000Z",
   });
 
-  assert.equal(baseline.requirements[0]?.sourceFragment, "借阅者必须登录后才能借书。");
-  assert.equal(baseline.requirements[0]?.status, "accepted");
-  assert.equal(baseline.requirements[0]?.fieldProvenance.actor?.source, "source-text");
-  assert.equal(baseline.requirements[0]?.fieldProvenance.object?.status, "pending-review");
+  assert.equal(baseline.rules[0]?.sourceFragment, "借阅者必须登录后才能借书。");
   assert.equal(baseline.qualityReport.status, "blocked");
 });
 
-test("contracts keep old atomic requirements compatible when field provenance is absent", () => {
-  const baseline = requirementBaselineSchema.parse({
-    runId: "run-baseline-legacy",
-    sourceDocumentId: "inline-requirement",
-    requirements: [
-      {
-        id: "REQ-001",
-        sourceFragment: "系统需要记录借阅日期。",
-        sourceLocation: { startOffset: 0, endOffset: 11, section: "input" },
-        type: "data",
-        actor: "系统",
-        subject: "系统",
-        action: "记录借阅日期",
-        object: "借阅日期",
-        condition: null,
-        outcome: "系统满足该需求",
-        confidence: 0.82,
-        status: "accepted",
-        criticality: "high",
-        acceptanceCriteria: ["验证：系统需要记录借阅日期。"],
-      },
-    ],
-    assumptions: [],
-    conflicts: [],
-    qualityReport: {
-      runId: "run-baseline-legacy",
-      status: "passed",
-      summary: "已建立 1 条原子需求基线。",
-      issues: [],
-      blockingIssueIds: [],
-      reviewRequiredRequirementIds: [],
-    },
-    createdAt: "2026-05-24T00:00:00.000Z",
-  });
-
-  assert.deepEqual(baseline.requirements[0]?.fieldProvenance, {});
-});
 
 test("contracts describe coverage and bidirectional traceability matrices", () => {
   const coverage = coverageMatrixSchema.parse({
@@ -388,7 +333,7 @@ test("contracts describe coverage and bidirectional traceability matrices", () =
         rationale: "Use case covers the login requirement.",
         modelElements: ["requirements-model:usecase:uc-login"],
         designElements: ["design-model:sequence:msg-login"],
-        
+
         tests: ["test:login"],
         reviewItems: [],
       },
@@ -405,7 +350,7 @@ test("contracts describe coverage and bidirectional traceability matrices", () =
           rationale: "invalid legacy status",
           modelElements: [],
           designElements: [],
-          
+
           tests: [],
           reviewItems: [],
         },
@@ -451,16 +396,15 @@ test("contracts describe coverage and bidirectional traceability matrices", () =
 });
 
 
-
 test("contracts validate representative stage payloads", () => {
   const rules = requirementRulesResultSchema.parse({
     rules: [
       {
         id: "r1",
-        category: "业务规则",
+        type: "business-rule" as const,
         text: "用户必须登录后才能访问主要功能。",
         sourceFragment: "(1)访问主要功能",
-        relatedDiagrams: ["function", "usecase", "activity"],
+
       },
     ],
   });
@@ -471,15 +415,15 @@ test("contracts validate representative stage payloads", () => {
       rules: [
         {
           id: "r1",
-          category: "业务规则",
+          type: "business-rule" as const,
           text: "用户必须登录后才能访问主要功能。",
-          relatedDiagrams: ["usecase"],
+
         },
         {
           id: "R1",
-          category: "数据需求",
+          type: "data" as const,
           text: "系统需要记录访问日志。",
-          relatedDiagrams: ["class"],
+
         },
       ],
     }),
@@ -537,66 +481,14 @@ test("contracts validate representative stage payloads", () => {
 
   const event = runEventSchema.parse({
     type: "stage_progress",
+    eventId: "model-progress",
+    createdAt: "2026-10-18T00:00:00.000Z",
     stage: "generate_models",
     progress: 65,
     message: "正在生成图模型",
   });
   assert.equal(event.type, "stage_progress");
 
-  
-  
-
-  
-
-  
-  
-
-  
-  
-
-  
-  
-  
-
-  
-  
-
-  
-  
-
-  
-  
-
-  
-
-  
-  
-
-  
-  
-
-  
-  
-
-  
-  
-
-  
-  
-
-  
-  
-
-  
-  
-
-  
-  
-  
-
-  
-  
-  
 
   const designTraceEntry = designTraceEntrySchema.parse({
     stage: "render_svg",
@@ -611,6 +503,8 @@ test("contracts validate representative stage payloads", () => {
   assert.equal(designTraceEntry.kind, "render_error");
 
   const designSnapshot = designRunSnapshotSchema.parse({
+    operationType: "design_modeling",
+    outputManifest: [],
     runId: "design-run",
     requirementText: "生成设计模型",
     selectedDiagrams: ["sequence"],
@@ -652,6 +546,8 @@ test("contracts validate representative stage payloads", () => {
   assert.equal(requirementTraceEntry.rawOutputOriginalLength, 9000);
 
   const requirementSnapshot = runSnapshotSchema.parse({
+    operationType: "requirement_modeling",
+    outputManifest: [],
     runId: "run",
     requirementText: "生成需求模型",
     selectedDiagrams: ["usecase", "analysis"],
@@ -696,15 +592,20 @@ test("contracts validate representative stage payloads", () => {
 
 test("contracts accept existing design context for incremental design runs", () => {
   const requirementBaseline = requirementBaselineSchema.parse({
+      id: "baseline-test",
+      version: 1,
+      sourceInputFingerprint: "test-source-input",
     runId: "run-baseline",
     sourceDocumentId: "inline-requirement",
     createdAt: "2026-06-05T00:00:00.000Z",
-    requirements: [
+    schemaVersion: 3 as const,
+
+      rules: ([
       {
         id: "REQ-001",
         sourceRuleId: "r1",
         sourceFragment: "管理员可以借书和还书。",
-        type: "functional",
+        type: "functional" as const,
         actor: "管理员",
         subject: "管理员",
         action: "借书和还书",
@@ -717,7 +618,7 @@ test("contracts accept existing design context for incremental design runs", () 
         acceptanceCriteria: ["管理员完成借还书登记。"],
         fieldProvenance: {},
       },
-    ],
+    ]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
     assumptions: [],
     conflicts: [],
     qualityReport: {
@@ -837,7 +738,7 @@ test("contracts accept existing design context for incremental design runs", () 
 
   assert.equal(parsed.selectedDiagrams[0], "table");
   assert.equal(parsed.requestedDiagrams?.[0], "table");
-  assert.equal(parsed.requirementBaseline.requirements[0]?.id, "REQ-001");
+  assert.equal(parsed.requirementBaseline.rules[0]?.requirementId, "REQ-001");
   assert.equal(parsed.existingDesignModels?.[0]?.diagramKind, "sequence");
   assert.throws(
     () =>
@@ -856,15 +757,20 @@ test("start run contracts accept optional project context", () => {
     model: "gpt-5.5",
   };
   const requirementBaseline = requirementBaselineSchema.parse({
+      id: "baseline-test",
+      version: 1,
+      sourceInputFingerprint: "test-source-input",
     runId: "run-project",
     sourceDocumentId: "inline-requirement",
     createdAt: "2026-06-05T00:00:00.000Z",
-    requirements: [
+    schemaVersion: 3 as const,
+
+      rules: ([
       {
         id: "REQ-001",
         sourceRuleId: "r1",
         sourceFragment: "生成设计模型",
-        type: "functional",
+        type: "functional" as const,
         actor: "用户",
         subject: "用户",
         action: "生成",
@@ -877,7 +783,7 @@ test("start run contracts accept optional project context", () => {
         acceptanceCriteria: ["用户可以生成设计模型。"],
         fieldProvenance: {},
       },
-    ],
+    ]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
     assumptions: [],
     conflicts: [],
     qualityReport: {
@@ -930,8 +836,8 @@ test("start run contracts accept optional project context", () => {
     }).projectId,
     "project-a",
   );
-  
-  
+
+
   assert.equal(
     startDocumentRunRequestSchema.parse({
       projectId: "project-a",
@@ -967,7 +873,7 @@ test("start run contracts accept optional project context", () => {
     }).requestedDiagrams,
     ["sequence"],
   );
-  
+
   assert.equal(
     startDocumentRunCommandSchema.parse({
       projectId: "project-a",
@@ -1071,61 +977,13 @@ test("contracts describe user, session, admin, and account security DTOs", () =>
     }).identifier,
     "owner@example.com",
   );
-  assert.equal(
-    authLoginRequestSchema.parse({
-      email: "LEGACY@EXAMPLE.COM",
-      password: "password-123",
-    }).identifier,
-    "legacy@example.com",
-  );
+  assert.equal(authLoginRequestSchema.safeParse({ email: "old@example.com", password: "password-123" }).success, false);
   assert.throws(() =>
     accountSecurityUpdateRequestSchema.parse({
       currentPassword: "password-123",
       newPassword: "password-123",
     }),
   );
-});
-
-test("project contracts carry academic binding and deprecated default provider metadata", () => {
-  const project = projectDtoSchema.parse({
-    id: "project-1",
-    name: "课程 UML 实验项目",
-    description: "绑定课程班级",
-    visibility: "team",
-    status: "active",
-    ownerUserId: "user-1",
-    organizationId: "org-1",
-    courseId: "course-1",
-    classId: "class-1",
-    teamId: "team-1",
-    defaultProviderConfigId: null,
-    createdAt: "2026-05-22T00:00:00.000Z",
-    updatedAt: "2026-05-22T00:00:00.000Z",
-  });
-
-  assert.equal(project.courseId, "course-1");
-  assert.equal(project.defaultProviderConfigId, null);
-
-  const create = projectCreateRequestSchema.parse({
-    name: project.name,
-    description: project.description,
-    visibility: "team",
-    organizationId: "org-1",
-    courseId: "course-1",
-    classId: "class-1",
-    teamId: "team-1",
-    defaultProviderConfigId: "provider-1",
-  });
-  assert.equal(create.teamId, "team-1");
-
-  const update = projectUpdateRequestSchema.parse({
-    courseId: null,
-    classId: "class-2",
-    teamId: null,
-    defaultProviderConfigId: "provider-2",
-  });
-  assert.equal(update.courseId, null);
-  assert.equal(update.classId, "class-2");
 });
 
 test("contracts describe admin session RBAC and capabilities", () => {
@@ -1233,8 +1091,6 @@ test("contracts describe provider usage and quota DTOs without pretending to bil
         id: "usage-1",
         userId: "user-1",
         projectId: "project-1",
-        courseId: "course-1",
-        classId: "class-1",
         providerConfigId: "provider-1",
         provider: "openai",
         model: "gpt-4.1",
@@ -1290,123 +1146,6 @@ test("contracts describe provider usage and quota DTOs without pretending to bil
   );
 });
 
-test("contracts describe school, course, class, team, membership, and quota admin DTOs", () => {
-  const organization = adminOrganizationDtoSchema.parse({
-    id: "org-1",
-    name: "工程学院",
-    code: "ENG",
-    type: "school",
-    status: "active",
-    createdAt: "2026-05-22T00:00:00.000Z",
-    updatedAt: "2026-05-22T00:00:00.000Z",
-  });
-  assert.equal(organization.type, "school");
-
-  const organizationCreate = adminOrganizationCreateRequestSchema.parse({
-    name: "  软件学院  ",
-    code: "  SSE  ",
-  });
-  assert.equal(organizationCreate.name, "软件学院");
-  assert.equal(organizationCreate.code, "SSE");
-  assert.equal(organizationCreate.type, "school");
-
-  const course = adminCourseDtoSchema.parse({
-    id: "course-1",
-    organizationId: organization.id,
-    name: "软件工程",
-    code: "SE101",
-    term: "2026 Spring",
-    status: "active",
-    createdAt: "2026-05-22T00:00:00.000Z",
-    updatedAt: "2026-05-22T00:00:00.000Z",
-  });
-  assert.equal(course.organizationId, organization.id);
-
-  const courseCreate = adminCourseCreateRequestSchema.parse({
-    organizationId: organization.id,
-    name: "软件工程",
-  });
-  assert.equal(courseCreate.status, "active");
-
-  const classRecord = adminClassDtoSchema.parse({
-    id: "class-1",
-    courseId: course.id,
-    name: "一班",
-    code: null,
-    status: "active",
-    createdAt: "2026-05-22T00:00:00.000Z",
-    updatedAt: "2026-05-22T00:00:00.000Z",
-  });
-  assert.equal(classRecord.courseId, course.id);
-
-  const classCreate = adminClassCreateRequestSchema.parse({
-    courseId: course.id,
-    name: "一班",
-  });
-  assert.equal(classCreate.status, "active");
-
-  const team = adminTeamDtoSchema.parse({
-    id: "team-1",
-    classId: classRecord.id,
-    name: "建模小组 A",
-    code: "A",
-    status: "active",
-    createdAt: "2026-05-22T00:00:00.000Z",
-    updatedAt: "2026-05-22T00:00:00.000Z",
-  });
-  assert.equal(team.classId, classRecord.id);
-
-  const teamCreate = adminTeamCreateRequestSchema.parse({
-    classId: classRecord.id,
-    name: "建模小组 A",
-  });
-  assert.equal(teamCreate.status, "active");
-
-  const membership = adminOrganizationMembershipDtoSchema.parse({
-    id: "membership-1",
-    targetType: "course",
-    targetId: course.id,
-    userId: "user-1",
-    email: "TEACHER@EXAMPLE.COM",
-    displayName: "教师",
-    role: "course_admin",
-    status: "active",
-    createdAt: "2026-05-22T00:00:00.000Z",
-    updatedAt: "2026-05-22T00:00:00.000Z",
-  });
-  assert.equal(membership.email, "teacher@example.com");
-
-  const membershipCreate = adminOrganizationMembershipCreateRequestSchema.parse({
-    targetType: "course",
-    targetId: course.id,
-    userId: "user-1",
-    role: "course_admin",
-  });
-  assert.equal(membershipCreate.status, "active");
-
-  const quota = adminQuotaDtoSchema.parse({
-    id: "quota-1",
-    scopeType: "course",
-    scopeId: course.id,
-    resource: "runs",
-    limit: 120,
-    used: 0,
-    resetPeriod: "monthly",
-    createdAt: "2026-05-22T00:00:00.000Z",
-    updatedAt: "2026-05-22T00:00:00.000Z",
-  });
-  assert.equal(quota.limit, 120);
-
-  const quotaCreate = adminQuotaCreateRequestSchema.parse({
-    scopeType: "course",
-    scopeId: course.id,
-    resource: "runs",
-    limit: 120,
-    resetPeriod: "monthly",
-  });
-  assert.equal(quotaCreate.used, 0);
-});
-
 test("contracts describe user-visible provider config DTOs without secrets", () => {
   const list = providerConfigListResponseSchema.parse({
     providerConfigs: [
@@ -1460,6 +1199,7 @@ test("contracts describe user-visible provider config DTOs without secrets", () 
 
 test("contracts describe project, member, role, and permission DTOs", () => {
   const project = projectDtoSchema.parse({
+    projectMode: "professional",
     id: "project-1",
     name: "课程 UML 项目",
     description: null,
@@ -1624,9 +1364,11 @@ test("contracts validate design table relationship diagrams", () => {
   assert.equal(result.models[0]?.diagramKind, "table");
 });
 
-test("legacy run snapshots ignore removed evidence package JSON", () => {
+test("current run snapshots ignore unrelated removed fields but require explicit output receipts", () => {
   const removedFieldName = ["evidence", "Package"].join("");
   const parsed = runSnapshotSchema.parse({
+    operationType: "requirement_extraction",
+    outputManifest: [],
     runId: "legacy-run",
     requirementText: "历史 PostgreSQL 快照",
     selectedDiagrams: [],
@@ -1648,6 +1390,8 @@ test("legacy run snapshots ignore removed evidence package JSON", () => {
   });
 
   assert.equal(removedFieldName in parsed, false);
+  const { operationType, outputManifest, ...obsolete } = parsed;
+  assert.equal(runSnapshotSchema.safeParse(obsolete).success, false);
 });
 
 test("contracts validate function, architecture, and component diagrams", () => {
@@ -1959,7 +1703,7 @@ test("contracts reject invalid stage payloads", () => {
           id: "",
           category: "未知分类",
           text: "",
-          relatedDiagrams: [],
+
         },
       ],
     });
@@ -2024,7 +1768,7 @@ test("contracts accept managed provider references for project runs", () => {
   assert.equal("providerConfigId" in parsed.providerSettings, true);
 });
 
-test("contracts describe generated document library and editor config", () => {
+test("contracts describe generated document library and generated output", () => {
   const item = {
     id: "doc-1",
     workspaceId: "workspace-1",
@@ -2037,6 +1781,7 @@ test("contracts describe generated document library and editor config", () => {
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     byteLength: 1024,
     version: 1,
+    status: "active",
     sourceRunId: "run-1",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -2047,23 +1792,11 @@ test("contracts describe generated document library and editor config", () => {
   });
   assert.equal(list.documents[0]?.id, "doc-1");
   assert.equal(list.documents[0]?.projectId, "project-1");
-
-  const editorConfig = onlyOfficeEditorConfigResponseSchema.parse({
-    document: item,
-    documentServerUrl: "http://127.0.0.1:8080",
-    config: {
-      documentType: "word",
-      document: {
-        fileType: "docx",
-        key: "doc-1-v1",
-        title: "需求规格说明书.docx",
-        url: "http://127.0.0.1:4001/api/documents/doc-1/file",
-      },
-    },
-  });
-  assert.equal(editorConfig.config.documentType, "word");
+  assert.equal(documentLibraryListResponseSchema.safeParse({ documents: [{ ...item, status: undefined }] }).success, false);
 
   const snapshot = documentRunSnapshotSchema.parse({
+    operationType: "document_generation",
+    outputManifest: [{ kind: "document", id: "doc-1" }],
     runId: "run-1",
     documentKind: "requirementsSpec",
     requirementText: "生成需求说明书。",

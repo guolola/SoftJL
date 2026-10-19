@@ -49,7 +49,9 @@ test("template page scroll keeps the workspace header visible", async ({ page })
   await expect(page.locator('[data-slot="sidebar-inset"] [data-slot="scroll-area-scrollbar"]')).toHaveCount(0);
   const sidebarRange = await page.locator('[data-slot="sidebar-content"]').evaluate((element) => element.scrollHeight - element.clientHeight);
   expect(sidebarRange).toBeLessThanOrEqual(0);
-  expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1);
+  // The current empty state contains the product walkthrough and scrolls with the page.
+  await page.evaluate(() => window.scrollTo(0, 500));
+  await expect.poll(() => header.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBe(0);
   await expectNoPageOverflow(page, "empty projects");
 });
 
@@ -165,16 +167,17 @@ test("community entry, dashboard, projects, and MFA fit the mobile viewport", as
 
 test("workspace stages, details, tests, and account dialog fit the responsive viewport matrix", async ({ page }, info) => {
   await mockProjectApi(page, {
-    testCases: [{
+    testGenerationResult: { testCases: [{
       id: "TC-1",
       title: "预约座位成功",
       description: "验证预约主流程",
       scenarioType: "normal",
+      priority: "P1",
       preconditions: [],
-      steps: [],
+      steps: [{ order: 1, action: "提交有效座位预约", expectedResult: "预约成功" }],
       expectedResults: [],
       relatedRequirementRuleIds: ["r1"],
-    }],
+    }], coverageRelations: [] },
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/projects/${projectId}`);
@@ -200,15 +203,15 @@ test("workspace stages, details, tests, and account dialog fit the responsive vi
   await checkViewportMatrix(page, "model detail");
   for (const width of [360, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
-    await page.getByRole("button", { name: /提示（\d+）/ }).click();
-    const notice = page.getByRole("dialog", { name: "模型提示" });
+    await page.getByRole("button", { name: "编辑", exact: true }).click();
+    const notice = page.getByRole("dialog", { name: "编辑模型信息" });
     await expect(notice).toBeVisible();
     const bounds = await notice.boundingBox();
     expect(bounds).not.toBeNull();
     expect(bounds!.x).toBeGreaterThanOrEqual(0);
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1);
     await expectNoPageOverflow(page, `model notice at ${width}px`);
-    await notice.getByRole("button", { name: "知道了" }).click();
+    await notice.getByRole("button", { name: "取消", exact: true }).click();
   }
 
   await page.setViewportSize({ width: 1440, height: 1000 });

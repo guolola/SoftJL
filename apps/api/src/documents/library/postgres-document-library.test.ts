@@ -188,10 +188,6 @@ async function createLibrary(rootDir: string): Promise<{
   library: DocumentLibrary;
 }> {
   const blobStorage = createFileDocumentLibrary(rootDir);
-  await blobStorage.authenticateWorkspace({
-    workspaceId: "workspace-postgres",
-    workspaceSecret: "workspace-postgres-secret-value-123456",
-  });
   const db = new FakeDocumentDb();
   return {
     db,
@@ -306,20 +302,18 @@ test("postgres document library records DB versions when document buffers change
   }
 });
 
-test("postgres document library delegates legacy workspace authentication to blob storage", async () => {
+test("postgres document library uses current columns and never reconstructs missing versions", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "uml-postgres-documents-"));
   try {
-    const { library } = await createLibrary(rootDir);
-
-    await assert.rejects(
-      () =>
-        library.authenticateWorkspace({
-          workspaceId: "workspace-postgres",
-          workspaceSecret: "workspace-postgres-secret-value-changed",
-        }),
-      /Workspace secret mismatch/,
-    );
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
+    const { db, library } = await createLibrary(rootDir);
+    const saved = await library.saveGeneratedDocument({ workspaceId: "workspace-current", documentKind: "requirementsSpec",
+      sourceRunId: "run-current", fileName: "需求规格说明书.docx", buffer: Buffer.from("docx") });
+    db.records.get(saved.id)!.source_run_id = null;
+    assert.equal((await library.getDocument(saved.workspaceId, saved.id))!.sourceRunId, null);
+    db.versions.length = 0;
+    assert.deepEqual(await library.listDocumentVersions(saved.workspaceId, saved.id), []);
+    db.records.get(saved.id)!.file_name = null;
+    assert.equal(await library.getDocument(saved.workspaceId, saved.id), null);
+    assert.deepEqual(await library.listAllDocuments(), []);
+  } finally { await rm(rootDir, { recursive: true, force: true }); }
 });

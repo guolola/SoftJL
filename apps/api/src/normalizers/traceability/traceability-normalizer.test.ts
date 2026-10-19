@@ -1,8 +1,9 @@
 // Covers element-level traceability filtering before generated mappings reach the UI.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { useCaseParticipationGaps, type DiagramModelSpec } from "@uml-platform/contracts";
+import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
 import {
-  autoFillRequirementTraceability,
   deriveDesignRelationshipTraceability,
   deriveUpstreamDesignRefsFromTraceability,
   formatTraceabilityMissingRefs,
@@ -10,13 +11,14 @@ import {
   normalizeDesignTraceabilityWithCoverage,
   normalizeRequirementTraceability,
   normalizeRequirementTraceabilityWithCoverage,
+  reconcileRequirementTraceabilityAfterRepair,
 } from "./traceability-normalizer.js";
 
 const rule = {
   id: "r1",
-  category: "业务规则",
+  type: "business-rule" as const,
   text: "用户必须登录后才能提交订单。",
-  relatedDiagrams: ["usecase" as const],
+
 };
 
 const requirementModel = {
@@ -61,6 +63,7 @@ const designModel = {
   enums: [],
   relationships: [],
 };
+
 
 test("requirement traceability keeps valid rule-to-element refs and drops invalid refs", () => {
   const normalized = normalizeRequirementTraceability(
@@ -141,7 +144,7 @@ test("requirement traceability requires model ids only when duplicate analysis i
   }));
   const analysisRule = {
     ...rule,
-    relatedDiagrams: ["analysis" as const],
+
   };
 
   const ambiguous = normalizeRequirementTraceabilityWithCoverage(
@@ -211,78 +214,6 @@ test("requirement traceability reports uncovered model elements and relationship
   );
 });
 
-test("requirement traceability can auto-fill uncovered refs from related rules", () => {
-  const classRule = {
-    id: "r2",
-    category: "数据需求" as const,
-    text: "系统应管理用户领域对象。",
-    relatedDiagrams: ["class" as const],
-  };
-  const coverage = normalizeRequirementTraceabilityWithCoverage(
-    [],
-    [rule, classRule],
-    [requirementModel],
-  );
-  const recovered = normalizeRequirementTraceabilityWithCoverage(
-    autoFillRequirementTraceability(coverage.missingTargets, [rule, classRule]),
-    [rule, classRule],
-    [requirementModel],
-  );
-
-  assert.equal(recovered.missingTargets.length, 0);
-  assert.ok(recovered.traceability.every((entry) => entry.ruleId === "r2"));
-});
-
-test("requirement auto-fill rotates fallback rules and marks low-confidence reviews", () => {
-  const rules = [
-    {
-      id: "r-class-1",
-      category: "数据需求" as const,
-      text: "系统需要维护基础资料。",
-      relatedDiagrams: ["class" as const],
-    },
-    {
-      id: "r-class-2",
-      category: "数据需求" as const,
-      text: "系统需要保存业务记录。",
-      relatedDiagrams: ["class" as const],
-    },
-  ];
-  const missingTargets = [
-    {
-      diagramKind: "class" as const,
-      elementId: "alpha",
-      elementKind: "class",
-      label: "Alpha",
-    },
-    {
-      diagramKind: "class" as const,
-      elementId: "beta",
-      elementKind: "class",
-      label: "Beta",
-    },
-  ];
-
-  const filled = autoFillRequirementTraceability(missingTargets, rules);
-
-  assert.deepEqual(
-    filled.map((entry) => entry.ruleId),
-    ["r-class-1", "r-class-2"],
-  );
-  assert.ok(
-    filled.every(
-      (entry) =>
-        entry.mappingSource === "auto-filled-pending-review" &&
-        entry.reviewStatus === "pending" &&
-        entry.confidence === "low",
-    ),
-  );
-});
-test("even strong name similarity remains pending and cannot become confirmed authority", () => {
-  const filled = autoFillRequirementTraceability([{ diagramKind: "class", elementId: "订单", elementKind: "class", label: "订单" }], [{ id: "R1", category: "数据需求", text: "系统保存订单信息和订单状态", relatedDiagrams: ["class"] }]);
-  assert.equal(filled[0]?.mappingSource, "auto-filled-pending-review");
-  assert.equal(filled[0]?.reviewStatus, "pending");
-});
 
 test("requirement traceability preserves pending review metadata", () => {
   const normalized = normalizeRequirementTraceability(

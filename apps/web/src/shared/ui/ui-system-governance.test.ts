@@ -38,6 +38,9 @@ describe('template UI governance', () => {
         return entry.name.endsWith('.tsx') && !entry.name.endsWith('.test.tsx') ? [path] : [];
       });
     for (const file of [...collect('src/features'), ...collect('src/app')]) {
+      // Licensed assistant-ui snapshots retain their upstream native controls;
+      // application compositions outside these imported directories still use shared primitives.
+      if (file.startsWith('src/features/standard-project/components/home-demo/') || file.startsWith('src/features/standard-project/components/elements/')) continue;
       const sourceFile = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
       const violations: string[] = [];
       const visit = (node: ts.Node) => {

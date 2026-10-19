@@ -1,20 +1,13 @@
 // Renders the workspace sidebar navigation and diagram status tree used by desktop and wide viewport layouts.
-import { Badge } from '../../../shared/ui/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../shared/ui/collapsible";
-import { SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarMenu as TemplateSidebarMenu, SidebarMenuItem, SidebarMenuSub, SidebarMenuAction, SidebarMenuButton, useSidebar } from '../../../shared/ui/sidebar';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuSeparator, DropdownMenuGroup } from '../../../shared/ui/dropdown-menu';
+import { ProjectSidebarNavigation, type ProjectSidebarNode as Node } from './project-sidebar-navigation';
 import {
   useEffect,
   useState,
-  type Dispatch,
   type ReactNode,
-  type SetStateAction,
 } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
-  ChevronRight,
   FileText,
   Layers,
   Palette,
@@ -33,21 +26,11 @@ import {
   Plug,
   GitBranch,
   MessageSquare,
-  Clock3,
-  Loader2,
-  CheckCircle2,
-  XCircle,
   ClipboardCheck,
   Wrench,
   TableProperties,
-  History,
-  Settings2,
-  Users,
-  BookOpen,
 } from "lucide-react";
 import type { ProjectRouteSection } from "../../../shared/lib/app-route-types";
-import { cn } from "../../../shared/ui/utils";
-import { floatingAlert } from "../../../shared/ui/floating-alert";
 import type { PlatformRunSummary } from "../../user-platform/services/platform-api";
 import {
   getDesignDiagramLabel,
@@ -57,6 +40,7 @@ import {
   type DesignDiagramType,
   type DiagramType,
 } from "../../../entities/diagram/model";
+import { DESIGN_DIAGRAM_ICON, FEASIBILITY_ARTIFACT_ICON, REQUIREMENT_DIAGRAM_ICON } from "../../../entities/diagram/model-icons";
 import {
   SEMANTIC_KIND_META,
   buildDiagramDetailModel,
@@ -74,23 +58,7 @@ import {
   diagramUnavailableReason,
   generationStatusTooltip,
   mergeSidebarStatus,
-  type SidebarNodeStatus,
 } from "../lib/sidebar-menu-model";
-
-type Node = {
-  key: string;
-  label: string;
-  icon?: ReactNode;
-  children?: Node[];
-  selectable?: boolean;
-  badge?: string | number;
-  badgeTooltip?: string;
-  badges?: string[];
-  status?: SidebarNodeStatus;
-  statusTooltip?: string;
-  unavailableReason?: string;
-  onSelect?: () => void;
-};
 
 type SidebarMenuProps = {
   onNavigateItemSelect?: () => void;
@@ -136,72 +104,6 @@ const KIND_ICON: Record<SemanticElementKind, ReactNode> = {
   "entry-point": <Plug className="size-3.5 text-muted-foreground" />,
 };
 
-function TraceBadge({
-  label,
-  tooltip,
-}: {
-  label: string | number;
-  tooltip?: string;
-}) {
-  const badge = <Badge variant="secondary" className="max-w-24 shrink-0 truncate px-2 py-0.5 text-[11px]">{label}</Badge>;
-  return tooltip ? <Tooltip><TooltipTrigger render={<span tabIndex={0} />}>{badge}</TooltipTrigger><TooltipContent className="max-w-64">{tooltip}</TooltipContent></Tooltip> : badge;
-}
-
-// Collapsed navigation uses actual menu items, preserving arrow-key traversal at every depth.
-function FlyoutItems({ node, onSelect }: { node: Node; onSelect?: () => void }) {
-  const select = () => {
-    if (node.selectable !== false && node.onSelect) { node.onSelect(); onSelect?.(); }
-    else if (node.unavailableReason) floatingAlert.message(node.unavailableReason);
-  };
-  return <DropdownMenuGroup>
-    <DropdownMenuItem onClick={select} title={node.unavailableReason}>{node.icon}<span className="truncate">{node.label}</span></DropdownMenuItem>
-    {!!node.children?.length && <DropdownMenuSeparator />}
-    {node.children?.map(child => child.children?.length ? <DropdownMenuSub key={child.key}>
-      <DropdownMenuSubTrigger>{child.icon}<span className="truncate">{child.label}</span></DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="max-h-[80vh] w-72 overflow-auto"><FlyoutItems node={child} onSelect={onSelect} /></DropdownMenuSubContent>
-    </DropdownMenuSub> : <DropdownMenuItem key={child.key} title={child.unavailableReason} onClick={() => {
-      if (child.selectable !== false && child.onSelect) { child.onSelect(); onSelect?.(); }
-      else if(child.unavailableReason) floatingAlert.message(child.unavailableReason);
-    }}>{child.icon}<span className="truncate">{child.label}</span></DropdownMenuItem>)}
-  </DropdownMenuGroup>;
-}
-
-function GenerationStatusIndicator({
-  status,
-  tooltip,
-}: {
-  status: NonNullable<Node["status"]>;
-  tooltip?: string;
-}) {
-  const { t } = useTranslation();
-  const label =
-    tooltip ??
-    (status === "queued"
-      ? t("workspace.sidebar.queued")
-      : status === "running"
-      ? t("workspace.sidebar.generating")
-      : status === "failed"
-        ? t("workspace.sidebar.generationFailed")
-        : t("workspace.sidebar.generated"));
-  return (
-    <span
-      aria-label={label}
-      title={label}
-      className="inline-flex size-5 shrink-0 items-center justify-center"
-    >
-      {status === "queued" ? (
-        <Clock3 className="size-3.5 text-muted-foreground" />
-      ) : status === "running" ? (
-        <Loader2 className="size-3.5 animate-spin text-primary" />
-      ) : status === "failed" ? (
-        <XCircle className="size-3.5 text-destructive" />
-      ) : (
-        <CheckCircle2 className="size-3.5 text-success" />
-      )}
-    </span>
-  );
-}
-
 function rootGenerationStatusTooltip(
   label: string,
   status: Node["status"],
@@ -210,93 +112,6 @@ function rootGenerationStatusTooltip(
   if (status === "queued") return t("workspace.sidebar.rootQueued", { label });
   if (status === "running") return t("workspace.sidebar.rootRunning", { label });
   return undefined;
-}
-
-function TreeItem({
-  node,
-  depth,
-  selectedKey,
-  openKeys,
-  setOpenKeys,
-  onNavigateItemSelect,
-}: {
-  node: Node;
-  depth: number;
-  selectedKey: string;
-  openKeys: Set<string>;
-  setOpenKeys: Dispatch<SetStateAction<Set<string>>>;
-  onNavigateItemSelect?: () => void;
-}) {
-  const { t } = useTranslation();
-  const { state, isMobile } = useSidebar();
-  const hasChildren = !!node.children?.length;
-  const open = openKeys.has(node.key);
-  const selected = selectedKey === node.key;
-  const selectable = node.selectable ?? true;
-  const setNodeOpen = (nextOpen: boolean) =>
-    setOpenKeys((current) => {
-      const next = new Set(current);
-      if (nextOpen) {
-        next.add(node.key);
-      } else {
-        next.delete(node.key);
-      }
-      return next;
-    });
-  const handleSelect = () => {
-    if (selectable) {
-      if (node.onSelect) {
-        node.onSelect();
-        onNavigateItemSelect?.();
-      }
-      return;
-    }
-    if (node.unavailableReason) {
-      floatingAlert.message(node.unavailableReason);
-      return;
-    }
-  };
-
-  // Icon mode uses the template menu flyout so every nested business item remains reachable.
-  if (state === 'collapsed' && !isMobile) {
-    return <DropdownMenu>
-      <DropdownMenuTrigger render={<SidebarMenuButton data-onboarding-nav={node.key} aria-label={node.label} isActive={selected} />}>
-        {node.icon}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="right" align="start" className="max-h-[80vh] w-72 overflow-auto">
-        <FlyoutItems node={node} onSelect={onNavigateItemSelect} />
-      </DropdownMenuContent>
-    </DropdownMenu>;
-  }
-  return (
-    <Collapsible open={open} onOpenChange={setNodeOpen} render={<SidebarMenuItem />}>
-      <SidebarMenuButton
-        data-onboarding-nav={node.key}
-        isActive={selected}
-        tooltip={node.label}
-        onClick={handleSelect}
-        aria-label={node.label}
-        className="data-active:bg-primary/10!"
-        title={node.unavailableReason ?? node.statusTooltip}
-      >
-        {node.icon}
-        <span className="truncate">{node.label}</span>
-        {node.badge !== undefined && <TraceBadge label={node.badge} tooltip={node.badgeTooltip} />}
-        {node.badges?.map(badge => <TraceBadge key={badge} label={badge} />)}
-        {node.status && <GenerationStatusIndicator status={node.status} tooltip={node.statusTooltip} />}
-      </SidebarMenuButton>
-      {hasChildren && <CollapsibleTrigger
-        aria-label={t(open ? "workspace.sidebar.collapse" : "workspace.sidebar.expand", { label: node.label })}
-        aria-controls={`sidebar-panel-${node.key}`}
-        render={<SidebarMenuAction />}
-      ><ChevronRight className={cn('transition-transform duration-200', open && 'rotate-90')} /></CollapsibleTrigger>}
-      {hasChildren && <CollapsibleContent id={`sidebar-panel-${node.key}`} className="h-(--collapsible-panel-height) overflow-hidden transition-all duration-200 data-ending-style:h-0 data-starting-style:h-0">
-        <SidebarMenuSub className={depth === 0 ? "mr-0 pr-0" : "mr-0 ml-2 pr-0 pl-2"}>
-          {node.children!.map(child => <TreeItem key={child.key} node={child} depth={depth + 1} selectedKey={selectedKey} openKeys={openKeys} setOpenKeys={setOpenKeys} onNavigateItemSelect={onNavigateItemSelect} />)}
-        </SidebarMenuSub>
-      </CollapsibleContent>}
-    </Collapsible>
-  );
 }
 
 function buildDiagramNode(
@@ -336,6 +151,7 @@ function buildDiagramNode(
       ? ("sourceUseCaseName" in model ? model.sourceUseCaseName : undefined) ?? model.title
       : getDiagramLabel(diagram, t);
   const detail = buildDiagramDetailModel(model);
+  const DiagramIcon = REQUIREMENT_DIAGRAM_ICON[diagram];
   const children: Node[] = [
     ...(model
       ? [
@@ -370,7 +186,6 @@ function buildDiagramNode(
               relationshipLabel,
               modelId,
             ),
-          { showGroupBadges: true },
           t,
         )
       : []),
@@ -379,27 +194,12 @@ function buildDiagramNode(
   return {
     key: `diagram:${modelId}`,
     label,
-    icon: (
-      <span className="relative inline-flex">
-        <Network className="size-4 text-muted-foreground" />
-        {stale && (
-          <span
-            title={t("workspace.sidebar.requirementStale")}
-            className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-warning"
-          />
-        )}
-        {failed && (
-          <span
-            title={t("workspace.sidebar.requirementFailed")}
-            className="absolute -left-0.5 -top-0.5 size-1.5 rounded-full bg-destructive"
-          />
-        )}
-      </span>
-    ),
+    icon: <DiagramIcon className="size-4 text-muted-foreground" />,
+    stale,
+    staleTooltip: t("workspace.sidebar.requirementStale"),
     children,
-    badge: detail.items.length || undefined,
     selectable: canOpen,
-    status,
+    status: failed ? "failed" : status,
     statusTooltip,
     unavailableReason: canOpen
       ? undefined
@@ -415,10 +215,11 @@ function buildPendingRequirementDiagramNode(
   status: Node["status"],
   statusTooltip: string | undefined,
 ): Node {
+  const DiagramIcon = REQUIREMENT_DIAGRAM_ICON[diagram];
   return {
     key: `diagram:${modelId}`,
     label,
-    icon: <Network className="size-4 text-muted-foreground" />,
+    icon: <DiagramIcon className="size-4 text-muted-foreground" />,
     selectable: false,
     status,
     statusTooltip,
@@ -432,7 +233,6 @@ function buildDiagramElementGroupNodes(
   groupKeyPrefix: string,
   elementKeyPrefix: string,
   onSelectElement: (element: ReturnType<typeof buildDiagramDetailModel>["items"][number]) => void,
-  options: { showGroupBadges: boolean },
   t: TFunction,
 ): Node[] {
   const tableColumnsByTableId = new Map<
@@ -457,7 +257,6 @@ function buildDiagramElementGroupNodes(
         defaultValue: SEMANTIC_KIND_META[group.kind].label,
       }),
       selectable: false,
-      badge: options.showGroupBadges ? group.items.length : undefined,
       children: group.items.map((element) => {
         const columnChildren =
           element.kind === "table" ? tableColumnsByTableId.get(element.id) ?? [] : [];
@@ -493,7 +292,6 @@ function buildDiagramDetailCategoryNodes(
     relationship: ReturnType<typeof buildDiagramDetailModel>["relationships"][number],
     label: string,
   ) => void,
-  options: { showGroupBadges: boolean },
   t: TFunction,
 ): Node[] {
   const itemsById = new Map(detail.items.map((item) => [item.id, item]));
@@ -503,7 +301,6 @@ function buildDiagramDetailCategoryNodes(
     groupKeyPrefix,
     elementKeyPrefix,
     onSelectElement,
-    options,
     t,
   );
 
@@ -513,7 +310,6 @@ function buildDiagramDetailCategoryNodes(
       label: t("diagrams.tabs.elements"),
       icon: <Layers className="size-3.5 text-muted-foreground" />,
       selectable: false,
-      badge: detail.items.length,
       children: elementGroups,
     },
     {
@@ -521,7 +317,6 @@ function buildDiagramDetailCategoryNodes(
       label: t("diagrams.tabs.relations"),
       icon: <GitBranch className="size-3.5 text-muted-foreground" />,
       selectable: false,
-      badge: detail.relationships.length,
       children: detail.relationships.map((relationship) => {
         const relationshipLabel = getRelationDisplayLabel(relationship, itemsById);
         return {
@@ -571,6 +366,7 @@ function buildDesignDiagramNode(
   t: TFunction,
 ): Node {
   const modelId = model ? getDesignModelId(model) : diagram;
+  const DiagramIcon = DESIGN_DIAGRAM_ICON[diagram];
   const canOpen = viewable && status !== "failed";
   const label =
     diagram === "sequence" && model
@@ -611,7 +407,6 @@ function buildDesignDiagramNode(
               relationshipLabel,
               modelId,
             ),
-          { showGroupBadges: false },
           t,
         )
       : []),
@@ -620,26 +415,12 @@ function buildDesignDiagramNode(
   return {
     key: `design-diagram:${modelId}`,
     label,
-    icon: (
-      <span className="relative inline-flex">
-        <Network className="size-4 text-muted-foreground" />
-        {stale && (
-          <span
-            title={stale ? t("workspace.sidebar.designStale") : staleReason}
-            className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-warning"
-          />
-        )}
-        {failed && (
-          <span
-            title={t("workspace.sidebar.designFailed")}
-            className="absolute -left-0.5 -top-0.5 size-1.5 rounded-full bg-destructive"
-          />
-        )}
-      </span>
-    ),
+    icon: <DiagramIcon className="size-4 text-muted-foreground" />,
+    stale,
+    staleTooltip: staleReason ?? t("workspace.sidebar.designStale"),
     children,
     selectable: canOpen,
-    status,
+    status: failed ? "failed" : status,
     statusTooltip,
     unavailableReason: canOpen
       ? undefined
@@ -655,10 +436,11 @@ function buildPendingDesignDiagramNode(
   status: Node["status"],
   statusTooltip: string | undefined,
 ): Node {
+  const DiagramIcon = DESIGN_DIAGRAM_ICON[diagram];
   return {
     key: `design-diagram:${modelId}`,
     label,
-    icon: <Network className="size-4 text-muted-foreground" />,
+    icon: <DiagramIcon className="size-4 text-muted-foreground" />,
     selectable: false,
     status,
     statusTooltip,
@@ -673,12 +455,12 @@ export function SidebarMenu({
   onOpenProjectSection,
 }: SidebarMenuProps = {}) {
   const { t } = useTranslation();
-  const { setOpenMobile } = useSidebar();
   const [openKeys, setOpenKeys] = useState<Set<string>>(() => new Set());
   const {
     generatedDiagrams,
     models,
     staleDiagrams,
+    staleRequirementModelIds = [],
     staleDesignDiagrams,
     staleDesignModelIds,
     designStaleReasons,
@@ -696,6 +478,9 @@ export function SidebarMenu({
     hasFeasibilityContextArtifact,
     hasFeasibilityImplementationArtifact,
     feasibilityImplementationPlan,
+    feasibilityArtifactStatuses,
+    testGenerationResult,
+    historyItems,
   } =
     useWorkspaceSession();
   const {
@@ -800,29 +585,59 @@ export function SidebarMenu({
 
   const contextModel = feasibilityContextArtifact?.feasibilityContextModel ?? null;
   const businessFlowArtifact = readFeasibilityBusinessFlowArtifact(feasibilityBusinessFlow);
-  const businessFlowStale = businessFlowArtifact && businessFlowArtifact.fingerprint !==
-    buildAcceptedRequirementSnapshot(rules, requirementBaseline).snapshot.fingerprint;
+  const requirementSourceFingerprint = buildAcceptedRequirementSnapshot(rules, requirementBaseline).snapshot.fingerprint;
+  // Session freshness includes supplementary facts, just like generation and document preflight.
+  const contextStale = feasibilityArtifactStatuses?.context === "stale";
+  const businessFlowStale = Boolean(businessFlowArtifact && businessFlowArtifact.fingerprint !== requirementSourceFingerprint);
+  const implementationStale = feasibilityArtifactStatuses?.implementation === "stale";
   const latestFeasibilityRun = [
     ...generationTasks.filter((task) => task.kind === "feasibility").map((task) => ({
-      stage: task.diagnostics.activeStage, status: task.status, startedAt: task.startedAt,
+      stage: task.diagnostics.activeStage, status: task.status, startedAt: task.startedAt, subtasks: task.subtasks,
     })),
-    ...projectRuns.filter((run) => run.runKind === "feasibility").map((run) => ({
-      stage: run.stage, status: run.status, startedAt: run.startedAt ?? run.createdAt ?? "",
+    // The project summary has only one active stage; prefer the live task's
+    // per-artifact status when both records refer to the same run.
+    ...projectRuns.filter((run) => run.runKind === "feasibility" &&
+      !generationTasks.some((task) => task.kind === "feasibility" && task.runId === run.runId)).map((run) => ({
+      stage: run.stage, status: run.status, startedAt: run.startedAt ?? run.createdAt ?? "", subtasks: [],
     })),
   ].sort((left, right) => right.startedAt.localeCompare(left.startedAt))[0];
-  const businessFlowRunStatus = latestFeasibilityRun &&
-    ["generate_business_flow", "render_business_flow"].includes(latestFeasibilityRun.stage ?? "") &&
-    ["running", "failed"].includes(latestFeasibilityRun.status)
-    ? latestFeasibilityRun.status as "running" | "failed" : undefined;
+  const feasibilityRunStatusFor = (kind: "context" | "business-flow" | "implementation"): Node["status"] => {
+    const subtask = latestFeasibilityRun?.subtasks.find((item) => item.id === kind);
+    if (subtask) {
+      if (subtask.status === "completed" || subtask.status === "pending_review") return "completed";
+      if (subtask.status === "failed") return "failed";
+      if (latestFeasibilityRun?.status === "failed") return "failed";
+      return subtask.status === "queued" ? "queued" : "running";
+    }
+    const stageMatches = kind === "context" ? ["generate_context", "render_context"] :
+      kind === "business-flow" ? ["generate_business_flow", "render_business_flow"] : ["generate_implementation"];
+    return latestFeasibilityRun && stageMatches.includes(latestFeasibilityRun.stage ?? "") &&
+      ["queued", "running", "failed"].includes(latestFeasibilityRun.status)
+      ? latestFeasibilityRun.status as Node["status"] : "completed";
+  };
+  const latestDocument = [
+    ...generationTasks.filter((task) => task.kind === "document").map((task) => ({ status: task.status, at: task.startedAt })),
+    ...projectRuns.filter((run) => run.runKind === "document").map((run) => ({ status: run.status, at: run.startedAt ?? run.createdAt ?? "" })),
+    ...historyItems.filter((item) => item.documentKind || (item.snapshot && "documentKind" in item.snapshot)).map((item) => ({ status: item.snapshot?.status ?? item.status, at: item.createdAt })),
+  ].sort((left, right) => right.at.localeCompare(left.at))[0];
+  const savedDocumentStatus: Node["status"] = latestDocument?.status === "completed" ? "completed"
+    : latestDocument?.status === "failed" || latestDocument?.status === "interrupted" ? "failed" : undefined;
   const contextDetail = buildDiagramDetailModel(contextModel);
   const contextModelId = contextModel?.modelId ?? "context";
+  const ContextIcon = FEASIBILITY_ARTIFACT_ICON.context;
+  const BusinessFlowIcon = FEASIBILITY_ARTIFACT_ICON["business-flow"];
+  const AnalysisIcon = REQUIREMENT_DIAGRAM_ICON.analysis;
+  const SequenceIcon = DESIGN_DIAGRAM_ICON.sequence;
   const feasibilityChildren: Node[] = [
-    ...(hasFeasibilityContextArtifact
+    ...(hasFeasibilityContextArtifact || latestFeasibilityRun?.subtasks.some((item) => item.id === "context")
       ? [
           {
             key: "feasibility:context",
+            status: feasibilityRunStatusFor("context"),
+            stale: contextStale,
+            staleTooltip: `${t("workspace.sidebar.contextDiagram")} · ${t("feasibility.status.stale")}`,
             label: t("workspace.sidebar.contextDiagram"),
-            icon: <Network className="size-4 text-muted-foreground" />,
+            icon: <ContextIcon className="size-4 text-muted-foreground" />,
             onSelect: openFeasibilityContext,
             children: [
               { key: "feasibility:context:trace", label: t("workspace.sidebar.traceability"), icon: <TableProperties className="size-3.5 text-muted-foreground" />, onSelect: openFeasibilityContextTrace },
@@ -839,41 +654,43 @@ export function SidebarMenu({
                     relationship.id,
                     relationshipLabel,
                   ),
-                { showGroupBadges: true },
                 t,
               ),
             ],
-            badge: contextDetail.items.length || undefined,
           },
         ]
       : []),
-    ...(businessFlowArtifact ? [{
+    ...(businessFlowArtifact || latestFeasibilityRun?.subtasks.some((item) => item.id === "business-flow") ? [{
       key: "feasibility:business-flow",
       label: t("feasibility.artifact.businessFlow"),
-      icon: <ActivityIcon className="size-4 text-muted-foreground" />,
+      icon: <BusinessFlowIcon className="size-4 text-muted-foreground" />,
       onSelect: openFeasibilityBusinessFlow,
       children: [
         { key: "feasibility:business-flow:trace", label: t("workspace.sidebar.traceability"), icon: <TableProperties className="size-3.5 text-muted-foreground" />, onSelect: openFeasibilityBusinessFlowTrace },
         ...buildDiagramDetailCategoryNodes(
-          buildDiagramDetailModel(businessFlowArtifact.model), "feasibility-business-flow",
+          buildDiagramDetailModel(businessFlowArtifact?.model ?? null), "feasibility-business-flow",
           "feasibility-business-flow-category", "feasibility-business-flow-group",
           "feasibility-business-flow-element", "feasibility-business-flow-relationship",
           (element) => openFeasibilityBusinessFlowElement(element.kind, element.id, element.label),
           (relationship, label) => openFeasibilityBusinessFlowRelationship(relationship.id, label),
-          { showGroupBadges: true }, t,
+          t,
         ).map((node) => ({ ...node, selectable: true,
           key: `feasibility:business-flow:${node.key.endsWith(":elements") ? "elements" : "relations"}`,
           onSelect: node.key.endsWith(":elements") ? openFeasibilityBusinessFlowElements : openFeasibilityBusinessFlowRelations,
         })),
       ],
-      status: businessFlowRunStatus,
-      statusTooltip: generationStatusTooltip(t("feasibility.artifact.businessFlow"), businessFlowRunStatus, true),
-      badge: businessFlowStale ? t("feasibility.status.stale") : undefined,
+      status: feasibilityRunStatusFor("business-flow"),
+      statusTooltip: generationStatusTooltip(t("feasibility.artifact.businessFlow"), feasibilityRunStatusFor("business-flow"), Boolean(businessFlowArtifact?.svg.svg)),
+      stale: businessFlowStale,
+      staleTooltip: `${t("feasibility.artifact.businessFlow")} · ${t("feasibility.status.stale")}`,
     }] : []),
-    ...(hasFeasibilityImplementationArtifact
+    ...(hasFeasibilityImplementationArtifact || latestFeasibilityRun?.subtasks.some((item) => item.id === "implementation")
       ? [
           {
             key: "feasibility:implementation",
+            status: feasibilityRunStatusFor("implementation"),
+            stale: implementationStale,
+            staleTooltip: `${t("workspace.sidebar.implementation")} · ${t("feasibility.status.stale")}`,
             label: t("workspace.sidebar.implementation"),
             icon: <Wrench className="size-4 text-muted-foreground" />,
             onSelect: openFeasibilityImplementation,
@@ -924,8 +741,10 @@ export function SidebarMenu({
             );
             return {
               key: "diagram-group:analysis",
-              label: `${getDiagramLabel("analysis", t)}（${analysisSubtaskNodes.length}）`,
-              icon: <MessageSquare className="size-4 text-muted-foreground" />,
+              stale: staleDiagrams.includes("analysis"),
+              staleTooltip: t("workspace.sidebar.requirementStale"),
+              label: getDiagramLabel("analysis", t),
+              icon: <AnalysisIcon className="size-4 text-muted-foreground" />,
               selectable: false,
               status: groupStatus,
               statusTooltip: generationStatusTooltip(
@@ -953,7 +772,7 @@ export function SidebarMenu({
                 return buildDiagramNode(
                   diagram,
                   model,
-                  staleDiagrams.includes(diagram),
+                  staleRequirementModelIds.includes(getRequirementModelId(model)),
                   Boolean(diagramErrors[node.id] ?? diagramErrors[diagram]),
                   status,
                   generationStatusTooltip(
@@ -981,7 +800,7 @@ export function SidebarMenu({
           return buildDiagramNode(
             diagram,
             model,
-            staleDiagrams.includes(diagram),
+            modelId ? staleRequirementModelIds.includes(modelId) : staleDiagrams.includes(diagram),
             Boolean((modelId ? diagramErrors[modelId] : undefined) ?? diagramErrors[diagram]),
             status,
             generationStatusTooltip(
@@ -1044,18 +863,10 @@ export function SidebarMenu({
             );
             return {
               key: "design-diagram:sequence",
-              label: t("workspace.sidebar.groupCount", { label: getDesignDiagramLabel("sequence", t), count: sequenceSubtaskNodes.length }),
-              icon: (
-                <span className="relative inline-flex">
-                  <MessageSquare className="size-4 text-muted-foreground" />
-                  {sequenceGroupStale && (
-                    <span
-                      title={sequenceGroupStaleReason ?? t("workspace.sidebar.designStale")}
-                      className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-warning"
-                    />
-                  )}
-                </span>
-              ),
+              label: getDesignDiagramLabel("sequence", t),
+              icon: <SequenceIcon className="size-4 text-muted-foreground" />,
+              stale: sequenceGroupStale,
+              staleTooltip: sequenceGroupStaleReason,
               selectable: sequenceGroupViewable,
               status: groupStatus,
               statusTooltip:
@@ -1163,6 +974,7 @@ export function SidebarMenu({
 
     {
       key: "test",
+      status: testGenerationResult ? "completed" : undefined,
       label: t("workspace.tabs.labels.tests"),
       icon: <ClipboardCheck className="size-4 text-muted-foreground" />,
       onSelect: openTestHome,
@@ -1171,51 +983,12 @@ export function SidebarMenu({
       key: "documents",
       label: t("workspace.tabs.labels.documents"),
       icon: <FileText className="size-4 text-muted-foreground" />,
-      status: documentRootStatus,
+      status: documentRootStatus ?? savedDocumentStatus,
       statusTooltip: rootGenerationStatusTooltip(t("workspace.sidebar.documentPipeline"), documentRootStatus, t),
       onSelect: openDocumentsHome,
     },
   ];
 
-  const projectItems: { section: ProjectRouteSection; label: string; icon: ReactNode; id?: string }[] = [
-    { section: "lineage", label: t("status.lineage"), icon: <GitBranch /> },
-    { section: "history", label: t("status.runHistory"), icon: <History />, id: "onboarding-history-action" },
-    { section: "settings", label: t("projectShell.sections.settings"), icon: <Settings2 />, id: "onboarding-settings-action" },
-    { section: "members", label: t("projectShell.drawer.membersShort"), icon: <Users /> },
-    { section: "documents", label: t("projectShell.drawer.documents"), icon: <BookOpen /> },
-  ];
-
-  return (
-    <nav aria-label={t("workspace.sidebar.navigation")} className="h-full w-full">
-      <SidebarGroup>
-        <SidebarGroupLabel className="text-sidebar-foreground/50 tracking-wider uppercase">{t("workspace.sidebar.navigation")}</SidebarGroupLabel>
-        <SidebarGroupContent>
-          <TemplateSidebarMenu>
-            {tree.map(node => <TreeItem key={node.key} node={node} depth={0} selectedKey={selectedKey} openKeys={openKeys} setOpenKeys={setOpenKeys} onNavigateItemSelect={onNavigateItemSelect} />)}
-          </TemplateSidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-      {onOpenProjectSection && <SidebarGroup>
-        <SidebarGroupLabel>{t("projectShell.management")}</SidebarGroupLabel>
-        <SidebarGroupContent>
-          <TemplateSidebarMenu>
-            {projectItems.map(item => <SidebarMenuItem key={item.section}>
-              <SidebarMenuButton
-                id={item.id}
-                tooltip={item.label}
-                aria-label={item.label}
-                aria-current={activeProjectSection === item.section ? "page" : undefined}
-                isActive={activeProjectSection === item.section}
-                className="data-active:bg-primary/10!"
-                onClick={() => {
-                  onOpenProjectSection(item.section);
-                  setOpenMobile(false);
-                }}
-              >{item.icon}<span>{item.label}</span></SidebarMenuButton>
-            </SidebarMenuItem>)}
-          </TemplateSidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>}
-    </nav>
-  );
+  return <ProjectSidebarNavigation tree={tree} selectedKey={selectedKey} openKeys={openKeys} setOpenKeys={setOpenKeys}
+    onNavigateItemSelect={onNavigateItemSelect} activeProjectSection={activeProjectSection} onOpenProjectSection={onOpenProjectSection} />;
 }

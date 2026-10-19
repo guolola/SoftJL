@@ -41,13 +41,13 @@ test("accepts connected lanes and guarded alternatives, including provider null 
   assert.equal(result.model.nodes[1]?.description, undefined);
 });
 
-test("rejects unknown rules, unmapped actions and invalid trace targets", () => {
+test("stores declared flow sources without coverage audits", () => {
   const value = flow();
-  assert.throws(() => normalizeFeasibilityBusinessFlow(value, new Set(["R2"])), /追踪引用无效/);
-  value.traceability = value.traceability.filter((row) => row.targetId !== "check");
-  assert.throws(() => normalizeFeasibilityBusinessFlow(value, rules), /缺少来源需求/);
-  value.traceability.push({ requirementId: "R1", targetId: "missing", targetKind: "node" });
-  assert.throws(() => normalizeFeasibilityBusinessFlow(value, rules), /追踪引用无效/);
+  assert.deepEqual(normalizeFeasibilityBusinessFlow(value, new Set(["R2"])).traceability, value.traceability);
+  value.traceability = value.traceability.filter(row => row.targetId !== "check");
+  assert.deepEqual(normalizeFeasibilityBusinessFlow(value, rules).traceability, value.traceability);
+  value.traceability.push({ requirementId: "R1", targetId: "declared-flow", targetKind: "node" });
+  assert.deepEqual(normalizeFeasibilityBusinessFlow(value, rules).traceability, value.traceability);
 });
 
 test("rejects missing lanes, duplicate ids and invalid endpoints", () => {

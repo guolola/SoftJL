@@ -1,6 +1,7 @@
 // Owns generation task list selection, creation, and status update actions.
 import { useCallback, useMemo, useState } from "react";
 import type { DocumentKind } from "@uml-platform/contracts";
+import { primeCompletionChime } from "../../../shared/lib/completion-chime";
 import type {
   GenerationSubtask,
   GenerationTask,
@@ -181,7 +182,10 @@ export function useGenerationTaskActions() {
       message: string;
       startedAtMs: number;
       subtasks?: GenerationTask["subtasks"];
+      silentCompletion?: boolean;
     }) => {
+      // Generation buttons prime audio inside the click; this covers other user-started entry points.
+      primeCompletionChime();
       const clientTaskId = createClientTaskId(input.kind);
       const startedAt = new Date(input.startedAtMs).toISOString();
       const task = createGenerationTask({
@@ -192,6 +196,7 @@ export function useGenerationTaskActions() {
         documentKind: input.documentKind,
         message: input.message,
         subtasks: input.subtasks,
+        silentCompletion: input.silentCompletion,
         startedAt,
       });
       setGenerationTasks((current) =>
@@ -223,7 +228,7 @@ export function useGenerationTaskActions() {
     const task = createGenerationTask({
       clientTaskId,
       kind,
-      title: kind === "design" ? "设计模型生成" : "需求模型生成",
+      title: kind === "feasibility" ? "可行性分析生成" : kind === "design" ? "设计模型生成" : "需求模型生成",
       providerModel: run.model ?? null,
       startedAt: run.startedAt ?? run.createdAt ?? new Date().toISOString(),
       message: "正在恢复任务进度",
@@ -238,7 +243,7 @@ export function useGenerationTaskActions() {
     (runs: GenerationTaskRunSummary[]) => {
       const recoveryRuns = runs.filter((run) =>
         (run.status === "queued" || run.status === "running") &&
-        (run.runKind === "requirements" || run.runKind === "design"))
+        (run.runKind === "requirements" || run.runKind === "design" || run.runKind === "feasibility"))
         .map(({ runId, runKind, status, model, createdAt, startedAt, selectedDiagrams, requestedDiagrams }) =>
           ({ runId, runKind, status, model, createdAt, startedAt, selectedDiagrams, requestedDiagrams }));
       setServerRuns((current) => JSON.stringify(current) === JSON.stringify(recoveryRuns) ? current : recoveryRuns);
@@ -270,10 +275,6 @@ export function useGenerationTaskActions() {
           if (!task.runId || !isTaskActive(task)) return task;
           const terminalRun = terminalRunsById.get(task.runId);
           if (!terminalRun) return task;
-          // The server run ends before the browser's rule-repair review pass.
-          if (terminalRun.status === "completed" && task.subtasks.some(
-            (subtask) => subtask.id === "repair_rules",
-          )) return task;
           changed = true;
           return settleTaskFromTerminalRun(
             task,

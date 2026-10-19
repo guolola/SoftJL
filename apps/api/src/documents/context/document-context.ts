@@ -1,5 +1,8 @@
 // Owns document context shaping and section normalization before DOCX rendering.
 import {
+  requirementBaselineTraceEntries,
+  completeFeasibilityImplementationPlanSchema,
+  requirementModelSources,
   documentContentResultSchema,
   type DesignDiagramKind,
   type DesignDiagramModelSpec,
@@ -10,6 +13,8 @@ import {
   type StartDocumentRunRequest,
   type UseCaseDiagramSpec,
 } from "@uml-platform/contracts";
+
+import { bindDocumentDiagramReferences, documentDiagramAssets, documentDiagramReference } from "./document-diagram-references.js";
 
 export function documentTitle(documentKind: DocumentKind) {
   return documentKind === "requirementsSpec"
@@ -309,11 +314,11 @@ function requirementRulesBody(input: StartDocumentRunRequest) {
   if (input.rules.length === 0) {
     return [`文本需求：${briefText(input.requirementText, 260)}`];
   }
-  return input.rules.map((rule) => `${rule.id}（${rule.category}）：${rule.text}`);
+  return input.rules.map((rule) => `${rule.id}（${({ "business-rule": "业务规则", functional: "功能需求", data: "数据需求", interaction: "界面交互", interface: "外部接口", exception: "异常处理", quality: "质量需求", operations: "部署运行" })[rule.type]}）：${rule.text}`);
 }
 
 function rulesForDiagram(input: StartDocumentRunRequest, diagramKind: DiagramKind) {
-  return input.rules.filter((rule) => rule.relatedDiagrams.includes(diagramKind));
+  return requirementModelSources({ diagram: diagramKind, rules: input.rules, models: input.requirementModels, traceability: input.requirementModelTraceability }).rules;
 }
 
 function formatTraceRuleId(ruleId: string) {
@@ -336,7 +341,7 @@ function trustedTraceRefId(ref: {
 function requirementIdByRuleId(input: StartDocumentRunRequest) {
   const baseline = input.requirementBaseline;
   return new Map(
-    (baseline?.requirements ?? []).flatMap((requirement) =>
+    (baseline ? requirementBaselineTraceEntries(baseline) : []).flatMap((requirement) =>
       requirement.sourceRuleId
         ? [[requirement.sourceRuleId.toLowerCase(), requirement.id] as const]
         : [],
@@ -346,17 +351,17 @@ function requirementIdByRuleId(input: StartDocumentRunRequest) {
 
 function acceptedRequirementBaselineRows(input: StartDocumentRunRequest) {
   const baseline = input.requirementBaseline;
-  const rows = (baseline?.requirements ?? [])
-    .filter((requirement) => requirement.status === "accepted")
+  const rows = (baseline ? requirementBaselineTraceEntries(baseline) : [])
+    .filter((requirement) => requirement.status === "accepted" || requirement.status === "generated")
     .map((requirement, index) => [
       String(index + 1),
       requirement.id,
       requirement.sourceRuleId ?? "原文",
-      requirement.sourceFragment,
+      requirement.action,
     ]);
   return rows.length > 0
     ? rows
-    : [["1", "未提供/待确认", "未提供/待确认", "当前没有已接受需求基线"]];
+    : [["1", "未提供/待确认", "未提供/待确认", "当前没有需求规则快照"]];
 }
 
 function isTrustedRequirementTrace(
@@ -650,7 +655,6 @@ function sequenceBody(
   ];
 }
 
-
 function designUseCaseInterfaceRows(input: StartDocumentRunRequest) {
   const prototype = requirementModel(input, "prototype");
   return requirementUseCases(input).map((useCase, index) => {
@@ -665,7 +669,6 @@ function designUseCaseInterfaceRows(input: StartDocumentRunRequest) {
     ];
   });
 }
-
 
 function tableDesignBody(input: StartDocumentRunRequest) {
   const tables = designTables(input);
@@ -763,7 +766,7 @@ export function buildDocumentContext(input: StartDocumentRunRequest) {
   };
 }
 
-export function fallbackDocumentSections(input: StartDocumentRunRequest): DocumentSection[] {
+function unboundDocumentSections(input: StartDocumentRunRequest): DocumentSection[] {
   if (input.documentKind === "requirementsSpec") {
     const useCases = requirementUseCases(input);
     const requirementClass = requirementModel(input, "class");
@@ -857,10 +860,10 @@ export function fallbackDocumentSections(input: StartDocumentRunRequest): Docume
   }
 
   if (input.documentKind === "feasibilityStudy") {
-    const plan = input.feasibilityImplementationPlan;
-    if (!plan) {
-      throw new Error("可行性研究报告缺少实现方案。");
-    }
+    // Reports consume the current complete contract; incomplete economics never become report facts.
+    const parsedPlan = completeFeasibilityImplementationPlanSchema.safeParse(input.feasibilityImplementationPlan);
+    if (!parsedPlan.success) throw new Error("可行性研究报告需要当前完整实现方案，请重新生成并确认实现方案。");
+    const plan = parsedPlan.data;
     const recommendedCandidate = plan.candidates.find(
       (candidate) => candidate.id === plan.recommendedCandidateId,
     );
@@ -880,14 +883,10 @@ export function fallbackDocumentSections(input: StartDocumentRunRequest): Docume
       ...context.externalSystems.flatMap((element) => element.sourceRequirementIds.map((id) => [id, "外部系统", element.name])),
       ...context.relationships.flatMap((relation) => relation.sourceRequirementIds.map((id) => [id, "关系", relation.label])),
     ];
-    const analysisYears = facts.analysisYears ?? implementation.analysisPeriodAssumption?.years ?? 1;
-    const hasStructuredCosts = implementation.costEstimates.length > 0;
-    const hasStructuredBenefits = implementation.benefitEstimates.some((item) => item.range);
+    const analysisYears = facts.analysisYears ?? implementation.analysisPeriodAssumption!.years;
     const periodBasis = facts.analysisYears
       ? `采用用户确认的 ${facts.analysisYears} 年分析期。`
-      : implementation.analysisPeriodAssumption
-        ? `采用 AI 估算的 ${implementation.analysisPeriodAssumption.years} 年分析期：${implementation.analysisPeriodAssumption.basis}`
-        : "旧方案未保存分析周期；请重新生成完整估算后计算区间指标。";
+      : `采用方案记录的 ${implementation.analysisPeriodAssumption!.years} 年分析期：${implementation.analysisPeriodAssumption!.basis}（${implementation.analysisPeriodAssumption!.provenance}）`;
     const frequencyFactor = (frequency: "one-time" | "monthly" | "annual") =>
       frequency === "monthly" ? analysisYears * 12 : frequency === "annual" ? analysisYears : 1;
     const sumRanges = (items: Array<{ range: { minimum: number; maximum: number }; frequency: "one-time" | "monthly" | "annual" }>) =>
@@ -900,9 +899,8 @@ export function fallbackDocumentSections(input: StartDocumentRunRequest): Docume
     );
     const totalCostRange = sumRanges(implementation.costEstimates);
     const totalBenefitRange = sumRanges(quantifiedBenefits);
-    const formatRange = (range: { minimum: number; maximum: number }, available = true) => available
-      ? `CNY ${range.minimum.toFixed(2)}–${range.maximum.toFixed(2)}`
-      : "数据不足，未计算（旧方案需重新生成）";
+    const formatRange = (range: { minimum: number; maximum: number }) =>
+      `CNY ${range.minimum.toFixed(2)}–${range.maximum.toFixed(2)}`;
     const ratioRange = totalCostRange.minimum > 0 && totalCostRange.maximum > 0
       ? {
           minimum: totalBenefitRange.minimum / totalCostRange.maximum,
@@ -928,7 +926,7 @@ export function fallbackDocumentSections(input: StartDocumentRunRequest): Docume
         .map((item) => [item.name, formatRange(item.range), item.frequency, item.range.basis, item.range.confidence, item.provenance]);
       const scope = category === "capital" ? "capital-costs" : category === "other-one-time" ? "other-one-time-costs" : "recurring-costs";
       const absence = implementation.absenceDeclarations.find((item) => item.scope === scope);
-      return rows.length ? rows : [["不适用", "—", "—", absence?.reason ?? "旧方案未提供该类别估算。", "—", absence?.provenance ?? "legacy"]];
+      return rows.length ? rows : [["不适用", "—", "—", absence!.reason, "—", absence!.provenance]];
     };
     const benefitRows = (category: "one-time" | "recurring" | "intangible") => {
       const rows = implementation.benefitEstimates
@@ -936,13 +934,13 @@ export function fallbackDocumentSections(input: StartDocumentRunRequest): Docume
         .map((item) => [item.name, item.range ? formatRange(item.range) : "不可量化", item.frequency, item.range?.basis ?? item.outcome, item.range?.confidence ?? "—", item.provenance]);
       const scope = category === "one-time" ? "one-time-benefits" : category === "recurring" ? "recurring-benefits" : "intangible-benefits";
       const absence = implementation.absenceDeclarations.find((item) => item.scope === scope);
-      return rows.length ? rows : [["不适用", "—", "—", absence?.reason ?? "旧方案未提供该类别估算。", "—", absence?.provenance ?? "legacy"]];
+      return rows.length ? rows : [["不适用", "—", "—", absence!.reason, "—", absence!.provenance]];
     };
     const alternatives = plan.candidates.filter((candidate) => candidate.id !== plan.recommendedCandidateId);
     return documentContentResultSchema.parse({ sections: [
         { level: 1, title: "引言", body: ["本文档依据已接受的需求规则、系统上下文图（系统环境图）、实现方案和用户补充事实，对项目实施条件进行结构化可行性研究。"] },
       { level: 2, title: "编写目的", body: ["明确系统建设前提、比较实现方案、识别成本收益和风险，并形成可执行且可追溯的实施结论。"] },
-      { level: 2, title: "背景", body: [`项目名称：${value(facts.projectName)}`, `任务提出者：${value(facts.proposedBy)}`, `开发者：${value(facts.developedBy)}`, `预期用户或运行单位：${value(facts.expectedUsers)}`, context.summary, "下表由上下文元素和关系的来源规则编号确定性生成。"], table: { headers: ["需求规则", "目标类型", "上下文目标"], rows: traceRows.length ? traceRows : [["未提供/待确认", "未提供/待确认", "未提供/待确认"]] }, diagramKind: "context", diagramModelId: "context" },
+      { level: 2, title: "背景", body: [`项目名称：${value(facts.projectName)}`, `任务提出者：${value(facts.proposedBy)}`, `开发者：${value(facts.developedBy)}`, `预期用户或运行单位：${value(facts.expectedUsers)}`, context.summary, "下表由上下文元素和关系的来源规则编号确定性生成。"], table: { headers: ["需求规则", "目标类型", "上下文目标"], rows: traceRows.length ? traceRows : [["未提供/待确认", "未提供/待确认", "未提供/待确认"]] }, diagramKind: "context", diagramModelId: context.modelId ?? context.diagramKind },
       { level: 2, title: "定义", body: [`系统边界由“${context.system.name}”及其人员、外部系统和交互关系共同界定；候选方案以 ${plan.candidates.map((candidate) => candidate.name).join("、")} 标识。`] },
       { level: 2, title: "参考资料", body: [`用户提供资料：${value(facts.references)}`, `需求基线和来源规则共 ${input.rules.length} 条，作为方案分析与追踪依据。`] },
       { level: 1, title: "可行性研究的前提", body: [] },
@@ -962,12 +960,12 @@ export function fallbackDocumentSections(input: StartDocumentRunRequest): Docume
       { level: 3, title: "对系统运行过程的影响", body: [implementation.deploymentAndOperations.summary, ...implementation.preconditions] },
       { level: 3, title: "对开发的影响", body: ["实施计划如下。"], table: { headers: ["里程碑", "时间", "交付物", "角色", "依赖或说明", "验收条件"], rows: implementation.milestones.map((item) => [item.name, item.timeframe, item.deliverables.join("；"), item.roles.join("；"), item.dependencies.join("；") || item.dependencyRationale, item.acceptanceCriteria.join("；")]) } },
       { level: 3, title: "对地点和设施的影响", body: [`目标环境：${value(facts.targetEnvironment)}`, implementation.deploymentAndOperations.summary] },
-      { level: 3, title: "对经费开支的影响", body: [`推荐方案预估成本：${recommendedCandidate.estimatedCost}`, `成本区间按 ${analysisYears} 年分析期汇总为 ${formatRange(totalCostRange, hasStructuredCosts)}；全部金额均保留 AI 估算或用户修改状态。`] },
+      { level: 3, title: "对经费开支的影响", body: [`推荐方案预估成本：${recommendedCandidate.estimatedCost}`, `成本区间按 ${analysisYears} 年分析期汇总为 ${formatRange(totalCostRange)}；全部金额均保留 AI 估算或用户修改状态。`] },
       { level: 2, title: "局限性", body: [recommendedCandidate.disadvantages.map((item) => `方案局限：${item}`).join("；") || "方案局限已在风险登记表中说明。"], table: { headers: ["风险", "概率", "影响", "缓解措施", "责任人", "来源规则或假设", "来源状态"], rows: implementation.risks.map((risk) => [risk.risk, risk.probability, risk.impact, risk.mitigation, risk.owner, risk.sourceRequirementIds.join("、") || risk.assumption, risk.provenance]) } },
       { level: 2, title: "技术条件方面的可行性", body: [implementation.verdicts.find((item) => item.category === "technical")?.rationale ?? implementation.architecture.summary, `团队技能：${value(facts.teamSkills)}`, `可用资源：${value(facts.availableResources)}`, `实施周期：${recommendedCandidate.estimatedSchedule}`] },
       { level: 1, title: "可选择的其他系统方案", body: alternatives.length ? ["以下为未被推荐的完整候选方案及未选中理由。"] : [plan.reducedCandidateReason || "当前约束下没有其他可比较的系统方案。"] },
       ...alternatives.map((candidate, index) => ({ level: 2 as const, title: `可选择的系统方案${index + 1}`, body: [candidate.name, candidate.summary, `优势：${candidate.advantages.join("；")}`, `不足：${candidate.disadvantages.join("；")}`, `预估成本：${candidate.estimatedCost}`, `实施周期：${candidate.estimatedSchedule}`, `未选中理由：${plan.recommendationRationale}`] })),
-      { level: 1, title: "投资及效益分析", body: [`成本区间合计：${formatRange(totalCostRange, hasStructuredCosts)}`, `可量化收益区间合计：${formatRange(totalBenefitRange, hasStructuredBenefits)}`, periodBasis] },
+      { level: 1, title: "投资及效益分析", body: [`成本区间合计：${formatRange(totalCostRange)}`, `可量化收益区间合计：${formatRange(totalBenefitRange)}`, periodBasis] },
       { level: 2, title: "支出", body: [`以下金额为推荐方案在 ${analysisYears} 年分析期内的区间估算。`] },
       { level: 3, title: "基本建设投资", body: [], table: { headers: ["名称", "金额区间", "频率", "估算依据", "置信度", "来源状态"], rows: costRows("capital") } },
       { level: 3, title: "其他一次性支出", body: [], table: { headers: ["名称", "金额区间", "频率", "估算依据", "置信度", "来源状态"], rows: costRows("other-one-time") } },
@@ -997,7 +995,7 @@ export function fallbackDocumentSections(input: StartDocumentRunRequest): Docume
       {
         level: 2,
         title: "已确认业务约束",
-        body: ["以下约束直接来自通过复核的需求基线，设计与实现不得弱化其数字、比较符、角色、状态和条件分支。"],
+        body: ["以下约束直接来自保存的需求规则快照，设计与实现不得弱化其数字、比较符、角色、状态和条件分支。"],
         table: {
           headers: ["编号", "需求标识", "来源规则", "已确认约束"],
           rows: acceptedRequirementBaselineRows(input),
@@ -1006,7 +1004,7 @@ export function fallbackDocumentSections(input: StartDocumentRunRequest): Docume
       { level: 2, title: "定义与标识", body: ["设计模型按总体架构图、用例实现设计、设计类图、界面关系图、数据库设计、组件（构件）关系和部署设计组织；用例实现设计以 sequence:<useCaseId> 标识。"] },
       { level: 2, title: "参考资料", body: ["参考资料为需求规格内容、需求阶段 UML 模型、设计阶段 UML 模型、PlantUML 图源、SVG 图产物和模型追踪关系。"] },
       { level: 1, title: "系统总体架构 (System Architecture)", body: [] },
-      { level: 2, title: "系统总体逻辑流程设计", body: ["本节复用需求阶段总体业务流程图，说明设计方案需要承接的业务活动、条件分支和状态流转。"], diagramKind: "activity", diagramModelId: "requirement:activity" },
+      { level: 2, title: "系统总体逻辑流程设计", body: ["本节复用需求阶段总体业务流程图，说明设计方案需要承接的业务活动、条件分支和状态流转。"], diagramKind: "activity", diagramModelId: documentDiagramReference(input, "requirement", { diagramKind: "activity" }) },
       { level: 3, title: "流程描述", body: activityBody(input, "requirement") },
       { level: 3, title: "跟踪关系", body: ["总体逻辑流程与需求规则的对应关系如下。"], table: { headers: ["编号", "需求规则", "模型元素"], rows: requirementTraceRows(input, "activity") } },
       { level: 2, title: "系统架构设计", body: architectureBody(input), diagramKind: "architecture" },
@@ -1084,6 +1082,10 @@ function containsForbiddenContent(section: DocumentSection) {
   return sectionTextValues(section).some(textHasForbiddenDocumentPlaceholder);
 }
 
+export function fallbackDocumentSections(input: StartDocumentRunRequest): DocumentSection[] {
+  return bindDocumentDiagramReferences(input, unboundDocumentSections(input));
+}
+
 export function mergeDocumentSectionsWithTemplate(
   template: DocumentSection[],
   generated: DocumentSection[],
@@ -1112,7 +1114,8 @@ export function mergeDocumentSectionsWithTemplate(
         ...section,
         body:
           generatedSection.body.length > 0 ? generatedSection.body : section.body,
-        diagramModelId: generatedSection.diagramModelId ?? section.diagramModelId,
+        // Model identity belongs to the trusted template, never to generated prose.
+        diagramModelId: section.diagramModelId,
         table: section.table
           ? {
               headers: section.table.headers,
@@ -1132,47 +1135,11 @@ export function mergeDocumentSectionsWithTemplate(
 }
 
 export function diagramPlantUmlForDocument(input: StartDocumentRunRequest) {
-  const map = new Map<string, string>();
-  const artifacts =
-    input.documentKind === "requirementsSpec"
-      ? input.requirementPlantUml
-      : input.documentKind === "softwareDesignSpec"
-        ? input.designPlantUml
-        : input.requirementPlantUml;
-  for (const artifact of artifacts) {
-    map.set(artifact.modelId ?? artifact.diagramKind, artifact.source);
-  }
-  if (input.documentKind === "softwareDesignSpec") {
-    const requirementActivity = input.requirementPlantUml.find(
-      (artifact) => artifact.diagramKind === "activity",
-    );
-    if (requirementActivity) {
-      map.set("requirement:activity", requirementActivity.source);
-    }
-  }
-  return map;
+  return documentDiagramAssets(input).plantUml;
 }
 
 export function diagramSvgKindsForDocument(input: StartDocumentRunRequest) {
-  const set = new Set<string>();
-  const artifacts =
-    input.documentKind === "requirementsSpec"
-      ? input.requirementSvgArtifacts
-      : input.documentKind === "softwareDesignSpec"
-        ? input.designSvgArtifacts
-        : input.requirementSvgArtifacts;
-  for (const artifact of artifacts) {
-    set.add(artifact.modelId ?? artifact.diagramKind);
-  }
-  if (input.documentKind === "softwareDesignSpec") {
-    const requirementActivity = input.requirementSvgArtifacts.find(
-      (artifact) => artifact.diagramKind === "activity",
-    );
-    if (requirementActivity) {
-      set.add("requirement:activity");
-    }
-  }
-  return set;
+  return documentDiagramAssets(input).svg;
 }
 
 export function documentDiagramLabel(diagramKind: string, sectionTitle?: string) {
@@ -1196,11 +1163,10 @@ export function documentDiagramLabel(diagramKind: string, sectionTitle?: string)
 }
 
 export function ensureDocumentDiagramSections(
-  documentKind: DocumentKind,
+  input: StartDocumentRunRequest,
   sections: DocumentSection[],
 ) {
-  void documentKind;
-  return documentContentResultSchema.parse({ sections }).sections;
+  return bindDocumentDiagramReferences(input, documentContentResultSchema.parse({ sections }).sections);
 }
 
 function replaceUnprovidedInstitutionNames(text: string, allowedSource: string) {

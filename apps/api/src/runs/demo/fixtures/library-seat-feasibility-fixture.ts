@@ -1,7 +1,7 @@
 // Supplies deterministic feasibility artifacts for the library seat demo without provider requests.
 import { completeFeasibilityImplementationPlanSchema, contextDiagramSpecSchema, feasibilityBusinessFlowSchema, feasibilityInputsSchema } from "@uml-platform/contracts";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
-import { generatePlantUmlArtifacts } from "../../../plantuml.js";
+import { generatePlantUmlArtifacts } from "../../../adapters/plantuml/model-renderer.js";
 
 export const librarySeatFeasibilityInputs = feasibilityInputsSchema.parse({
   projectName: "图书馆座位预约系统", expectedUsers: "学生、图书馆管理员", targetEnvironment: "支持手机和桌面浏览器的校园 Web 应用",
@@ -27,7 +27,7 @@ export const librarySeatFeasibilityContext = contextDiagramSpecSchema.parse({
 
 export const librarySeatFeasibilityFlow = feasibilityBusinessFlowSchema.parse({
   model: {
-    diagramKind: "activity", modelId: "feasibility-business-flow", title: "座位预约业务与系统流程图", summary: "学生提交预约，系统校验并创建预约、发送站内通知；校验失败则返回原因。",
+    diagramKind: "activity", modelId: "feasibility-business-flow", title: "座位预约业务流程图", summary: "学生提交预约，系统校验并创建预约、发送站内通知；校验失败则返回原因。",
     notes: ["本图展示预约核心流程；管理员维护和取消预约是独立流程，由环境图与需求规则补充。"],
     swimlanes: [{ id: "student", name: "学生" }, { id: "system", name: "座位预约系统" }],
     nodes: [
@@ -75,12 +75,12 @@ export const librarySeatFeasibilityPlan = completeFeasibilityImplementationPlanS
     implementation: {
       ...candidate.implementation,
       architecture: { summary: index === 0 ? "统一应用内划分四个模块，以关系数据库事务保护预约一致性。" : "浏览器前端与 API 独立部署，后端保留统一预约事务边界。", modules: [
-        { id: "access", name: "登录与访问", responsibility: "验证登录状态并提供手机端访问。", sourceRequirementIds: ["r1", "r2", "r11"] },
-        { id: "booking", name: "预约处理", responsibility: "按流程校验座位和重复预约，通过后保存状态与操作时间。", sourceRequirementIds: ["r1", "r3", "r4", "r10"] },
-        { id: "management", name: "座位与预约管理", responsibility: "维护座位、查询记录并按未到场或设备故障原因取消预约。", sourceRequirementIds: ["r6", "r7", "r8", "r9", "r10"] },
-        { id: "notice", name: "站内通知", responsibility: "预约成功或取消后保存并展示站内通知。", sourceRequirementIds: ["r5"] },
+        { id: "access", name: "登录与访问", responsibility: "验证登录状态并提供手机端访问。", sourceRequirementIds: ["r1", "r2", "r11"], provenance: "ai-estimate" },
+        { id: "booking", name: "预约处理", responsibility: "按流程校验座位和重复预约，通过后保存状态与操作时间。", sourceRequirementIds: ["r1", "r3", "r4", "r10"], provenance: "ai-estimate" },
+        { id: "management", name: "座位与预约管理", responsibility: "维护座位、查询记录并按未到场或设备故障原因取消预约。", sourceRequirementIds: ["r6", "r7", "r8", "r9", "r10"], provenance: "ai-estimate" },
+        { id: "notice", name: "站内通知", responsibility: "预约成功或取消后保存并展示站内通知。", sourceRequirementIds: ["r5"], provenance: "ai-estimate" },
       ] },
-      dataStrategy: { summary: "保存学生、座位、预约和通知；用事务与唯一约束控制同一学生同一时段的重复预约，保留取消原因和操作时间。", sourceRequirementIds: ["r3", "r4", "r5", "r10"] },
+      dataStrategy: { summary: "保存学生、座位、预约和通知；用事务与唯一约束控制同一学生同一时段的重复预约，保留取消原因和操作时间。", sourceRequirementIds: ["r3", "r4", "r5", "r10"], provenance: "ai-estimate" },
       integrationRationale: "系统环境图没有已确认的外部系统；通知通过系统内部实现。",
       milestones: candidate.implementation.milestones.map((milestone) => ({ ...milestone, name: "预约闭环与管理验收", timeframe: index === 0 ? "第 1–10 周" : "第 1–12 周",
         deliverables: ["预约核心流程", "管理工作台", "移动端页面", "站内通知"],
@@ -104,7 +104,7 @@ export const librarySeatContextSvg = `${svgHead} viewBox="0 0 960 420"><title>�
 <g fill="#0f172a"><text x="95" y="205">学生</text><text x="485" y="195">图书馆座位预约系统</text><text x="485" y="225">预约 · 管理 · 站内通知</text><text x="865" y="205">图书馆管理员</text>
 <text x="260" y="140">登录、查询、预约</text><text x="260" y="285">结果与站内通知</text><text x="710" y="120">座位维护、记录查询</text><text x="710" y="145">取消预约</text></g>
 <g stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"><path d="M170 180H350"/><path d="M350 230H170"/><path d="M790 180H620"/></g></svg>`;
-export const librarySeatFlowSvg = `${svgHead} viewBox="0 0 1040 780"><title>座位预约业务与系统流程图</title>${arrow}<rect width="1040" height="780" fill="white"/>
+export const librarySeatFlowSvg = `${svgHead} viewBox="0 0 1040 780"><title>座位预约业务流程图</title>${arrow}<rect width="1040" height="780" fill="white"/>
 <rect x="20" y="20" width="1000" height="740" rx="12" fill="#f8fafc" stroke="#94a3b8"/><path d="M320 20V760M20 80H1020" stroke="#94a3b8"/><text x="170" y="57">学生</text><text x="670" y="57">座位预约系统</text>
 <g fill="#dbeafe" stroke="#2563eb"><rect x="50" y="180" width="240" height="65" rx="12"/><rect x="390" y="180" width="350" height="65" rx="12"/><path d="M565 295L665 360L565 425L465 360Z"/><rect x="390" y="475" width="350" height="65" rx="12"/><rect x="390" y="600" width="350" height="65" rx="12"/><rect x="765" y="325" width="235" height="70" rx="12"/></g>
 <g fill="#0f172a"><circle cx="170" cy="125" r="10"/><text x="170" y="217">查询并提交预约</text><text x="565" y="217">校验登录、座位和重复预约</text><text x="565" y="366">校验通过？</text><text x="565" y="512">保存预约状态与操作时间</text><text x="565" y="637">发送站内通知</text><text x="883" y="354">拒绝预约</text><text x="883" y="380">返回校验原因</text><text x="603" y="454">通过</text><text x="715" y="345">未通过</text><circle cx="565" cy="720" r="10"/><circle cx="565" cy="720" r="15" fill="none" stroke="#0f172a" stroke-width="2"/></g>

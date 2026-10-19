@@ -1,4 +1,5 @@
 // Registers current-user profile and security endpoints.
+import { createHttpErrorResponse } from "../../server/http-error-response.js";
 import type { FastifyInstance } from "fastify";
 import type { FastifyRequest } from "fastify";
 import { randomUUID } from "node:crypto";
@@ -155,7 +156,7 @@ export function registerAccountRoutes({
     const parsed = onboardingTourUpdateRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       reply.code(400);
-      return { message: "Invalid onboarding tour update" };
+      return createHttpErrorResponse(reply);
     }
     return onboardingStateResponseSchema.parse(
       await authStore.setOnboardingOutcome(auth.user.id, parsed.data.tour, parsed.data.outcome),
@@ -170,7 +171,7 @@ export function registerAccountRoutes({
     const user = await authStore.updateUser(auth.user.id, input);
     if (!user) {
       reply.code(404);
-      return { message: "User not found" };
+      return createHttpErrorResponse(reply);
     }
 
     await authStore.recordAuditLog({
@@ -200,14 +201,14 @@ export function registerAccountRoutes({
     });
     if (!file) {
       reply.code(400);
-      return { message: "Avatar file is required" };
+      return createHttpErrorResponse(reply);
     }
 
     const mime = AVATAR_MIME_TYPES[file.mimetype as keyof typeof AVATAR_MIME_TYPES];
     if (!mime) {
       await file.toBuffer().catch(() => Buffer.alloc(0));
       reply.code(400);
-      return { message: "Avatar must be a PNG, JPG, or WebP image" };
+      return createHttpErrorResponse(reply);
     }
 
     let buffer: Buffer;
@@ -215,15 +216,15 @@ export function registerAccountRoutes({
       buffer = await file.toBuffer();
     } catch {
       reply.code(400);
-      return { message: "Avatar must be 2MB or smaller" };
+      return createHttpErrorResponse(reply);
     }
     if (buffer.byteLength > MAX_AVATAR_BYTES) {
       reply.code(400);
-      return { message: "Avatar must be 2MB or smaller" };
+      return createHttpErrorResponse(reply);
     }
     if (!bufferMatchesAvatarMime(buffer, file.mimetype as keyof typeof AVATAR_MIME_TYPES)) {
       reply.code(400);
-      return { message: "Avatar file content does not match its image type" };
+      return createHttpErrorResponse(reply);
     }
 
     await mkdir(avatarStorageDir, { recursive: true });
@@ -234,7 +235,7 @@ export function registerAccountRoutes({
     });
     if (!user) {
       reply.code(404);
-      return { message: "User not found" };
+      return createHttpErrorResponse(reply);
     }
 
     await authStore.recordAuditLog({
@@ -259,13 +260,13 @@ export function registerAccountRoutes({
       const { fileName } = request.params;
       if (!/^[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp)$/u.test(fileName)) {
         reply.code(404);
-        return { message: "Avatar not found" };
+        return createHttpErrorResponse(reply);
       }
 
       const mime = avatarMimeForFileName(fileName);
       if (!mime) {
         reply.code(404);
-        return { message: "Avatar not found" };
+        return createHttpErrorResponse(reply);
       }
 
       const filePath = join(avatarStorageDir, fileName);
@@ -273,11 +274,11 @@ export function registerAccountRoutes({
         const avatarFile = await stat(filePath);
         if (!avatarFile.isFile()) {
           reply.code(404);
-          return { message: "Avatar not found" };
+          return createHttpErrorResponse(reply);
         }
       } catch {
         reply.code(404);
-        return { message: "Avatar not found" };
+        return createHttpErrorResponse(reply);
       }
       return reply.type(mime.contentType).send(createReadStream(filePath));
     },
@@ -298,7 +299,7 @@ export function registerAccountRoutes({
         outcome: "failure",
         message: "Current password did not match",
       });
-      return { message: "Current password is incorrect" };
+      return createHttpErrorResponse(reply);
     }
 
     const user = await authStore.updateUser(auth.user.id, {
@@ -306,7 +307,7 @@ export function registerAccountRoutes({
     });
     if (!user) {
       reply.code(404);
-      return { message: "User not found" };
+      return createHttpErrorResponse(reply);
     }
     const revokedCount = await authStore.revokeOtherSessions(
       auth.user.id,
@@ -362,7 +363,7 @@ export function registerAccountRoutes({
     });
     if (!user) {
       reply.code(404);
-      return { message: "User not found" };
+      return createHttpErrorResponse(reply);
     }
     await authStore.recordAuditLog({
       actorUserId: auth.user.id,
@@ -404,7 +405,7 @@ export function registerAccountRoutes({
         outcome: "failure",
         message: "TOTP code did not match",
       });
-      return { message: "MFA setup code is invalid" };
+      return createHttpErrorResponse(reply);
     }
 
     const user = await authStore.updateUser(auth.user.id, {
@@ -415,7 +416,7 @@ export function registerAccountRoutes({
     });
     if (!user) {
       reply.code(404);
-      return { message: "User not found" };
+      return createHttpErrorResponse(reply);
     }
     await authStore.recordAuditLog({
       actorUserId: auth.user.id,
@@ -441,7 +442,7 @@ export function registerAccountRoutes({
     const input = accountMfaUpdateRequestSchema.parse(request.body);
     if (input.enabled) {
       reply.code(400);
-      return { message: "Use /api/account/mfa/setup and /confirm to enable TOTP MFA" };
+      return createHttpErrorResponse(reply);
     }
     if (
       auth.user.mfaEnabled &&
@@ -457,7 +458,7 @@ export function registerAccountRoutes({
         outcome: "failure",
         message: "TOTP code did not match",
       });
-      return { message: "MFA disable code is invalid" };
+      return createHttpErrorResponse(reply);
     }
     const user = await authStore.updateUser(auth.user.id, {
       mfaEnabled: false,
@@ -467,7 +468,7 @@ export function registerAccountRoutes({
     });
     if (!user) {
       reply.code(404);
-      return { message: "User not found" };
+      return createHttpErrorResponse(reply);
     }
     await authStore.recordAuditLog({
       actorUserId: auth.user.id,

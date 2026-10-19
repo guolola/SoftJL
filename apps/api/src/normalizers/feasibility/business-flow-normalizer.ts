@@ -1,4 +1,4 @@
-// Validates activity connectivity, lane ownership and rule traceability without inventing workflow steps.
+// Validates activity connectivity and lane ownership while retaining first-generation sources.
 import { feasibilityBusinessFlowSchema, validateModelInput, ModelSemanticError, type FeasibilityBusinessFlow } from "@uml-platform/contracts";
 
 function omitNullFields(value: unknown): unknown {
@@ -13,14 +13,14 @@ function omitNullFields(value: unknown): unknown {
 
 export function normalizeFeasibilityBusinessFlow(
   value: unknown,
-  validRequirementIds: ReadonlySet<string>,
+  _validRequirementIds: ReadonlySet<string>,
 ): FeasibilityBusinessFlow {
   // Strict providers encode absent optional fields as null; required fields still fail schema validation.
   const input = omitNullFields(value);
   const diagnostics = validateModelInput((input as { model?: unknown })?.model, "feasibility");
-  if (diagnostics.length) throw new ModelSemanticError(diagnostics);
+  if (diagnostics.length) throw new ModelSemanticError(diagnostics.map(issue => ({ ...issue, responsePath: `model.${issue.path}` })));
   const result = feasibilityBusinessFlowSchema.parse(input);
-  const { model, traceability } = result;
+  const { model } = result;
   model.modelId = "feasibility-business-flow";
   const ids = new Set<string>();
   for (const item of [...model.swimlanes, ...model.nodes, ...model.relationships]) {
@@ -29,7 +29,6 @@ export function normalizeFeasibilityBusinessFlow(
   }
   const lanes = new Set(model.swimlanes.map((lane) => lane.id));
   const nodes = new Set(model.nodes.map((node) => node.id));
-  const relations = new Set(model.relationships.map((edge) => edge.id));
   if (!lanes.has("system")) throw new Error("流程必须包含 id 为 system 的目标系统泳道。");
   const starts = model.nodes.filter((node) => node.type === "start");
   const ends = model.nodes.filter((node) => node.type === "end");
@@ -84,18 +83,6 @@ export function normalizeFeasibilityBusinessFlow(
   if (model.nodes.some((node) => !fromStart.has(node.id) || !toEnd.has(node.id))) {
     throw new Error("每个流程节点都必须从开始可达，并有通往结束的路径。");
   }
-  const targets = { swimlane: lanes, node: nodes, relationship: relations };
-  for (const row of traceability) {
-    if (!validRequirementIds.has(row.requirementId) || !targets[row.targetKind].has(row.targetId)) {
-      throw new Error(`流程追踪引用无效：${row.requirementId} -> ${row.targetId}`);
-    }
-  }
-  const mapped = new Set(traceability.map((row) => `${row.targetKind}:${row.targetId}`));
-  for (const node of model.nodes.filter((node) => node.type === "activity" || node.type === "decision")) {
-    if (!mapped.has(`node:${node.id}`)) throw new Error(`业务动作或判断缺少来源需求：${node.id}`);
-  }
-  for (const lane of model.swimlanes.filter((lane) => lane.id !== "system")) {
-    if (!mapped.has(`swimlane:${lane.id}`)) throw new Error(`人员或外部系统泳道缺少来源需求：${lane.id}`);
-  }
+  // Source declarations are stored as generated; graph checks above do not audit coverage.
   return result;
 }

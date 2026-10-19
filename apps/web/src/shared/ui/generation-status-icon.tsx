@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 import { cn } from "./utils";
 
-export type GenerationStatus = "missing" | "queued" | "running" | "completed" | "failed" | "stale";
+export type GenerationStatus = "missing" | "queued" | "running" | "completed" | "failed" | "stale" | "blocked";
 
 const presentation = {
   missing: { icon: CircleDashed, color: "text-muted-foreground", key: "feasibility.status.missing" },
@@ -13,12 +13,13 @@ const presentation = {
   completed: { icon: CheckCircle2, color: "text-success", key: "workspace.sidebar.generated" },
   failed: { icon: XCircle, color: "text-destructive", key: "feasibility.status.failed" },
   stale: { icon: TriangleAlert, color: "text-warning", key: "lineage.statuses.stale" },
+  blocked: { icon: TriangleAlert, color: "text-warning", key: "documentsPage.generationBlocked" },
 } as const;
 
-export function GenerationStatusIcon({ status, label }: { status: GenerationStatus; label: string }) {
+export function GenerationStatusIcon({ status, label, description: providedDescription }: { status: GenerationStatus; label: string; description?: string }) {
   const { t } = useTranslation();
   const { icon: Icon, color, key } = presentation[status];
-  const description = `${label}：${t(key)}`;
+  const description = providedDescription ?? `${label}：${t(key)}`;
   return (
     <Tooltip>
       <TooltipTrigger

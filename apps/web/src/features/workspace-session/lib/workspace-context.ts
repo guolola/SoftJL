@@ -8,11 +8,11 @@ import type {
   DesignDiagramModelSpec,
   DesignModelTraceabilityEntry,
   DiagramModelSpec,
-  ModelElementRef,
   RequirementBaseline,
   RequirementModelTraceabilityEntry,
 } from "@uml-platform/contracts";
 import {
+  getRequirementModelId,
   getDesignModelId,
   findRequirementModelByKind,
   type DesignDiagramType,
@@ -26,8 +26,6 @@ import type {
 } from "../../../entities/workspace/model";
 import {
   designInputFingerprint,
-  normalizeDesignInputFingerprint,
-  normalizeSnapshotFingerprint,
   snapshotInputFingerprint,
 } from "./fingerprint";
 import {
@@ -36,7 +34,6 @@ import {
 } from "./generation-planning";
 
 export type ApplyRunSnapshotOptions = {
-  preserveRuleReviewState?: boolean;
   persistRuleState?: boolean;
 };
 
@@ -68,7 +65,7 @@ export function fingerprintMatches(
   storedFingerprint: string | null | undefined,
   currentFingerprint: string,
 ) {
-  return normalizeSnapshotFingerprint(storedFingerprint) === currentFingerprint;
+  return (storedFingerprint) === currentFingerprint;
 }
 
 export function designFingerprintMatches(
@@ -76,7 +73,7 @@ export function designFingerprintMatches(
   currentFingerprint: string,
 ) {
   return (
-    normalizeDesignInputFingerprint(storedFingerprint) === currentFingerprint
+    (storedFingerprint) === currentFingerprint
   );
 }
 
@@ -206,10 +203,6 @@ export function diagramErrorCount(
   return Object.keys(snapshot.diagramErrors ?? {}).length;
 }
 
-function refKey(diagramKind: string, elementId: string, modelId?: string) {
-  const scope = compactRefValue(modelId) || diagramKind;
-  return `${scope}:${diagramKind}:${elementId}`.toLowerCase();
-}
 
 function clearRequirementScopedRecord<T>(
   current: Record<string, T>,
@@ -517,197 +510,15 @@ export function diagramsFromRequirementSnapshot(
   ) as DiagramType[];
 }
 
-function compactRefValue(value: unknown) {
-  return typeof value === "string" || typeof value === "number"
-    ? String(value).trim()
-    : "";
-}
-
-function activityNodeTraceabilityKind(nodeType: unknown) {
-  switch (nodeType) {
-    case "activity":
-      return "activity";
-    case "decision":
-      return "decision";
-    case "object": return "object-node";
-    case "flow_final": return "flow-final-node";
-    case "start":
-      return "start-node";
-    case "end":
-      return "end-node";
-    case "merge":
-      return "merge-node";
-    case "fork":
-      return "fork-node";
-    case "join":
-      return "join-node";
-    default:
-      return "activity-node";
-  }
-}
-
-function prototypeNodeTraceabilityKind(nodeType: unknown) {
-  switch (nodeType) {
-    case "screen":
-      return "screen";
-    case "module":
-      return "module";
-    case "entry-point":
-      return "entry-point";
-    default:
-      return "interface-node";
-  }
-}
-
-function isBusinessTraceabilityKind(kind: string) {
-  return ![
-    "flow-final-node", "input-pin", "output-pin", "activation",
-    "system-boundary",
-    "swimlane",
-    "start-node",
-    "end-node",
-    "merge-node",
-    "fork-node",
-    "join-node",
-  ].includes(kind);
-}
-
-function collectTraceableRefKeys(
-  models: Array<DiagramModelSpec | DesignDiagramModelSpec>,
-) {
-  const keys = new Set<string>();
-  for (const model of models) {
-    const diagramKind = model.diagramKind;
-    const modelId = compactRefValue(
-      (model as unknown as Record<string, unknown>).modelId,
-    );
-    const record = model as unknown as Record<string, unknown>;
-    const listKeys: Array<[string, string]> = [
-      ["actors", "actor"],
-      ["useCases", "usecase"],
-      ["systemBoundaries", "system-boundary"],
-      ["classes", "class"],
-      ["interfaces", "interface"],
-      ["enums", "enum"],
-      ["swimlanes", "swimlane"],
-      [
-        "nodes",
-        diagramKind === "function"
-          ? "function"
-          : diagramKind === "deployment"
-            ? "deployment-node"
-            : "activity-node",
-      ],
-      ["packages", "package"],
-      ["databases", "database"],
-      ["components", "component"],
-      ["externalSystems", "external-system"],
-      ["artifacts", "artifact"],
-      ["participants", "participant"],
-      ["messages", "message"],
-      ["fragments", "fragment"],
-      ["tables", "table"],
-    ];
-    const businessElementIds = new Set<string>();
-    if (model.diagramKind === "activity") for (const node of model.nodes) if (node.type === "activity") for (const pin of [...node.inputPins ?? [], ...node.outputPins ?? []]) businessElementIds.add(pin.id);
-
-    for (const [key, defaultKind] of listKeys) {
-      const items = Array.isArray(record[key]) ? record[key] : [];
-      for (const item of items) {
-        if (!item || typeof item !== "object") continue;
-        const itemRecord = item as Record<string, unknown>;
-        const id = compactRefValue(itemRecord.id);
-        const kind =
-          key === "nodes" && diagramKind === "activity"
-            ? activityNodeTraceabilityKind(itemRecord.type)
-            : key === "nodes" && (diagramKind === "prototype" || diagramKind === "navigation")
-              ? prototypeNodeTraceabilityKind(itemRecord.nodeType)
-            : defaultKind;
-        if (id && isBusinessTraceabilityKind(kind)) {
-          keys.add(refKey(diagramKind, id, modelId || undefined));
-          businessElementIds.add(id);
-        }
-        if (key === "tables") {
-          const columns = Array.isArray(itemRecord.columns)
-            ? itemRecord.columns
-            : [];
-          for (const column of columns) {
-            if (!column || typeof column !== "object") continue;
-            const columnId = compactRefValue(
-              (column as Record<string, unknown>).id,
-            );
-            if (id && columnId) {
-              keys.add(
-                refKey(diagramKind, `${id}.${columnId}`, modelId || undefined),
-              );
-              businessElementIds.add(`${id}.${columnId}`);
-            }
-          }
-        }
-      }
-    }
-
-    const relationships = Array.isArray(record.relationships)
-      ? record.relationships
-      : [];
-    for (const relationship of relationships) {
-      if (!relationship || typeof relationship !== "object") continue;
-      const relationshipRecord = relationship as Record<string, unknown>;
-      if (
-        diagramKind === "activity" &&
-        (!businessElementIds.has(
-          compactRefValue(relationshipRecord.sourceId),
-        ) ||
-          !businessElementIds.has(compactRefValue(relationshipRecord.targetId)))
-      ) {
-        continue;
-      }
-      const id = compactRefValue(relationshipRecord.id);
-      if (id) keys.add(refKey(diagramKind, id, modelId || undefined));
-    }
-  }
-  return keys;
-}
-
-function hasCompleteTraceabilityCoverage(
-  modelRefs: Set<string>,
-  refs: ModelElementRef[],
-) {
-  if (modelRefs.size === 0) return false;
-  const covered = new Set(
-    refs.map((ref) => refKey(ref.diagramKind, ref.elementId, ref.modelId)),
-  );
-  return Array.from(modelRefs).every((key) => covered.has(key));
-}
-
-function isManualModelRerendered(
-  manualModelEditStatus: WorkspaceRecord["manualModelEditStatus"],
-  key: string,
-) {
-  return manualModelEditStatus[key]?.status === "rerendered";
-}
-
-export function hasCompleteRequirementTraceability(
+// Generated source declarations are trusted; availability does not re-audit element coverage.
+export function hasRequirementSources(
   models: Array<DiagramModelSpec | undefined>,
   traceability: RequirementModelTraceabilityEntry[],
   manualModelEditStatus: WorkspaceRecord["manualModelEditStatus"] = {},
+  sourceKinds?: readonly DiagramType[],
 ) {
-  const availableModels = models.filter((model): model is DiagramModelSpec =>
-    Boolean(model),
-  );
-  const modelsRequiringTraceability = availableModels.filter(
-    (model) =>
-      model.diagramKind !== "analysis" &&
-      !isManualModelRerendered(manualModelEditStatus, model.diagramKind),
-  );
-  if (modelsRequiringTraceability.length === 0) {
-    return availableModels.length > 0;
-  }
-  const modelRefs = collectTraceableRefKeys(modelsRequiringTraceability);
-  return hasCompleteTraceabilityCoverage(
-    modelRefs,
-    traceability.map((entry) => entry.target),
-  );
+  const available = models.filter(model => model && (!sourceKinds || sourceKinds.includes(model.diagramKind)));
+  return available.length > 0 && (traceability.length > 0 || available.every(model => model!.diagramKind === "analysis" || manualModelEditStatus[getRequirementModelId(model!)]?.status === "rerendered"));
 }
 
 export function isRequirementDiagramStale(input: {
@@ -726,10 +537,7 @@ export function isRequirementDiagramStale(input: {
     diagram,
     activeRequirementFingerprint,
     generatedDiagrams,
-    requirementInputFingerprint,
     diagramInputFingerprints,
-    diagramVersions,
-    rulesVersion,
     models,
   } = input;
   const diagramFingerprint = diagramInputFingerprints[diagram];
@@ -739,159 +547,26 @@ export function isRequirementDiagramStale(input: {
       activeRequirementFingerprint,
     );
   }
-  if (!generatedDiagrams.includes(diagram)) return false;
-
-  const diagramVersion = diagramVersions[diagram];
-  if (diagramVersion !== undefined) return diagramVersion !== rulesVersion;
-
-  if (!findRequirementModelByKind(models, diagram) || !requirementInputFingerprint) return false;
-  return !fingerprintMatches(
-    requirementInputFingerprint,
-    activeRequirementFingerprint,
-  );
+  // Existing output without its own current receipt has an unverified source.
+  return generatedDiagrams.includes(diagram) || Boolean(findRequirementModelByKind(models, diagram));
 }
 
-export function hasCompleteDesignTraceability(
+export function hasDesignSources(
   models: Array<DesignDiagramModelSpec | undefined>,
   traceability: DesignModelTraceabilityEntry[],
   manualModelEditStatus: WorkspaceRecord["manualModelEditStatus"] = {},
-  requirementModels: Array<DiagramModelSpec | undefined> = [],
+  _requirementModels: Array<DiagramModelSpec | undefined> = [],
 ) {
-  const availableModels = models.filter(
-    (model): model is DesignDiagramModelSpec => Boolean(model),
-  );
-  const modelsRequiringTraceability = availableModels.filter(
-    (model) =>
-      !isManualModelRerendered(manualModelEditStatus, getDesignModelId(model)),
-  );
-  if (modelsRequiringTraceability.length === 0) {
-    return availableModels.length > 0;
-  }
-  const modelRefs = collectTraceableRefKeys(modelsRequiringTraceability);
-  const sourceCoverageComplete = hasCompleteTraceabilityCoverage(
-    modelRefs,
-    traceability.map((entry) => entry.source),
-  );
-  if (!sourceCoverageComplete) return false;
-  const requirementRefs = collectTraceableRefKeys(
-    requirementModels.filter((model): model is DiagramModelSpec =>
-      Boolean(model),
-    ),
-  );
-  if (requirementRefs.size === 0) return true;
-  return traceability.every((entry) =>
-    entry.targets.every((target) =>
-      requirementRefs.has(
-        refKey(target.diagramKind, target.elementId, target.modelId),
-      ),
-    ),
-  );
+  const available = models.filter(Boolean);
+  return available.length > 0 && (traceability.length > 0 || available.every(model => manualModelEditStatus[getDesignModelId(model!)]?.status === "rerendered"));
 }
 
-export function describeDesignTraceabilityGap(input: {
+export function describeMissingDesignSources(input: {
   models: Array<DesignDiagramModelSpec | undefined>;
   traceability: DesignModelTraceabilityEntry[];
   manualModelEditStatus?: WorkspaceRecord["manualModelEditStatus"];
   requirementModels?: Array<DiagramModelSpec | undefined>;
   limit?: number;
 }) {
-  const limit = input.limit ?? 5;
-  const availableModels = input.models.filter(
-    (model): model is DesignDiagramModelSpec => Boolean(model),
-  );
-  const manualStatus = input.manualModelEditStatus ?? {};
-  const modelsRequiringTraceability = availableModels.filter(
-    (model) => !isManualModelRerendered(manualStatus, getDesignModelId(model)),
-  );
-  const expectedSources = collectTraceableRefKeys(modelsRequiringTraceability);
-  const coveredSources = new Set(
-    input.traceability.map((entry) =>
-      refKey(entry.source.diagramKind, entry.source.elementId, entry.source.modelId),
-    ),
-  );
-  const missingSources = Array.from(expectedSources).filter(
-    (key) => !coveredSources.has(key),
-  );
-
-  const requirementRefs = collectTraceableRefKeys(
-    (input.requirementModels ?? []).filter((model): model is DiagramModelSpec =>
-      Boolean(model),
-    ),
-  );
-  const invalidTargets =
-    requirementRefs.size === 0
-      ? []
-      : input.traceability.flatMap((entry) =>
-          entry.targets
-            .map((target) =>
-              refKey(target.diagramKind, target.elementId, target.modelId),
-            )
-            .filter((key) => !requirementRefs.has(key)),
-        );
-  const details: string[] = [];
-  if (missingSources.length > 0) {
-    details.push(`缺少映射：${missingSources.slice(0, limit).join("、")}`);
-  }
-  if (invalidTargets.length > 0) {
-    details.push(`目标已失效：${invalidTargets.slice(0, limit).join("、")}`);
-  }
-  return details.join("；");
-}
-
-export type DesignModelTraceabilityCheck = {
-  modelId: string;
-  diagramKind: DesignDiagramType;
-  sourceCoverageComplete: boolean;
-  targetRefsValid: boolean;
-  complete: boolean;
-};
-
-function designTraceabilityEntriesForModel(
-  model: DesignDiagramModelSpec,
-  traceability: DesignModelTraceabilityEntry[],
-) {
-  const modelId = getDesignModelId(model);
-  return traceability.filter((entry) => {
-    const sourceModelId = entry.source.modelId?.trim();
-    if (sourceModelId) return sourceModelId === modelId;
-    return modelId === model.diagramKind && entry.source.diagramKind === model.diagramKind;
-  });
-}
-
-export function checkDesignModelTraceability(input: {
-  model: DesignDiagramModelSpec;
-  traceability: DesignModelTraceabilityEntry[];
-  manualModelEditStatus?: WorkspaceRecord["manualModelEditStatus"];
-  requirementModels?: Array<DiagramModelSpec | undefined>;
-}): DesignModelTraceabilityCheck {
-  const manualStatus = input.manualModelEditStatus ?? {};
-  const modelId = getDesignModelId(input.model);
-  const entries = designTraceabilityEntriesForModel(input.model, input.traceability);
-  const sourceCoverageComplete = isManualModelRerendered(manualStatus, modelId)
-    ? true
-    : hasCompleteTraceabilityCoverage(
-        collectTraceableRefKeys([input.model]),
-        entries.map((entry) => entry.source),
-      );
-  const requirementRefs = collectTraceableRefKeys(
-    (input.requirementModels ?? []).filter((model): model is DiagramModelSpec =>
-      Boolean(model),
-    ),
-  );
-  const targetRefsValid =
-    requirementRefs.size === 0 ||
-    entries.every((entry) =>
-      entry.targets.every((target) =>
-        requirementRefs.has(
-          refKey(target.diagramKind, target.elementId, target.modelId),
-        ),
-      ),
-    );
-  return {
-    modelId,
-    diagramKind: input.model.diagramKind,
-    sourceCoverageComplete,
-    targetRefsValid,
-    complete: sourceCoverageComplete && targetRefsValid,
-  };
+  return input.traceability.length ? "" : "缺少首次生成的来源声明";
 }

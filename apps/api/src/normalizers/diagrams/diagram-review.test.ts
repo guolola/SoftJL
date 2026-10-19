@@ -1,9 +1,9 @@
 // Exercises repair authorization separately from provider observations and candidate validation.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deriveTableModel, type RequirementBaseline, type DiagramReviewFinding } from "@uml-platform/contracts";
+import { createRequirementBaselineSnapshot, deriveTableModel, type RequirementBaseline, type DiagramReviewFinding } from "@uml-platform/contracts";
 import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
-import { acceptRepairCandidate, deriveAuthorizedRepairs, verifyReviewClaims, type DiagramReviewBasis, type ReviewModel } from "./diagram-review.js";
+import { acceptRepairCandidate, acceptStructuralRepairCandidate, deriveAuthorizedRepairs, verifyReviewClaims, type DiagramReviewBasis, type ReviewModel } from "./diagram-review.js";
 
 function comparatorFixture() {
   const model = modelFixture("requirements", "activity");
@@ -15,10 +15,68 @@ function comparatorFixture() {
     { id: "no", type: "control_flow", sourceId: "decision", targetId: "end", guard: "数量<=10" },
     { id: "done", type: "control_flow", sourceId: "work", targetId: "end" },
   ];
-  const baseline = { requirements: [{ id: "A1", sourceRuleId: "R1", condition: "数量>=10", status: "accepted", fieldProvenance: { condition: { source: "manual", status: "accepted" } } }] } as RequirementBaseline;
+  const baseline = createRequirementBaselineSnapshot({ runId: "compare", requirementText: "数量至少10时允许提交。", rules: [{ id: "R1", text: "数量至少10时允许提交。", type: "business-rule" as const }] });
   const basis: DiagramReviewBasis = { stage: "requirements", baseline, traceability: [{ ruleId: "R1", mappingSource: "llm", reviewStatus: "confirmed", target: { modelId: "activity", diagramKind: "activity", elementId: "yes" } }] };
   return { model, basis };
 }
+
+test("duplicate lane repair preserves the node identity and rejects unrelated ownership changes", () => {
+  const model = modelFixture("requirements", "activity");
+  if (model.diagramKind !== "activity") throw new Error("fixture");
+  model.swimlanes.push({ id: "work", name: "外部工具" });
+  model.nodes[1]!.actorOrLane = "work";
+  const repaired = structuredClone(model);
+  repaired.swimlanes[1]!.id = "lane_work";
+  repaired.nodes[1]!.actorOrLane = "lane_work";
+  assert.deepEqual(acceptStructuralRepairCandidate(repaired, model, { stage: "requirements" }), repaired);
+  const retargeted = structuredClone(repaired);
+  retargeted.nodes[1]!.actorOrLane = "system";
+  assert.throws(() => acceptStructuralRepairCandidate(retargeted, model, { stage: "requirements" }), /业务指向/);
+  repaired.nodes[1]!.name = "改写业务内容";
+  assert.throws(() => acceptStructuralRepairCandidate(repaired, model, { stage: "requirements" }), /业务内容/);
+});
+
+function ruleSnapshotFixture() {
+  const fixture = comparatorFixture();
+  fixture.basis.baseline = createRequirementBaselineSnapshot({ runId: "v2", requirementText: "数量至少10时允许提交。", rules: [
+    { id: "R1", type: "business-rule" as const, text: "数量至少10时允许提交。",  },
+  ] });
+  return fixture;
+}
+
+test("v2 full rule text restores scoped boundary findings without mutating business conditions", () => {
+  const { model, basis } = ruleSnapshotFixture();
+  const result = deriveAuthorizedRepairs(model, basis);
+  assert.equal(result.findings.length, 2);
+  assert.equal(result.findings[0]?.expected, "数量>=10");
+  assert.ok(result.findings.every(finding => !finding.repairable && finding.category === "business_content"));
+  assert.deepEqual(result.expectedModel, model);
+  assert.deepEqual(result.changes, []);
+});
+
+test("v2 boundary checks require an unambiguous literal predicate and trusted trace", () => {
+  for (const mode of ["pending", "missing", "other-metric", "other-number", "multiple", "other-rule", "compound"] as const) {
+    const { model, basis } = ruleSnapshotFixture();
+    if (mode === "pending") (basis.traceability as any[])[0].reviewStatus = "pending";
+    if (mode === "missing") basis.traceability = [];
+    if (mode === "other-metric") basis.baseline!.rules![0]!.text = "金额至少10时允许提交。";
+    if (mode === "other-number") basis.baseline!.rules![0]!.text = "数量至少100时允许提交。";
+    if (mode === "multiple") basis.baseline!.rules![0]!.text = "数量至少10且金额至少20时允许提交。";
+    if (mode === "other-rule") basis.baseline!.rules![0]!.id = "R2";
+    if (mode === "compound") model.relationships[1]!.guard = "数量>10且账户有效";
+    assert.deepEqual(deriveAuthorizedRepairs(model, basis).findings, [], mode);
+  }
+});
+
+test("design boundary findings follow the two-hop requirement trace and reject pending upstream links", () => {
+  const { model, basis } = ruleSnapshotFixture();
+  basis.stage = "design";
+  basis.requirementTraceability = [{ ruleId: "R1", mappingSource: "llm", reviewStatus: "confirmed", target: { modelId: "uc-model", diagramKind: "usecase", elementId: "uc" } }];
+  basis.traceability = [{ source: { modelId: model.modelId, diagramKind: model.diagramKind, elementId: "yes" }, targets: [{ modelId: "uc-model", diagramKind: "usecase", elementId: "uc" }] }];
+  assert.equal(deriveAuthorizedRepairs(model, basis).findings.length, 2);
+  (basis.requirementTraceability as any[])[0].reviewStatus = "pending";
+  assert.deepEqual(deriveAuthorizedRepairs(model, basis).findings, []);
+});
 test("records a confirmed business comparator discrepancy without automatic content changes", () => {
   const { model, basis } = comparatorFixture();
   const authorized = deriveAuthorizedRepairs(model, basis);
@@ -28,14 +86,13 @@ test("records a confirmed business comparator discrepancy without automatic cont
   assert.ok(authorized.findings.every((finding) => finding.category === "business_content" && !finding.repairable));
   assert.equal(model.relationships[1]!.guard, "数量>10");
 });
-test("similarity mappings, heuristic facts, ambiguity and confirmed markers alone never authorize changes", () => {
-  for (const mode of ["similar", "old-confirmed-similar", "heuristic", "ambiguous", "missing-trace"] as const) {
+test("similarity mappings, ambiguity and confirmed markers alone never authorize changes", () => {
+  for (const mode of ["similar", "old-confirmed-similar", "ambiguous", "missing-trace"] as const) {
     const { model, basis } = comparatorFixture();
     const row = (basis.traceability as any[])[0];
     if (mode === "similar") row.mappingSource = "auto-filled-pending-review";
     if (mode === "old-confirmed-similar") row.rationale = "名称相似度补齐";
-    if (mode === "heuristic") basis.baseline!.requirements[0]!.fieldProvenance.condition!.source = "heuristic";
-    if (mode === "ambiguous") basis.baseline!.requirements.push({ ...basis.baseline!.requirements[0]!, id: "A2" });
+    if (mode === "ambiguous") basis.baseline!.rules.push({ ...basis.baseline!.rules[0]!, id: "R2", requirementId: "A2" });
     if (mode === "missing-trace") basis.traceability = [];
     assert.equal(deriveAuthorizedRepairs(model, basis).changes.length, 0, mode);
   }

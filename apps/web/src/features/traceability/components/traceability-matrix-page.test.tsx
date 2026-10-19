@@ -3,6 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import { snapshotInputFingerprint } from "@uml-platform/contracts";
 import { LOCALE_PREFERENCE_STORAGE_KEY } from "../../../shared/i18n";
 import {
   createRule,
@@ -37,7 +38,6 @@ function createRepository(
     testProviderSettings: vi.fn(),
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
-    restoreRunHistory: vi.fn(async () => null),
     deleteRunHistory: vi.fn(async () => []),
     clearRunHistory: vi.fn(async () => {}),
   };
@@ -57,8 +57,7 @@ const usecaseModel = {
     },
   ],
   useCases: [
-    {
-      eventFlows: [],
+    { eventFlows: [],
       id: "submit-order",
       name: "提交订单",
       goal: "完成订单提交",
@@ -78,8 +77,7 @@ const classModel = {
   summary: "用户实体",
   notes: [],
   classes: [
-    {
-      constraints: [],
+    { constraints: [],
       id: "domain-user",
       name: "UserDomain",
       attributes: [],
@@ -108,9 +106,9 @@ describe("TraceabilityMatrixPage", () => {
         rules: [
           createRule({
             id: "r1",
-            category: "业务规则",
+            type: "business-rule" as const,
             text: "用户必须登录后才能提交订单。",
-            relatedDiagrams: ["usecase"],
+
           }),
         ],
         requirementModelTraceability: [
@@ -136,15 +134,39 @@ describe("TraceabilityMatrixPage", () => {
 
     expect(await screen.findByText("需求跟踪矩阵")).toBeInTheDocument();
     expect(screen.getByText("需求元素映射")).toBeInTheDocument();
+    const coverage = screen.getByRole("progressbar", { name: "元素映射率" });
+    expect(coverage).toHaveAttribute("aria-valuenow", "50");
+    expect(screen.getByText("1 / 2 个元素已有明确映射。")).toBeInTheDocument();
+    const sidebarHeadings = Array.from(coverage.closest("aside")!.querySelectorAll("h3"));
+    expect(sidebarHeadings.map((heading) => heading.textContent)).toEqual(["元素映射率", "映射详情"]);
 
     const table = await findMatrixTableByText("提交订单");
+    expect(table).toHaveClass("table-fixed", "min-w-[860px]");
+    expect(within(table).getAllByRole("columnheader")[0]).toHaveClass("w-[200px]");
+    expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "需求模型元素", "来源模型", "类型", "来源需求规则", "映射状态",
+    ]);
     const row = within(table).getByText("提交订单").closest("tr");
     expect(row).not.toBeNull();
     expect(within(row!).getByText("用例模型")).toBeInTheDocument();
     expect(within(row!).getByText("R1")).toBeInTheDocument();
     expect(within(row!).getByText("已映射")).toBeInTheDocument();
+    const elementCell = within(row!).getAllByRole("cell")[0];
+    expect(elementCell).toHaveTextContent(/^提交订单$/);
+    expect(within(elementCell).getByTitle("提交订单")).toHaveClass("truncate");
+    const cells = within(row!).getAllByRole("cell");
+    expect(cells).toHaveLength(5);
+    expect(cells[1]).toHaveTextContent(/^用例模型$/);
+    expect(cells[2]).toHaveTextContent(/^用例$/);
     await user.click(row!);
     expect(screen.getByText("R1 [业务规则] 用户必须登录后才能提交订单。")).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText("搜索矩阵…"), "提交订单");
+    expect(within(table).queryByText("客户")).not.toBeInTheDocument();
+    expect(coverage).toHaveAttribute("aria-valuenow", "50");
+    await user.clear(screen.getByPlaceholderText("搜索矩阵…"));
+    await user.type(screen.getByPlaceholderText("搜索矩阵…"), "没有匹配元素");
+    expect(within(table).getByText("没有匹配的矩阵项。")).toBeInTheDocument();
+    expect(coverage).toHaveAttribute("aria-valuenow", "50");
   });
 
   it("scopes analysis requirement matrices to source use case event flows", async () => {
@@ -155,9 +177,9 @@ describe("TraceabilityMatrixPage", () => {
         rules: [
           createRule({
             id: "r1",
-            category: "功能需求",
+            type: "functional" as const,
             text: "用户可以提交订单。",
-            relatedDiagrams: ["usecase"],
+
           }),
         ],
         models: {
@@ -195,12 +217,13 @@ describe("TraceabilityMatrixPage", () => {
             summary: "提交订单事件流",
             notes: [],
             participants: [
-              { id: "customer", name: "客户", participantType: "actor" },
-              { id: "order-system", name: "订单系统", participantType: "control" },
+              { id: "customer", name: "客户", participantType: "actor", sourceElementIds: ["submit-order"] },
+              { id: "order-system", name: "订单系统", participantType: "control", sourceElementIds: ["flow-submit-main"] },
             ],
             messages: [
               {
                 id: "msg-submit",
+                sourceElementIds: ["flow-submit-main"],
                 sourceId: "customer",
                 targetId: "order-system",
                 type: "sync",
@@ -219,7 +242,7 @@ describe("TraceabilityMatrixPage", () => {
             summary: "取消订单事件流",
             notes: [],
             participants: [
-              { id: "cancel-system", name: "取消订单系统", participantType: "control" },
+              { id: "cancel-system", name: "取消订单系统", participantType: "control", sourceElementIds: ["flow-submit-main"] },
             ],
             messages: [],
             fragments: [],
@@ -258,7 +281,7 @@ describe("TraceabilityMatrixPage", () => {
     expect(within(table).getByText("来源用例 / 事件流")).toBeInTheDocument();
     expect(within(table).queryByText("来源需求规则")).not.toBeInTheDocument();
     expect(within(table).queryByText("未关联需求规则")).not.toBeInTheDocument();
-    expect(within(table).getAllByText("用例模型：提交订单").length).toBeGreaterThan(0);
+    expect(within(table).getAllByText("用例模型：submit-order").length).toBeGreaterThan(0);
     expect(within(table).queryByText("R1")).not.toBeInTheDocument();
     expect(within(table).queryByText("取消订单系统")).not.toBeInTheDocument();
     const row = within(table).getByText("客户").closest("tr");
@@ -276,9 +299,9 @@ describe("TraceabilityMatrixPage", () => {
         rules: [
           createRule({
             id: "r2",
-            category: "业务规则",
+            type: "business-rule" as const,
             text: "用户资料需要建模。",
-            relatedDiagrams: ["class"],
+
           }),
         ],
         models: { class: classModel },
@@ -353,6 +376,7 @@ describe("TraceabilityMatrixPage", () => {
               elementKind: "class",
               label: "Class_UserAuth",
             },
+            upstreamDesignRefs: [{ modelId: "sequence:submit-order", diagramKind: "sequence", elementId: "auth-service", elementKind: "participant", label: "认证服务" }],
             targets: [
               {
                 diagramKind: "class",
@@ -372,13 +396,23 @@ describe("TraceabilityMatrixPage", () => {
 
     expect(await screen.findByText("设计跟踪矩阵")).toBeInTheDocument();
     expect(screen.getByText("设计元素映射")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "元素映射率" })).toHaveAttribute("aria-valuenow", "100");
+    expect(screen.getByText("2 / 2 个元素已有明确映射。")).toBeInTheDocument();
 
     const table = await findMatrixTableByText("Class_UserAuth");
+    expect(table).toHaveClass("table-fixed", "min-w-[1120px]");
+    expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "设计模型元素", "来源模型", "类型", "来源设计图元素", "来源需求图", "映射状态",
+    ]);
     expect(within(table).getByText("来源设计图元素")).toBeInTheDocument();
     expect(within(table).getByText("来源需求图")).toBeInTheDocument();
     expect(within(table).queryByText("来源需求规则")).not.toBeInTheDocument();
     const row = within(table).getByText("Class_UserAuth").closest("tr");
     expect(row).not.toBeNull();
+    const cells = within(row!).getAllByRole("cell");
+    expect(cells).toHaveLength(6);
+    expect(cells[1]).toHaveTextContent(/^设计类图$/);
+    expect(cells[2]).toHaveTextContent(/^类$/);
     expect(within(row!).getByText("领域概念模型：UserDomain")).toBeInTheDocument();
     expect(within(row!).getByText("用例实现设计：认证服务")).toBeInTheDocument();
     expect(within(row!).queryByText("R2")).not.toBeInTheDocument();
@@ -397,9 +431,9 @@ describe("TraceabilityMatrixPage", () => {
         rules: [
           createRule({
             id: "r2",
-            category: "业务规则",
+            type: "business-rule" as const,
             text: "用户资料需要建模。",
-            relatedDiagrams: ["class"],
+
           }),
         ],
         models: { class: classModel },
@@ -474,6 +508,7 @@ describe("TraceabilityMatrixPage", () => {
               elementKind: "class",
               label: "Class_UserAuth",
             },
+            upstreamDesignRefs: [{ modelId: "sequence:submit-order", diagramKind: "sequence", elementId: "auth-service", elementKind: "participant", label: "认证服务" }],
             targets: [
               {
                 diagramKind: "class",
@@ -597,8 +632,7 @@ describe("TraceabilityMatrixPage", () => {
 
   it("paginates model element rows and resets pagination after page size changes", async () => {
     const user = userEvent.setup();
-    const useCases = Array.from({ length: 26 }, (_, index) => ({
-      eventFlows: [],
+    const useCases = Array.from({ length: 26 }, (_, index) => ({ eventFlows: [],
       id: `usecase-${index + 1}`,
       name: `用例 ${index + 1}`,
       goal: `目标 ${index + 1}`,
@@ -616,6 +650,11 @@ describe("TraceabilityMatrixPage", () => {
             useCases,
           },
         },
+        rules: [createRule()],
+        requirementModelTraceability: [{
+          ruleId: "r1",
+          target: { diagramKind: "usecase", elementId: "usecase-26", elementKind: "usecase", label: "用例 26" },
+        }],
       }),
     );
 
@@ -631,11 +670,15 @@ describe("TraceabilityMatrixPage", () => {
     expect(within(table).getByText("用例 10")).toBeInTheDocument();
     expect(within(table).queryByText("用例 11")).not.toBeInTheDocument();
     expect(screen.getByLabelText("1-10 / 26")).toBeInTheDocument();
+    const coverage = screen.getByRole("progressbar", { name: "元素映射率" });
+    expect(coverage).toHaveAttribute("aria-valuenow", "4");
+    expect(screen.getByText("1 / 26 个元素已有明确映射。")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(within(table).getByText("用例 11")).toBeInTheDocument();
     expect(within(table).getByText("用例 20")).toBeInTheDocument();
     expect(screen.getByLabelText("11-20 / 26")).toBeInTheDocument();
+    expect(coverage).toHaveAttribute("aria-valuenow", "4");
 
     await chooseSelectOption(
       user,
@@ -643,9 +686,10 @@ describe("TraceabilityMatrixPage", () => {
       "25",
     );
     expect(screen.getByLabelText("1-25 / 26")).toBeInTheDocument();
+    expect(coverage).toHaveAttribute("aria-valuenow", "4");
   });
 
-  it("explains legacy generated models that have no element-level traceability", async () => {
+  it("explains missing element-level traceability without guessing a legacy format", async () => {
     const repository = createRepository(
       createWorkspaceRecord({
         generatedDiagramTypes: ["usecase"],
@@ -664,8 +708,27 @@ describe("TraceabilityMatrixPage", () => {
       await screen.findByText("当前需求模型没有元素级映射数据"),
     ).toBeInTheDocument();
     expect(
-      screen.getAllByText(/不会按模型类型粗略猜测元素和规则的关系/),
-    ).not.toHaveLength(0);
+      screen.queryByText(/后端仍返回旧格式结果/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports incomplete coverage separately from stale upstream and scopes freshness to the inspected model", async () => {
+    const rules = [createRule({ type: "functional" })];
+    const fingerprint = snapshotInputFingerprint({ requirementText: "订单需求", rules });
+    const repository = createRepository(createWorkspaceRecord({
+      requirementText: "订单需求", rules, rulesVersion: 1,
+      requirementInputFingerprint: fingerprint,
+      generatedDiagramTypes: ["usecase", "class"], models: { usecase: usecaseModel, class: classModel },
+      diagramInputFingerprints: { usecase: fingerprint, class: "stale:older-input" },
+      requirementModelTraceability: [{ ruleId: "r1", target: { diagramKind: "usecase", elementId: "submit-order", elementKind: "usecase", label: "提交订单" } }],
+    }));
+    render(withWorkspaceProviders(<TraceabilityMatrixPage mode="requirements" scope={{ diagramKind: "usecase" }} />, repository));
+    await findMatrixTableByText("提交订单");
+    expect(screen.queryByText("跟踪矩阵覆盖不完整")).not.toBeInTheDocument();
+    expect(screen.queryByText("跟踪矩阵基于旧上游生成")).not.toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "元素映射率" })).toHaveAttribute("aria-valuenow", "50");
+    expect(screen.getByText("1 / 2 个元素已有明确映射。")).toBeInTheDocument();
+    expect(screen.queryByText(/覆盖完整性：/)).not.toBeInTheDocument();
   });
 
   it("marks matrices based on stale upstream requirement rules", async () => {
@@ -710,7 +773,7 @@ describe("TraceabilityMatrixPage", () => {
     expect(screen.queryByText(/请重新生成需求模型/)).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: /有 1 项需要处理/ }));
     expect(within(await screen.findByRole("dialog")).getByText(/请重新生成需求模型/)).toBeInTheDocument();
-    expect(screen.getByText(/覆盖完整性：/)).toHaveTextContent("需要重新生成");
+    expect(screen.queryByText(/覆盖完整性：/)).not.toBeInTheDocument();
   });
 
   it("shows an empty state when no matrix rows can be derived", async () => {
@@ -723,6 +786,8 @@ describe("TraceabilityMatrixPage", () => {
 
     expect(await screen.findByText("暂无矩阵数据")).toBeInTheDocument();
     expect(screen.getByText("请先生成需求模型后再查看跟踪矩阵。")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "元素映射率" })).toHaveAttribute("aria-valuenow", "0");
+    expect(screen.getByText("0 / 0 个元素已有明确映射。")).toBeInTheDocument();
   });
 
   it("reuses matrix search, coverage, and details for context targets while excluding the center system", async () => {
@@ -755,7 +820,7 @@ describe("TraceabilityMatrixPage", () => {
     expect(await screen.findByRole("heading", { name: "系统环境图跟踪矩阵" })).toBeInTheDocument();
     expect(screen.getByText("3 项")).toBeInTheDocument();
     expect(screen.queryByText("订单系统")).not.toBeInTheDocument();
-    expect(screen.getByText(/覆盖完整性：/)).toHaveTextContent("100%");
+    expect(screen.queryByText(/覆盖完整性：/)).not.toBeInTheDocument();
     await user.type(screen.getByPlaceholderText("搜索矩阵…"), "支付平台");
     expect(screen.getAllByText("支付平台").length).toBeGreaterThan(0);
     expect(screen.queryByText("客户")).not.toBeInTheDocument();

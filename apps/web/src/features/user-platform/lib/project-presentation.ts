@@ -10,6 +10,7 @@ import {
 } from "./project-backgrounds";
 
 export type StaticProject = {
+  projectMode: "standard" | "professional";
   id: string;
   name: string;
   description: string;
@@ -27,7 +28,7 @@ export type StaticProject = {
   memberCount: number;
   members: StaticProjectMemberPreview[];
   recentRun: string;
-  background: ProjectBackgroundOption;
+  background: ProjectBackgroundOption | null;
 };
 
 type StaticProjectMemberPreview = {
@@ -42,7 +43,7 @@ type StaticProjectMemberPreview = {
 export const PROJECT_SCOPE_OPTIONS = [
   { value: "all", labelKey: "projects.scope.all", shortLabelKey: "projects.scopeShort.all" },
   { value: "mine", labelKey: "projects.scope.mine", shortLabelKey: "projects.scopeShort.mine" },
-  { value: "team", labelKey: "projects.scope.team", shortLabelKey: "projects.scopeShort.team" },
+  { value: "shared", labelKey: "projects.scope.shared", shortLabelKey: "projects.scopeShort.shared" },
   { value: "archived", labelKey: "projects.scope.archived", shortLabelKey: "projects.scopeShort.archived" },
 ] as const;
 
@@ -131,11 +132,9 @@ function projectMemberPreviewsFromApi(
 function projectVisibilityLabel(visibility: PlatformProject["visibility"], locale: string) {
   if (locale === "en") {
     if (visibility === "private") return "Members only";
-    if (visibility === "team") return "Team visible";
     return "Public";
   }
   if (visibility === "private") return "仅成员可见";
-  if (visibility === "team") return "团队成员可见";
   return "公开可见";
 }
 
@@ -159,13 +158,10 @@ export function projectFromApi(
   const memberCount = Math.max(project.memberCount ?? 1, 1);
   const ownerName = ownerNameFromProject(project, currentUser);
   const members = projectMemberPreviewsFromApi(project, ownerName);
-  const background = resolveProjectBackground({
-    id: project.id,
-    name: project.name,
-    backgroundKey: project.backgroundKey ?? null,
-  });
+  const background = resolveProjectBackground(project.backgroundKey);
   return {
     id: project.id,
+    projectMode: project.projectMode,
     name: project.name,
     description: project.description ?? noDescription,
     owner: ownerName,
@@ -186,10 +182,6 @@ export function projectFromApi(
       project.ownerUserId,
       ownerName,
       ...members.map((member) => member.label),
-      project.courseLabel,
-      project.classLabel,
-      project.teamLabel,
-      background.label,
     ]
       .filter(Boolean)
       .join(" ")

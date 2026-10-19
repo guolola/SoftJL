@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 import { createMockWorkspaceRepository } from "./mock-repository";
 import { isConfirmedVisualReview } from "../../features/workspace-session/lib/visual-review-message";
 
-const review = { status: "pending_review" as const, issues: ["业务条件是否合适需要确认"], reason: "请人工确认", attempts: 3, checkedAt: "check-1" };
+const review = { findings: [], status: "pending_review" as const, issues: ["业务条件是否合适需要确认"], reason: "请人工确认", attempts: 3, checkedAt: "check-1" };
 
 describe("visual review acceptance", () => {
   it("never clears structural defects or unreadable checks with a content confirmation", () => {
     for (const issues of [["三个角色与任何用例之间都没有关联线"], ["标签不可读"]]) {
-      const structural = { ...review, issues };
+      const structural = { ...review, issues, findings: [{ id: "finding", modelId: "usecase", layer: "model" as const, category: issues[0].includes("标签") ? "check_execution" as const : "model_structure" as const, code: "test", observation: issues[0], evidence: [], verification: "inconclusive" as const, repairable: false }] };
       expect(isConfirmedVisualReview(structural, { ...structural, confirmedAt: "confirmed" })).toBe(false);
     }
   });

@@ -12,10 +12,7 @@ export async function readRunTranscript(projectId: string, runId: string, signal
   const result = await requestJson<{ events?: unknown[]; cursor?: number; run: { status: string; runKind?: string | null; model?: string | null } }>(
     `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}?includeEvents=true&view=progress${afterSequence ? `&afterSequence=${afterSequence}` : ""}`, { signal },
   );
-  const events = (result.events ?? []).flatMap((item) => {
-    const parsed = runEventSchema.safeParse(item);
-    return parsed.success ? [parsed.data] : [];
-  });
+  const events = (result.events ?? []).map(item => runEventSchema.parse(item));
   return { ...result, events };
 }
 

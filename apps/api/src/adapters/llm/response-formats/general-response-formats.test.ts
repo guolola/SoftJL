@@ -5,8 +5,6 @@ import {
   DOCUMENT_CONTENT_RESPONSE_FORMAT,
   EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT,
   HEALTHCHECK_RESPONSE_FORMAT,
-  REPAIR_REQUIREMENT_RULES_RESPONSE_FORMAT,
-  REPAIR_REQUIREMENT_RULE_RESPONSE_FORMAT,
 } from "./general-response-formats.js";
 
 function assertStrictObjectRequirements(schema: unknown, path = "schema") {
@@ -49,8 +47,6 @@ function assertStrictObjectRequirements(schema: unknown, path = "schema") {
 test("general response formats are valid for OpenAI strict JSON Schema", () => {
   for (const format of [
     EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT,
-    REPAIR_REQUIREMENT_RULE_RESPONSE_FORMAT,
-    REPAIR_REQUIREMENT_RULES_RESPONSE_FORMAT,
     DOCUMENT_CONTENT_RESPONSE_FORMAT,
       HEALTHCHECK_RESPONSE_FORMAT,
   ]) {
@@ -60,13 +56,13 @@ test("general response formats are valid for OpenAI strict JSON Schema", () => {
   }
 });
 
-test("requirement rule response formats allow function structure mappings", () => {
+test("requirement extraction asks for facts and categories without LLM model mappings", () => {
   const rules = (
     EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT.json_schema.schema.properties as {
       rules: {
         items: {
           properties: {
-            relatedDiagrams: { items: { enum: string[] } };
+            relatedDiagrams?: unknown;
             sourceFragment: { type: string };
           };
           required: string[];
@@ -75,7 +71,8 @@ test("requirement rule response formats allow function structure mappings", () =
     }
   ).rules;
 
-  assert.ok(rules.items.properties.relatedDiagrams.items.enum.includes("function"));
+  assert.equal(rules.items.properties.relatedDiagrams, undefined);
+  assert.equal(rules.items.required.includes("relatedDiagrams"), false);
   assert.equal(rules.items.properties.sourceFragment.type, "string");
   assert.ok(rules.items.required.includes("sourceFragment"));
 });

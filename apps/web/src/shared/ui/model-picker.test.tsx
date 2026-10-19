@@ -17,8 +17,6 @@ function seedSettings(patch: Partial<UserSettings>) {
       providerModelCapabilities: {},
       providerModelOptions: [],
       defaultModel: "gpt-5.4",
-      imageModel: "gpt-image-2",
-      fontSize: "md",
       autoGenerate: false,
       showStaleBanner: true,
       ...patch,
@@ -27,6 +25,13 @@ function seedSettings(patch: Partial<UserSettings>) {
 }
 
 describe("ModelPicker", () => {
+  it("hides a sole selected model but keeps recovery available for an invalid selection", () => {
+    seedSettings({ providerConfigId: "configured", providerModelOptions: ["only-model"] });
+    const { rerender } = render(<ModelPicker value="only-model" onValueChange={vi.fn()} />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    rerender(<ModelPicker value="old-model" onValueChange={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "未选择模型" })).toBeEnabled();
+  });
   beforeEach(() => {
     localStorage.clear();
   });
@@ -182,7 +187,7 @@ describe("ModelPicker", () => {
     seedSettings({
       providerConfigId: "provider-system-siliconflow",
       providerLabel: "SiliconFlow",
-      providerModelOptions: ["vendorless-ultra-model"],
+      providerModelOptions: ["vendorless-ultra-model", "vendorless-lite-model"],
       defaultModel: "vendorless-ultra-model",
     });
 

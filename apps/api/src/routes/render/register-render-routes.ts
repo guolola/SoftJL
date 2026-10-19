@@ -1,4 +1,5 @@
 // Registers render/provider endpoints and delegates external calls to adapters.
+import { createHttpErrorResponse } from "../../server/http-error-response.js";
 import { validateModelInput, ModelSemanticError } from "@uml-platform/contracts";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -20,7 +21,7 @@ import type { PdfRenderClient } from "../../adapters/render/pdf-render-client.js
 import {
   generateDesignPlantUmlArtifacts,
   generatePlantUmlArtifacts,
-} from "../../plantuml.js";
+} from "../../adapters/plantuml/model-renderer.js";
 
 export function registerRenderRoutes({
   app,
@@ -87,7 +88,7 @@ export function registerRenderRoutes({
 
   app.post("/api/render/svg", async (request, reply) => {
     const access = await requireRenderProjectAccess(request, reply);
-    if (!access.ok) return { message: access.message };
+    if (!access.ok) return createHttpErrorResponse(reply);
 
     const input = renderSvgRequestSchema.parse(request.body);
     try {
@@ -100,16 +101,13 @@ export function registerRenderRoutes({
     } catch (error) {
       request.log.error(error);
       reply.code(400);
-      return {
-        message: error instanceof Error ? error.message : "Unknown render error",
-        ...(error instanceof ModelSemanticError ? { diagnostics: error.diagnostics } : {}),
-      };
+      return createHttpErrorResponse(reply, { ...(error instanceof ModelSemanticError ? { diagnostics: error.diagnostics } : {}) });
     }
   });
 
   app.post("/api/render/model", async (request, reply) => {
     const access = await requireRenderProjectAccess(request, reply);
-    if (!access.ok) return { message: access.message };
+    if (!access.ok) return createHttpErrorResponse(reply);
 
     const input = renderStructuredModelRequestSchema.parse(request.body);
     try {
@@ -120,7 +118,7 @@ export function registerRenderRoutes({
         : generatePlantUmlArtifacts([diagramModelSpecSchema.parse(input.model)]);
       if (!artifact) {
         reply.code(400);
-        return { message: "模型无法生成 PlantUML" };
+        return createHttpErrorResponse(reply);
       }
       const rendered = await renderClient({
         diagramKind: artifact.diagramKind,
@@ -133,16 +131,13 @@ export function registerRenderRoutes({
     } catch (error) {
       request.log.error(error);
       reply.code(400);
-      return {
-        message: error instanceof Error ? error.message : "Unknown render error",
-        ...(error instanceof ModelSemanticError ? { diagnostics: error.diagnostics } : {}),
-      };
+      return createHttpErrorResponse(reply, { ...(error instanceof ModelSemanticError ? { diagnostics: error.diagnostics } : {}) });
     }
   });
 
   app.post("/api/render/png", async (request, reply) => {
     const access = await requireRenderProjectAccess(request, reply);
-    if (!access.ok) return { message: access.message };
+    if (!access.ok) return createHttpErrorResponse(reply);
 
     const cancellation = trackDownloadCancellation(request, reply);
     try {
@@ -158,10 +153,7 @@ export function registerRenderRoutes({
     } catch (error) {
       request.log.error(error);
       reply.code(400);
-      return {
-        message: error instanceof Error ? error.message : "Unknown render error",
-        ...(error instanceof ModelSemanticError ? { diagnostics: error.diagnostics } : {}),
-      };
+      return createHttpErrorResponse(reply, { ...(error instanceof ModelSemanticError ? { diagnostics: error.diagnostics } : {}) });
     } finally {
       cancellation.dispose();
     }
@@ -169,32 +161,23 @@ export function registerRenderRoutes({
 
   app.post("/api/render/pdf", async (request, reply) => {
     const access = await requireRenderProjectAccess(request, reply);
-    if (!access.ok) return { message: access.message };
+    if (!access.ok) return createHttpErrorResponse(reply);
     const cancellation = trackDownloadCancellation(request, reply);
     try {
       const input = renderPdfRequestSchema.parse(request.body);
       if (!pdfRenderClient) {
         reply.code(503);
-        return { message: "PDF renderer is unavailable" };
+        return createHttpErrorResponse(reply);
       }
       const rendered = await pdfRenderClient({ diagramKind: input.diagramKind, source: input.plantUmlSource }, cancellation.signal);
       return renderPdfResponseSchema.parse({ pdfBase64: rendered.pdf.toString("base64"), renderMeta: rendered.renderMeta });
     } catch (error) {
       request.log.error(error);
       reply.code(400);
-      return { message: error instanceof Error ? error.message : "Unknown PDF render error" };
+      return createHttpErrorResponse(reply);
     } finally {
       cancellation.dispose();
     }
   });
 
-  app.post("/api/provider/test", async (request, reply) => {
-    void request;
-    reply.code(403);
-    return {
-      ok: false,
-      message:
-        "Plaintext apiBaseUrl/apiKey provider tests are disabled. Use a managed Provider configuration instead.",
-    };
-  });
 }

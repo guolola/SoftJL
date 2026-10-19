@@ -1,8 +1,9 @@
-// Defines the persisted result of checking a rendered UML diagram against its model.
+// Defines structured findings and outcomes produced by the current diagram checks.
+import { MAX_GENERATION_REPAIR_ATTEMPTS } from "./generation-policy.js";
 import { z } from "zod";
 
 // Saved judgments retain the rule version so historical success never implies a fresh verification.
-export const CURRENT_DIAGRAM_REVIEW_VERSION = "stage-review-v2";
+export const CURRENT_DIAGRAM_REVIEW_VERSION = "program-validation-v4";
 
 export const diagramReviewCategorySchema = z.enum(["model_structure", "business_content", "business_constraint", "render_mismatch", "check_execution", "other"]);
 export type DiagramReviewCategory = z.infer<typeof diagramReviewCategorySchema>;
@@ -22,7 +23,7 @@ export function isExcludedDiagramReviewIssue(text: string): boolean {
   return layout && !structure;
 }
 export function classifyDiagramReviewIssue(text: string, layer?: "model" | "render" | "image", code = ""): DiagramReviewCategory {
-  // Service diagnostic codes take precedence; free text is only a fallback for old records.
+  // Service diagnostic codes take precedence over provider observation text.
   if (/^(?:constraint-marker|constraint-relationship|explicit-owner|actor-participation|isolated-actor|disconnected-usecase|missing-actor-association)$/i.test(code)) return "model_structure";
   if (/^(?:missing-svg-element|missing-svg-relationship|render-mismatch)$/i.test(code)) return "render_mismatch";
   const value = `${code} ${text}`;
@@ -38,7 +39,7 @@ export const diagramReviewFindingSchema = z.object({
   id: z.string().min(1),
   layer: z.enum(["model", "render", "image"]),
   code: z.string().min(1),
-  category: diagramReviewCategorySchema.optional(),
+  category: diagramReviewCategorySchema,
   modelId: z.string().min(1),
   elementId: z.string().optional(),
   relationshipId: z.string().optional(),
@@ -53,7 +54,7 @@ export const diagramReviewFindingSchema = z.object({
 export type DiagramReviewFinding = z.infer<typeof diagramReviewFindingSchema>;
 
 export const diagramRepairRecordSchema = z.object({
-  round: z.number().int().min(1).max(2),
+  round: z.number().int().min(1).max(MAX_GENERATION_REPAIR_ATTEMPTS),
   target: z.enum(["model", "render"]),
   method: z.enum(["hard_rule", "llm"]).optional(),
   issueIds: z.array(z.string()),
@@ -74,7 +75,7 @@ export const diagramVisualReviewSchema = z.object({
   checkedAt: z.string(),
   // Human acceptance is distinct from the automated visual verdict.
   confirmedAt: z.string().optional(),
-  findings: z.array(diagramReviewFindingSchema).optional(),
+  findings: z.array(diagramReviewFindingSchema),
   repairHistory: z.array(diagramRepairRecordSchema).optional(),
   checkOutcome: z.enum(["verified", "differences", "inconclusive", "not_completed", "skipped"]).optional(),
   structureAttempts: z.number().int().min(0).optional(),

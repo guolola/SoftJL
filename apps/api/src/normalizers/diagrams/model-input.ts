@@ -10,6 +10,11 @@ export function omitModelNullValues(value: unknown): unknown {
 export function normalizeModelInput(value: unknown) {
   const model = omitModelNullValues(value);
   if (!isPlainRecord(model)) return model;
+  // Providers sometimes repeat an empty response-envelope array inside a model.
+  // Only empty metadata can be removed locally; populated or unknown fields still fail validation.
+  for (const field of ["designModelTraceability", "requirementModelTraceability"]) {
+    if (Array.isArray(model[field]) && model[field].length === 0) delete model[field];
+  }
   // modelId is metadata; unlike element IDs it may be assigned without inventing model content.
   if (!model.modelId && typeof model.diagramKind === "string" && model.diagramKind !== "context") {
     model.modelId = ["analysis", "sequence"].includes(model.diagramKind) && typeof model.sourceUseCaseId === "string"

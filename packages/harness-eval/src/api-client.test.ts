@@ -43,7 +43,7 @@ test("evaluator logs in, authorizes fixture inputs and polling, and revokes its 
   };
   const env = { UML_EVAL_PROJECT_ID: project.id, UML_EVAL_PROVIDER_CONFIG_ID: provider.id, UML_EVAL_MODEL: "fixture-model", UML_EVAL_EMAIL: user.email, UML_EVAL_PASSWORD: "evaluation-password", UML_EVAL_TIMEOUT_MS: "10000", UML_EVAL_POLL_MS: "0" };
   const client = await createEvaluationApiClient(env, send);
-  const snapshot = await client.run({ requirementText: "用户登录后可以查看订单并提交取消申请。", selectedDiagrams: ["usecase"] });
+  const snapshot = await client.run({ requirementText: "用户登录后可以查看订单并提交取消申请。", selectedDiagrams: [] });
   // Invalid model output intentionally terminates the real pipeline; all transport and authorization are real.
   assert.equal(snapshot.status, "failed");
   assert.ok(llmCalls > 0);
@@ -67,7 +67,7 @@ test("evaluator logs in, authorizes fixture inputs and polling, and revokes its 
   await borrowed.close();
   assert.equal(calls.length, before);
   const unauthorized = await createEvaluationApiClient({ ...env, UML_EVAL_SESSION_COOKIE: "uml_session=invalid" }, send);
-  await assert.rejects(() => unauthorized.run({ requirementText: "用户查看订单", selectedDiagrams: ["usecase"] }), /HTTP 401/);
+  await assert.rejects(() => unauthorized.run({ requirementText: "用户查看订单", selectedDiagrams: [] }), /HTTP 401/);
 });
 
 test("evaluator explains MFA and does not expose server response secrets", async () => {

@@ -1,21 +1,21 @@
 // Verifies run subscriptions recover from broken SSE streams by polling terminal snapshots.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
-  
+
   DesignRunSnapshot,
   DocumentRunSnapshot,
-  RunEvent,
+  RunEventInput,
   RunSnapshot,
 } from "@uml-platform/contracts";
 import {
-  
+
   subscribeToDesignRunEvents,
   subscribeToDocumentRunEvents,
   subscribeToRequirementRunEvents,
   subscribeToFeasibilityRunEvents,
   streamProjectRunEvents,
+  readRunSnapshot,
 } from "./run-subscriptions";
-import { PROJECT_ID_HEADER } from "./project-scope";
 import { feasibilityInputsSchema, feasibilityRunSnapshotSchema } from "@uml-platform/contracts";
 
 function jsonResponse(payload: unknown, status = 200) {
@@ -25,9 +25,9 @@ function jsonResponse(payload: unknown, status = 200) {
   });
 }
 
-function eventStreamResponse(events: RunEvent[]) {
+function eventStreamResponse(events: RunEventInput[]) {
   const body = events
-    .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+    .map((event, index) => `data: ${JSON.stringify({ eventId: `fixture-${index}`, createdAt: "2026-10-18T00:00:00.000Z", ...event })}\n\n`)
     .join("");
   return new Response(
     new ReadableStream({
@@ -47,6 +47,8 @@ function requirementSnapshot(
   overrides: Partial<RunSnapshot> = {},
 ): RunSnapshot {
   return {
+    operationType: "requirement_modeling",
+    outputManifest: [],
     runId: "run-req-1",
     requirementText: "生成订单系统 UML",
     selectedDiagrams: ["usecase"],
@@ -73,6 +75,8 @@ function designSnapshot(
   overrides: Partial<DesignRunSnapshot> = {},
 ): DesignRunSnapshot {
   return {
+    operationType: "design_modeling",
+    outputManifest: [],
     runId: "run-design-1",
     requirementText: "生成订单系统设计 UML",
     selectedDiagrams: ["navigation"],
@@ -98,11 +102,12 @@ function designSnapshot(
 }
 
 
-
 function documentSnapshot(
   overrides: Partial<DocumentRunSnapshot> = {},
 ): DocumentRunSnapshot {
   return {
+    operationType: "document_generation",
+    outputManifest: [{ kind: "document", id: "document-1" }],
     runId: "run-doc-1",
     documentKind: "requirementsSpec",
     requirementText: "生成订单系统说明书",
@@ -125,17 +130,6 @@ function documentSnapshot(
   };
 }
 
-function requestHasProjectHeader(init: RequestInit | undefined) {
-  const headers = init?.headers;
-  if (!headers) return false;
-  if (headers instanceof Headers) return headers.has(PROJECT_ID_HEADER);
-  if (Array.isArray(headers)) {
-    return headers.some(
-      ([key]) => key.toLowerCase() === PROJECT_ID_HEADER.toLowerCase(),
-    );
-  }
-  return Object.prototype.hasOwnProperty.call(headers, PROJECT_ID_HEADER);
-}
 
 describe("run subscriptions", () => {
   afterEach(() => {
@@ -144,10 +138,37 @@ describe("run subscriptions", () => {
   });
 
   it.each([
+    { type: "queued" },
+    { type: "queued", eventId: "old-event" },
+    { type: "queued", eventId: "old-event", createdAt: "invalid" },
+    { type: "retired_event", eventId: "old-event", createdAt: "2026-10-18T00:00:00.000Z" },
+  ])("rejects obsolete SSE events without retrying or applying them: %j", async event => {
+    const fetchMock = vi.fn(async () => new Response(`data: ${JSON.stringify(event)}\n\n`, {
+      headers: { "Content-Type": "text/event-stream" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onEvent = vi.fn();
+    await expect(subscribeToRequirementRunEvents({ runId: "run", projectId: "project", onEvent })).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  it.each(["operationType", "outputManifest"])("rejects a saved run missing %s instead of reusing old inputs", async (field) => {
+    const snapshot = requirementSnapshot();
+    delete (snapshot as unknown as Record<string, unknown>)[field];
+    const fetchMock = vi.fn(async () => jsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(readRunSnapshot(snapshot.runId, "project-a")).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(snapshot).not.toHaveProperty(field);
+  });
+
+  it.each([
     { kind: "requirements", path: "/api/runs", subscribe: subscribeToRequirementRunEvents, snapshot: requirementSnapshot() },
     { kind: "design", path: "/api/design-runs", subscribe: subscribeToDesignRunEvents, snapshot: designSnapshot() },
     { kind: "document", path: "/api/document-runs", subscribe: subscribeToDocumentRunEvents, snapshot: documentSnapshot({ status: "running" }) },
     { kind: "feasibility", path: "/api/feasibility-runs", subscribe: subscribeToFeasibilityRunEvents, snapshot: feasibilityRunSnapshotSchema.parse({
+      operationType: "feasibility_analysis", outputManifest: [],
       runId: "run-feasibility-1", projectId: "project-a", selectedArtifacts: ["context"],
       providerSettings: { providerConfigId: "provider", model: "model" }, rules: [], requirementBaseline: null,
       inputs: {}, contextModel: null, contextPlantUml: null, contextSvg: null, implementationPlan: null,
@@ -157,8 +178,8 @@ describe("run subscriptions", () => {
     vi.useFakeTimers();
     let connections = 0;
     const onSnapshot = vi.fn();
-    const events: RunEvent[] = [];
-    const queued: RunEvent = { type: "queued", eventId: "queued-once" };
+    const events: RunEventInput[] = [];
+    const queued: RunEventInput = { type: "queued", eventId: "queued-once" };
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (url.split("?")[0].endsWith(`${path}/${snapshot.runId}/events`)) {
         connections += 1;
@@ -184,7 +205,7 @@ describe("run subscriptions", () => {
     let connections = 0;
     let reads = 0;
     const snapshots: DesignRunSnapshot[] = [];
-    const events: RunEvent[] = [];
+    const events: RunEventInput[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (url.split("?")[0].endsWith("/events")) {
         connections += 1;
@@ -240,7 +261,7 @@ describe("run subscriptions", () => {
     const cancel = vi.fn();
     const snapshot = requirementSnapshot({ status: "completed" });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(new ReadableStream({
-      start(controller) { controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "completed", snapshot })}\n\n`)); },
+      start(controller) { controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "completed", snapshot, eventId: "fixture-completed", createdAt: "2026-10-18T00:00:00.000Z" })}\n\n`)); },
       cancel,
     }))));
     const onEvent = vi.fn();
@@ -252,7 +273,7 @@ describe("run subscriptions", () => {
   it("reconnects requirement SSE and deduplicates replay after an early disconnect", async () => {
     vi.useFakeTimers();
     let snapshotReads = 0;
-    const events: RunEvent[] = [];
+    const events: RunEventInput[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
@@ -299,7 +320,7 @@ describe("run subscriptions", () => {
   });
 
   it("preserves design diagram errors when polling returns a completed snapshot", async () => {
-    const events: RunEvent[] = [];
+    const events: RunEventInput[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
@@ -350,7 +371,7 @@ describe("run subscriptions", () => {
   });
 
   it("emits and rejects with the server snapshot error when polling reaches failed", async () => {
-    const events: RunEvent[] = [];
+    const events: RunEventInput[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
@@ -389,92 +410,14 @@ describe("run subscriptions", () => {
   });
 
   it.each([
-    {
-      label: "requirements",
-      runId: "run-req-1",
-      eventPath: "/api/runs/run-req-1/events",
-      snapshotPath: "/api/runs/run-req-1",
-      subscribe: subscribeToRequirementRunEvents,
-      snapshot: requirementSnapshot({
-        currentStage: "render_svg",
-        status: "completed",
-      }),
-    },
-    {
-      label: "design",
-      runId: "run-design-1",
-      eventPath: "/api/design-runs/run-design-1/events",
-      snapshotPath: "/api/design-runs/run-design-1",
-      subscribe: subscribeToDesignRunEvents,
-      snapshot: designSnapshot({
-        currentStage: "render_svg",
-        status: "completed",
-      }),
-    },
-    
-    {
-      label: "document",
-      runId: "run-doc-1",
-      eventPath: "/api/document-runs/run-doc-1/events",
-      snapshotPath: "/api/document-runs/run-doc-1",
-      subscribe: subscribeToDocumentRunEvents,
-      snapshot: documentSnapshot(),
-    },
-  ])(
-    "polls $label snapshots after a legacy EventSource disconnect without project scope",
-    async ({ runId, eventPath: _eventPath, snapshotPath, subscribe, snapshot }) => {
-      const eventSourceUrls: string[] = [];
-      const snapshotFetches: Array<{
-        url: string;
-        hasProjectHeader: boolean;
-      }> = [];
-      class MockEventSource {
-        onmessage: ((event: MessageEvent<string>) => void) | null = null;
-        onerror: (() => void) | null = null;
-
-        close() {}
-
-        constructor(url: string) {
-          eventSourceUrls.push(url);
-          queueMicrotask(() => {
-            this.onerror?.();
-          });
-        }
-      }
-      vi.stubGlobal("EventSource", MockEventSource);
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async (url: string, init?: RequestInit) => {
-          if (url.split("?")[0].endsWith(snapshotPath)) {
-            snapshotFetches.push({
-              url,
-              hasProjectHeader: requestHasProjectHeader(init),
-            });
-            return jsonResponse(snapshot);
-          }
-          return jsonResponse({ message: "unexpected request" }, 500);
-        }),
-      );
-      const events: RunEvent[] = [];
-
-      await expect(
-        subscribe({
-          runId,
-          projectId: null,
-          onEvent: (event) => events.push(event),
-        }),
-      ).resolves.toBeUndefined();
-
-      expect(eventSourceUrls).toEqual([]);
-      expect(snapshotFetches).toEqual([
-        { url: snapshotPath, hasProjectHeader: false },
-      ]);
-      expect(events).toEqual([
-        expect.objectContaining({
-          type: "completed",
-          snapshot: expect.objectContaining({ runId, status: "completed" }),
-        }),
-      ]);
-    },
-  );
+    subscribeToRequirementRunEvents,
+    subscribeToDesignRunEvents,
+    subscribeToDocumentRunEvents,
+    subscribeToFeasibilityRunEvents,
+  ])("rejects subscriptions without project scope before network access", async (subscribe) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(subscribe({ runId: "run", projectId: null, onEvent: vi.fn() })).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

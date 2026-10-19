@@ -111,80 +111,35 @@ describe("first-use onboarding", () => {
     });
   });
 
-  it("starts only after an empty list and successful account read, then allows replay", async () => {
+  it.each([null, "skipped", "completed"] as const)("does not offer homepage guidance with account outcome %s", async (emptyWorkspace) => {
     vi.spyOn(platformApi, "listProjects").mockResolvedValue({ projects: [] });
-    vi.spyOn(platformApi, "getOnboardingState").mockResolvedValue({
-      emptyWorkspace: null, firstProject: null, firstProjectId: null,
+    const getState = vi.spyOn(platformApi, "getOnboardingState").mockResolvedValue({
+      emptyWorkspace, firstProject: null, firstProjectId: null,
     });
     renderEmptyIndex();
-    const person = userEvent.setup();
-    expect(await screen.findByRole("dialog", { name: "工作台引导" })).toBeInTheDocument();
-    expect(screen.getByText("从项目开始")).toBeInTheDocument();
-    await person.click(screen.getByRole("button", { name: "下一步" }));
-    expect(screen.getByText("创建第一个项目", { selector: "h2" })).toBeInTheDocument();
-    await person.click(screen.getByRole("button", { name: "跳过引导" }));
-    await waitFor(() => expect(platformApi.saveOnboardingOutcome).toHaveBeenCalledWith("empty-workspace", "skipped"));
+    await screen.findByRole("heading", { name: "从一句需求到完整的工程交付" });
+    expect(getState).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "查看引导" })).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "工作台引导" })).not.toBeInTheDocument();
-    expect(confetti).not.toHaveBeenCalled();
-    await person.click(screen.getByRole("button", { name: "查看引导" }));
-    await person.click(screen.getByRole("button", { name: "下一步" }));
-    await person.click(screen.getByRole("button", { name: "完成引导" }));
-    await waitFor(() => expect(platformApi.saveOnboardingOutcome).toHaveBeenCalledWith("empty-workspace", "completed"));
-    expect(confetti).toHaveBeenCalledExactlyOnceWith({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.6 },
-    });
   });
 
-  it("suppresses automatic guidance when account state cannot be read", async () => {
-    vi.spyOn(platformApi, "listProjects").mockResolvedValue({ projects: [] });
-    const getState = vi.spyOn(platformApi, "getOnboardingState").mockRejectedValue(new Error("offline"));
-    renderEmptyIndex();
-    await waitFor(() => expect(getState).toHaveBeenCalled());
-    expect(screen.queryByRole("dialog", { name: "工作台引导" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看引导" })).toBeInTheDocument();
-  });
-
-  it("supports keyboard navigation and exits when saving the outcome fails", async () => {
-    vi.spyOn(platformApi, "listProjects").mockResolvedValue({ projects: [] });
+  it("keeps keyboard navigation and exit recovery for the first-project guide", async () => {
     vi.spyOn(platformApi, "getOnboardingState").mockResolvedValue({
-      emptyWorkspace: null, firstProject: null, firstProjectId: null,
+      emptyWorkspace: null, firstProject: null, firstProjectId: "project-first",
     });
     vi.spyOn(platformApi, "saveOnboardingOutcome").mockRejectedValue(new Error("offline"));
     const alert = vi.spyOn(floatingAlert, "error").mockImplementation(() => "guide-alert");
-    renderEmptyIndex();
-    expect(await screen.findByText("从项目开始")).toBeInTheDocument();
+    renderProject();
+    expect(await screen.findByText("输入系统需求")).toBeInTheDocument();
     await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
     expect(screen.getByRole("button", { name: "下一步" })).toHaveFocus();
     await userEvent.keyboard("{ArrowRight}");
-    expect(await screen.findByText("创建第一个项目", { selector: "h2" })).toBeInTheDocument();
+    expect(await screen.findByText("可行性分析", { selector: "h2" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "工作台引导" })).not.toBeInTheDocument();
     await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining("未能保存")));
     expect(confetti).not.toHaveBeenCalled();
   });
-
-  it("does not start on a nonempty project list or after a recorded skip", async () => {
-    const listProjects = vi.spyOn(platformApi, "listProjects").mockResolvedValue({ projects: [{
-      id: "invited-project", name: "Shared project", description: null,
-      visibility: "team", status: "active", ownerUserId: "another-user",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    }] });
-    const getState = vi.spyOn(platformApi, "getOnboardingState").mockResolvedValue({
-      emptyWorkspace: "skipped", firstProject: null, firstProjectId: null,
-    });
-    const view = renderEmptyIndex();
-    expect(await screen.findByRole("article")).toBeInTheDocument();
-    expect(getState).not.toHaveBeenCalled();
-    expect(screen.queryByRole("dialog", { name: "工作台引导" })).not.toBeInTheDocument();
-    view.unmount();
-    listProjects.mockResolvedValue({ projects: [] });
-    renderEmptyIndex();
-    await waitFor(() => expect(getState).toHaveBeenCalled());
-    expect(screen.queryByRole("dialog", { name: "工作台引导" })).not.toBeInTheDocument();
-  });
-
   it("restores desktop tabs after stage navigation and skip", async () => {
     vi.spyOn(platformApi, "getOnboardingState").mockResolvedValue({
       emptyWorkspace: "completed", firstProject: "ineligible", firstProjectId: "other-project",

@@ -77,8 +77,8 @@ async function fixture(t: TestContext, codeLimit = 5) {
       inputRefs: [{ path: "package.json", contentHash: sha('{"private":true,"type":"module"}') }],
       testRefs: [{ path: "tests/loan.test.mjs", criterionIds: ["borrow:limit", "borrow:return"], contentHash: sha(loanTests(5)) }],
       checks: [
-        { id: "syntax", kind: "engineering", command: process.execPath, args: ["--check", "src/loan.mjs"], criterionIds: [] },
-        { id: "acceptance", kind: "behavior", command: process.execPath, args: ["--test", "tests/loan.test.mjs"], criterionIds: ["borrow:limit", "borrow:return"] },
+        { id: "syntax", kind: "engineering", command: process.execPath, args: ["--check", "src/loan.mjs"], timeoutMs: 30000, maxOutputBytes: 65536, criterionIds: [] },
+        { id: "acceptance", kind: "behavior", command: process.execPath, args: ["--test", "tests/loan.test.mjs"], timeoutMs: 30000, maxOutputBytes: 65536, criterionIds: ["borrow:limit", "borrow:return"] },
       ],
     }],
   };
@@ -405,6 +405,19 @@ test("configured execution deadline and output limit are enforced", async (t) =>
     assert.equal(assessment.overall, "failed");
     assert.match(assessment.entries[0].checks[0].error ?? "", /ENOBUFS/);
   });
+});
+
+test("missing current report fields are rejected before executing any commands", async (t) => {
+  const f = await fixture(t);
+  for (const field of ["inputRefs", "timeoutMs", "maxOutputBytes"]) {
+    const report = structuredClone(f.report);
+    const target = field === "inputRefs" ? report.entries[0] : report.entries[0].checks[0];
+    delete (target as unknown as Record<string, unknown>)[field];
+    const assessment = await f.verify({ ...f, report, runChecks: true });
+    assert.equal(assessment.overall, "incomplete", field);
+    assert.equal(assessment.verificationAuthority, "not-executed");
+    assert.ok(codes(assessment).includes("invalid_report"));
+  }
 });
 
 test("out-of-range or non-integer command limits are rejected before executing any commands", async (t) => {

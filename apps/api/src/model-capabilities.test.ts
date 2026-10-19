@@ -12,8 +12,17 @@ test("deepseek v4 flash uses JSON mode instead of strict json_schema", () => {
   assert.match(capability.warning ?? "", /json_schema/u);
 });
 
-test("unknown models default to compatible mode", () => {
-  const capability = getModelCapability({ model: "qwen3.7-plus" });
+test("provider settings without explicit persisted capabilities are rejected", () => {
+  for (const model of ["qwen3.7-plus", "deepseek-v4-flash", "test-model"]) {
+    assert.throws(() => getModelCapability({ model }), /explicit persisted model capabilities/);
+  }
+});
+
+test("explicit compatible provider capabilities remain valid", () => {
+  const capability = getModelCapability({ model: "qwen3.7-plus", modelCapability: {
+    id: "qwen3.7-plus", category: "text_chat", structuredOutputMode: "compatible", supportsJsonSchema: false,
+    supportsJsonObject: false, modeLabel: "兼容模式", strictJson: "unknown", probeStatus: "compatible", probedAt: "2026-10-18T00:00:00Z",
+  } });
 
   assert.equal(capability.supportsJsonSchema, false);
   assert.equal(capability.supportsJsonObject, false);

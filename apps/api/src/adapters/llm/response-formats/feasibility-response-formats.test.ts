@@ -1,5 +1,6 @@
 // Verifies feasibility prompts and OpenAI strict schemas share a contract-valid shape.
 import assert from "node:assert/strict";
+import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
 import test from "node:test";
 import { completeFeasibilityImplementationPlanSchema } from "@uml-platform/contracts";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
@@ -68,28 +69,24 @@ test("feasibility response formats satisfy OpenAI strict object requirements", (
 test("capability routing returns strict, json object and compatible response formats", () => {
   const strict = getGenerateFeasibilityImplementationResponseFormat({
     model: "strict",
-    modelCapability: {
-      modelId: "strict",
-      supportsJsonSchema: true,
-      supportsJsonObject: true,
-      structuredOutputMode: "strict_json",
-      modeLabel: "严格 JSON",
-      probedAt: "2026-07-29T00:00:00.000Z",
-    },
+    modelCapability: strictTestModelCapability("strict"),
   });
   const jsonObject = getGenerateFeasibilityImplementationResponseFormat({
     model: "json",
     modelCapability: {
-      modelId: "json",
+      ...strictTestModelCapability("json"),
       supportsJsonSchema: false,
-      supportsJsonObject: true,
       structuredOutputMode: "json_object",
       modeLabel: "JSON 模式",
-      probedAt: "2026-07-29T00:00:00.000Z",
+      strictJson: false,
+      probeStatus: "json_object",
     },
   });
   const compatible = getGenerateFeasibilityImplementationResponseFormat({
     model: "unknown-model",
+    modelCapability: { ...strictTestModelCapability("unknown-model"), supportsJsonSchema: false,
+      supportsJsonObject: false, structuredOutputMode: "compatible", modeLabel: "兼容模式", strictJson: false,
+      probeStatus: "compatible" },
   });
 
   assert.equal(strict?.type, "json_schema");

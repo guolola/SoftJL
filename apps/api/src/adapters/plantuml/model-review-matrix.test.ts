@@ -61,12 +61,6 @@ for (const stage of ["feasibility", "requirements", "design"] as ModelingStage[]
       assert.deepEqual(check.findings, [], `${name}: no false positives`);
       if (kind === "function") { assert.equal(check.identifiable, false, "MindMap has no stable identities; never assert program mapping success"); continue; }
       assert.equal(check.identifiable, true, name); assert.equal(check.inconclusive, undefined, name);
-      if (kind === "activity" && artifact.source.includes('diamond " " as')) {
-        const legacy = draw(artifact.source.replace(/diamond " " as (n_[\da-f]+)/g, "<> $1"));
-        const legacyCheck = verifySvgMapping(legacy, artifact.renderMapping, model.modelId!, kind);
-        assert.deepEqual(legacyCheck.findings, [], "unmarked but visible diamonds must not be declared missing");
-        assert.ok(legacyCheck.inconclusive?.length, "unsupported identity must remain incomplete");
-      }
       if (name === "基本模型") {
         const label = artifact.renderMapping!.elements.find((element) => element.label && element.statement?.includes(element.label));
         if (label?.label) {

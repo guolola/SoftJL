@@ -1,8 +1,9 @@
 // Rejects semantic loss in both structured and plain-JSON requirement model responses.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { collectModelRefs } from "../traceability/traceability-normalizer.js";
 import { modelFixture, objectActivityFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
-import { parseRequirementDiagramModelsOnly, parseRequirementTraceabilityCoverageResult } from "./requirement-model-normalizer.js";
+import { parseGeneratedAnalysisModels, parseRequirementDiagramModelsOnly, parseRequirementDiagramModelsResult } from "./requirement-model-normalizer.js";
 const parse = (model: unknown) => parseRequirementDiagramModelsOnly(JSON.stringify({ models: [model] })).models[0]!;
 
 test("requirement parsing preserves every supported model", () => {
@@ -54,8 +55,53 @@ test("prototype returns retain the original endpoint, guard and trigger without 
   Object.assign(model.relationships[0], { type: "returns", trigger: "返回操作", guard: "尚未保存的数据已经确认放弃" });
   assert.deepEqual(parse(model), model);
 });
-test("traceability still accepts nullable optional model identifiers", () => {
-  const model = modelFixture("requirements", "usecase") as any; delete model.modelId;
-  const coverage = parseRequirementTraceabilityCoverageResult(JSON.stringify({ requirementModelTraceability: [{ ruleId: "R1", target: { diagramKind: "usecase", modelId: null, elementId: "case", elementKind: "usecase", label: "下单" } }] }), [{ id: "R1", category: "功能需求", text: "顾客可以下单", relatedDiagrams: ["usecase"] }], [model]);
-  assert.equal(coverage.traceability[0]?.target.elementId, "case");
+
+test("first model response retains declared sources without coverage audits", () => {
+  const model = modelFixture("requirements", "usecase") as any;
+  const reference = { ruleId: "r1", target: { diagramKind: "usecase", elementId: "case", elementKind: "usecase", label: "下单" } };
+  const parseOutput = (entries: unknown[]) => parseRequirementDiagramModelsResult(JSON.stringify({ models: [model], requirementModelTraceability: entries }), [], true);
+  assert.equal(parseOutput([reference]).requirementModelTraceability.length, 1);
+  assert.equal(parseOutput([{ ...reference, ruleId: "provider-declared" }]).requirementModelTraceability[0]!.ruleId, "provider-declared");
+  assert.equal(parseOutput([reference]).requirementModelTraceability[0]!.mappingSource, "llm");
+  assert.deepEqual(parseOutput([]).requirementModelTraceability, []);
+});
+
+test("source reading trusts declarations; fixed membership is enforced when selecting input rules", () => {
+  const model = modelFixture("requirements", "function");
+  const response = JSON.stringify({ models: [model], requirementModelTraceability: [{ ruleId: "r1", target: {
+    modelId: "function", diagramKind: "function", elementId: "root", elementKind: "function", label: "系统",
+  } }] });
+  assert.equal(parseRequirementDiagramModelsResult(response, [{ id: "r1", type: "data", text: "记录订单数据" }]).requirementModelTraceability.length, 1);
+});
+
+
+test("optional source bindings on real start/end flows are valid without becoming required coverage", () => {
+  const model = modelFixture("requirements", "activity");
+  const rules = [{ id: "r1", type: "functional" as const, text: "系统处理业务" }];
+  const required = collectModelRefs([model]).refs.map(target => ({ ruleId: "r1", target }));
+  const optional = ["r1", "r2"].map(elementId => ({ ruleId: "r1", target: { modelId: model.modelId, diagramKind: "activity", elementId, elementKind: "relationship", label: elementId } }));
+  const parse = (refs: unknown[]) => parseRequirementDiagramModelsResult(JSON.stringify({ models: [model], requirementModelTraceability: refs }), rules);
+  assert.equal(parse(required).requirementModelTraceability.length, 1);
+  assert.equal(parse([...required, ...optional]).requirementModelTraceability.length, 3);
+  assert.equal(parse([...required, { ...optional[0], target: { ...optional[0]!.target, elementId: "provider-flow" } }]).requirementModelTraceability.length, 2);
+  assert.equal(parse(optional).requirementModelTraceability.length, 2);
+});
+
+
+test("analysis element source IDs survive parsing without guessed rule bindings", () => {
+  const model = modelFixture("requirements", "analysis") as any;
+  model.participants.forEach((item: any) => item.sourceElementIds = ["actor-original"]);
+  model.messages.forEach((item: any) => item.sourceElementIds = ["flow-original", "step-original"]);
+  const parsed = parseGeneratedAnalysisModels(JSON.stringify({ models: [model] })).models[0] as any;
+  assert.deepEqual(parsed.messages[0].sourceElementIds, ["flow-original", "step-original"]);
+  assert.deepEqual(parsed.participants[0].sourceElementIds, ["actor-original"]);
+});
+
+
+test("new analysis JSON requires source fields but does not resolve or audit their references", () => {
+  const model = modelFixture("requirements", "analysis") as any;
+  assert.throws(() => parseGeneratedAnalysisModels(JSON.stringify({ models: [model] })), /sourceElementIds/);
+  model.participants.forEach((item: any) => item.sourceElementIds = ["declared-upstream"]);
+  model.messages.forEach((item: any) => item.sourceElementIds = ["declared-flow"]);
+  assert.equal(parseGeneratedAnalysisModels(JSON.stringify({ models: [model] })).models.length, 1);
 });

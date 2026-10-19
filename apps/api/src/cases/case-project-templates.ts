@@ -2,15 +2,16 @@
 import {
   buildAcceptedRequirementSnapshot,
   buildFeasibilityImplementationFingerprint,
+  buildFeasibilityContextFingerprint,
   type FeasibilityBusinessFlow,
-  
+
   completeFeasibilityImplementationPlanSchema,
   contextDiagramSpecSchema,
   designRunSnapshotSchema,
   feasibilityInputsSchema,
   feasibilityRunSnapshotSchema,
   runSnapshotSchema,
-  
+
   type ContextTraceRow,
   type DesignDiagramKind,
   type DesignDiagramModelSpec,
@@ -21,13 +22,13 @@ import {
   type FeasibilityRunSnapshot,
   type PlantUmlArtifact,
   type ProjectBackgroundKey,
-  type AtomicRequirement,
+  createRequirementBaselineSnapshot,
   type RequirementBaseline,
   type RequirementRule,
   type RunSnapshot,
 } from "@uml-platform/contracts";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
-import { generatePlantUmlArtifacts } from "../plantuml.js";
+import { generatePlantUmlArtifacts } from "../adapters/plantuml/model-renderer.js";
 import { normalizeFeasibilityBusinessFlow } from "../normalizers/feasibility/business-flow-normalizer.js";
 
 export type CaseProjectTemplate = {
@@ -39,7 +40,7 @@ export type CaseProjectTemplate = {
   feasibilitySnapshot: FeasibilityRunSnapshot;
   businessFlow: FeasibilityBusinessFlow & { plantUml: PlantUmlArtifact };
   designSnapshot: DesignRunSnapshot;
-  
+
 };
 
 type CaseSeed = {
@@ -151,7 +152,7 @@ function buildCaseProjectTemplate(seed: CaseSeed): CaseProjectTemplate {
   if (!activity || activity.diagramKind !== "activity") throw new Error("Case activity model is missing");
   const flow = normalizeFeasibilityBusinessFlow({
     model: {
-      ...activity, modelId: "feasibility-business-flow", title: `${seed.title}业务与系统流程图`,
+      ...activity, modelId: "feasibility-business-flow", title: `${seed.title}业务流程图`,
       notes: ["展示案例核心业务闭环，通知按需求中规定的触发条件执行。"],
       swimlanes: [...activity.swimlanes.slice(0, 2), { id: "system", name: seed.title }],
       nodes: activity.nodes.map((node) => node.type === "activity" && node.actorOrLane === "lane-3"
@@ -168,7 +169,7 @@ function buildCaseProjectTemplate(seed: CaseSeed): CaseProjectTemplate {
   const businessFlow = { ...flow, plantUml: generatePlantUmlArtifacts([flow.model])[0]! };
   const feasibilitySnapshot = buildFeasibilitySnapshot(seed, requirementSnapshot, businessFlow);
   const designSnapshot = buildDesignSnapshot(seed, requirementSnapshot);
-  
+
   return {
     id: seed.id,
     title: seed.title,
@@ -178,7 +179,7 @@ function buildCaseProjectTemplate(seed: CaseSeed): CaseProjectTemplate {
     feasibilitySnapshot,
     businessFlow,
     designSnapshot,
-    
+
   };
 }
 
@@ -188,6 +189,8 @@ function buildRequirementSnapshot(seed: CaseSeed): RunSnapshot {
   const baseline = buildRequirementBaseline(seed, runId, rules);
   const models = buildRequirementModels(seed);
   return runSnapshotSchema.parse({
+    operationType: "requirement_modeling",
+    outputManifest: models.map(model => ({ kind: "model", id: model.modelId ?? model.diagramKind, diagramKind: model.diagramKind, ...("sourceUseCaseId" in model ? { sourceUseCaseId: model.sourceUseCaseId } : {}) })),
     runId,
     requirementText: seed.requirementText,
     selectedDiagrams: requirementDiagrams,
@@ -410,7 +413,9 @@ function buildFeasibilitySnapshot(
     modelId: "context",
     source: `@startuml\nleft to right direction\nactor "${seed.actors[0]}" as Primary\nactor "${seed.actors[1]}" as Reviewer\nrectangle "${seed.title}" as System\ncloud "${seed.externalSystem}" as External\nPrimary --> System : ${seed.primaryAction}\nReviewer --> System : ${seed.approvalAction}\nSystem --> External : ${seed.notificationRule}\n@enduml`,
   };
-  const contextFingerprint = requirementSource.snapshot.fingerprint;
+  const contextFingerprint = buildFeasibilityContextFingerprint({
+    rules: requirementSource.rules, requirementBaseline: requirementSource.baseline, inputs,
+  });
   const implementationFingerprint = buildFeasibilityImplementationFingerprint({
     rules: requirementSource.rules,
     requirementBaseline: requirementSource.baseline,
@@ -420,6 +425,8 @@ function buildFeasibilitySnapshot(
   });
 
   return feasibilityRunSnapshotSchema.parse({
+    operationType: "feasibility_analysis",
+    outputManifest: [{ kind: "context", id: "context" }, { kind: "businessFlow", id: "business-flow" }, { kind: "implementationPlan", id: "implementation" }],
     runId: `${seed.id}-feasibility`,
     projectId: `case-template-${seed.id}`,
     selectedArtifacts: ["context", "business-flow", "implementation"],
@@ -448,6 +455,8 @@ function buildFeasibilitySnapshot(
 function buildDesignSnapshot(seed: CaseSeed, requirementSnapshot: RunSnapshot): DesignRunSnapshot {
   const models = buildDesignModels(seed);
   return designRunSnapshotSchema.parse({
+    operationType: "design_modeling",
+    outputManifest: models.map(model => ({ kind: "model", id: model.modelId ?? model.diagramKind, diagramKind: model.diagramKind, ...("sourceUseCaseId" in model ? { sourceUseCaseId: model.sourceUseCaseId } : {}) })),
     runId: `${seed.id}-design`,
     requirementText: seed.requirementText,
     selectedDiagrams: designDiagrams,
@@ -471,43 +480,42 @@ function buildDesignSnapshot(seed: CaseSeed, requirementSnapshot: RunSnapshot): 
 }
 
 
-
 function buildRules(seed: CaseSeed): RequirementRule[] {
   return [
     {
       id: `${seed.id}-R1`,
-      category: "功能需求",
+      type: "functional",
       text: `${seed.actors[0]}可以${seed.secondaryAction}并${seed.primaryAction}。`,
       sourceFragment: seed.requirementText,
-      relatedDiagrams: ["usecase", "activity"],
+
     },
     {
       id: `${seed.id}-R2`,
-      category: "业务规则",
+      type: "business-rule",
       text: `系统必须维护${seed.statusEntity}状态，状态包括${seed.states.join("、")}。`,
       sourceFragment: seed.requirementText,
-      relatedDiagrams: ["class", "activity"],
+
     },
     {
       id: `${seed.id}-R3`,
-      category: "功能需求",
+      type: "functional",
       text: `${seed.actors[1]}可以${seed.approvalAction}。`,
       sourceFragment: seed.requirementText,
-      relatedDiagrams: ["usecase", "activity"],
+
     },
     {
       id: `${seed.id}-R4`,
-      category: "外部接口",
+      type: "interface",
       text: `系统需要对接${seed.externalSystem}，${seed.notificationRule}`,
       sourceFragment: seed.requirementText,
-      relatedDiagrams: ["deployment", "activity"],
+
     },
     {
       id: `${seed.id}-R5`,
-      category: "界面需求",
+      type: "interaction",
       text: `系统需要提供${seed.dashboardTitle}，集中展示关键数据、待处理事项和状态分布。`,
       sourceFragment: seed.requirementText,
-      relatedDiagrams: ["prototype", "usecase"],
+
     },
   ];
 }
@@ -517,54 +525,7 @@ function buildRequirementBaseline(
   runId: string,
   rules: RequirementRule[],
 ): RequirementBaseline {
-  const requirements = rules.map((rule, index) => ({
-    id: `${seed.id}-REQ-${index + 1}`,
-    sourceFragment: rule.text,
-    type: requirementTypeForRule(index),
-    actor: index === 3 ? "系统" : seed.actors[Math.min(index, 1)],
-    subject: seed.title,
-    action: rule.text,
-    object: seed.entityNames[Math.min(index, 2)],
-    condition: index === 3 ? `需要触发${seed.externalSystem}` : null,
-    outcome: index === 4 ? `展示${seed.dashboardTitle}` : "形成可追踪业务结果",
-    confidence: 0.96,
-    status: "accepted",
-    criticality: index < 3 ? "high" : "medium",
-    acceptanceCriteria: [`当执行“${rule.text}”时，系统给出明确状态和结果。`],
-    fieldProvenance: {},
-    priority: index < 3 ? "must" : "should",
-    sourceRuleId: rule.id,
-  })) satisfies AtomicRequirement[];
-  return {
-    runId,
-    sourceDocumentId: `${seed.id}-source`,
-    requirements,
-    assumptions: [
-      {
-        id: `${seed.id}-A1`,
-        text: "案例模板采用单组织、单租户教学演示边界。",
-        rationale: "营销案例需要稳定展示完整链路，不引入课程组织绑定。",
-        confidence: 0.9,
-        status: "accepted",
-      },
-    ],
-    conflicts: [],
-    qualityReport: {
-      runId,
-      status: "passed",
-      summary: `已建立 ${requirements.length} 条${seed.title}原子需求基线。`,
-      issues: [],
-      blockingIssueIds: [],
-      reviewRequiredRequirementIds: [],
-    },
-    createdAt: generatedAt,
-  };
-}
-
-function requirementTypeForRule(index: number): AtomicRequirement["type"] {
-  if (index === 1) return "business-rule";
-  if (index === 3) return "interface";
-  return "functional";
+  return { ...createRequirementBaselineSnapshot({ runId, requirementText: seed.description, rules, createdAt: generatedAt }), sourceDocumentId: `${seed.id}-source` };
 }
 
 function buildRequirementModels(seed: CaseSeed): DiagramModelSpec[] {
@@ -588,7 +549,8 @@ function buildRequirementModels(seed: CaseSeed): DiagramModelSpec[] {
           preconditions: [`${seed.entityNames[0]}可用`],
           postconditions: [`${seed.statusEntity}进入${seed.states[1]}`],
           primaryActorId: "actor-primary",
-          supportingActorIds: ["actor-reviewer"],
+          // The reviewer owns the separate review use case, rather than the submission interaction.
+          supportingActorIds: [],
           eventFlows: [
             {
               id: "flow-main",
@@ -875,9 +837,5 @@ function buildDesignPlantUml(seed: CaseSeed): DesignPlantUmlArtifact[] {
     },
   ];
 }
-
-
-
-
 
 

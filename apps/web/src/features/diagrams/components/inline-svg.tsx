@@ -4,6 +4,8 @@ import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { i18n as appI18n } from "../../../shared/i18n/i18n";
 import { sanitizeSvgMarkup } from "../lib/svg-sanitizer";
+import { svgIntrinsicSize } from "../lib/svg-intrinsic-size";
+import { localizeDiagramText } from "../lib/diagram-display-language";
 
 function parseSvgLength(value: string | null) {
   if (!value) return null;
@@ -45,6 +47,7 @@ export function InlineSvg({
   highlightAliases = [],
   highlightKey,
   scale = 1,
+  sizing = "fit",
   className,
 }: {
   svg: string;
@@ -52,6 +55,8 @@ export function InlineSvg({
   highlightAliases?: string[];
   highlightKey?: string | number;
   scale?: number;
+  /** "fit" scales relative to the container width; "intrinsic" scales the SVG's own pixel size. */
+  sizing?: "fit" | "intrinsic";
   className?: string;
 }) {
   const translation = useTranslation();
@@ -60,7 +65,15 @@ export function InlineSvg({
     : appI18n.t.bind(appI18n);
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string>("");
-  const sanitizedSvg = useMemo(() => sanitizeSvgMarkup(svg), [svg]);
+  const baselineLabel = t("uxReview.baseline");
+  const sanitizedSvg = useMemo(() => localizeDiagramText(sanitizeSvgMarkup(svg), baselineLabel), [svg, baselineLabel]);
+  const intrinsicWidth = useMemo(
+    () => (sizing === "intrinsic" ? svgIntrinsicSize(sanitizedSvg)?.width ?? null : null),
+    [sanitizedSvg, sizing],
+  );
+  const svgWidth = intrinsicWidth
+    ? `${Math.round(intrinsicWidth * scale)}px`
+    : `${Math.round(scale * 10000) / 100}%`;
 
   useEffect(() => {
     setError("");
@@ -186,7 +199,7 @@ export function InlineSvg({
       <div
         ref={containerRef}
         className={["uml-inline-svg", className].filter(Boolean).join(" ")}
-        style={{ "--uml-svg-width": `${Math.round(scale * 10000) / 100}%` } as CSSProperties}
+        style={{ "--uml-svg-width": svgWidth } as CSSProperties}
         dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
       />
     </>

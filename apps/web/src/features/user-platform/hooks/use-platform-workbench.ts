@@ -1,13 +1,7 @@
-// Aggregates platform-wide workbench data for the dashboard page.
-// Source constraint: the API exposes listProjects() globally but runs/documents/members only per
-// project, so activity widgets are built from a bounded fan-out over the most recently updated
-// projects, with project-derived fallbacks when that fan-out is skipped or fails (runsLoaded=false).
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { TFunction } from "i18next";
-import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
+// Converts project and run summaries into dashboard presentation data.
 
+import type { TFunction } from "i18next";
 import {
-  platformApi,
   type PlatformProject,
   type PlatformRunSummary,
 } from "../services/platform-api";
@@ -20,9 +14,6 @@ import type {
 } from "@/shared/template/blocks/dashboard/workbench-data";
 
 type Translator = TFunction;
-
-const MAX_FANOUT_PROJECTS = 5;
-const FANOUT_CONCURRENCY = 2;
 
 const TIMELINE_FILLS = [
   "var(--chart-1)",
@@ -42,7 +33,6 @@ const LIST_COLORS = [
 const LIST_ICONS: WorkbenchProjectListItem["iconKind"][] = ["web", "mobile", "card", "design"];
 
 const WEEKDAY_KEYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
-
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -343,10 +333,7 @@ export function buildWorkbenchData(
 export function projectToItem(project: PlatformProject, now: Date = new Date()): WorkbenchData["tableRows"][number] {
   const roleByVisibility: Record<string, WorkbenchData["tableRows"][number]["role"]> = {
     private: "admin",
-    team: "editor",
     public: "subscriber",
-    course: "maintainer",
-    class: "author",
   };
   const planByStatus: Record<string, WorkbenchData["tableRows"][number]["plan"]> = {
     active: "enterprise",
@@ -370,108 +357,5 @@ export function projectToItem(project: PlatformProject, now: Date = new Date()):
     plan: planByStatus[project.status] ?? "company",
     billing: (project.memberCount ?? 0) > 1 ? "auto-debit" : "manual-cash",
     status,
-  };
-}
-
-async function fetchRunsBounded(projects: PlatformProject[]): Promise<ProjectRuns[]> {
-  const targets = [...projects]
-    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
-    .slice(0, MAX_FANOUT_PROJECTS);
-
-  const results: ProjectRuns[] = [];
-  for (let index = 0; index < targets.length; index += FANOUT_CONCURRENCY) {
-    const chunk = targets.slice(index, index + FANOUT_CONCURRENCY);
-    const settled = await Promise.allSettled(
-      chunk.map((project) => platformApi.listProjectRuns(project.id)),
-    );
-    settled.forEach((result, chunkIndex) => {
-      if (result.status === "fulfilled") {
-        results.push({ project: chunk[chunkIndex], runs: result.value.runs });
-      }
-    });
-  }
-  return results;
-}
-
-export type PlatformWorkbenchState = {
-  data: WorkbenchData | null;
-  loading: boolean;
-  error: string;
-  projectCount: number;
-  runsLoaded: boolean;
-  reload: () => void;
-};
-
-export function usePlatformWorkbench(
-  t: Translator,
-  locale: string,
-  options: { enabled?: boolean } = {},
-): PlatformWorkbenchState {
-  const enabled = options.enabled ?? true;
-  const [projects, setProjects] = useState<PlatformProject[]>([]);
-  const [runsByProject, setRunsByProject] = useState<ProjectRuns[]>([]);
-  const [runsLoaded, setRunsLoaded] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [reloadToken, setReloadToken] = useState(0);
-  // Language updates affect labels without refetching all project activity.
-  const loadFailureLabel = useRef(t("errors.http.unknown"));
-  loadFailureLabel.current = t("errors.http.unknown");
-
-  useEffect(() => {
-    if (!enabled) {
-      setProjects([]);
-      setRunsByProject([]);
-      setRunsLoaded(false);
-      setLoading(false);
-      setError("");
-      return;
-    }
-    let active = true;
-    setLoading(true);
-    setError("");
-    platformApi
-      .listProjects()
-      .then(async (response) => {
-        if (!active) return;
-        setProjects(response.projects);
-        try {
-          const runs = await fetchRunsBounded(response.projects);
-          if (!active) return;
-          setRunsByProject(runs);
-          setRunsLoaded(runs.length > 0);
-        } catch {
-          if (!active) return;
-          setRunsByProject([]);
-          setRunsLoaded(false);
-        }
-      })
-      .catch((err) => {
-        if (!active) return;
-        setProjects([]);
-        setRunsByProject([]);
-        setRunsLoaded(false);
-        setError(localizeCaughtFailure(err, loadFailureLabel.current));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [enabled, reloadToken]);
-
-  const data = useMemo(() => {
-    if (loading || error) return null;
-    return buildWorkbenchData(projects, runsByProject, runsLoaded, t);
-  }, [loading, error, projects, runsByProject, runsLoaded, t]);
-
-  return {
-    data,
-    loading,
-    error,
-    projectCount: projects.length,
-    runsLoaded,
-    reload: () => setReloadToken((token) => token + 1),
   };
 }

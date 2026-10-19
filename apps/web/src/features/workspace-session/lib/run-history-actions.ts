@@ -1,8 +1,7 @@
-// Provides run history list, restore, delete, clear, and save actions for the session provider.
+// Provides run history list, delete, clear, and save actions for the session provider.
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
-import type { WorkspaceRecord } from "../../../entities/workspace/model";
 import type {
   RunHistoryItem,
   RunHistorySnapshot,
@@ -10,15 +9,11 @@ import type {
 import type { WorkspaceRepository } from "../../../services/workspace-repository";
 
 interface RunHistoryActionsInput {
-  applyRestoredSnapshot: (snapshot: RunHistorySnapshot) => void;
-  applyWorkspaceRecord: (workspace: WorkspaceRecord) => void;
   repository: WorkspaceRepository;
   setHistoryItems: Dispatch<SetStateAction<RunHistoryItem[]>>;
 }
 
 export function useRunHistoryActions({
-  applyRestoredSnapshot,
-  applyWorkspaceRecord,
   repository,
   setHistoryItems,
 }: RunHistoryActionsInput) {
@@ -26,22 +21,6 @@ export function useRunHistoryActions({
   const refreshHistory = useCallback(async () => {
     setHistoryItems(await repository.listRunHistory());
   }, [repository, setHistoryItems]);
-
-  const restoreRunHistory = useCallback(
-    async (id: string) => {
-      const item = await repository.restoreRunHistory(id);
-      if (!item) {
-        throw new Error(t("historyDrawer.snapshotMissing"));
-      }
-      if (!item.snapshot) {
-        applyWorkspaceRecord(await repository.loadWorkspace());
-        setHistoryItems(await repository.listRunHistory());
-        return;
-      }
-      applyRestoredSnapshot(item.snapshot);
-    },
-    [applyRestoredSnapshot, applyWorkspaceRecord, repository, setHistoryItems, t],
-  );
 
   const deleteRunHistory = useCallback(
     async (id: string) => {
@@ -80,7 +59,6 @@ export function useRunHistoryActions({
     clearRunHistory,
     deleteRunHistory,
     refreshHistory,
-    restoreRunHistory,
     saveHistorySnapshot,
   };
 }

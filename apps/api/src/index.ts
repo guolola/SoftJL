@@ -1,7 +1,7 @@
 // Assembles the Fastify API server, infrastructure adapters, and local startup compatibility.
 import { designDiagramKindSchema } from "@uml-platform/contracts";
 import { registerMcpModule } from "./mcp/server/register-mcp-module.js";
-import type { ImageGenerationClient, LlmTransport } from "./llm.js";
+import type { LlmTransport } from "./llm.js";
 import type { LlmScheduler } from "./adapters/llm/llm-scheduler.js";
 import { DEFAULT_HOST, DEFAULT_PORT, RELEASE_STARTED_AT, } from "./server/defaults.js";
 import { createConfiguredFastifyApp } from "./server/fastify-app.js";
@@ -23,7 +23,6 @@ import type { PdfRenderClient } from "./adapters/render/pdf-render-client.js";
 import { createBullMqRunQueue, createRunQueueConfigFromEnv, type RunQueue, } from "./runs/queue/run-queue.js";
 export async function createApiServer(options?: {
     llmTransport?: LlmTransport;
-    imageClient?: ImageGenerationClient;
     renderClient?: RenderClient;
     pngRenderClient?: PngRenderClient;
     pdfRenderClient?: PdfRenderClient;
@@ -53,7 +52,7 @@ export async function createApiServer(options?: {
         pdfRenderClient: options?.pdfRenderClient,
         mailAdapter: options?.mailAdapter,
     });
-    const { pool, authStore, providerConfigs, runs, documentLibrary, providerUsageTracker, systemNoticeStore, academicStore, analyticsStore, } = await createApiPersistence({
+    const { pool, authStore, providerConfigs, runs, documentLibrary, providerUsageTracker, systemNoticeStore, analyticsStore, } = await createApiPersistence({
         nodeEnv: runtimeNodeEnv,
         overrides: {
             authStore: options?.authStore,
@@ -94,7 +93,7 @@ export async function createApiServer(options?: {
         renderServiceBaseUrl,
         features: {
             supportsDesignTableDiagram: designDiagramKindSchema.safeParse("table").success,
-            onlyOfficeDocumentServerConfigured: Boolean(process.env.ONLYOFFICE_DOCUMENT_SERVER_URL?.trim()),
+            supportsDocumentPreview: true,
         },
     });
     registerApiRoutes({
@@ -105,7 +104,6 @@ export async function createApiServer(options?: {
         mailAdapter,
         generationUsage,
         nodeEnv: runtimeNodeEnv,
-        academicStore,
         analyticsStore,
         databaseProbe: pool
             ? async () => {

@@ -1,6 +1,7 @@
 // Owns SVG viewport object URL, zoom, and pointer-pan state for diagram detail views.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent } from "react";
+import { svgIntrinsicSize } from "../lib/svg-intrinsic-size";
 
 export function useSvgPanZoom(svgMarkup: string, normalizedSvgMarkup: string) {
   const [svgUrl, setSvgUrl] = useState("");
@@ -55,6 +56,19 @@ export function useSvgPanZoom(svgMarkup: string, normalizedSvgMarkup: string) {
     setIsPanning(false);
     setSvgPanOffset({ x: 0, y: 0 });
   }, [svgMarkup]);
+
+  // 100% is the diagram's own pixel size, so text reads the same size in every diagram;
+  // only diagrams wider than the canvas open scaled down to fit.
+  useEffect(() => {
+    const intrinsicWidth = svgIntrinsicSize(normalizedSvgMarkup)?.width;
+    const canvasWidth = svgCanvasRef.current?.clientWidth ?? 0;
+    if (!intrinsicWidth || canvasWidth <= 0) {
+      setSvgScale(1);
+      return;
+    }
+    const fit = (canvasWidth - 32) / intrinsicWidth;
+    setSvgScale(fit >= 1 ? 1 : Math.max(0.25, Math.floor(fit * 20) / 20));
+  }, [normalizedSvgMarkup]);
 
   const startCanvasPan = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {

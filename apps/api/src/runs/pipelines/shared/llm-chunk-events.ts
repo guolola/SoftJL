@@ -83,7 +83,7 @@ export function createRunLlmChunkHandlers({
 
   const handlers: LlmChunkHandlers = {
     ...activity,
-    runContext: { stage, diagramKind, subtaskId: subtaskId ?? modelId ?? diagramKind, subtaskLabel },
+    runContext: { stage, diagramKind, subtaskId: subtaskId ?? modelId ?? diagramKind, subtaskLabel, operation, round },
     // Reasoning is real provider activity even when the final JSON has not started streaming.
     onReasoningChunk(chunk) {
       activity.onReasoningChunk(chunk);

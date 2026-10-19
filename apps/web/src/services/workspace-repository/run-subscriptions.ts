@@ -1,16 +1,18 @@
 // Owns run snapshot reads and SSE fallback behavior for workspace repository runs.
 import type {
-  
+
   DesignRunSnapshot,
   DocumentRunSnapshot,
   FeasibilityRunSnapshot,
   RunEvent,
+  RunEventInput,
   RunError,
   RunSnapshot,
   RunStage,
 } from "@uml-platform/contracts";
+import { assertCurrentRunSnapshot, ModelSemanticError, runEventSchema } from "@uml-platform/contracts";
 import { ApiClientError, buildApiUrl, requestJson } from "../api-client";
-import { projectHeaders } from "./project-scope";
+import { projectHeaders, requireProjectScope } from "./project-scope";
 import { snapshotErrorMessage } from "./run-payload";
 import { localizeRunFailure } from "../../shared/i18n/api-errors";
 import type { RunSubscriptionOptions } from "./types";
@@ -18,7 +20,7 @@ import type { RunSubscriptionOptions } from "./types";
 type RunSubscriptionInput<TSnapshot extends RestorableRunSnapshot> = RunSubscriptionOptions<TSnapshot> & {
   runId: string;
   projectId: string | null;
-  onEvent: (event: RunEvent) => void;
+  onEvent: (event: RunEventInput) => void;
 };
 
 type RestorableRunSnapshot =
@@ -84,6 +86,7 @@ function isRetryableConnectionError(error: unknown) {
 
 function isNonRetryableSnapshotReadError(error: unknown) {
   return (
+    error instanceof ModelSemanticError || error instanceof SyntaxError || error instanceof Error && error.name === "ZodError" ||
     error instanceof ApiClientError &&
     (error.status === 401 || error.status === 403 || error.status === 404)
   );
@@ -185,10 +188,10 @@ async function subscribeToProjectRun<TSnapshot extends RestorableRunSnapshot>(
   endpoint: string,
   input: SnapshotWaitInput<TSnapshot>,
 ) {
-  const projectId = input.projectId;
+  const projectId = requireProjectScope(input.projectId);
   const seenEventIds = new Set<string>();
   let cursor = 0;
-  let pending: RunEvent[] = [];
+  let pending: RunEventInput[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
   const flush = () => {
     clearTimeout(timer);
@@ -197,7 +200,7 @@ async function subscribeToProjectRun<TSnapshot extends RestorableRunSnapshot>(
     pending = [];
     if (!input.signal?.aborted) for (const event of batch) input.onEvent(event);
   };
-  const onEvent = (event: RunEvent) => {
+  const onEvent = (event: RunEventInput) => {
     // The server replays persisted events on every connection; deliver each once.
     if (event.eventId) {
       if (seenEventIds.has(event.eventId)) return;
@@ -260,34 +263,39 @@ async function subscribeToProjectRun<TSnapshot extends RestorableRunSnapshot>(
 
 export async function readRunSnapshot(
   runId: string,
-  projectId: string | null = null,
+  projectId: string | null,
 ) {
-  return requestJson<RunSnapshot>(`/api/runs/${runId}`, {
+  const snapshot = await requestJson<RunSnapshot>(`/api/runs/${runId}`, {
     errorKey: "errors.operations.loadRun",
-    headers: projectHeaders(projectId),
+    headers: projectHeaders(requireProjectScope(projectId)),
   });
+  assertCurrentRunSnapshot(snapshot);
+  return snapshot;
 }
 
 export async function readDesignRunSnapshot(
   runId: string,
-  projectId: string | null = null,
+  projectId: string | null,
 ) {
-  return requestJson<DesignRunSnapshot>(`/api/design-runs/${runId}`, {
+  const snapshot = await requestJson<DesignRunSnapshot>(`/api/design-runs/${runId}`, {
     errorKey: "errors.operations.loadRun",
-    headers: projectHeaders(projectId),
+    headers: projectHeaders(requireProjectScope(projectId)),
   });
+  assertCurrentRunSnapshot(snapshot);
+  return snapshot;
 }
-
 
 
 export async function readDocumentRunSnapshot(
   runId: string,
-  projectId: string | null = null,
+  projectId: string | null,
 ) {
-  return requestJson<DocumentRunSnapshot>(`/api/document-runs/${runId}`, {
+  const snapshot = await requestJson<DocumentRunSnapshot>(`/api/document-runs/${runId}`, {
     errorKey: "errors.operations.loadRun",
-    headers: projectHeaders(projectId),
+    headers: projectHeaders(requireProjectScope(projectId)),
   });
+  assertCurrentRunSnapshot(snapshot);
+  return snapshot;
 }
 
 export async function streamProjectRunEvents(
@@ -302,7 +310,7 @@ export async function streamProjectRunEvents(
   signal?.addEventListener("abort", abort, { once: true });
   const response = await fetch(buildApiUrl(endpoint), {
     credentials: "include",
-    headers: projectHeaders(projectId),
+    headers: projectHeaders(requireProjectScope(projectId)),
     signal: controller.signal,
   }).catch((error) => { signal?.removeEventListener("abort", abort); throw error; });
   if (!response.ok) {
@@ -351,7 +359,7 @@ export async function streamProjectRunEvents(
       .map((line) => line.slice(5).trim())
       .join("\n");
     if (!data) return;
-    const event = JSON.parse(data) as RunEvent;
+    const event = runEventSchema.parse(JSON.parse(data));
     await onEvent(event);
     if (event.type === "completed" || event.type === "cancelled") {
       terminalEventSeen = true;
@@ -396,18 +404,20 @@ export async function streamProjectRunEvents(
 
 export async function readFeasibilityRunSnapshot(
   runId: string,
-  projectId: string | null = null,
+  projectId: string | null,
 ) {
-  return requestJson<FeasibilityRunSnapshot>(`/api/feasibility-runs/${runId}`, {
+  const snapshot = await requestJson<FeasibilityRunSnapshot>(`/api/feasibility-runs/${runId}`, {
     errorKey: "errors.operations.loadFeasibility",
-    headers: projectHeaders(projectId),
+    headers: projectHeaders(requireProjectScope(projectId)),
   });
+  assertCurrentRunSnapshot(snapshot);
+  return snapshot;
 }
 
 async function waitForRequirementRunSnapshot(
   runId: string,
-  onEvent: (event: RunEvent) => void,
-  projectId: string | null = null,
+  onEvent: (event: RunEventInput) => void,
+  projectId: string | null,
   options: RunSubscriptionOptions<RunSnapshot> = {},
 ) {
   const wait = (input: SnapshotWaitInput<RunSnapshot>) => subscribeToProjectRun(`/api/runs/${runId}/events`, input);
@@ -434,8 +444,8 @@ async function waitForRequirementRunSnapshot(
 
 async function waitForDesignRunSnapshot(
   runId: string,
-  onEvent: (event: RunEvent) => void,
-  projectId: string | null = null,
+  onEvent: (event: RunEventInput) => void,
+  projectId: string | null,
   options: RunSubscriptionOptions<DesignRunSnapshot> = {},
 ) {
   const wait = (input: SnapshotWaitInput<DesignRunSnapshot>) => subscribeToProjectRun(`/api/design-runs/${runId}/events`, input);
@@ -463,11 +473,10 @@ async function waitForDesignRunSnapshot(
 }
 
 
-
 async function waitForDocumentRunSnapshot(
   runId: string,
-  onEvent: (event: RunEvent) => void,
-  projectId: string | null = null,
+  onEvent: (event: RunEventInput) => void,
+  projectId: string | null,
   options: RunSubscriptionOptions<DocumentRunSnapshot> = {},
 ) {
   const wait = (input: SnapshotWaitInput<DocumentRunSnapshot>) => subscribeToProjectRun(`/api/document-runs/${runId}/events`, input);
@@ -488,8 +497,8 @@ async function waitForDocumentRunSnapshot(
 
 async function waitForFeasibilityRunSnapshot(
   runId: string,
-  onEvent: (event: RunEvent) => void,
-  projectId: string | null = null,
+  onEvent: (event: RunEventInput) => void,
+  projectId: string | null,
   options: RunSubscriptionOptions<FeasibilityRunSnapshot> = {},
 ) {
   const wait = (input: SnapshotWaitInput<FeasibilityRunSnapshot>) => subscribeToProjectRun(`/api/feasibility-runs/${runId}/events`, input);

@@ -1,5 +1,7 @@
 // Persists run records/events to PostgreSQL while preserving the existing Map API.
-import type { DashboardRun, RunEvent } from "@uml-platform/contracts";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
+import { assertCurrentRunSnapshot, runEventSchema, runEventMetadataSchema, type DashboardRun, type RunEvent } from "@uml-platform/contracts";
 import type { Queryable } from "../../db/transactions.js";
 import type { RunRecord, RunRecordMetadata, RunRecordReadOptions, RunRecordStore } from "./run-record-store.js";
 import { createRunError } from "../pipelines/shared/errors.js";
@@ -18,29 +20,27 @@ interface RunRecordRow {
   stage: string;
   model: string | null;
   provider_config_id: string | null;
-  error_message: string | null;
   error: RunRecord["snapshot"]["error"] | null;
   error_code: string | null;
   created_at: Date | string;
   completed_at: Date | string | null;
-  event_count?: number | string;
-  event_sequence?: number | string;
+  event_count: number | string;
+  event_sequence: number | string;
 }
 
 interface RunEventRow {
   run_id: string;
   sequence: number;
-  payload: PersistedRunEvent;
+  payload: unknown;
   created_at: Date | string;
 }
 
-type PersistedCompletedRunEvent = {
-  type: "completed";
-  snapshotRef: string;
-  eventId?: string;
-  createdAt?: string;
-};
-type PersistedRunEvent = RunEvent | PersistedCompletedRunEvent;
+// Completed rows reference their owning record; embedded snapshots are not a storage contract.
+const persistedCompletedRunEventSchema = runEventMetadataSchema.extend({
+  type: z.literal("completed"),
+  snapshotRef: z.string().min(1),
+}).strict();
+type PersistedRunEvent = Exclude<RunEvent, { type: "completed" }> | z.infer<typeof persistedCompletedRunEventSchema>;
 type PersistJob = Promise<void>;
 
 export interface PersistentRunRecordStore extends RunRecordStore {
@@ -52,6 +52,12 @@ export interface PersistentRunRecordStore extends RunRecordStore {
 function toIsoString(value: Date | string | null | undefined) {
   if (!value) return undefined;
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function requiredTimestamp(value: Date | string | null | undefined) {
+  const timestamp = toIsoString(value);
+  if (!timestamp || !Number.isFinite(Date.parse(timestamp))) throw new Error("Run record is missing a current timestamp");
+  return timestamp;
 }
 
 function readModel(snapshot: RunRecord["snapshot"]) {
@@ -104,6 +110,11 @@ function readCompletedAt(record: RunRecord, event?: RunEvent) {
   return new Date().toISOString();
 }
 
+function persistedSystemName(snapshot: unknown) {
+  const value = (snapshot as { _systemName?: unknown } | null)?._systemName;
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 function createMetadata(row: RunRecordRow): RunRecordMetadata | undefined {
   if (
     !row.user_id &&
@@ -119,12 +130,13 @@ function createMetadata(row: RunRecordRow): RunRecordMetadata | undefined {
   return {
     userId: row.user_id ?? undefined,
     offlineDemoFixture: (row.snapshot as { _offlineDemoFixture?: unknown })._offlineDemoFixture === "library-seat" ? "library-seat" : undefined,
+    systemName: persistedSystemName(row.snapshot),
     projectId: row.project_id ?? undefined,
     sourceRunId: row.source_run_id ?? undefined,
     sourceAction: row.source_action ?? undefined,
     sourceRunStatus: row.source_run_status ?? undefined,
     model: row.model ?? undefined,
-    createdAt: toIsoString(row.created_at) ?? new Date().toISOString(),
+    createdAt: requiredTimestamp(row.created_at),
     completedAt: toIsoString(row.completed_at),
   };
 }
@@ -151,13 +163,15 @@ function serializeEventForPersistence(event: RunEvent, snapshot: RunRecord["snap
 }
 
 function hydratePersistedEvent(
-  event: PersistedRunEvent,
+  event: unknown,
   snapshot: RunRecord["snapshot"],
 ): RunEvent {
-  if (event.type === "completed" && "snapshotRef" in event) {
-    return { type: "completed", snapshot, ...(event.eventId ? { eventId: event.eventId } : {}), ...(event.createdAt ? { createdAt: event.createdAt } : {}) };
+  if (event && typeof event === "object" && "type" in event && event.type === "completed") {
+    const completed = persistedCompletedRunEventSchema.parse(event);
+    if (completed.snapshotRef !== snapshot.runId) throw new Error("Completed event references a different run snapshot");
+    return { type: "completed", snapshot, eventId: completed.eventId, createdAt: completed.createdAt };
   }
-  return event;
+  return runEventSchema.parse(event);
 }
 
 function shouldMarkActiveRunsInterruptedOnRestore(env: NodeJS.ProcessEnv = process.env) {
@@ -206,7 +220,8 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
     // BullMQ owns recovery. Starting API/worker processes must never hydrate history.
     if (!shouldMarkActiveRunsInterruptedOnRestore()) return;
     const records = await this.db.query<RunRecordRow>(`
-      select id, user_id, project_id, source_run_id, source_action, source_run_status, snapshot, status, stage, model, provider_config_id, error_message, error, error_code, created_at, completed_at,
+      select id, user_id, project_id, source_run_id, source_action, source_run_status, snapshot, status, stage, model, provider_config_id, error, error_code, created_at, completed_at,
+        (select count(*) from run_events where run_id = run_records.id) as event_count,
         (select coalesce(max(sequence), 0) from run_events where run_id = run_records.id) as event_sequence
       from run_records
       where status in ('queued', 'running')
@@ -223,7 +238,7 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
     await this.flush();
     const records = await this.db.query<RunRecordRow>(
       `
-        select id, user_id, project_id, source_run_id, source_action, source_run_status, snapshot, status, stage, model, provider_config_id, error_message, error, error_code, created_at, completed_at,
+        select id, user_id, project_id, source_run_id, source_action, source_run_status, snapshot, status, stage, model, provider_config_id, error, error_code, created_at, completed_at,
           (select count(*) from run_events where run_id = run_records.id) as event_count,
           (select coalesce(max(sequence), 0) from run_events where run_id = run_records.id) as event_sequence
         from run_records
@@ -250,7 +265,7 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
       const rows = await this.db.query<RunRecordRow>(`
         select id, user_id, project_id, source_run_id, source_action, source_run_status,
           (${RUN_SUMMARY_SNAPSHOT_SQL}) as snapshot,
-          status, stage, model, provider_config_id, error_message, error, error_code, created_at, completed_at,
+          status, stage, model, provider_config_id, error, error_code, created_at, completed_at,
           (select count(*) from run_events where run_id = run_records.id) as event_count,
           (select coalesce(max(sequence), 0) from run_events where run_id = run_records.id) as event_sequence
         from run_records
@@ -260,8 +275,13 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
       if (!rows.rows.length) break;
       const ids = rows.rows.map(row => row.id);
       const actions = await this.db.query<RunEventRow>(`
-        select run_id, sequence, payload, created_at from run_events
-        where run_id = any($1::text[]) and event_type = 'run_action'
+        select run_id, sequence,
+          case when event_type = 'artifact_ready' then jsonb_strip_nulls(jsonb_build_object(
+            'type', payload->'type', 'eventId', payload->'eventId', 'createdAt', payload->'createdAt',
+            'stage', payload->'stage', 'artifactKind', payload->'artifactKind',
+            'modelId', payload->'modelId', 'diagramKind', payload->'diagramKind', 'subtaskId', payload->'subtaskId', 'subtaskStatus', payload->'subtaskStatus'))
+          else payload end as payload, created_at from run_events
+        where run_id = any($1::text[]) and event_type in ('run_action', 'artifact_ready')
         order by run_id asc, sequence asc
       `, [ids]);
       const records = this.applyLoadedRows(rows.rows, actions.rows, { markActiveInterrupted: false, readOnly: true });
@@ -276,7 +296,7 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
     if (projectIds.length === 0) return [];
     await this.flush();
     // Read only summary fields from persisted records. Stage timestamps are real events, not
-    // substitutes based on queue creation; missing legacy timestamps stay unavailable.
+    // substitutes based on queue creation; absent stage events have no stage timing.
     const result = await this.db.query<{
       id: string; project_id: string; status: DashboardRun["status"]; model: string | null;
       run_kind: DashboardRun["runKind"]; created_at: Date | string;
@@ -297,7 +317,8 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
             from jsonb_array_elements(case when jsonb_typeof(r.snapshot->'models') = 'array'
               then r.snapshot->'models' else '[]'::jsonb end) m), '[]'::jsonb)) as timing_snapshot,
         (select jsonb_agg(jsonb_build_object('at', e.created_at, 'event', jsonb_build_object(
-          'type', e.payload->>'type', 'stage', e.payload->>'stage', 'subtaskId', e.payload->>'subtaskId',
+          'type', e.payload->>'type', 'eventId', e.payload->>'eventId', 'createdAt', e.payload->>'createdAt',
+          'stage', e.payload->>'stage', 'subtaskId', e.payload->>'subtaskId',
           'subtaskStatus', e.payload->>'subtaskStatus', 'diagramKind', e.payload->>'diagramKind',
           'modelId', e.payload->>'modelId', 'artifactKind', e.payload->>'artifactKind', 'phase', e.payload->>'phase',
           'callId', e.payload->>'callId', 'operation', e.payload->>'operation')) order by e.sequence)
@@ -312,7 +333,8 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
       createdAt: toIsoString(row.created_at) ?? null, startedAt: toIsoString(row.started_at) ?? null,
       completedAt: toIsoString(row.completed_at) ?? null,
       artifactTimings: dashboardArtifactTimings({ ...row.timing_snapshot, runKind: row.run_kind, status: row.status },
-        (row.timing_events ?? []).map(item => item.event), (row.timing_events ?? []).map(item => item.at)),
+        (row.timing_events ?? []).map(item => { runEventMetadataSchema.parse(item.event); return item.event; }),
+        (row.timing_events ?? []).map(item => item.at)),
     }));
   }
 
@@ -341,7 +363,6 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
         select run_id, sequence, ${filtered ? `case
           when payload->>'type' = 'run_activity' then payload - 'text' - 'inputImages'
           when payload->>'type' = 'artifact_ready' then payload - 'coverageMatrix' - 'traceabilityMatrix'
-          when payload->>'type' = 'completed' then (payload - 'snapshot') || jsonb_build_object('snapshotRef', run_id)
           else payload end as payload` : "payload"}, created_at
         from run_events
         where run_id = any($1::text[]) and sequence > $2
@@ -372,11 +393,14 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
       snapshot.status = row.status as RunRecord["snapshot"]["status"];
       // Keep the server-only execution marker outside public run snapshots and events.
       if ("_offlineDemoFixture" in snapshot) delete snapshot._offlineDemoFixture;
+      if ("_systemName" in snapshot) delete snapshot._systemName;
+      // Compact list projections omit full model content; detail/worker restores must satisfy current contracts.
+      if (!readOnly) assertCurrentRunSnapshot(snapshot);
       const events = (eventRowsByRun.get(row.id) ?? []).map((eventRow) =>
         ({ ...hydratePersistedEvent(eventRow.payload, snapshot), sequence: eventRow.sequence }),
       );
       const eventCreatedAt = (eventRowsByRun.get(row.id) ?? []).map(
-        (eventRow) => toIsoString(eventRow.created_at) ?? row.created_at.toString(),
+        (eventRow) => requiredTimestamp(eventRow.created_at),
       );
       const activeStatus = isActiveStatus(row.status);
       const staleActiveWithCompletedAt = activeStatus && Boolean(row.completed_at);
@@ -385,8 +409,8 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
       const record: RunRecord = {
         snapshot,
         events,
-        eventSequence: Number(row.event_sequence ?? events.at(-1)?.sequence ?? events.length),
-        persistedEventCount: Number(row.event_count ?? events.length),
+        eventSequence: Number(row.event_sequence),
+        persistedEventCount: Number(row.event_count),
         eventCreatedAt,
         listeners: existing?.listeners ?? new Set(),
         terminal:
@@ -409,6 +433,8 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
         if (!record.events.some((event) => event.type === "failed")) {
           record.events.push({
             type: "failed",
+            eventId: randomUUID(),
+            createdAt: new Date().toISOString(),
             sequence: (record.eventSequence ?? 0) + 1,
             stage: record.snapshot.currentStage ?? undefined,
             error:
@@ -487,7 +513,12 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
           readPersistedStatus(record, event),
           readModel(snapshot),
           metadata?.offlineDemoFixture ? null : readProviderConfigId(snapshot),
-          JSON.stringify(metadata?.offlineDemoFixture ? { ...snapshot, _offlineDemoFixture: metadata.offlineDemoFixture } : snapshot),
+          // Server-only execution markers ride inside the snapshot JSON and are stripped on load.
+          JSON.stringify({
+            ...snapshot,
+            ...(metadata?.offlineDemoFixture ? { _offlineDemoFixture: metadata.offlineDemoFixture } : {}),
+            ...(metadata?.systemName ? { _systemName: metadata.systemName } : {}),
+          }),
           snapshot.error ? JSON.stringify(snapshot.error) : null,
           snapshot.error?.code ?? null,
           readCompletedAt(record, event),

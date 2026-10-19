@@ -1,9 +1,7 @@
-// Wraps document and OnlyOffice endpoints used by workspace repositories.
+// Wraps document endpoints used by workspace repositories.
 import type {
   DocumentKind,
   DocumentLibraryListResponse,
-  OnlyOfficeEditorConfigResponse,
-  OnlyOfficeUiTheme,
 } from "@uml-platform/contracts";
 import { downloadBlob, requestJson } from "../api-client";
 import { requireProjectScope, withProjectHeaders } from "./project-scope";
@@ -53,21 +51,6 @@ export async function listDocumentLibraryItems(projectId: string | null = null) 
     }),
   );
   return response.documents;
-}
-
-export async function readOnlyOfficeEditorConfig(
-  documentId: string,
-  uiTheme?: OnlyOfficeUiTheme,
-  projectId: string | null = null,
-) {
-  const scopedProjectId = requireProjectScope(projectId);
-  const query = uiTheme ? `?uiTheme=${encodeURIComponent(uiTheme)}` : "";
-  return requestJson<OnlyOfficeEditorConfigResponse>(
-    `/api/projects/${encodeURIComponent(scopedProjectId)}/documents/${encodeURIComponent(documentId)}/editor-config${query}`,
-    withProjectHeaders(scopedProjectId, {
-      errorKey: "documentsPage.errors.editorConfigFailed",
-    }),
-  );
 }
 
 export async function downloadDocumentFile(

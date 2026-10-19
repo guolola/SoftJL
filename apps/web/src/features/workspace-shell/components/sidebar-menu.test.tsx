@@ -1,11 +1,12 @@
 // Verifies sidebar navigation, diagram status trees, queued task visibility, and workspace tab interactions.
-import { createDesignRunSnapshot } from "../../../test/artifact-fixtures";
-import { createRenderMeta } from "../../../test/artifact-fixtures";
+import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
+import { createDesignRunSnapshot, createRenderMeta } from "@/test/contract-fixtures";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { floatingAlert as toast } from "../../../shared/ui/floating-alert";
-import { feasibilityImplementationPlanSchema } from "@uml-platform/contracts";
+import { feasibilityArtifactState } from "../../feasibility/lib/feasibility-freshness";
+import { completeFeasibilityImplementationPlanSchema, snapshotInputFingerprint } from "@uml-platform/contracts";
 import type { WorkspaceRepository } from "../../../services/workspace-repository";
 import {
   createRequirementBaseline,
@@ -89,8 +90,6 @@ function storeManagedUserSettings() {
       providerConfigId: "provider-config-1",
       defaultModel: "gpt-5.5",
       providerModelOptions: ["gpt-5.5"],
-      imageModel: "nano-banana-pro",
-      fontSize: "md",
       autoGenerate: false,
       showStaleBanner: true,
     }),
@@ -118,7 +117,6 @@ function createSidebarRepository(
     testProviderSettings: vi.fn(),
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
-    restoreRunHistory: vi.fn(async () => null),
     deleteRunHistory: vi.fn(async () => []),
     clearRunHistory: vi.fn(async () => {}),
   };
@@ -155,7 +153,7 @@ describe("SidebarMenu", () => {
       await user.click(within(navigation).getByRole("button", { name: "运行历史" }));
       expect(onOpen).toHaveBeenCalledWith("history");
       expect(screen.getByTestId("mobile-open")).toHaveTextContent("false");
-      expect(within(navigation).getByRole("button", { name: "文档中心" })).toBeInTheDocument();
+      expect(within(navigation).queryByRole("button", { name: "文档中心" })).not.toBeInTheDocument();
       expect(within(navigation).getByRole("button", { name: "说明书" })).toBeInTheDocument();
     } finally {
       Object.defineProperty(window, "innerWidth", { configurable: true, value: previousWidth });
@@ -205,7 +203,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -248,7 +245,8 @@ describe("SidebarMenu", () => {
     persisted.feasibilityBusinessFlow!.fingerprint = "stale";
     rerender(<div key="project-a-reloaded">{withWorkspaceProviders(<SidebarMenu />, createSidebarRepository(persisted))}</div>);
     await user.click(await screen.findByRole("button", { name: "展开 可行性分析" }));
-    expect(screen.getByRole("button", { name: /^业务流程图/u })).toHaveTextContent("已过时");
+    expect(screen.getByRole("button", { name: "业务流程图" }).querySelector('[data-sidebar-status="stale"] svg')).toHaveClass("text-warning");
+    expect(screen.getByRole("button", { name: "业务流程图" })).toHaveTextContent(/^业务流程图$/);
 
     rerender(<div key="project-b">{withWorkspaceProviders(<SidebarMenu />, createSidebarRepository())}</div>);
     await screen.findByRole("navigation", { name: "项目导航" });
@@ -259,7 +257,7 @@ describe("SidebarMenu", () => {
   it("keeps an existing flow visible with a failed regeneration status", async () => {
     const user = userEvent.setup();
     const repository = createSidebarRepository(createWorkspaceRecord({ rules: [createRule()], feasibilityBusinessFlow: createBusinessFlowArtifact() }));
-    render(withWorkspaceProviders(<SidebarMenu projectRuns={[{
+    render(withWorkspaceProviders(<SidebarMenu projectRuns={[{ operationType: "feasibility_analysis" as const,
       runId: "failed-flow", runKind: "feasibility", status: "failed", stage: "render_business_flow", createdAt: "2026-09-23T00:00:00.000Z",
     }]} />, repository));
     await user.click(await screen.findByRole("button", { name: "展开 可行性分析" }));
@@ -267,30 +265,34 @@ describe("SidebarMenu", () => {
     expect(screen.getByLabelText(/业务流程图.*失败/u)).toBeInTheDocument();
   });
 
+  it.each([false, true])("uses the same freshness icons for all feasibility artifacts: stale=%s", async (stale) => {
+    const rules = [createRule()];
+    const workspace = createWorkspaceRecord({
+      rules,
+      feasibilityContextModel: { diagramKind: "context", modelId: "context", title: "系统环境图", summary: "环境", notes: [],
+        system: { id: "system", name: "系统", sourceRequirementIds: [] }, people: [], externalSystems: [], relationships: [] },
+      feasibilityContextPlantUml: "@startuml\\n@enduml",
+      feasibilityContextSvg: "<svg />",
+      feasibilityBusinessFlow: createBusinessFlowArtifact(rules),
+      feasibilityImplementationPlan: completeFeasibilityImplementationPlanSchema.parse(FEASIBILITY_IMPLEMENTATION_EXAMPLE),
+    });
+    const freshness = feasibilityArtifactState(workspace);
+    workspace.feasibilityContextFingerprint = stale ? "old" : freshness.currentContextFingerprint;
+    workspace.feasibilityBusinessFlow!.fingerprint = stale ? "old" : freshness.requirementSource.fingerprint;
+    workspace.feasibilityImplementationFingerprint = stale ? "old" : freshness.currentImplementationFingerprint;
+    render(withWorkspaceProviders(<SidebarMenu />, createSidebarRepository(workspace)));
+    await userEvent.click(await screen.findByRole("button", { name: "展开 可行性分析" }));
+    for (const label of ["系统环境图", "业务流程图", "实现方案"]) {
+      const item = screen.getByRole("button", { name: label });
+      expect(item.querySelector(`[data-sidebar-status="${stale ? "stale" : "completed"}"] svg`)).toHaveClass(stale ? "text-warning" : "text-success");
+      expect(item.textContent).toBe(label);
+      expect(item.querySelector('[data-slot="badge"]')).toBeNull();
+    }
+  });
+
   it("reveals feasibility artifact menus only after the corresponding artifacts exist", async () => {
     const user = userEvent.setup();
-    const implementationPlan = feasibilityImplementationPlanSchema.parse({
-      overview: "采用模块化实现。",
-      candidates: [
-        { id: "candidate-1", name: "模块化方案", summary: "按模块实施。", estimatedCost: "待确认", estimatedSchedule: "待确认", sourceRequirementIds: ["R1"] },
-        { id: "candidate-2", name: "服务化方案", summary: "按服务实施。", estimatedCost: "待确认", estimatedSchedule: "待确认", sourceRequirementIds: ["R1"] },
-      ],
-      recommendedCandidateId: "candidate-1",
-      recommendationRationale: "满足当前规则。",
-      architecture: { summary: "分层架构。", modules: [{ id: "module-1", name: "核心模块", responsibility: "实现核心规则。", sourceRequirementIds: ["R1"] }] },
-      dataStrategy: { summary: "统一数据定义。", sourceRequirementIds: ["R1"] },
-      deploymentAndOperations: { summary: "建立部署与回滚流程。", sourceRequirementIds: ["R1"] },
-      securityAndCompliance: { summary: "执行最小权限。", sourceRequirementIds: ["R1"] },
-      milestones: [{ id: "milestone-1", name: "首期交付", timeframe: "待确认", acceptanceCriteria: ["规则通过验收"], sourceRequirementIds: ["R1"] }],
-      verdicts: [
-        { category: "technical", verdict: "conditional", rationale: "待验证。" },
-        { category: "operational", verdict: "conditional", rationale: "待验证。" },
-        { category: "schedule", verdict: "unknown", rationale: "待确认。" },
-        { category: "economic", verdict: "unknown", rationale: "待确认。" },
-        { category: "legal", verdict: "unknown", rationale: "待确认。" },
-      ],
-      decision: "conditional-go",
-    });
+    const implementationPlan = completeFeasibilityImplementationPlanSchema.parse({ ...FEASIBILITY_IMPLEMENTATION_EXAMPLE, candidates: FEASIBILITY_IMPLEMENTATION_EXAMPLE.candidates.map((candidate, index) => ({ ...candidate, name: index === 0 ? "模块化方案" : "服务化方案" })) });
     const repository = createSidebarRepository(
       createWorkspaceRecord({
         feasibilityContextModel: {
@@ -365,7 +367,7 @@ describe("SidebarMenu", () => {
       withWorkspaceProviders(
         <SidebarMenu
           projectRuns={[
-            {
+            { operationType: "requirement_modeling" as const,
               runId: "server-requirements-active",
               status: "running",
               stage: "generate_models",
@@ -396,7 +398,7 @@ describe("SidebarMenu", () => {
             tables: [
               {
                 constraints: [],
-                relationalConstraints: [{"id":"pk-test","type":"primary-key","columnIds":["user_id"]}],
+                relationalConstraints: [{"id":"pk_test","type":"primary-key","columnIds":["user_id"]}],
                 id: "tbl_user",
                 name: "user",
                 columns: [
@@ -595,7 +597,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -736,13 +737,13 @@ describe("SidebarMenu", () => {
             },
           },
           rules: [
-            createRule({ id: "r1", relatedDiagrams: ["usecase"] }),
-            createRule({ id: "r2", relatedDiagrams: ["usecase"] }),
-            createRule({ id: "R3", relatedDiagrams: ["usecase"] }),
-            createRule({ id: "r4", relatedDiagrams: ["usecase"] }),
-            createRule({ id: "r5", relatedDiagrams: ["usecase"] }),
-            createRule({ id: "r6", relatedDiagrams: ["usecase"] }),
-            createRule({ id: "r7", relatedDiagrams: ["usecase"] }),
+            createRule({ id: "r1",  }),
+            createRule({ id: "r2",  }),
+            createRule({ id: "R3",  }),
+            createRule({ id: "r4",  }),
+            createRule({ id: "r5",  }),
+            createRule({ id: "r6",  }),
+            createRule({ id: "r7",  }),
           ],
         }),
       ),
@@ -754,7 +755,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -849,7 +849,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -896,7 +895,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -947,7 +945,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -988,7 +985,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1090,7 +1086,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1124,7 +1119,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1138,7 +1132,7 @@ describe("SidebarMenu", () => {
     expect(toast.message).toHaveBeenCalledWith("当前只有结构化模型，SVG 尚未生成");
   });
 
-  it("shows a warning dot on stale design diagram entries", async () => {
+  it("shows a yellow alert icon on stale design diagram entries", async () => {
     const repository = createSidebarRepository(
       createWorkspaceRecord({
         requirementText: "订单需求",
@@ -1196,12 +1190,10 @@ describe("SidebarMenu", () => {
 
     await user.click(await screen.findByRole("button", { name: "展开 设计模型" }));
 
-    expect(
-      await screen.findByTitle("此设计模型需更新"),
-    ).toHaveClass("bg-warning");
+    expect(screen.getByRole("button", { name: "设计类图" }).querySelector('[data-sidebar-status="stale"] svg')).toHaveClass("text-warning");
   });
 
-  it("maps design-prefixed error keys back to design diagram entries", async () => {
+  it("does not revive design diagram entries from retired alias error keys", async () => {
     const repository = createSidebarRepository(
       createWorkspaceRecord({
         designDiagramErrors: {
@@ -1218,7 +1210,6 @@ describe("SidebarMenu", () => {
       }),
     );
 
-    const user = userEvent.setup();
     render(
       withWorkspaceProviders(
         <>
@@ -1229,10 +1220,9 @@ describe("SidebarMenu", () => {
       ),
     );
 
-    await user.click(await screen.findByRole("button", { name: "展开 设计模型" }));
-
-    expect(screen.getByRole("button", { name: "组件（构件）关系" })).toBeInTheDocument();
-    expect(screen.getByTitle("此设计图生成失败")).toHaveClass("bg-destructive");
+    await screen.findByRole("navigation", { name: "项目导航" });
+    expect(screen.queryByRole("button", { name: "展开 设计模型" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "组件（构件）关系" })).not.toBeInTheDocument();
   });
 
   it("keeps successful design sequence subtasks clickable when a sibling failed", async () => {
@@ -1294,7 +1284,7 @@ describe("SidebarMenu", () => {
     );
 
     await user.click(await screen.findByRole("button", { name: "展开 设计模型" }));
-    await user.click(screen.getByRole("button", { name: "展开 用例实现设计（2）" }));
+    await user.click(screen.getByRole("button", { name: "展开 用例实现设计" }));
 
     await user.click(screen.getByRole("button", { name: "查看动态" }));
 
@@ -1343,7 +1333,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1374,8 +1363,9 @@ describe("SidebarMenu", () => {
       loadWorkspace: vi.fn(async () =>
         createWorkspaceRecord({
           requirementText: "生成 UML",
-          rules: [createRule({ id: "r1", relatedDiagrams: ["class"] })],
+          rules: [createRule({ id: "r1",  })],
           requirementBaseline: createRequirementBaseline(),
+          diagramInputFingerprints: Object.fromEntries(["usecase", "class", "analysis"].map(kind => [kind, snapshotInputFingerprint({ requirementText: "生成 UML", rules: [createRule({ id: "r1" })] })])),
           models: {
             usecase: {
               diagramKind: "usecase",
@@ -1495,7 +1485,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1534,8 +1523,9 @@ describe("SidebarMenu", () => {
       loadWorkspace: vi.fn(async () =>
         createWorkspaceRecord({
           requirementText: "生成 UML",
-          rules: [createRule({ id: "r1", relatedDiagrams: ["usecase"] })],
+          rules: [createRule({ id: "r1",  })],
           requirementBaseline: createRequirementBaseline(),
+          diagramInputFingerprints: Object.fromEntries([modelKey, "analysis:uc_view"].map(modelId => [modelId, snapshotInputFingerprint({ requirementText: "生成 UML", rules: [createRule({ id: "r1" })] })])),
           models: {
             [modelKey]: {
               diagramKind: "usecase",
@@ -1543,7 +1533,7 @@ describe("SidebarMenu", () => {
               title: "用例模型",
               summary: "系统边界",
               notes: [],
-              actors: [],
+              actors: [{ id: "user", name: "用户", actorType: "human", responsibilities: [] }],
               useCases: [
                 {
                   eventFlows: [],
@@ -1565,7 +1555,10 @@ describe("SidebarMenu", () => {
                 },
               ],
               systemBoundaries: [],
-              relationships: [],
+              relationships: [
+                { id: "view-association", type: "association", sourceId: "user", targetId: "uc_view" },
+                { id: "create-association", type: "association", sourceId: "user", targetId: "uc_create" },
+              ],
             },
             analysis: {
               diagramKind: "analysis",
@@ -1581,6 +1574,10 @@ describe("SidebarMenu", () => {
             },
           },
           requirementModelTraceability: [
+            ...["user", "view-association", "create-association"].map(elementId => ({
+              ruleId: "r1", target: { modelId: modelKey, diagramKind: "usecase" as const, elementId,
+                elementKind: elementId === "user" ? "actor" : "relationship", label: elementId },
+            })),
             {
               ruleId: "r1",
               target: {
@@ -1632,7 +1629,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1648,7 +1644,7 @@ describe("SidebarMenu", () => {
     if (designToggle.getAttribute("aria-label") === "展开 设计模型") {
       await user.click(designToggle);
     }
-    await user.click(await screen.findByRole("button", { name: "展开 用例实现设计（2）" }));
+    await user.click(await screen.findByRole("button", { name: "展开 用例实现设计" }));
 
     expect(screen.getByRole("button", { name: "查看活动" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建活动" })).toBeInTheDocument();
@@ -1735,14 +1731,15 @@ describe("SidebarMenu", () => {
       });
     });
 
-    expect(await screen.findByLabelText("查看活动用例实现设计已生成")).toBeInTheDocument();
+    // This fixture has no matching upstream models, so the rendered artifact remains stale.
+    expect(screen.getByRole("button", { name: "查看活动" }).querySelector('[data-sidebar-status="stale"] svg')).toHaveClass("text-warning");
     await user.click(screen.getByRole("button", { name: "查看活动" }));
     expect(await screen.findByRole("button", { name: "关闭 查看活动" })).toBeInTheDocument();
 
     releaseRun();
   });
 
-  it("shows element and relationship counts without design provenance badges", async () => {
+  it("keeps element and relationship menus free of count and provenance badges", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
         createWorkspaceRecord({
@@ -1777,7 +1774,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1788,8 +1784,8 @@ describe("SidebarMenu", () => {
     await userEvent.click(screen.getByRole("button", { name: "展开 用例实现设计" }));
 
     expect(screen.queryByText("用例模型")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "元素" }).parentElement).toHaveTextContent("1");
-    expect(screen.getByRole("button", { name: "关系" }).parentElement).toHaveTextContent("0");
+    expect(screen.getByRole("button", { name: "元素" })).toHaveTextContent(/^元素$/);
+    expect(screen.getByRole("button", { name: "关系" })).toHaveTextContent(/^关系$/);
   });
 
   it("shows primary workspace entries without default secondary pages", async () => {
@@ -1864,7 +1860,7 @@ describe("SidebarMenu", () => {
               tables: [
                 {
                   constraints: [],
-                  relationalConstraints: [{"id":"pk-test","type":"primary-key","columnIds":["id"]}],
+                  relationalConstraints: [{"id":"pk_test","type":"primary-key","columnIds":["id"]}],
                   id: "user",
                   name: "user",
                   columns: [
@@ -1902,7 +1898,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1978,7 +1973,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -2069,7 +2063,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -2086,8 +2079,8 @@ describe("SidebarMenu", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "展开 设计模型" }));
 
-    const sequenceMenu = screen.getByRole("button", { name: "用例实现设计（2）" });
-    const sequenceToggle = screen.getByRole("button", { name: "展开 用例实现设计（2）" });
+    const sequenceMenu = screen.getByRole("button", { name: "用例实现设计" });
+    const sequenceToggle = screen.getByRole("button", { name: "展开 用例实现设计" });
     expect(sequenceMenu).not.toHaveAttribute("aria-expanded");
     expect(sequenceToggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("查看活动")).not.toBeInTheDocument();
@@ -2137,7 +2130,6 @@ describe("SidebarMenu", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };

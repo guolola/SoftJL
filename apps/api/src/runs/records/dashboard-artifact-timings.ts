@@ -18,8 +18,6 @@ export function dashboardArtifactTimings(snapshot: DashboardTimingSnapshot, even
   const starts = new Map<string, string | null>();
   const stages = new Map<string, string | null>();
   const results = new Map<string, DashboardArtifactTiming>();
-  const calls = new Map<string, { stage: string; task: string; startedAt: string | null; completedAt: string | null }>();
-  let unscopedModelReady = false;
   const feasibilityStages: Record<string, string> = {
     feasibilityContext: "generate_context", feasibilityBusinessFlow: "generate_business_flow", feasibilityImplementation: "generate_implementation",
   };
@@ -27,20 +25,12 @@ export function dashboardArtifactTimings(snapshot: DashboardTimingSnapshot, even
     const at = timestamp(dates[index]);
     const task = event.subtaskId ?? event.modelId ?? event.diagramKind;
     const taskKey = `${event.stage}:${task}`;
-    if (event.type === "run_activity" && event.callId && event.stage && task && !event.operation &&
-      ["generate_models", "generate_design_models", "generate_design_sequence"].includes(event.stage)) {
-      if (event.phase === "started") calls.set(event.callId, { stage: event.stage, task, startedAt: at, completedAt: null });
-      const call = calls.get(event.callId);
-      if (call && event.phase === "completed") call.completedAt = at;
-      if (event.phase === "failed") calls.delete(event.callId);
-    }
     if (event.type === "stage_started" && event.stage) stages.set(event.stage, at);
     if (event.type === "stage_progress" && task) {
       if (event.subtaskStatus === "running" && !starts.has(taskKey)) starts.set(taskKey, at);
       if (event.subtaskStatus === "failed") starts.delete(taskKey);
     }
     if (event.type !== "artifact_ready") return;
-    if (event.artifactKind === "model" && !task) unscopedModelReady = true;
     let result: DashboardArtifactTiming | undefined;
     if (event.artifactKind === "document" && snapshot.runKind === "document") {
       result = { artifactId: snapshot.documentId || `document:${snapshot.documentKind}`, artifactType: `document:${snapshot.documentKind}`,
@@ -64,18 +54,5 @@ export function dashboardArtifactTimings(snapshot: DashboardTimingSnapshot, even
     }
     if (result) results.set(result.artifactId, result);
   });
-  // Older runs publish one model-ready event for the batch, while retaining exact
-  // per-model generation calls. Use those boundaries only for completed batches;
-  // a batch duration must never be copied onto every parallel model.
-  if (unscopedModelReady && snapshot.status === "completed") for (const call of calls.values()) {
-    if (!call.completedAt) continue;
-    const exact = (snapshot.models ?? []).filter(model => model.modelId === call.task);
-    const candidates = exact.length ? exact : (snapshot.models ?? []).filter(model => model.diagramKind === call.task);
-    if (candidates.length !== 1) continue;
-    const model = candidates[0]; const id = model.modelId ?? `${snapshot.runKind}:${model.diagramKind}`;
-    if (results.has(id)) continue;
-    results.set(id, { artifactId: id, artifactType: `${snapshot.runKind}:${model.diagramKind}`, name: model.title || null,
-      startedAt: call.startedAt, completedAt: call.completedAt });
-  }
   return [...results.values()];
 }

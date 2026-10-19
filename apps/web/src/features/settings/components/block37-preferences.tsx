@@ -258,7 +258,7 @@ export const SettingRow = ({
   children
 }: {
   label: string
-  hint: string
+  hint?: string
   htmlFor?: string
   children: ReactNode
 }) => (

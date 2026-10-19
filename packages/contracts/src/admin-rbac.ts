@@ -4,12 +4,10 @@ import { z } from "zod";
 export const adminRoleSchema = z.enum([
   "super_admin",
   "system_operator",
-  "course_admin",
   "project_admin",
   "auditor",
   "security_admin",
   "model_admin",
-  "teacher_assistant",
 ]);
 export type AdminRole = z.infer<typeof adminRoleSchema>;
 
@@ -46,7 +44,6 @@ export const adminDataScopeSchema = z.enum([
   "all_projects",
   "all_users",
   "system",
-  "assigned_courses",
   "assigned_projects",
   "audit_logs",
   "provider_configs",
@@ -96,14 +93,6 @@ export const adminRolePermissions = {
     "admin.system_notices.read",
     "admin.system_notices.write",
   ],
-  course_admin: [
-    "admin.metrics.read",
-    "admin.users.read",
-    "admin.projects.read",
-    "admin.projects.write",
-    "admin.runs.read",
-    "admin.documents.read",
-  ],
   project_admin: [
     "admin.projects.read",
     "admin.projects.write",
@@ -146,22 +135,15 @@ export const adminRolePermissions = {
     "admin.rate_limits.read",
     "admin.system_health.read",
   ],
-  teacher_assistant: [
-    "admin.projects.read",
-    "admin.runs.read",
-    "admin.documents.read",
-  ],
 } as const satisfies Record<AdminRole, readonly AdminPermission[]>;
 
 export const adminRoleDataScopes = {
   super_admin: ["all_projects", "all_users", "system"],
   system_operator: ["all_projects", "system"],
-  course_admin: ["assigned_courses"],
   project_admin: ["assigned_projects"],
   auditor: ["audit_logs", "all_projects"],
   security_admin: ["all_users", "audit_logs", "system"],
   model_admin: ["provider_configs", "system"],
-  teacher_assistant: ["assigned_courses"],
 } as const satisfies Record<AdminRole, readonly AdminDataScope[]>;
 
 export const adminRoleCapabilities = {
@@ -177,14 +159,6 @@ export const adminRoleCapabilities = {
     "viewDocuments",
     "viewRateLimits",
     "viewSystemHealth",
-  ],
-  course_admin: [
-    "viewDashboard",
-    "viewUsers",
-    "viewProjects",
-    "manageProjects",
-    "viewRuns",
-    "viewDocuments",
   ],
   project_admin: [
     "viewProjects",
@@ -226,5 +200,4 @@ export const adminRoleCapabilities = {
     "viewRateLimits",
     "viewSystemHealth",
   ],
-  teacher_assistant: ["viewProjects", "viewRuns", "viewDocuments"],
 } as const satisfies Record<AdminRole, readonly AdminCapability[]>;

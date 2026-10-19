@@ -1,6 +1,6 @@
 // Owns generation result and confirmation dialog state for the session provider.
 import { useCallback, useState } from "react";
-import type { RequirementBaseline } from "@uml-platform/contracts";
+import { requirementBaselineTraceEntries, type RequirementBaseline } from "@uml-platform/contracts";
 import {
   completedRunResultMessage,
   generationResultFeedback,
@@ -60,7 +60,7 @@ export function failedRunResultDialog(input: {
     ? input.failure.details.ruleIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
     : [];
   const ruleLabels = ruleIds.map((ruleId) => {
-    const requirementId = input.requirementBaseline?.requirements.find(
+    const requirementId = (input.requirementBaseline ? requirementBaselineTraceEntries(input.requirementBaseline) : []).find(
       (requirement) => requirement.sourceRuleId === ruleId,
     )?.id;
     return requirementId ? `${ruleId}（${requirementId}）` : ruleId;
@@ -132,9 +132,6 @@ export function requirementRunCompletionDialog(input: {
   diagramFailureCount: number;
   isRulesOnly: boolean;
   ignoredCount: number;
-  qualityHintCount: number;
-  repairFailedCount: number;
-  repairPendingCount: number;
   runId: string;
 }): GenerationResultDialogState {
   return {
@@ -145,22 +142,14 @@ export function requirementRunCompletionDialog(input: {
           ? i18n.t("generation.dialog.titles.rulesCompleted")
           : i18n.t("generation.dialog.titles.requirementsCompleted"),
     tone:
-      input.qualityHintCount > 0 ||
-      input.repairPendingCount > 0 ||
-      input.repairFailedCount > 0 ||
-      input.ignoredCount > 0 ||
-      input.diagramFailureCount > 0
+      input.ignoredCount > 0 || input.diagramFailureCount > 0
         ? "warning"
         : "success",
     message: [
-      input.repairFailedCount > 0
-        ? i18n.t("generation.dialog.repairFailedCount", { count: input.repairFailedCount })
-        : input.repairPendingCount > 0
-          ? i18n.t("generation.dialog.repairPendingCount", { count: input.repairPendingCount })
-          : completedRunResultMessage({
-              qualityHintCount: input.qualityHintCount,
-              diagramFailureCount: input.diagramFailureCount,
-            }),
+      completedRunResultMessage({
+        qualityHintCount: 0,
+        diagramFailureCount: input.diagramFailureCount,
+      }),
       input.ignoredCount > 0
         ? i18n.t("requirements.source.ignoredSummary", { count: input.ignoredCount })
         : null,

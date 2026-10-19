@@ -1,8 +1,10 @@
 // Centralizes accepted-rule selection and freshness checks for feasibility artifacts and reports.
 import {
   buildAcceptedRequirementSnapshot,
+  buildFeasibilityContextFingerprint,
   buildFeasibilityImplementationFingerprint,
   readFeasibilityBusinessFlowArtifact,
+  completeFeasibilityImplementationPlanSchema,
   type FeasibilityArtifactKind,
 } from "@uml-platform/contracts";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
@@ -16,13 +18,21 @@ export function acceptedFeasibilityRules(workspace: WorkspaceRecord) {
   ).rules;
 }
 
-export function feasibilityArtifactState(workspace: WorkspaceRecord) {
+export type FeasibilityFreshnessInput = Pick<WorkspaceRecord,
+  "rules" | "requirementBaseline" | "feasibilityBusinessFlow" |
+  "feasibilityContextModel" | "feasibilityContextPlantUml" | "feasibilityContextSvg" |
+  "feasibilityContextFingerprint" | "feasibilityInputs" |
+  "feasibilityImplementationPlan" | "feasibilityImplementationFingerprint">;
+
+export function feasibilityArtifactState(workspace: FeasibilityFreshnessInput) {
   const requirementSource = buildAcceptedRequirementSnapshot(
     workspace.rules,
     workspace.requirementBaseline,
   );
   const rules = requirementSource.rules;
-  const currentContextFingerprint = requirementSource.snapshot.fingerprint;
+  const currentContextFingerprint = buildFeasibilityContextFingerprint({
+    rules, requirementBaseline: requirementSource.baseline, inputs: workspace.feasibilityInputs,
+  });
   const businessFlow = readFeasibilityBusinessFlowArtifact(workspace.feasibilityBusinessFlow);
   const businessFlowExists = Boolean(businessFlow);
   const businessFlowStale = businessFlowExists &&
@@ -44,12 +54,8 @@ export function feasibilityArtifactState(workspace: WorkspaceRecord) {
     inputs: workspace.feasibilityInputs,
   });
   const implementationPlan = workspace.feasibilityImplementationPlan;
-  const recommendedImplementation = implementationPlan?.candidates.find(
-    (candidate) => candidate.id === implementationPlan.recommendedCandidateId,
-  )?.implementation;
-  const implementationExists = Boolean(
-    implementationPlan && recommendedImplementation,
-  );
+  // A matching fingerprint cannot certify a plan that lacks the current implementation contract.
+  const implementationExists = completeFeasibilityImplementationPlanSchema.safeParse(implementationPlan).success;
   const implementationStale = Boolean(
     implementationExists && (!contextExists || contextStale || !businessFlowExists || businessFlowStale ||
       workspace.feasibilityImplementationFingerprint !== currentImplementationFingerprint),

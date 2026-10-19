@@ -17,10 +17,10 @@ export type UserSettings = {
   providerLabel: string;
   providerDefaultModelSeededFor: string;
   defaultModel: string;
-  imageModel: "gpt-image-2" | "gemini-3.1-flash-image-preview-2k" | "nano-banana-pro";
-  fontSize: "sm" | "md" | "lg";
   autoGenerate: boolean;
   showStaleBanner: boolean;
+  /** Plays a short chime when a top-level generation task completes. */
+  completionSound: boolean;
 };
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
@@ -30,10 +30,9 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   providerLabel: "",
   providerDefaultModelSeededFor: "",
   defaultModel: "",
-  imageModel: "gpt-image-2",
-  fontSize: "md",
   autoGenerate: false,
   showStaleBanner: true,
+  completionSound: true,
 };
 
 export function loadUserSettings(): UserSettings {
@@ -75,16 +74,8 @@ export function loadUserSettings(): UserSettings {
                 structuredOutputMode?: unknown;
                 modeLabel?: unknown;
               };
-              const structuredOutputMode =
-                capability.structuredOutputMode === "strict_json" ||
-                capability.structuredOutputMode === "json_object" ||
-                capability.structuredOutputMode === "compatible"
-                  ? capability.structuredOutputMode
-                  : capability.supportsJsonSchema === true
-                    ? "strict_json"
-                    : capability.supportsJsonObject === true
-                      ? "json_object"
-                      : "compatible";
+              const structuredOutputMode = capability.structuredOutputMode;
+              if (structuredOutputMode !== "strict_json" && structuredOutputMode !== "json_object" && structuredOutputMode !== "compatible") return map;
               map[model] = {
                 id: typeof capability.id === "string" ? capability.id : model,
                 structuredOutputMode,
@@ -128,10 +119,9 @@ export function loadUserSettings(): UserSettings {
       providerLabel,
       providerDefaultModelSeededFor,
       defaultModel,
-      imageModel,
-      fontSize,
       autoGenerate,
       showStaleBanner,
+      completionSound,
     } = next;
     return {
       providerConfigId,
@@ -140,10 +130,9 @@ export function loadUserSettings(): UserSettings {
       providerLabel,
       providerDefaultModelSeededFor,
       defaultModel,
-      imageModel,
-      fontSize,
       autoGenerate,
       showStaleBanner,
+      completionSound: typeof completionSound === "boolean" ? completionSound : DEFAULT_USER_SETTINGS.completionSound,
     };
   } catch {
     return DEFAULT_USER_SETTINGS;

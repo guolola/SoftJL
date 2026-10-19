@@ -13,7 +13,7 @@ test("parallel calls and retries do not close a stage; the pipeline closes it on
   const run = record();
   const lifecycle = createStageLifecycle(run);
   lifecycle.advance("generate_models");
-  emitEvent(run, { type: "stage_started", stage: "generate_models", tracksCompletion: true });
+  emitEvent(run, { type: "stage_started", stage: "generate_models" });
   const a = createRunLlmChunkHandlers({ record: run, stage: "generate_models", subtaskId: "usecase" });
   const b = createRunLlmChunkHandlers({ record: run, stage: "generate_models", subtaskId: "activity" });
   a.onStart?.(); b.onStart?.(); a.onComplete?.();
@@ -37,7 +37,7 @@ test("advancing closes the prior pass and preserves partial failure and review o
   const lifecycle = createStageLifecycle(run);
   for (const [stage, status] of [["generate_models", "failed"], ["generate_plantuml", "completed"], ["render_svg", "pending_review"]] as const) {
     lifecycle.advance(stage);
-    emitEvent(run, { type: "stage_started", stage, tracksCompletion: true });
+    emitEvent(run, { type: "stage_started", stage });
     emitEvent(run, { type: "stage_progress", stage, progress: 80, subtaskId: "audit", subtaskStatus: status });
   }
   emitEvent(run, { type: "completed", snapshot: run.snapshot });
@@ -51,7 +51,7 @@ for (const type of ["cancelled", "failed"] as const) test(`${type} flushes buffe
   createStageLifecycle(run);
   const sink = createRunLlmChunkHandlers({ record: run, stage: "generate_document_text" });
   sink.onChunk("已经收到的正文");
-  emitEvent(run, type === "cancelled" ? { type, message: "停止" } : { type, error: { code: "RUN_LEGACY_FAILURE", message: "失败", retryable: false } });
+  emitEvent(run, type === "cancelled" ? { type, message: "停止" } : { type, error: { code: "RUN_INTERNAL_ERROR", message: "失败", retryable: false } });
   assert.deepEqual(run.events.slice(-3).map((event) => event.type), ["run_activity", "stage_finished", type]);
   const stage = run.events.at(-2);
   assert.equal(stage?.type === "stage_finished" && stage.status, type);

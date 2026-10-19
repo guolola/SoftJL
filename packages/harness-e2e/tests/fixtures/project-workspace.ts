@@ -1,5 +1,6 @@
 // Exercises project model navigation and traceability with production-shaped stale scoped models.
 import { type Page } from "@playwright/test";
+import { designInputFingerprint, snapshotInputFingerprint } from "@uml-platform/contracts";
 
 export const projectId = "project-model-navigation";
 const now = "2026-06-11T04:00:00.000Z";
@@ -21,6 +22,7 @@ function useCase(id: string, name: string) {
     preconditions: [],
     postconditions: [],
     primaryActorId: "student",
+    systemBoundaryId: "seat-reservation-system",
     supportingActorIds: [],
     eventFlows: [
       {
@@ -68,7 +70,7 @@ function sequenceModel(id: string, sourceUseCaseName: string) {
   };
 }
 
-function createWorkspaceState() {
+export function createWorkspaceState() {
   const currentUseCases = [
     useCase("uc-1", "微信授权登录"),
     useCase("uc-2", "查询座位"),
@@ -92,7 +94,7 @@ function createWorkspaceState() {
         diagramKind: "sequence",
         modelId: `sequence:${id}`,
         svg: `<svg width="180" height="60"><text x="8" y="24">${name}</text></svg>`,
-        renderMeta: { engine: "plantuml" },
+        renderMeta: { engine: "plantuml", generatedAt: now, sourceLength: 1, durationMs: 1 },
       },
     ]),
   );
@@ -107,9 +109,8 @@ function createWorkspaceState() {
       {
         id: "r1",
         text: "学生预约座位时系统必须校验座位可用并记录预约。",
-        category: "功能需求",
-        priority: "must",
-        relatedDiagrams: ["usecase"],
+        type: "functional" as const,
+
       },
     ],
     models: {
@@ -187,7 +188,7 @@ function createWorkspaceState() {
       usecase: {
         diagramKind: "usecase",
         svg: '<svg width="180" height="60"><text x="8" y="24">用例模型</text></svg>',
-        renderMeta: { engine: "plantuml" },
+        renderMeta: { engine: "plantuml", generatedAt: now, sourceLength: 1, durationMs: 1 },
       },
     },
     diagramErrors: {},
@@ -231,6 +232,7 @@ function createWorkspaceState() {
             chineseName: "用户",
             englishName: "user",
             type: "数据表",
+            relationalConstraints: [{ id: "pk_user", type: "primary-key", columnIds: ["user_id"] }],
             constraints: [],
             columns: [
               {
@@ -263,6 +265,7 @@ function createWorkspaceState() {
             chineseName: "预约",
             englishName: "reservation",
             type: "数据表",
+            relationalConstraints: [{ id: "pk_reservation", type: "primary-key", columnIds: ["reservation_id"] }],
             constraints: [],
             columns: [
               {
@@ -307,6 +310,7 @@ function createWorkspaceState() {
           elementKind: "class",
           label: "SeatReservationService",
         },
+        upstreamDesignRefs: [{ diagramKind: "sequence", modelId: "sequence:uc-3", elementId: "send-reservation-request", elementKind: "message", label: "发送预约请求" }],
         targets: [
           {
             diagramKind: "usecase",
@@ -324,13 +328,13 @@ function createWorkspaceState() {
       class: {
         diagramKind: "class",
         svg: '<svg width="220" height="80"><text x="8" y="28">SeatReservationService</text></svg>',
-        renderMeta: { engine: "plantuml" },
+        renderMeta: { engine: "plantuml", generatedAt: now, sourceLength: 1, durationMs: 1 },
       },
       table: {
         diagramKind: "table",
         svg:
           '<svg width="260" height="120"><g><rect x="4" y="4" width="160" height="92"/><text x="12" y="24">user</text></g><text x="12" y="48">user_id : varchar</text><text x="12" y="72">openid : varchar</text></svg>',
-        renderMeta: { engine: "plantuml" },
+        renderMeta: { engine: "plantuml", generatedAt: now, sourceLength: 1, durationMs: 1 },
       },
     },
     designDiagramErrors: {},
@@ -389,6 +393,7 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
         json({
           project: {
             id: projectId,
+            projectMode: "professional",
             name: "座位预约系统",
             description: "模型导航验收项目",
             visibility: "private",
@@ -408,6 +413,7 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
             joinedAt: now,
           },
           capabilities: ["update_project", "start_runs"],
+          generationExecutionMode: "provider",
         }),
       );
       return;
@@ -444,11 +450,22 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
     }
 
     if (pathname === `/api/projects/${projectId}/workspace`) {
+      const saved = createWorkspaceState();
+      const savedRulesFingerprint = snapshotInputFingerprint({ requirementText: saved.requirementText, rules: saved.rules });
+      const savedDesignFingerprint = designInputFingerprint(Object.values(saved.models), saved.requirementModelTraceability);
+      const state = {
+        ...saved,
+        diagramInputFingerprints: Object.fromEntries(Object.keys(saved.models).map(id => [id, savedRulesFingerprint])),
+        designInputFingerprints: Object.fromEntries(Object.keys(saved.designModels).map(id => [id, savedDesignFingerprint])),
+        ...workspaceOverrides,
+      };
+      // Freshly accepted fixture rules must carry the same source fingerprint as a real saved workspace.
+      const requirementInputFingerprint = snapshotInputFingerprint({ requirementText: state.requirementText, rules: state.rules });
       await route.fulfill(
         json({
           projectId,
           version: 3,
-          state: { ...createWorkspaceState(), ...workspaceOverrides },
+          state: { ...state, requirementInputFingerprint, ...("requirementInputFingerprint" in workspaceOverrides ? { requirementInputFingerprint: workspaceOverrides.requirementInputFingerprint } : {}) },
         }),
       );
       return;

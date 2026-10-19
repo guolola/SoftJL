@@ -1,8 +1,10 @@
 // Derives session UI state from run event stream messages without touching React state.
-import type { RunEvent } from "@uml-platform/contracts";
+import type { RunEventInput } from "@uml-platform/contracts";
 import { localizeRunFailure } from "../../../shared/i18n/api-errors";
 
-export function shouldRefreshRunSnapshotFromEvent(event: RunEvent) {
+export function shouldRefreshRunSnapshotFromEvent(event: RunEventInput) {
+  if (event.type === "artifact_ready" &&
+    ["feasibilityContext", "feasibilityBusinessFlow", "feasibilityImplementation"].includes(event.artifactKind)) return true;
   if (
     event.type === "artifact_ready" &&
     (event.artifactKind === "model" ||
@@ -18,7 +20,7 @@ export function shouldRefreshRunSnapshotFromEvent(event: RunEvent) {
   );
 }
 
-export function isTerminalRunEvent(event: RunEvent) {
+export function isTerminalRunEvent(event: RunEventInput) {
   return (
     event.type === "completed" ||
     event.type === "failed" ||
@@ -26,7 +28,7 @@ export function isTerminalRunEvent(event: RunEvent) {
   );
 }
 
-export function statusFromRunEvent(event: RunEvent) {
+export function statusFromRunEvent(event: RunEventInput) {
   if (event.type === "queued") return "queued";
   if (event.type === "failed") return "failed";
   if (event.type === "completed") return "completed";

@@ -79,18 +79,10 @@ const loginIdentifierSchema = z
   .transform((value) => value.toLowerCase());
 export const authLoginRequestSchema = z
   .object({
-    identifier: loginIdentifierSchema.optional(),
-    email: emailAddressSchema.optional(),
+    identifier: loginIdentifierSchema,
     password: z.string().min(1).max(128),
   })
-  .refine((input) => Boolean(input.identifier ?? input.email), {
-    message: "Login identifier is required",
-    path: ["identifier"],
-  })
-  .transform((input) => ({
-    identifier: input.identifier ?? input.email ?? "",
-    password: input.password,
-  }));
+  .strict();
 export type AuthLoginRequest = z.infer<typeof authLoginRequestSchema>;
 
 export const authMfaChallengeResponseSchema = z

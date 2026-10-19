@@ -1,14 +1,9 @@
 // Verifies top bar navigation, run controls, theme toggles, and account/project menus.
-import { createDesignRunSnapshot } from "../../../test/artifact-fixtures";
 import { installReactFlowTestLayout } from '../../../test/react-flow-test-layout';
 import { useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-
-  DesignRunSnapshot,
-} from "@uml-platform/contracts";
 import type { WorkspaceRepository } from "../../../services/workspace-repository";
 import type { PlatformRunSummary } from "../../user-platform/services/platform-api";
 import {
@@ -58,8 +53,6 @@ function storeManagedUserSettings() {
       providerConfigId: "provider-config-1",
       defaultModel: "gpt-5.5",
       providerModelOptions: ["gpt-5.5"],
-      imageModel: "nano-banana-pro",
-      fontSize: "md",
       autoGenerate: false,
       showStaleBanner: true,
     }),
@@ -176,20 +169,6 @@ function LineageRerunArtifactHarness() {
 }
 
 
-function TopBarRestoreHarness() {
-  const { restoreRunHistory } = useWorkspaceSession();
-  return (
-    <>
-      <ProjectWorkspaceActions projectId="library-booking" onOpenDrawer={() => {}} />
-      <ProjectGenerationTasksDrawerContent />
-      <button type="button" onClick={() => void restoreRunHistory("history-design-trace")}>
-        恢复设计追踪
-      </button>
-    </>
-  );
-}
-
-
 describe("TopBar", () => {
   beforeEach(() => {
     storeManagedUserSettings();
@@ -224,7 +203,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -294,7 +272,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -335,7 +312,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -380,7 +356,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -433,7 +408,6 @@ describe("TopBar", () => {
       within(dialog).getByTestId("lineage-node-document:requirementsSpec"),
     ).toHaveAttribute("data-lineage-kind", "document");
 
-
     const usecaseNode = within(dialog).getByTestId(
       "lineage-node-requirement-model:usecase",
     );
@@ -461,9 +435,9 @@ describe("TopBar", () => {
           rules: [
             {
               id: "REQ-001",
-              category: "功能需求",
+              type: "functional" as const,
               text: "用户可以预约座位。",
-              relatedDiagrams: ["usecase"],
+
             },
           ],
           models: {
@@ -509,7 +483,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -556,9 +529,9 @@ describe("TopBar", () => {
           rules: [
             {
               id: "REQ-001",
-              category: "功能需求",
+              type: "functional" as const,
               text: "用户可以预约座位。",
-              relatedDiagrams: ["usecase"],
+
             },
           ],
           models: {
@@ -585,7 +558,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -620,7 +592,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -657,7 +628,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -671,9 +641,9 @@ describe("TopBar", () => {
     expect(screen.getByRole("button", { name: "打开主导航" })).toHaveClass("xl:hidden");
 
     await user.click(screen.getByRole("button", { name: "打开主导航" }));
-    await user.click((await screen.findByRole("menuitem", { name: /^项目/u })));
+    await user.click((await screen.findByRole("menuitem", { name: "次数与账单" })));
 
-    expect(onNavigate).toHaveBeenCalledWith("/projects");
+    expect(onNavigate).toHaveBeenCalledWith("/account/billing");
   });
 
   it("closes account modal on route changes without exposing purchase navigation", async () => {
@@ -687,7 +657,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -731,7 +700,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -763,7 +731,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -852,7 +819,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -942,7 +908,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1168,10 +1133,10 @@ describe("TopBar", () => {
     await user.click(screen.getByRole("tab", { name: "模型配置" }));
 
     expect(screen.getAllByText("模型配置").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("模型托管配置").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("模型配置").length).toBeGreaterThan(0);
     expect(await screen.findByText(/课程 OpenAI 托管配置/u)).toBeInTheDocument();
     expect(screen.getByText("修改后自动重新生成规则")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "添加供应商" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加自己的模型密钥" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重置" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "测试托管配置" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存更改" })).toBeInTheDocument();
@@ -1188,7 +1153,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1266,9 +1230,9 @@ describe("TopBar", () => {
           rules: [
             {
               id: "r1",
-              category: "功能需求",
+              type: "functional" as const,
               text: "系统生成 UML。",
-              relatedDiagrams: ["usecase"],
+
             },
           ],
           plantUml: {
@@ -1285,7 +1249,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1314,7 +1277,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1349,7 +1311,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1357,7 +1318,7 @@ describe("TopBar", () => {
       runId: "server-run-active",
       status: "running",
       stage: "generate_models",
-      runKind: "requirements",
+      operationType: "requirement_modeling" as const, runKind: "requirements",
       model: "gpt-5.5",
     };
 
@@ -1375,7 +1336,8 @@ describe("TopBar", () => {
       ),
     );
 
-    expect(screen.getByText("生成中 40%")).toBeInTheDocument();
+    // Active work shows elapsed time instead of a stage percentage.
+    expect(screen.getAllByText(/^生成中( · 已用 [\d:]+)?$/).length).toBeGreaterThan(0);
     expect(screen.getAllByText("生成需求模型").length).toBeGreaterThan(0);
     expect(screen.queryByText("server-run-active")).not.toBeInTheDocument();
     expect(screen.queryByText(/模型 gpt-5\.5/)).not.toBeInTheDocument();
@@ -1388,9 +1350,9 @@ describe("TopBar", () => {
       rules: [
         {
           id: "r1",
-          category: "功能需求",
+          type: "functional" as const,
           text: "系统生成 UML。",
-          relatedDiagrams: ["usecase"],
+
         },
       ],
     });
@@ -1411,7 +1373,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1419,7 +1380,7 @@ describe("TopBar", () => {
       runId: "server-run-active-with-local-terminal",
       status: "running",
       stage: "generate_models",
-      runKind: "requirements",
+      operationType: "requirement_modeling" as const, runKind: "requirements",
       model: "gpt-5.5",
       createdAt: "2026-06-21T00:00:00.000Z",
       startedAt: "2026-06-21T00:00:01.000Z",
@@ -1442,7 +1403,7 @@ describe("TopBar", () => {
       );
     });
 
-    await waitFor(() => expect(screen.getByText("生成中 40%")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText(/^生成中( · 已用 [\d:]+)?$/).length).toBeGreaterThan(0));
     expect(
       within(screen.getByTestId("generation-transcript")).getByText(
         "此任务未保存完整回复，当前仅展示可用的执行记录。",
@@ -1468,7 +1429,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1476,7 +1436,7 @@ describe("TopBar", () => {
       runId: "older-server-run-completed",
       status: "completed",
       stage: "render_svg",
-      runKind: "requirements",
+      operationType: "requirement_modeling" as const, runKind: "requirements",
       updatedAt: "2026-06-18T08:30:00.000Z",
     };
 
@@ -1511,7 +1471,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1519,7 +1478,7 @@ describe("TopBar", () => {
       runId: "server-run-failed",
       status: "failed",
       stage: "generate_design_models",
-      runKind: "design",
+      operationType: "design_modeling" as const, runKind: "design",
       updatedAt: "2026-06-18T09:30:00.000Z",
       errorMessage: "缺少设计类图",
     };
@@ -1527,7 +1486,7 @@ describe("TopBar", () => {
       runId: "server-run-completed",
       status: "completed",
       stage: "render_svg",
-      runKind: "requirements",
+      operationType: "requirement_modeling" as const, runKind: "requirements",
       updatedAt: "2026-06-18T08:30:00.000Z",
     };
 
@@ -1557,7 +1516,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1565,7 +1523,7 @@ describe("TopBar", () => {
       runId: "server-run-interrupted",
       status: "interrupted",
       stage: "generate_models",
-      runKind: "requirements",
+      operationType: "requirement_modeling" as const, runKind: "requirements",
       model: "gpt-5.5",
       updatedAt: "2026-06-18T10:30:00.000Z",
     };
@@ -1579,7 +1537,7 @@ describe("TopBar", () => {
 
     expect(screen.getAllByText("服务中断，可重试").length).toBeGreaterThan(0);
     expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
-    expect(screen.getByText("服务中断，可从运行历史重试或重新运行")).toBeInTheDocument();
+    expect(screen.getByText("服务中断，请在生成任务中查看错误或重试")).toBeInTheDocument();
     expect(screen.queryByText("server-run-interrupted")).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
@@ -1595,7 +1553,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1603,7 +1560,7 @@ describe("TopBar", () => {
       runId: "server-run-retry",
       status: "queued",
       stage: "generate_models",
-      runKind: "requirements",
+      operationType: "requirement_modeling" as const, runKind: "requirements",
       sourceRunId: "server-run-failed",
       sourceAction: "retry",
       sourceRunStatus: "failed",
@@ -1618,7 +1575,7 @@ describe("TopBar", () => {
       ),
     );
 
-    expect(screen.getAllByText("排队中 0%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^排队中( · 已用 [\d:]+)?$/).length).toBeGreaterThan(0);
     const statusCard = screen.getByTestId("generation-transcript");
     expect(within(statusCard).queryByText("运行关系")).not.toBeInTheDocument();
     expect(within(statusCard).queryByText("重试自 server-run-failed")).not.toBeInTheDocument();
@@ -1632,9 +1589,9 @@ describe("TopBar", () => {
       rules: [
         {
           id: "r1",
-          category: "功能需求",
+          type: "functional" as const,
           text: "系统生成 UML。",
-          relatedDiagrams: ["usecase"],
+
         },
       ],
     });
@@ -1674,7 +1631,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1761,7 +1717,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1791,27 +1746,17 @@ describe("TopBar", () => {
       requirementText: "生成 UML",
       selectedDiagrams: ["usecase", "class", "activity"],
       rules: [
+        { id: "r2", type: "data" as const, text: "系统记录模型名称与模型内容。" },
         {
           id: "r1",
-          category: "功能需求",
+          type: "functional" as const,
           text: "系统生成 UML。",
-          relatedDiagrams: ["usecase", "class", "activity"],
+
         },
       ],
       models: [
-        {
-        summary: "测试模型",
-        title: "测试模型",
-        notes: [],
-        systemBoundaries: [],
-        relationships: [], diagramKind: "usecase", actors: [], useCases: [] },
-        {
-        summary: "测试模型",
-        title: "测试模型",
-        notes: [],
-        relationships: [],
-        interfaces: [],
-        enums: [], diagramKind: "class", classes: [] },
+        { summary: "", title: "用例模型", relationships: [], systemBoundaries: [],  notes: [], diagramKind: "usecase", actors: [], useCases: [] },
+        { summary: "", title: "类图", relationships: [], interfaces: [], enums: [],  notes: [], diagramKind: "class", classes: [] },
       ],
       plantUml: [],
       svgArtifacts: [],
@@ -1832,11 +1777,12 @@ describe("TopBar", () => {
         createWorkspaceRecord({
           requirementText: "生成 UML",
           rules: [
+        { id: "r2", type: "data" as const, text: "系统记录模型名称与模型内容。" },
             {
               id: "r1",
-              category: "功能需求",
+              type: "functional" as const,
               text: "系统生成 UML。",
-              relatedDiagrams: ["usecase", "class", "activity"],
+
             },
           ],
         }),
@@ -1892,7 +1838,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1908,25 +1853,23 @@ describe("TopBar", () => {
 
     const stageSection = document.querySelector('[data-slot="ai-conversation"]');
     expect(stageSection).toBeTruthy();
-    expect(within(stageSection as HTMLElement).getByText("生成需求模型")).toBeInTheDocument();
+    expect(within(stageSection as HTMLElement).getByText("需求建模助手")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "正在思考" })).toHaveAttribute("aria-expanded", "true");
     expect(within(stageSection as HTMLElement).queryByText("生成图形描述")).not.toBeInTheDocument();
     expect(within(stageSection as HTMLElement).queryByText("生成图形预览")).not.toBeInTheDocument();
-    expect(within(stageSection as HTMLElement).getAllByText("用例模型")).toHaveLength(1);
-    expect(within(stageSection as HTMLElement).getAllByText("领域概念模型")).toHaveLength(1);
-    expect(within(stageSection as HTMLElement).getByText(/领域概念模型存在待确认追踪关系/)).toBeInTheDocument();
+    expect(within(stageSection as HTMLElement).getByRole("heading", { name: "生成用例模型" })).toBeInTheDocument();
+    expect(within(stageSection as HTMLElement).getByRole("heading", { name: "生成领域概念模型" })).toBeInTheDocument();
+    expect(within(stageSection as HTMLElement).queryByText(/领域概念模型存在待确认追踪关系/)).not.toBeInTheDocument();
+    expect(within(stageSection as HTMLElement).getAllByText("待确认").length).toBeGreaterThan(0);
     expect(screen.queryByText("模型子任务")).not.toBeInTheDocument();
-    const queuedCall = within(stageSection as HTMLElement).getAllByText("界面关系")
-      .map((label) => label.closest('[data-slot="generation-call"]'))
-      .find(Boolean)!;
-    expect(within(queuedCall as HTMLElement).getByText("排队中")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "排队进度" })).getByText("界面关系")).toBeInTheDocument();
 
     completeRun();
+    await user.click(await screen.findByRole("button", { name: "我知道了" }));
+    await waitFor(() => expect(screen.getByRole("region", { name: "输出总结" })).toHaveTextContent("生成结果格式错误，请重试。"));
     const updatedStageSection = document.querySelector('[data-slot="ai-conversation"]');
     expect(updatedStageSection).toBeTruthy();
-    const retryButton = (
-      await within(updatedStageSection as HTMLElement).findByText("重试此模型")
-    ).closest("button");
-    expect(retryButton).toBeEnabled();
+    expect(within(updatedStageSection as HTMLElement).queryByRole("button", { name: "重试此模型" })).not.toBeInTheDocument();
     expect(
       within(updatedStageSection as HTMLElement).queryByText("界面关系 traceability 缺失"),
     ).not.toBeInTheDocument();
@@ -1935,14 +1878,14 @@ describe("TopBar", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("labels instance-level model retry as same-kind rerun and uses diagram-kind scope", async () => {
+  it("does not offer a separate instance-level rerun for a partially failed task", async () => {
     let completeRun!: () => void;
     const rules = [
       {
         id: "r1",
-        category: "功能需求" as const,
+        type: "functional" as const,
         text: "用户可以查看图书。",
-        relatedDiagrams: ["usecase" as const, "analysis" as const],
+
       },
     ];
     const requirementText = "用户可以查看图书。";
@@ -2034,7 +1977,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -2050,26 +1992,9 @@ describe("TopBar", () => {
     completeRun();
 
     await user.click(await screen.findByRole("button", { name: "我知道了" }));
-    const retryButton = await screen.findByRole("button", {
-      name: "重试全部同类模型",
-    });
-    expect(retryButton).toHaveAttribute(
-      "title",
-      "当前重试按模型类型执行，会重试同类模型而不是单个实例",
-    );
-    await waitFor(() => {
-      expect(retryButton).toBeEnabled();
-    });
-
-    fireEvent.click(retryButton);
-    await user.click(await screen.findByRole("button", { name: "确认生成" }));
-
-    expect(startRun).toHaveBeenCalledTimes(2);
-    expect(startRun).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        selectedDiagrams: ["analysis"],
-      }),
-    );
+    expect(screen.getByRole("region", { name: "输出总结" })).toHaveTextContent("绘图器故障，请重试。");
+    expect(screen.queryByRole("button", { name: "重试全部同类模型" })).not.toBeInTheDocument();
+    expect(startRun).toHaveBeenCalledTimes(1);
   });
 
   it("constrains long generation task content inside the drawer width", async () => {
@@ -2077,18 +2002,19 @@ describe("TopBar", () => {
       "RequirementBaselineBlockedDownstreamGenerationBecauseLibraryRulesNeedManualReview".repeat(
         8,
       );
-    const longStream = `{"rules":[{"text":"${longToken}","relatedDiagrams":["usecase","activity"]}]}`;
+    const longStream = `{"rules":[{"text":"${longToken}"}]}`;
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
         createWorkspaceRecord({
           requirementText: "生成 UML",
           selectedDiagramTypes: ["usecase"],
           rules: [
+        { id: "r2", type: "data" as const, text: "系统记录模型名称与模型内容。" },
             {
               id: "r1",
-              category: "功能需求",
+              type: "functional" as const,
               text: "系统生成 UML。",
-              relatedDiagrams: ["usecase", "class", "activity"],
+
             },
           ],
         }),
@@ -2120,7 +2046,6 @@ describe("TopBar", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -2141,69 +2066,6 @@ describe("TopBar", () => {
     expect(transcript).not.toHaveTextContent(longStream);
     expect(transcript.querySelector("pre")).toBeNull();
     expect(transcript.querySelector('[data-slot="scroll-area-viewport"]')).toBeInTheDocument();
-  });
-
-  it("shows design debug trace from restored design history", async () => {
-    const designSnapshot: DesignRunSnapshot = createDesignRunSnapshot({
-      runId: "design-trace-run",
-      requirementText: "生成设计模型",
-      selectedDiagrams: ["sequence"],
-      rules: [],
-      requirementModels: [],
-      models: [],
-      plantUml: [],
-      svgArtifacts: [],
-      diagramErrors: {},
-      designTrace: [
-        {
-          stage: "render_svg",
-          attempt: 1,
-          kind: "render_error",
-          diagramKind: "sequence",
-          plantUmlSource: "@startuml\n用户 -> 系统: 生成\n@enduml",
-          errorMessage: "Syntax Error? (line 2)",
-          createdAt: "2026-05-16T07:00:00.000Z",
-        },
-      ],
-      currentStage: "render_svg",
-      status: "failed",
-      error: {
-        code: "RUN_RENDER_FAILED",
-        message: "Syntax Error? (line 2)",
-        category: "render",
-        retryable: true,
-      },
-    });
-    const repository: WorkspaceRepository = {
-      loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
-      startRun: vi.fn(),
-      subscribeToRun: vi.fn(),
-      getRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
-      saveRunHistory: vi.fn(),
-      listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => ({
-        id: "history-design-trace",
-        createdAt: "2026-05-16T07:00:00.000Z",
-        title: "设计追踪",
-        providerModel: "gpt-5.5",
-        snapshot: designSnapshot,
-      })),
-      deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
-    };
-
-    const user = userEvent.setup();
-    render(withWorkspaceProviders(<TopBarRestoreHarness />, repository));
-
-    await user.click(screen.getByRole("button", { name: "恢复设计追踪" }));
-
-    await screen.findByTestId("generation-transcript");
-    expect(screen.queryByText("设计调试追踪")).not.toBeInTheDocument();
-    expect(screen.queryByText(/渲染图像 \/ sequence \/ 第 1 次 \/ 渲染错误/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "复制追踪内容" })).not.toBeInTheDocument();
   });
 
 

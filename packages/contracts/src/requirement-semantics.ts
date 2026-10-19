@@ -231,8 +231,16 @@ export function compareRequirementSemantics(
   const afterFacts = extractProtectedRequirementFacts(after);
   const beforeKeys = new Set(beforeFacts.map((fact) => fact.key));
   const afterKeys = new Set(afterFacts.map((fact) => fact.key));
+  const afterText = compactSemanticText(requirementSemanticCoreText(after));
+  // Actor and object facts are field values; a repair that moves the same wording into
+  // another field (e.g. a mis-extracted object folded into the action) keeps the meaning.
+  const movedIntoAnotherField = (fact: RequirementSemanticFact) =>
+    (fact.kind === "actor" || fact.kind === "object") &&
+    afterText.includes(fact.key.slice(fact.kind.length + 1));
   return {
-    lostFacts: beforeFacts.filter((fact) => !afterKeys.has(fact.key)),
+    lostFacts: beforeFacts.filter(
+      (fact) => !afterKeys.has(fact.key) && !movedIntoAnotherField(fact),
+    ),
     addedFacts: afterFacts.filter((fact) => !beforeKeys.has(fact.key)),
   };
 }

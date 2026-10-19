@@ -186,13 +186,15 @@ export function DiagramPreviewPanel({
                 transform: `translate(${svgPanOffset.x}px, ${svgPanOffset.y}px)`,
               }}
             >
+              {/* Transparent SVGs need a paper surface so dark strokes remain readable in either theme. */}
               <InlineSvg
                 svg={normalizedSvgMarkup}
                 scale={svgScale}
+                sizing="intrinsic"
                 highlightLabel={highlighted?.label}
                 highlightAliases={highlightAliases}
                 highlightKey={highlightRequestId}
-                className="w-full min-w-0 shrink-0 select-none [&_*]:select-none [&>svg]:drop-shadow-sm"
+                className="min-w-0 shrink-0 select-none bg-white text-black [&_*]:select-none [&>svg]:drop-shadow-sm"
               />
             </div>
           ) : diagramError ? (

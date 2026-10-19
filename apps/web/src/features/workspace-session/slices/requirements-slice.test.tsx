@@ -17,7 +17,6 @@ function createRepository(): WorkspaceRepository {
     testProviderSettings: vi.fn(),
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(),
-    restoreRunHistory: vi.fn(),
     deleteRunHistory: vi.fn(),
     clearRunHistory: vi.fn(),
   };
@@ -62,17 +61,6 @@ describe("useRequirementsSlice", () => {
     expect(repository.updateRequirementText).not.toHaveBeenCalled();
   });
 
-  it("does not save a draft when legacy flush is called", async () => {
-    const repository = createRepository();
-    const { result } = renderHook(() => useRequirementsSlice(repository));
-
-    act(() => result.current.setRequirementText("立即生成前的新需求"));
-    await act(async () => {
-      await result.current.flushRequirementTextSave();
-    });
-    expect(repository.updateRequirementText).not.toHaveBeenCalled();
-    expect(result.current.hasUncommittedRequirementDraft).toBe(true);
-  });
 
   it("creates and updates requirement rules with stable ids", () => {
     const repository = createRepository();
@@ -80,23 +68,30 @@ describe("useRequirementsSlice", () => {
 
     act(() => {
       result.current.createRequirementRule({
-        category: "功能需求",
+        type: "functional" as const,
         text: "登录",
-        relatedDiagrams: [],
+
       });
     });
 
     expect(result.current.rules).toMatchObject([
-      { id: "r1", text: "登录", relatedDiagrams: ["usecase"] },
+      { id: "r1", text: "登录",  },
     ]);
 
     act(() => {
       result.current.updateRequirementRule("r1", {
-        relatedDiagrams: ["activity"],
+
       });
     });
 
     expect(result.current.rulesForDiagram("activity")).toHaveLength(1);
+    expect(result.current.rulesVersion).toBe(1);
+    expect(repository.updateRequirementRules).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.updateRequirementRule("r1", { type: "data" as const }));
+    expect(result.current.rulesForDiagram("class")).toHaveLength(1);
+    expect(result.current.rules[0]!.type).toBe("data");
+    expect(result.current.rulesForDiagram("activity")).toHaveLength(0);
     const updatedRules = result.current.rules;
     const updatedFingerprint = requirementInputFingerprintFor("", updatedRules);
     expect(result.current.requirementInputFingerprint).toBe(updatedFingerprint);
@@ -134,15 +129,15 @@ describe("useRequirementsSlice", () => {
       result.current.commitRequirementRules([
         {
           id: "r1",
-          category: "功能需求",
+          type: "functional" as const,
           text: "读者可以检索图书。",
-          relatedDiagrams: ["usecase"],
+
         },
         {
           id: "R1",
-          category: "数据需求",
+          type: "data" as const,
           text: "系统需要记录图书库存。",
-          relatedDiagrams: ["class"],
+
         },
       ]);
     });

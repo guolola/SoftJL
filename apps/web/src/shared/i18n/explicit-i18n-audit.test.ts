@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 const explicitlyLocalizedUiFiles = [
   "features/user-platform/components/auth-page.tsx",
   "features/user-platform/components/account-dialog.tsx",
-  "features/user-platform/components/account-pages.tsx",
   "features/settings/components/global-settings-panel.tsx",
   "features/lineage/components/lineage-graph-page.tsx",
   "features/lineage/components/lineage-workflow-canvas.tsx",
@@ -15,7 +14,8 @@ const explicitlyLocalizedUiFiles = [
   "features/documents/components/document-style-dialog.tsx",
   "features/user-platform/components/account-avatar-preview.tsx",
   "features/user-platform/components/project-create-form.tsx",
-  "features/user-platform/components/project-documents.tsx",
+  "features/documents/components/document-management-actions.tsx",
+  "features/documents/components/deleted-documents.tsx",
   "features/user-platform/components/project-members.tsx",
   "features/user-platform/components/project-new-page.tsx",
   "features/user-platform/components/invitation-accept-page.tsx",

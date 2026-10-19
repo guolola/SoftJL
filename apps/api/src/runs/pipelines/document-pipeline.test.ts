@@ -1,4 +1,7 @@
 // Verifies document pipelines enforce requirement baseline gates before rendering artifacts.
+import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { completeFeasibilityImplementationPlanSchema } from "@uml-platform/contracts";
+import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
@@ -15,10 +18,28 @@ import { runDocumentStagePipeline } from "./document-pipeline.js";
 import { fallbackDocumentSections } from "../../documents/context/document-context.js";
 
 const providerSettings: ProviderSettings = {
+  modelCapability: strictTestModelCapability("gpt-5.5"),
   apiBaseUrl: "https://ai.comfly.org",
   apiKey: "sk-test",
   model: "gpt-5.5",
 };
+
+test("incomplete feasibility sources are rejected before generation starts or external resources are used", async () => {
+  const input = blockedDocumentInput();
+  input.documentKind = "feasibilityStudy";
+  input.requirementBaseline = null;
+  input.feasibilityImplementationPlan = completeFeasibilityImplementationPlanSchema.parse(FEASIBILITY_IMPLEMENTATION_EXAMPLE);
+  input.feasibilityImplementationPlan.candidates[0]!.implementation!.costEstimates = [];
+  const snapshot = createEmptyDocumentSnapshot("invalid-feasibility", input);
+  const record: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false };
+  let externalCalls = 0;
+  const transport: LlmTransport = { async *streamChatCompletion() { externalCalls++; yield "{}"; } };
+  const library = { saveGeneratedDocument: async () => { externalCalls++; } } as unknown as DocumentLibrary;
+  await assert.rejects(runDocumentStagePipeline(record, input, library, "workspace", providerSettings, transport,
+    async () => { externalCalls++; throw new Error("Unexpected render"); }), /当前完整实现方案/);
+  assert.equal(externalCalls, 0);
+  assert.equal(record.events.some(event => event.type === "stage_started"), false);
+});
 
 function blockedDocumentInput(): StartDocumentRunRequest {
   const requirementBaseline = buildRequirementBaseline({
@@ -27,15 +48,15 @@ function blockedDocumentInput(): StartDocumentRunRequest {
     rules: [
       {
         id: "REQ-001",
-        category: "功能需求",
+        type: "functional" as const,
         text: "用户可以查看公开活动日历。",
-        relatedDiagrams: ["usecase"],
+
       },
       {
         id: "REQ-002",
-        category: "业务规则",
+        type: "business-rule" as const,
         text: "用户不得查看公开活动日历。",
-        relatedDiagrams: ["usecase"],
+
       },
     ],
   });
@@ -73,42 +94,9 @@ function blockedDocumentInput(): StartDocumentRunRequest {
   };
 }
 
-test("runDocumentStagePipeline rejects blocked requirement baselines before DOCX assembly", async () => {
-  const input = blockedDocumentInput();
-  const record: RunRecord = {
-    snapshot: createEmptyDocumentSnapshot("run-blocked-document", input),
-    events: [],
-    listeners: new Set(),
-    terminal: false,
-  };
-  const documentLibrary = {
-    saveGeneratedDocument: async () => {
-      throw new Error("document library should not be called for blocked baselines");
-    },
-  } as unknown as DocumentLibrary;
-
-  await assert.rejects(
-    () =>
-      runDocumentStagePipeline(
-        record,
-        input,
-        documentLibrary,
-        "workspace-test",
-        providerSettings,
-        {} as LlmTransport,
-        (async () => {
-          throw new Error("PNG renderer should not be called for blocked baselines");
-        }) as PngRenderClient,
-      ),
-    /RequirementBaseline blocked downstream generation: 公开活动日历查看规则互相冲突/u,
-  );
-  assert.equal(record.snapshot.status, "queued");
-  assert.equal(record.events.length, 0);
-});
-
 test("document chapters run with concurrency four and merge in template order before whole-document export", async () => {
   const input = blockedDocumentInput();
-  input.requirementBaseline = buildRequirementBaseline({ runId: "valid", requirementText: "用户可以查看日历。", rules: [{ id: "R1", category: "功能需求", text: "用户可以查看日历。", relatedDiagrams: ["usecase"] }] });
+  input.requirementBaseline = buildRequirementBaseline({ runId: "valid", requirementText: "用户可以查看日历。", rules: [{ id: "R1", type: "functional" as const, text: "用户可以查看日历。",  }] });
   input.useAiText = true;
   const snapshot = createEmptyDocumentSnapshot("parallel-document", input);
   const record: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false };

@@ -5,8 +5,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import {
+  assertCurrentWorkspaceState,
   buildAcceptedRequirementSnapshot,
   buildFeasibilityImplementationFingerprint,
+  buildFeasibilityContextFingerprint,
   readFeasibilityBusinessFlowArtifact,
 } from "@uml-platform/contracts";
 import {
@@ -113,7 +115,7 @@ test("case project creation requires an authenticated session", async () => {
   });
 
   assert.equal(response.statusCode, 401);
-  assert.equal(response.json().message, "Authentication required");
+  assert.equal(response.json().error.code, "AUTHENTICATION_REQUIRED");
   await app.close();
 });
 
@@ -132,7 +134,7 @@ test("case project creation rejects unknown case ids", async () => {
   });
 
   assert.equal(response.statusCode, 404);
-  assert.equal(response.json().message, "Case template not found");
+  assert.equal(response.json().error.code, "RESOURCE_NOT_FOUND");
   await app.close();
 });
 
@@ -160,6 +162,7 @@ test("case project creation seeds every marketing case workspace", async () => {
     assert.equal((await authStore.getProject(body.project.id))?.backgroundKey, backgroundKey);
 
     const workspace = await authStore.getProjectWorkspace(body.project.id);
+    assertCurrentWorkspaceState(workspace.state);
     assert.equal(workspace.version, 1);
     assert.equal(workspace.updatedByUserId, owner.user.id);
     assert.equal(typeof workspace.state.requirementText, "string");
@@ -216,8 +219,9 @@ test("case project creation seeds every marketing case workspace", async () => {
     );
     assert.equal(
       workspace.state.feasibilityContextFingerprint,
-      requirementSource.snapshot.fingerprint,
+      buildFeasibilityContextFingerprint({ rules: requirementSource.rules, requirementBaseline: requirementSource.baseline, inputs: workspace.state.feasibilityInputs }),
     );
+    assert.equal(readFeasibilityBusinessFlowArtifact(workspace.state.feasibilityBusinessFlow)?.fingerprint, requirementSource.snapshot.fingerprint);
     assert.equal(
       workspace.state.feasibilityImplementationFingerprint,
       buildFeasibilityImplementationFingerprint({
@@ -254,7 +258,7 @@ test("case project creation does not create a project when template rendering fa
   });
 
   assert.equal(response.statusCode, 500);
-  assert.equal(response.json().message, "Case template could not be rendered");
+  assert.equal(response.json().error.code, "INTERNAL_ERROR");
   assert.equal(authStore.listProjectsForUser(owner.user.id).length, 0);
   await app.close();
 });

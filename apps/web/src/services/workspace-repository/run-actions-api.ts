@@ -1,11 +1,7 @@
-// Wraps run start, repair, render, and provider-test endpoints for workspace repositories.
+// Wraps run start, render, and provider-test endpoints for workspace repositories.
 import type {
   DesignDiagramModelSpec,
   DiagramModelSpec,
-  RepairRequirementRuleRequest,
-  RepairRequirementRuleResponse,
-  RepairRequirementRulesRequest,
-  RepairRequirementRulesResponse,
   RenderStructuredModelResponse,
   RenderSvgResponse,
 } from "@uml-platform/contracts";
@@ -14,10 +10,9 @@ import type { ModelCapability } from "../../shared/lib/provider-model-display";
 import { postJson } from "../api-client";
 import { renderPngResponseSchema, renderPdfResponseSchema, type UmlDiagramKind } from "@uml-platform/contracts";
 import { projectHeaders, requireProjectScope, withProjectHeaders } from "./project-scope";
-import { runPayloadWithoutUnmanagedProviderSettings } from "./run-payload";
 import type {
   ProviderSettingsInput,
-  
+
   StartDesignRunInput,
   StartDocumentRunInput,
   StartRunInput,
@@ -37,42 +32,6 @@ export async function exportDiagramRequest(input: { diagramKind: UmlDiagramKind;
   return new Blob([bytes], { type: input.format === "png" ? "image/png" : "application/pdf" });
 }
 
-export async function repairRequirementRuleRequest(
-  input: RepairRequirementRuleRequest,
-  projectId: string | null,
-) {
-  const scopedProjectId = requireProjectScope(projectId);
-  return postJson<RepairRequirementRuleResponse>(
-    "/api/runs/requirement-rule-repair",
-    runPayloadWithoutUnmanagedProviderSettings({
-      ...input,
-      projectId: scopedProjectId,
-    }),
-    {
-      errorKey: "errors.operations.repairRule",
-      headers: projectHeaders(scopedProjectId),
-    },
-  );
-}
-
-export async function repairRequirementRulesRequest(
-  input: RepairRequirementRulesRequest,
-  projectId: string | null,
-) {
-  const scopedProjectId = requireProjectScope(projectId);
-  return postJson<RepairRequirementRulesResponse>(
-    "/api/runs/requirement-rule-repairs",
-    runPayloadWithoutUnmanagedProviderSettings({
-      ...input,
-      projectId: scopedProjectId,
-    }),
-    {
-      errorKey: "errors.operations.repairRules",
-      headers: projectHeaders(scopedProjectId),
-    },
-  );
-}
-
 export async function startRequirementRunRequest(
   input: StartRunInput,
   projectId: string | null,
@@ -80,19 +39,32 @@ export async function startRequirementRunRequest(
   const scopedProjectId = requireProjectScope(projectId);
   return postJson<{ runId: string }>(
     "/api/runs",
-    runPayloadWithoutUnmanagedProviderSettings({
+    {
       projectId: scopedProjectId,
-      ...(input.selectedDiagrams.length === 0 ? { requirementText: input.requirementText } : {}),
+      ...(input.selectedDiagrams.length === 0 ? {
+        requirementText: input.requirementText,
+        attachments: input.attachments,
+      } : {}),
+      reasoning: input.reasoning,
       selectedDiagrams: input.selectedDiagrams,
       requestedDiagrams: input.requestedDiagrams,
       dependencyDiagrams: input.dependencyDiagrams,
       analysisTargetUseCaseIds: input.analysisTargetUseCaseIds ?? [],
       providerSettings: input.providerSettings,
-    }),
+    },
     {
       errorKey: "errors.operations.startRequirements",
       headers: projectHeaders(scopedProjectId),
     },
+  );
+}
+
+export async function cancelRequirementRunRequest(runId: string, projectId: string | null): Promise<void> {
+  const scopedProjectId = requireProjectScope(projectId);
+  await postJson<unknown>(
+    `/api/projects/${encodeURIComponent(scopedProjectId)}/runs/${encodeURIComponent(runId)}/cancel`,
+    {},
+    withProjectHeaders(scopedProjectId, { errorKey: "errors.operations.taskAction" }),
   );
 }
 
@@ -103,19 +75,19 @@ export async function startDesignRunRequest(
   const scopedProjectId = requireProjectScope(projectId);
   return postJson<{ runId: string }>(
     "/api/design-runs",
-    runPayloadWithoutUnmanagedProviderSettings({
+    {
       projectId: scopedProjectId,
+      reasoning: input.reasoning,
       selectedDiagrams: input.selectedDiagrams,
       requestedDiagrams: input.requestedDiagrams,
       providerSettings: input.providerSettings,
-    }),
+    },
     {
       errorKey: "errors.operations.startDesign",
       headers: projectHeaders(scopedProjectId),
     },
   );
 }
-
 
 
 export async function startDocumentRunRequest(
@@ -125,13 +97,14 @@ export async function startDocumentRunRequest(
   const scopedProjectId = requireProjectScope(projectId);
   return postJson<{ runId: string }>(
     "/api/document-runs",
-    runPayloadWithoutUnmanagedProviderSettings({
+    {
       projectId: scopedProjectId,
+      reasoning: input.reasoning,
       documentKind: input.documentKind,
       providerSettings: input.providerSettings,
       useAiText: input.useAiText,
       documentStyle: input.documentStyle,
-    }),
+    },
     withProjectHeaders(scopedProjectId, {
       errorKey: "errors.operations.startDocument",
     }),
@@ -184,7 +157,7 @@ export async function testProviderSettingsRequest(
     errorKey: "errors.operations.providerTest",
   });
   if (!payload.ok || !payload.capability) {
-    throw new Error(payload.message ?? "连接测试失败");
+    throw new Error(payload.message ?? "杩炴帴娴嬭瘯澶辫触");
   }
   return {
     ok: true,

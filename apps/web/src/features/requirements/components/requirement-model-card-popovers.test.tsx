@@ -2,7 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { AppI18nProvider } from "../../../app/providers/i18n-provider";
+import { AppI18nProvider } from "../../../shared/i18n/i18n-provider";
 import { TooltipProvider } from "../../../shared/ui/tooltip";
 import { createRule } from "../../../test/workspace-test-utils";
 import { RequirementModelCardPopovers } from "./requirement-model-card-popovers";
@@ -18,7 +18,8 @@ function renderActions(
         <RequirementModelCardPopovers
           autoFillLabels={["规则映射"]}
           label="部署需求模型"
-          linkedRules={[createRule({ id: "R1", text: "系统必须保留审计记录。" })]}
+          diagram="deployment"
+          linkedRules={[createRule({ id: "R1", type: "operations", text: "系统必须保留审计记录。" })]}
           pendingAutoReviews={[]}
           onDecideAutoReviews={onDecideAutoReviews}
           onLocateRule={onLocateRule}
@@ -51,6 +52,8 @@ describe("RequirementModelCardPopovers", () => {
     renderActions({ autoFillLabels: [] });
 
     expect(screen.queryByText("系统必须保留审计记录。")).not.toBeInTheDocument();
+    expect(screen.queryByText("固定关联")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看部署需求模型关联需求规则" })).toHaveTextContent("");
     await user.click(
       screen.getByRole("button", { name: "查看部署需求模型关联需求规则" }),
     );

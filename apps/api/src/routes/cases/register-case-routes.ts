@@ -1,6 +1,8 @@
 // Registers marketing case project creation endpoints backed by deterministic workspace templates.
+import { createHttpErrorResponse } from "../../server/http-error-response.js";
 import type { FastifyInstance } from "fastify";
 import {
+  buildAcceptedRequirementSnapshot,
   designRunSnapshotSchema,
   feasibilityRunSnapshotSchema,
   projectResponseSchema,
@@ -37,7 +39,7 @@ export function registerCaseRoutes({
     const template = getCaseProjectTemplate(caseId);
     if (!template) {
       reply.code(404);
-      return { message: "Case template not found" };
+      return createHttpErrorResponse(reply);
     }
 
     let seededState: ReturnType<typeof restoreRunSnapshotToWorkspaceState>;
@@ -46,7 +48,7 @@ export function registerCaseRoutes({
     } catch (error) {
       request.log.error({ err: error, caseId }, "Case template rendering failed");
       reply.code(500);
-      return { message: "Case template could not be rendered" };
+      return createHttpErrorResponse(reply);
     }
 
     const { project, ownerMember } = await authStore.createProject({
@@ -54,11 +56,6 @@ export function registerCaseRoutes({
       name: template.title,
       description: template.description,
       visibility: "private",
-      organizationId: null,
-      courseId: null,
-      classId: null,
-      teamId: null,
-      defaultProviderConfigId: null,
       retentionPolicy: "manual",
       backgroundKey: template.backgroundKey,
     });
@@ -73,7 +70,7 @@ export function registerCaseRoutes({
     if (!saved.ok) {
       await authStore.updateProject(project.id, { status: "deleted" });
       reply.code(500);
-      return { message: "Case project workspace could not be initialized" };
+      return createHttpErrorResponse(reply);
     }
 
     await authStore.recordAuditLog({
@@ -126,7 +123,7 @@ async function buildTemplateWorkspaceState(
     ...template.feasibilitySnapshot,
     businessFlow: {
       ...template.businessFlow,
-      fingerprint: template.feasibilitySnapshot.contextFingerprint,
+      fingerprint: buildAcceptedRequirementSnapshot(template.feasibilitySnapshot.rules, template.feasibilitySnapshot.requirementBaseline).snapshot.fingerprint,
       svg: { diagramKind: "activity", modelId: template.businessFlow.model.modelId,
         svg: businessFlowRendered.svg, renderMeta: businessFlowRendered.renderMeta },
     },
@@ -147,7 +144,7 @@ async function buildTemplateWorkspaceState(
     currentState: requirementState,
     snapshot: designSnapshot,
   });
-  
+
   return {
     ...designState,
     feasibilityInputs: feasibilitySnapshot.inputs,

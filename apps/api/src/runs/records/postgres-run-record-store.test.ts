@@ -1,4 +1,5 @@
 // Verifies the PostgreSQL-backed run record store contract used by API wiring.
+import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { RunEvent } from "@uml-platform/contracts";
@@ -32,7 +33,8 @@ interface FakeRunRow {
 interface FakeRunEventRow {
   run_id: string;
   sequence: number;
-  payload: RunEvent | { type: "completed"; snapshotRef: string };
+  payload: { type: string; [key: string]: unknown };
+  created_at: string;
 }
 
 class FakeRunDb implements Queryable {
@@ -68,7 +70,7 @@ class FakeRunDb implements Queryable {
       };
     }
 
-    if (normalized.startsWith("select run_id, sequence, payload")) {
+    if (normalized.startsWith("select run_id, sequence,")) {
       let rows = this.eventRows.slice();
       if (normalized.includes("where run_id = any")) {
         const ids = new Set(params[0] as string[]);
@@ -141,6 +143,7 @@ class FakeRunDb implements Queryable {
         run_id: String(runId),
         sequence: Number(sequence),
         payload: parsedPayload,
+        created_at: new Date().toISOString(),
       });
       return { rows: [], rowCount: 1 };
     }
@@ -151,6 +154,7 @@ class FakeRunDb implements Queryable {
 
 function attachProviderSettings(snapshot: ReturnType<typeof createEmptySnapshot>) {
   snapshot.providerSettings = {
+    modelCapability: strictTestModelCapability("gpt-5.5"),
     apiBaseUrl: "https://ai.comfly.org",
     apiKey: "redacted",
     model: "gpt-5.5",
@@ -238,40 +242,53 @@ test("postgres run store persists records and emitted events", async () => {
   assert.equal(restoredRecord?.metadata?.userId, "user-1");
 });
 
-test("postgres run store restores legacy snapshots with removed extra JSON", async () => {
-  const db = new FakeRunDb();
-  const runs = await createPostgresRunRecordStore(db);
-  const snapshot = createEmptySnapshot("run-legacy-json", "历史需求", [], []);
-  const record: RunRecord = {
-    snapshot,
-    events: [],
-    listeners: new Set(),
-    terminal: true,
-    metadata: {
-      projectId: "project-legacy",
-      createdAt: "2026-07-30T00:00:00.000Z",
-    },
-  };
+test("postgres run store rejects obsolete event storage in both full and progress reads", async () => {
+  const snapshot = createEmptySnapshot("obsolete-event", "需求", []);
   snapshot.status = "completed";
-  runs.set(snapshot.runId, record);
-  await runs.flush();
+  const metadata = { eventId: "completed-event", createdAt: "2026-10-18T00:00:00.000Z" };
+  const invalidEvents = [
+    { type: "completed", snapshot, ...metadata },
+    { type: "completed", snapshotRef: snapshot.runId },
+    { type: "completed", snapshotRef: snapshot.runId, eventId: metadata.eventId },
+    { type: "completed", snapshotRef: "different-run", ...metadata },
+    { type: "completed", snapshotRef: snapshot.runId, snapshot, ...metadata },
+    { type: "queued" },
+    { type: "queued", eventId: "queued", createdAt: "invalid" },
+    { type: "retired_event", ...metadata },
+  ];
+  for (const payload of invalidEvents) {
+    for (const view of ["all", "progress"] as const) {
+      const db = new FakeRunDb();
+      const runs = await createPostgresRunRecordStore(db);
+      runs.set(snapshot.runId, { snapshot, events: [], listeners: new Set(), terminal: true,
+        metadata: { createdAt: metadata.createdAt, projectId: "project" } });
+      await runs.flush();
+      db.eventRows.push({ run_id: snapshot.runId, sequence: 1, payload, created_at: metadata.createdAt });
+      const before = structuredClone(payload);
+      await assert.rejects(runs.refreshRun(snapshot.runId, { events: view }));
+      assert.deepEqual(payload, before);
+      const query = db.calls.findLast(call => call.sql.includes("from run_events") && call.sql.includes("sequence >"))!;
+      assert.doesNotMatch(query.sql, /payload - 'snapshot'|jsonb_build_object\('snapshotRef'/);
+    }
+  }
+});
 
-  const persisted = db.runRows.get(snapshot.runId);
-  assert.ok(persisted);
-  const removedFieldName = ["evidence", "Package"].join("");
-  persisted.snapshot = {
-    ...persisted.snapshot,
-    [removedFieldName]: {
-      runId: snapshot.runId,
-      status: "complete",
-      generatedAt: "2026-07-30T00:00:00.000Z",
-    },
-  } as RunRecord["snapshot"];
-
-  const restored = await createPostgresRunRecordStore(db);
-  const loaded = await restored.refreshRun(snapshot.runId);
-  assert.equal(loaded?.snapshot.status, "completed");
-  assert.equal(loaded?.metadata?.projectId, "project-legacy");
+test("postgres run store rejects snapshots without current operation and output receipts", async () => {
+  for (const field of ["operationType", "outputManifest"] as const) {
+    const db = new FakeRunDb();
+    const runs = await createPostgresRunRecordStore(db);
+    const snapshot = createEmptySnapshot("run-invalid-contract", "需求", [], []);
+    snapshot.status = "completed";
+    runs.set(snapshot.runId, {
+      snapshot, events: [], listeners: new Set(), terminal: true,
+      metadata: { projectId: "project", createdAt: "2026-10-18T00:00:00.000Z" },
+    });
+    await runs.flush();
+    const persisted = db.runRows.get(snapshot.runId)!;
+    delete (persisted.snapshot as unknown as Record<string, unknown>)[field];
+    const restored = await createPostgresRunRecordStore(db);
+    await assert.rejects(restored.refreshRun(snapshot.runId));
+  }
 });
 
 test("postgres run store persists managed provider config ids", async () => {
@@ -339,6 +356,7 @@ test("postgres run store restores abandoned active runs as interrupted", async (
   snapshot.status = "running";
   snapshot.currentStage = "generate_models";
   snapshot.providerSettings = {
+    modelCapability: strictTestModelCapability("gpt-5.5"),
     apiBaseUrl: "https://ai.comfly.org",
     apiKey: "redacted",
     model: "gpt-5.5",
@@ -452,8 +470,11 @@ test("postgres run store refreshes records updated by another process", async ()
   db.eventRows.push({
     run_id: "run-refresh",
     sequence: 1,
+    created_at: "2026-05-22T00:02:00.000Z",
     payload: {
       type: "failed",
+      eventId: "external-failure",
+      createdAt: "2026-05-22T00:02:00.000Z",
       stage: "generate_models",
       error: failedSnapshot.error,
     },

@@ -5,7 +5,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '../../../shared/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../../shared/ui/tooltip';
 import { memberInitials } from '../../user-platform/lib/project-workspace-presentation';
 import { formatGenerationDuration, type GenerationInfo, type NodeGenerationInfo } from '../lib/lineage-generation';
-export function GenerationStamp({ info, representative }: { info?: GenerationInfo; representative?: boolean }) {
+export function GenerationStamp({ info, representative, showDuration = true }: { info?: GenerationInfo; representative?: boolean; showDuration?: boolean }) {
   const { t, i18n } = useTranslation();
   const name = info?.member?.displayName || info?.member?.email || t('lineage.generation.unknownPerson');
   const duration = !info?.generated ? t('lineage.statuses.not_generated') : info.durationMs === undefined ? t('lineage.generation.unrecorded') : formatGenerationDuration(info.durationMs, i18n.resolvedLanguage ?? 'en');
@@ -20,10 +20,10 @@ export function GenerationStamp({ info, representative }: { info?: GenerationInf
       </TooltipTrigger>
       <TooltipContent role='tooltip'>{name}</TooltipContent>
     </Tooltip></TooltipProvider>
-    <TooltipProvider delay={0}><Tooltip>
+    {showDuration && <TooltipProvider delay={0}><Tooltip>
       <TooltipTrigger render={<span className='text-muted-foreground truncate text-xs tabular-nums' />}>{duration}</TooltipTrigger>
       <TooltipContent role='tooltip'><span>{scope}: {duration}{representative && info ? <><br />{t('lineage.generation.representative', { label: info.label })}</> : null}</span></TooltipContent>
-    </Tooltip></TooltipProvider>
+    </Tooltip></TooltipProvider>}
   </div>;
 }
 export function GenerationDetails({ info }: { info?: NodeGenerationInfo }) {

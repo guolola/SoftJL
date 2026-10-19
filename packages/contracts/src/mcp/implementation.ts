@@ -154,16 +154,16 @@ const reportEntry = z.object({
     responsibility: text,
   }).strict()).max(10000),
   actualRefs: z.array(actualRef).max(10000),
-  inputRefs: z.array(z.object({ path: mcpImplementationPathSchema, contentHash: hash }).strict()).max(10000).default([]),
+  inputRefs: z.array(z.object({ path: mcpImplementationPathSchema, contentHash: hash }).strict()).max(10000),
   testRefs: z.array(testRef).max(10000),
   checks: z.array(z.object({
     id,
     kind: z.enum(["engineering", "behavior"]),
     command: z.string().trim().min(1).max(1024),
     args: z.array(z.string().max(12000)).max(1000),
-    // Runners apply defaults; optional limits keep existing reports compatible.
-    timeoutMs: z.number().int().min(1000).max(600000).optional(),
-    maxOutputBytes: z.number().int().min(1024).max(4194304).optional(),
+    // Each verification command declares its resource budget in the current report format.
+    timeoutMs: z.number().int().min(1000).max(600000),
+    maxOutputBytes: z.number().int().min(1024).max(4194304),
     criterionIds: ids,
   }).strict()).max(1000),
 }).strict().superRefine((entry, context) => {

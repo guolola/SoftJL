@@ -1,6 +1,7 @@
 // Registers shared Server-Sent Events endpoints for all run kinds.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { RunEvent } from "@uml-platform/contracts";
+import { createHttpErrorResponse } from "../server/http-error-response.js";
+import { runEventMetadataSchema, type RunEvent } from "@uml-platform/contracts";
 import {
   refreshRunRecordIfAvailable,
   type RunRecord,
@@ -24,7 +25,6 @@ export function registerRunEventsRoute({
   app,
   runs,
   path,
-  notFoundMessage,
   defaultAllowOrigin,
   canReadRunRecord,
   subscribeRunEvents,
@@ -33,7 +33,6 @@ export function registerRunEventsRoute({
   app: FastifyInstance;
   runs: RunRecordStore;
   path: string;
-  notFoundMessage: string;
   defaultAllowOrigin: string;
   canReadRunRecord?: CanReadRunRecord;
   subscribeRunEvents?: SubscribeRunEvents;
@@ -49,19 +48,20 @@ export function registerRunEventsRoute({
     const cursorValue = queryValue(request.query, "afterSequence") ?? request.headers["last-event-id"] ?? "0";
     const afterSequence = Number(cursorValue);
     if (!/^\d+$/.test(String(cursorValue)) || !Number.isSafeInteger(afterSequence)) {
-      return reply.code(400).send({ message: "afterSequence must be a non-negative integer" });
+      return reply.code(400).send(createHttpErrorResponse(reply));
     }
     const readOptions = { events: progressOnly ? "progress" as const : "all" as const, afterSequence };
     const initialRecord = await refreshRunRecordIfAvailable(runs, runId, readOptions);
     if (!initialRecord) {
       reply.code(404);
-      return { message: notFoundMessage };
+      return createHttpErrorResponse(reply);
     }
     let record = initialRecord;
     if (canReadRunRecord && !(await canReadRunRecord(request, reply, record))) {
       return reply;
     }
-
+    // Reject obsolete in-memory history before opening SSE; replay must never invent metadata.
+    for (const event of record.events) runEventMetadataSchema.parse(event);
 
     const requestOrigin =
       typeof request.headers.origin === "string" ? request.headers.origin : null;
@@ -153,8 +153,8 @@ export function registerRunEventsRoute({
 
     listener = receive;
     record.listeners.add(listener);
-    for (const [index, event] of record.events.entries()) {
-      send({ ...event, sequence: event.sequence ?? index + 1, eventId: event.eventId ?? `${runId}:legacy:${index}`, ...(event.createdAt || record.eventCreatedAt?.[index] ? { createdAt: event.createdAt ?? record.eventCreatedAt![index]! } : {}) });
+    for (const event of record.events) {
+      send(event);
     }
     if (record.terminal) {
       close();

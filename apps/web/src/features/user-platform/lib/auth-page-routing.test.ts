@@ -12,8 +12,8 @@ describe("auth page routing", () => {
   it("rejects protocol-relative redirects", () => {
     window.history.pushState({}, "", "/login?redirect=%2F%2Fevil.example");
 
-    expect(getSafeRedirectPath()).toBe("/dashboard");
+    expect(getSafeRedirectPath()).toBe("/projects");
     expect(buildLoginRedirectPath("//evil.example", "login-required"))
-      .toBe("/login?redirect=%2Fdashboard&reason=login-required");
+      .toBe("/login?redirect=%2Fprojects&reason=login-required");
   });
 });

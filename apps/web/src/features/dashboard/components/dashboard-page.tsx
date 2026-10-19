@@ -1,5 +1,4 @@
 // Uses the supplied dashboard-shell-06 content inside the existing authenticated navigation shell.
-import { Plus } from 'lucide-react'
 import { useMemo } from 'react'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
@@ -26,10 +25,6 @@ export function DashboardPage({ onNavigate }: { onNavigate: (path: string) => vo
       <AlertTitle>{t('error')}</AlertTitle><AlertDescription>{error}</AlertDescription>
       <AlertAction><Button variant='outline' onClick={reload}>{t('retry')}</Button></AlertAction>
     </Alert></PageContainer> : data ? <DashboardWelcome key={session?.user.id ?? 'dashboard'} userId={session?.user.id}>{(renderCard, welcomeActive) => <>
-      {data.totals.projects === 0 && <Alert className='mb-6' data-dashboard-empty>
-        <AlertDescription>{t('empty')}</AlertDescription>
-        <AlertAction><Button onClick={() => onNavigate('/projects/new')}><Plus className='size-4' />{t('create')}</Button></AlertAction>
-      </Alert>}
       {/* Examples fill the same real widgets only while welcome is active; completion exposes the actual account. */}
       <DashboardShellContent data={buildDashboardViewModel(welcomeActive && example ? example : data, t, locale)}
         duration={welcomeActive && example ? exampleDuration : duration} onRefresh={() => { if (!welcomeActive) reload() }}

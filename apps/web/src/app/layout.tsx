@@ -1,6 +1,7 @@
 // Provides the Next.js document around the AdminCN default layout source.
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { ThemeProvider } from '../shared/ui/theme-provider';
 import './styles/index.css';
 
 export const metadata: Metadata = {
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang='zh-CN' data-template='admincn' suppressHydrationWarning>
-      <body className='flex min-h-full w-full flex-auto flex-col font-sans antialiased'>{children}</body>
+      <body className='flex min-h-full w-full flex-auto flex-col font-sans antialiased'><ThemeProvider>{children}</ThemeProvider></body>
     </html>
   );
 }

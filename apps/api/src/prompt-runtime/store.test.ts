@@ -1,9 +1,28 @@
 // Covers prompt catalog visibility, version transitions, and run-level pinning.
+import { strictTestModelCapability } from "../test-fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { catalog, findPromptForMessage } from "./catalog.js";
 import { PromptRuntimeStore, applyPublishedInstructions, withPinnedPrompts } from "./store.js";
 import type { LlmTransport } from "../llm.js";
+import { createRequirementBaselineSnapshot } from "@uml-platform/contracts";
+import { buildGenerateDesignModelsPrompt } from "@uml-platform/prompts";
+
+for (const kind of ["architecture", "class", "navigation", "component", "deployment", "table"] as const) {
+  test(`published instructions reach the actual ${kind} generation prompt`, async () => {
+    const store = new PromptRuntimeStore(null);
+    const baseline = createRequirementBaselineSnapshot({ runId: "catalog", requirementText: "", rules: [] });
+    const prompt = buildGenerateDesignModelsPrompt(baseline, [], [], [kind]);
+    const id = `design.model.${kind}`;
+    assert.equal(findPromptForMessage(prompt)?.id, id);
+    const version = await store.createDraft(id, `已发布的 ${kind} 约束`, "operator");
+    await store.submit(id, version.id, "operator");
+    await store.approve(id, version.id, "operator");
+    const applied = applyPublishedInstructions(prompt, await store.publishedSnapshot());
+    assert.equal(applied.split("\n")[0], `已发布的 ${kind} 约束`);
+    assert.equal(applied.slice(applied.indexOf("\n")), prompt.slice(prompt.indexOf("\n")), "schemas and source facts stay intact");
+  });
+}
 
 test("catalog exposes active categories and keeps shared instructions read-only", async () => {
   const store = new PromptRuntimeStore(null);
@@ -46,7 +65,7 @@ test("published versions affect new snapshots only and can be rolled back or dis
   async function result(snapshot: typeof pinnedA) {
     let value = "";
     for await (const part of withPinnedPrompts(transport, snapshot).streamChatCompletion({
-      providerSettings: { model: "test", apiBaseUrl: "https://example.com", apiKey: "test" },
+      providerSettings: { modelCapability: strictTestModelCapability("test"), model: "test", apiBaseUrl: "https://example.com", apiKey: "test" },
       messages: [{ role: "system", content: "只返回 JSON" }, { role: "user", content: defaultPrompt }],
     })) value += part;
     return value;

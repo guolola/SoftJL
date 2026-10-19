@@ -3,6 +3,7 @@ import {
   projectDtoSchema,
   projectInvitationDtoSchema,
   projectMemberRolePermissions,
+  assertCurrentWorkspaceState,
 } from "@uml-platform/contracts";
 import { toProjectDto, toProjectMemberDto } from "../auth/dto.js";
 import { isOfflineDemoProject } from "../runs/demo/offline-demo-config.js";
@@ -19,7 +20,6 @@ const stableProjectWorkspaceDefaults = {
   selectedDiagramTypes: [],
   rules: [],
   models: {},
-  requirementReviewCandidates: {},
   requirementModelTraceability: [],
   generatedDiagramTypes: [],
   plantUml: {},
@@ -33,18 +33,8 @@ const stableProjectWorkspaceDefaults = {
   designSvgArtifacts: {},
   designDiagramErrors: {},
   manualModelEditStatus: {},
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+
+
   requirementInputFingerprint: null,
   diagramInputFingerprints: {},
   designInputFingerprints: {},
@@ -79,12 +69,19 @@ export function devTokenPayload(
 export function projectWorkspacePayload(
   workspace: Awaited<ReturnType<AuthStore["getProjectWorkspace"]>>,
 ) {
+  assertCurrentWorkspaceState(workspace.state);
+  const state = { ...workspace.state };
+  if (state.standardProject && typeof state.standardProject === "object") {
+    // Pi's tool history stays server-owned; clients receive the separate user-facing conversation.
+    const { piSession: _session, ...publicProject } = state.standardProject as Record<string, unknown>;
+    state.standardProject = publicProject;
+  }
   return {
     projectId: workspace.projectId,
     version: workspace.version,
     state: {
       ...stableProjectWorkspaceDefaults,
-      ...workspace.state,
+      ...state,
     },
     updatedByUserId: workspace.updatedByUserId,
     sourceRunId: workspace.sourceRunId,

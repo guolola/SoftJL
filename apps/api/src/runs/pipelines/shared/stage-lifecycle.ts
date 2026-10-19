@@ -1,5 +1,5 @@
 // Publishes settled pipeline boundaries while preserving parallel calls and repair attempts.
-import type { RunEvent, RunStage } from "@uml-platform/contracts";
+import type { RunEvent, RunEventInput, RunStage } from "@uml-platform/contracts";
 import { emitEvent, type RunRecord } from "../../records/run-record-store.js";
 
 type FinishedStatus = Extract<RunEvent, { type: "stage_finished" }>["status"];
@@ -35,7 +35,7 @@ export function createStageLifecycle(record: RunRecord) {
   };
   record.listeners.add(observe);
   // Flush stages before the terminal event closes SSE. No started stage is left spinning.
-  const close = (event: RunEvent) => {
+  const close = (event: RunEventInput) => {
     const status = event.type;
     for (const stage of [...open]) finish(stage, status === "cancelled" ? "cancelled" : status === "failed" ? "failed" : undefined);
     record.listeners.delete(observe);

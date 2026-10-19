@@ -11,13 +11,13 @@ describe("session generation model guard", () => {
   it("blocks direct real generation actions before preflight mutations or requests", async () => {
     const repository = createMockWorkspaceRepository({ requirementText: "允许登录", rules: [createRule()] });
     repository.getProjectAccess = async () => ({ capabilities: ["update_project", "start_runs"], generationExecutionMode: "provider" });
-    const spies = ["startRun", "startDesignRun", "startDocumentRun", "updateRequirementRules", "updateRequirementReviewState"] as const;
+    const spies = ["startRun", "startDesignRun", "startDocumentRun", "updateRequirementRules"] as const;
     for (const method of spies) repository[method] = vi.fn() as never;
     const { result } = renderHook(useWorkspaceSession, { wrapper: ({ children }) => withWorkspaceProviders(children, repository) });
     await waitFor(() => expect(result.current.workspaceInitialized && result.current.canStartRuns).toBe(true));
     expect(result.current.generationModelBlockedReason).toContain("供应商");
     await act(async () => {
-      await result.current.generateRules();
+      expect(await result.current.generateRules()).toBe(false);
       await result.current.generateDiagrams();
       await result.current.generateDesignDiagrams();
       await result.current.generateRequirementsSpec();

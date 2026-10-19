@@ -20,14 +20,6 @@ export function developmentEnvironment(input = process.env) {
     const key = `UML_LLM_${scope}_CONCURRENCY`;
     environment[key] = input[key] || "10";
   }
-  if (input.SOFTJL_DEV_ONLYOFFICE === "true") {
-    Object.assign(environment, {
-      ONLYOFFICE_DOCUMENT_SERVER_URL: input.ONLYOFFICE_DOCUMENT_SERVER_URL || "http://127.0.0.1:8080",
-      PUBLIC_API_BASE_URL: input.PUBLIC_API_BASE_URL || `http://host.docker.internal:${apiPort}`,
-      ONLYOFFICE_JWT_SECRET: input.ONLYOFFICE_JWT_SECRET || "local-onlyoffice-jwt-secret",
-      ONLYOFFICE_ACCESS_TOKEN_SECRET: input.ONLYOFFICE_ACCESS_TOKEN_SECRET || "local-onlyoffice-access-secret",
-    });
-  }
   return environment;
 }
 

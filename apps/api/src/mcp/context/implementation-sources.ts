@@ -1,9 +1,9 @@
 // Projects platform-approved implementation inputs without exporting historical review metadata.
-import { atomicRequirementSchema } from "@uml-platform/contracts";
+import { z } from "zod";
 import { contentHash, type SourceArtifact } from "./source-artifacts.js";
 
-export const implementationAcceptanceSchema = atomicRequirementSchema.pick({
-  id: true, sourceRuleId: true, acceptanceCriteria: true,
+export const implementationAcceptanceSchema = z.object({
+  id: z.string().min(1), sourceRuleId: z.string().min(1).optional(), text: z.string().min(1),
 });
 
 export function implementationSources(input: SourceArtifact[]): SourceArtifact[] {
@@ -12,13 +12,13 @@ export function implementationSources(input: SourceArtifact[]): SourceArtifact[]
       return [artifact];
     const requirement = implementationAcceptanceSchema.safeParse(artifact.payload.requirement);
     if (artifact.stage !== "requirements" || !requirement.success) return [];
-    const { id, sourceRuleId, acceptanceCriteria } = requirement.data;
-    // MCP use accepts the saved criteria; prior reviews and repair candidates stay on the platform.
+    const { id, sourceRuleId, text } = requirement.data;
+    // Confirmed rule text is the implementation criterion; never invent an extracted checklist.
     return [{
       ...artifact,
-      title: `验收条件 ${id}`,
+      title: `需求 ${id}`,
       payload: { requirement: {
-        id, ...(sourceRuleId ? { sourceRuleId } : {}), acceptanceCriteria,
+        id, ...(sourceRuleId ? { sourceRuleId } : {}), text,
       } },
     }];
   });

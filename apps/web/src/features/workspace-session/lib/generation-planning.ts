@@ -28,8 +28,7 @@ export type GenerationConfirmationSummary = {
 
 export type RequirementAutoUpstreamPlan = {
   needsRulesRun: boolean;
-  rulesRunMode: "none" | "replace" | "merge";
-  ruleMappingDiagrams: DiagramType[];
+  rulesRunMode: "none" | "replace";
   requestedDiagrams: DiagramType[];
   effectiveDiagrams: DiagramType[];
   dependencyDiagrams: DiagramType[];
@@ -42,7 +41,7 @@ export const DESIGN_REQUIREMENT_SOURCE_MAP: Record<
   architecture: ["function"],
   sequence: ["usecase", "analysis"],
   navigation: ["prototype"],
-  class: ["class"],
+  class: ["class", "usecase"],
   component: [],
   deployment: ["deployment"],
   table: [],
@@ -54,8 +53,8 @@ export const DESIGN_MODEL_DEPENDENCY_MAP: Record<
 > = {
   architecture: [],
   sequence: [],
-  navigation: ["sequence"],
-  class: ["sequence"],
+  navigation: [],
+  class: [],
   component: ["class"],
   deployment: ["component"],
   table: ["class"],
@@ -113,20 +112,13 @@ export function planRequirementAutoUpstream(input: {
     ...requestedDiagrams,
     ...dependencyDiagrams,
   ]);
-  const ruleMappingDiagrams = requirementDiagramsMissingRuleMappings(
-    effectiveDiagrams,
-    input.rules,
-  );
   const rulesRunMode =
-    input.rules.length === 0
+    effectiveDiagrams.length === 0 ? "none" : input.rules.length === 0
       ? "replace"
-      : ruleMappingDiagrams.length > 0
-        ? "merge"
-        : "none";
+      : "none";
   return {
     needsRulesRun: rulesRunMode !== "none",
     rulesRunMode,
-    ruleMappingDiagrams,
     requestedDiagrams,
     effectiveDiagrams,
     dependencyDiagrams: orderedRequirementDiagrams([...dependencyDiagrams]),
@@ -155,136 +147,8 @@ export function planDesignRequirementAutoUpstream(input: {
   });
 }
 
-function requirementDiagramsMissingRuleMappings(
-  diagrams: DiagramType[],
-  rules: RequirementRule[],
-) {
-  if (rules.length === 0) return [];
-  const mappedDiagrams = new Set(rules.flatMap((rule) => rule.relatedDiagrams));
-  return orderedRequirementDiagrams(
-    diagrams.filter(
-      (diagram) => diagram !== "analysis" && !mappedDiagrams.has(diagram),
-    ),
-  );
-}
-
-function normalizeRuleTextForMerge(text: string) {
-  return text.replace(/\s+/gu, "").trim().toLowerCase();
-}
-
-export function mergeAutoCompletedRuleMappings(
-  existingRules: RequirementRule[],
-  generatedRules: RequirementRule[],
-) {
-  const generatedById = new Map(
-    generatedRules.map((rule) => [rule.id.trim().toLowerCase(), rule]),
-  );
-  const generatedByText = new Map(
-    generatedRules.map((rule) => [normalizeRuleTextForMerge(rule.text), rule]),
-  );
-  return existingRules.map((rule) => {
-    const generated =
-      generatedById.get(rule.id.trim().toLowerCase()) ??
-      generatedByText.get(normalizeRuleTextForMerge(rule.text));
-    if (!generated) return rule;
-    return {
-      ...rule,
-      relatedDiagrams: orderedRequirementDiagrams([
-        ...rule.relatedDiagrams,
-        ...generated.relatedDiagrams,
-      ]),
-    };
-  });
-}
-
-function ruleLikelySupportsDiagram(
-  rule: RequirementRule,
-  diagram: DiagramType,
-) {
-  const category = rule.category.toLowerCase();
-  const text = `${rule.category} ${rule.text}`.toLowerCase();
-  switch (diagram) {
-    case "function":
-      return (
-        category.includes("功能") ||
-        /功能|模块|能力|管理|维护|处理|支持|提供/u.test(text)
-      );
-    case "usecase":
-      return (
-        category.includes("功能") ||
-        /用户|游客|管理员|浏览|报名|取消|查看|创建|编辑|发布|下架|搜索|筛选/u.test(
-          text,
-        )
-      );
-    case "class":
-      return (
-        category.includes("数据") ||
-        category.includes("业务") ||
-        /实体|字段|容量|状态|标签|记录|人数|截止|不能|唯一/u.test(text)
-      );
-    case "activity":
-      return (
-        category.includes("功能") ||
-        category.includes("异常") ||
-        /流程|分支|报名|取消|提醒|通知|截止|已满|非法|审计|释放/u.test(text)
-      );
-    case "deployment":
-      return (
-        category.includes("非功能") ||
-        /部署|提醒|通知|定时|审计|日志|安全|性能|外部|集成/u.test(text)
-      );
-    case "prototype":
-      return (
-        category.includes("功能") ||
-        category.includes("异常") ||
-        /界面|页面|表单|查看|浏览|搜索|筛选|创建|编辑|发布|下架/u.test(text)
-      );
-    case "analysis":
-      return false;
-  }
-}
-
-export function ensureAutoCompletedRuleMappings(
-  rules: RequirementRule[],
-  targetDiagrams: DiagramType[],
-) {
-  let next = rules.map((rule) => ({
-    ...rule,
-    relatedDiagrams: [...rule.relatedDiagrams],
-  }));
-  for (const diagram of targetDiagrams) {
-    if (
-      diagram === "analysis" ||
-      next.some((rule) => rule.relatedDiagrams.includes(diagram))
-    ) {
-      continue;
-    }
-    const candidates = next.filter((rule) =>
-      ruleLikelySupportsDiagram(rule, diagram),
-    );
-    const fallbackRules = candidates.length > 0 ? candidates : next.slice(0, 1);
-    const fallbackIds = new Set(fallbackRules.map((rule) => rule.id));
-    next = next.map((rule) =>
-      fallbackIds.has(rule.id)
-        ? {
-            ...rule,
-            relatedDiagrams: orderedRequirementDiagrams([
-              ...rule.relatedDiagrams,
-              diagram,
-            ]),
-          }
-        : rule,
-    );
-  }
-  return next;
-}
-
 function ruleDependencyLabelsForPlan(plan?: RequirementAutoUpstreamPlan) {
   if (!plan?.needsRulesRun) return [];
-  if (plan.rulesRunMode === "merge") {
-    const suffix = diagramLabels(plan.ruleMappingDiagrams).join("、");
-    return [suffix ? `需求规则映射补齐：${suffix}` : "需求规则映射补齐"];
-  }
   return ["需求规则抽取/更新"];
 }
 
@@ -429,7 +293,7 @@ export function analyzeRequirementGeneration(
     title: "确认生成需求模型",
     description:
       plan?.needsRulesRun || (plan?.dependencyDiagrams.length ?? 0) > 0
-        ? "本次会先补齐缺失的上游规则映射或模型，再生成所选需求模型。"
+        ? "本次会先补齐缺失的上游需求规则或模型，再生成所选需求模型。"
         : "本次会追加或更新所选需求模型，已有模型会保留。",
     ruleDependencyLabels: ruleDependencyLabelsForPlan(plan),
     requirementDependencyLabels: diagramLabels(plan?.dependencyDiagrams ?? []),
@@ -516,7 +380,7 @@ export function analyzeDesignGeneration(
       requirementPlan?.needsRulesRun ||
       (requirementPlan?.effectiveDiagrams.length ?? 0) > 0 ||
       dependencyDiagrams.length > 0
-        ? "本次会先补齐缺失的上游规则映射或模型，再生成所选设计模型。"
+        ? "本次会先补齐缺失的上游需求规则或模型，再生成所选设计模型。"
         : "本次会追加或更新设计模型；缺失的前置模型会在确认后一并生成。",
     ruleDependencyLabels: ruleDependencyLabelsForPlan(requirementPlan),
     requirementDependencyLabels: diagramLabels(

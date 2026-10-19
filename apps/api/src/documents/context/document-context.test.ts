@@ -1,5 +1,6 @@
 // Verifies document fallback sections keep deliverable trace matrices concise.
 import assert from "node:assert/strict";
+import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
 import test from "node:test";
 import {
   startDocumentRunRequestSchema,
@@ -17,6 +18,20 @@ import {
 
 const INTERACTIVE_TRACE_REVIEW_PATTERN =
   /未找到明确(?:上游)?来源|请在跟踪矩阵|候选映射|需复核|自动补齐|相似度建立映射|低置信追踪关系复核|采纳|忽略|确认是否采纳/u;
+
+test("feasibility reports reject incomplete candidate economics instead of supplying substitute facts", () => {
+  const current = startDocumentRunRequestSchema.parse({
+    documentKind: "feasibilityStudy", requirementText: "预约系统", feasibilityInputs: {},
+    feasibilityImplementationPlan: structuredClone(FEASIBILITY_IMPLEMENTATION_EXAMPLE),
+  });
+  for (const missing of ["analysisPeriodAssumption", "costEstimates", "benefitEstimates"] as const) {
+    const input = structuredClone(current);
+    const implementation = input.feasibilityImplementationPlan!.candidates[0]!.implementation!;
+    if (missing === "analysisPeriodAssumption") implementation.analysisPeriodAssumption = null;
+    else implementation[missing] = [];
+    assert.throws(() => fallbackDocumentSections(input), /当前完整实现方案/);
+  }
+});
 
 function sectionTextValuesForTest(section: DocumentSection) {
   return [
@@ -76,14 +91,19 @@ test("software design documents preserve accepted numeric business constraints",
     documentKind: "softwareDesignSpec",
     requirementText: "报销总额达到5000元时必须由直属经理审批。",
     requirementBaseline: {
+      id: "baseline-test",
+      version: 1,
+      sourceInputFingerprint: "test-source-input",
       runId: "run-requirements",
       sourceDocumentId: "requirements-input",
-      requirements: [
+      schemaVersion: 3 as const,
+
+      rules: ([
         {
           id: "B03",
           sourceFragment:
             "报销总额达到5000元（包含正好5000元）时必须由直属经理审批。",
-          type: "business-rule",
+          type: "business-rule" as const,
           actor: "直属经理",
           subject: "报销单",
           action: "审批",
@@ -97,7 +117,7 @@ test("software design documents preserve accepted numeric business constraints",
           fieldProvenance: {},
           sourceRuleId: "R3",
         },
-      ],
+      ]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
       assumptions: [],
       conflicts: [],
       qualityReport: {
@@ -126,7 +146,7 @@ test("feasibility fallback report follows the fixed A.1–A.7 template without e
   const input = startDocumentRunRequestSchema.parse({
     documentKind: "feasibilityStudy",
     requirementText: "客户预约维修并在完成后支付。",
-    rules: [{ id: "R1", category: "功能需求", text: "客户可以预约维修。", relatedDiagrams: ["context"] }],
+    rules: [{ id: "R1", type: "functional" as const, text: "客户可以预约维修。",  }],
     requirementModels: [{
       diagramKind: "context",
       title: "维修系统上下文",
@@ -138,33 +158,7 @@ test("feasibility fallback report follows the fixed A.1–A.7 template without e
       relationships: [{ id: "rel-1", sourceId: "customer", targetId: "system", direction: "bidirectional", label: "预约与确认", sourceRequirementIds: ["R1"] }],
     }],
     feasibilityInputs: { projectName: "维修预约系统" },
-    feasibilityImplementationPlan: {
-      overview: "采用模块化 Web 系统。",
-      candidates: [
-        { id: "c1", name: "模块化单体", summary: "集中部署", advantages: ["交付快"], disadvantages: ["扩展需规划"], estimatedCost: "待确认", estimatedSchedule: "待确认", sourceRequirementIds: ["R1"], implementation: {
-          architecture: { summary: "分层架构。", modules: [{ id: "m1", name: "预约工单", responsibility: "处理预约", sourceRequirementIds: ["R1"] }] },
-          dataStrategy: { summary: "保存工单事实。", sourceRequirementIds: ["R1"] },
-          integrations: [],
-          deploymentAndOperations: { summary: "环境待确认。", sourceRequirementIds: [] },
-          securityAndCompliance: { summary: "最小权限。", sourceRequirementIds: [] },
-          milestones: [{ id: "ms1", name: "交付", timeframe: "待确认", deliverables: ["系统"], roles: ["开发者"], dependencies: [], acceptanceCriteria: ["R1 通过"], sourceRequirementIds: ["R1"] }],
-          oneTimeCosts: ["开发成本待确认"], recurringCosts: [], quantitativeBenefits: [], qualitativeBenefits: ["流程透明"],
-          risks: [{ id: "risk1", risk: "需求变化", probability: "medium", impact: "medium", mitigation: "基线评审", owner: "待确认", sourceRequirementIds: ["R1"] }],
-          verdicts: [
-            { category: "technical", verdict: "conditional", rationale: "需验证环境。" },
-            { category: "operational", verdict: "conditional", rationale: "需确认用户。" },
-            { category: "schedule", verdict: "unknown", rationale: "期限未提供。" },
-            { category: "economic", verdict: "unknown", rationale: "金额未提供。" },
-            { category: "legal", verdict: "conditional", rationale: "约束待确认。" },
-          ],
-          decision: "conditional-go",
-          preconditions: ["确认预算与期限"],
-        } },
-        { id: "c2", name: "服务化方案", summary: "按域拆分", advantages: ["扩展强"], disadvantages: ["运维复杂"], estimatedCost: "待确认", estimatedSchedule: "待确认", sourceRequirementIds: ["R1"] },
-      ],
-      recommendedCandidateId: "c1",
-      recommendationRationale: "在事实不足时优先降低交付风险。",
-    },
+    feasibilityImplementationPlan: structuredClone(FEASIBILITY_IMPLEMENTATION_EXAMPLE),
   });
 
   const sections = fallbackDocumentSections(input);
@@ -175,7 +169,8 @@ test("feasibility fallback report follows the fixed A.1–A.7 template without e
     "编写目的", "背景", "定义", "参考资料", "要求", "目标", "条件、假定和限制", "进行可行性研究的方法", "评价尺度",
   ]);
   assert.equal(sections.some((section) => section.title.includes("对现有系统的分析")), false);
-  assert.ok(sections.flatMap((section) => section.body).some((text) => text.includes("数据不足，未计算")));
+  assert.ok(sections.flatMap((section) => section.body).some((text) => text.includes("成本区间合计：CNY")));
+  assert.equal(JSON.stringify(sections).includes("legacy"), false);
   assert.equal(sections.find((section) => section.title === "背景")?.diagramKind, "context");
   assert.equal(sections.find((section) => section.title === "处理流程和数据流程")?.diagramKind, undefined);
   assert.ok(sections.find((section) => section.title === "对开发的影响")?.table);
@@ -189,15 +184,15 @@ test("requirements documents omit trace basis column from rule mapping tables", 
     rules: [
       {
         id: "r1",
-        category: "功能需求",
+        type: "functional" as const,
         text: "系统应支持借书。",
-        relatedDiagrams: ["class"],
+
       },
       {
         id: "r2",
-        category: "功能需求",
+        type: "functional" as const,
         text: "系统应支持图书检索。",
-        relatedDiagrams: ["class"],
+
       },
     ],
     requirementModelTraceability: [
@@ -261,15 +256,15 @@ test("analysis sections do not repeat unrelated global rules as direct mappings"
     rules: [
       {
         id: "r1",
-        category: "功能需求",
+        type: "functional" as const,
         text: "用户登录系统。",
-        relatedDiagrams: ["usecase"],
+
       },
       {
         id: "r2",
-        category: "非功能需求",
+        type: "quality" as const,
         text: "检索接口在100并发下响应不超过2秒。",
-        relatedDiagrams: ["analysis"],
+
       },
     ],
     requirementModels: [
@@ -359,15 +354,15 @@ test("requirements documents exclude mappings rejected by trusted coverage evide
     rules: [
       {
         id: "r1",
-        category: "功能需求",
+        type: "functional" as const,
         text: "用户登录系统。",
-        relatedDiagrams: ["usecase"],
+
       },
       {
         id: "r2",
-        category: "功能需求",
+        type: "functional" as const,
         text: "用户搜索课程。",
-        relatedDiagrams: ["usecase"],
+
       },
     ],
     requirementModels: [

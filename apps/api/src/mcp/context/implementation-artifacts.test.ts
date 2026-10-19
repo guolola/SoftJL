@@ -36,9 +36,9 @@ type Verify = (input: { root: string; snapshot: unknown; report: unknown; runChe
 
 function savedState(limit = 5) {
   const requirementText = `每位读者最多同时借阅${limit}本书，归还后可继续借阅；拒绝借阅不能增加已借数量。`;
-  const rule = { id: "BORROW-RULE", category: "业务规则", text: requirementText, relatedDiagrams: ["class"] };
+  const rule = { id: "BORROW-RULE", type: "business-rule" as const, text: requirementText, sourceFragment: requirementText };
   const requirement: AtomicRequirement = {
-    id: "BORROW", sourceRuleId: rule.id, sourceFragment: requirementText, type: "business-rule", actor: "读者", subject: "借阅服务",
+    id: "BORROW", sourceRuleId: rule.id, sourceFragment: requirementText, type: "business-rule" as const, actor: "读者", subject: "借阅服务",
     action: "借阅", object: "图书", condition: `已借数量少于${limit}本`, outcome: "借阅成功后数量增加1", confidence: 1,
     status: "accepted", criticality: "high", acceptanceCriteria: [
       `第${limit}本可以借阅，第${limit + 1}本必须被拒绝。`,
@@ -60,7 +60,12 @@ function savedState(limit = 5) {
   const fingerprint = snapshotInputFingerprint({ requirementText, rules: [rule] });
   return {
     requirementText, rules: [rule],
-    requirementBaseline: { runId: "requirements-run", sourceDocumentId: "requirements-document", requirements: [requirement], assumptions: [], conflicts: [], qualityReport, createdAt: "2026-01-01T00:00:00Z" },
+    requirementBaseline: {
+      id: "baseline-test",
+      version: 1,
+      sourceInputFingerprint: "test-source-input", runId: "requirements-run", sourceDocumentId: "requirements-document", schemaVersion: 3 as const,
+
+      rules: ([requirement]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: rule.type, origin: "generated" as const })), assumptions: [], conflicts: [], qualityReport, createdAt: "2026-01-01T00:00:00Z" },
     models: { "borrow-domain": analysis }, designModels: { "borrow-implementation": design },
     plantUml: { "borrow-domain": "@startuml\nclass Loan\n@enduml" },
     designPlantUml: { "borrow-implementation": `@startuml\nclass LoanService\nnote right of LoanService : 最多同时借阅${limit}本\n@enduml` },
@@ -154,8 +159,8 @@ async function implementedReport(root: string, source: ReturnType<typeof distrib
   entry.inputRefs = [{ path: "package.json", contentHash: sha(await readFile(path.join(root, "package.json"))) }];
   entry.testRefs = [{ path: "test/loan-service.test.mjs", criterionIds, contentHash: sha(await readFile(path.join(root, "test/loan-service.test.mjs"))) }];
   entry.checks = [
-    { id: "syntax", kind: "engineering", command: process.execPath, args: ["--check", "src/loan-service.mjs"], criterionIds: [] },
-    { id: "borrowing-acceptance", kind: "behavior", command: process.execPath, args: ["--test", "test/loan-service.test.mjs"], criterionIds },
+    { id: "syntax", kind: "engineering", command: process.execPath, args: ["--check", "src/loan-service.mjs"], timeoutMs: 30000, maxOutputBytes: 65536, criterionIds: [] },
+    { id: "borrowing-acceptance", kind: "behavior", command: process.execPath, args: ["--test", "test/loan-service.test.mjs"], timeoutMs: 30000, maxOutputBytes: 65536, criterionIds },
   ];
   return mcpImplementationReportSchema.parse(compactImplementationReport(report));
 }
@@ -173,7 +178,7 @@ test("distributed snapshot and template bind real saved sources without recursiv
   assert.ok(first.snapshot.manifest.every((source) => !source.artifactId.startsWith("implementation:")));
   assert.ok(first.snapshot.tasks.every((task) => task.sourceArtifactIds.every((id) => !id.startsWith("implementation:"))));
   assert.deepEqual(first.snapshot.tasks.map((task) => task.id), ["implement:requirement:BORROW"]);
-  assert.equal(first.snapshot.tasks[0].acceptanceCriteria.length, 3);
+  assert.equal(first.snapshot.tasks[0].acceptanceCriteria.length, 1);
   assert.deepEqual(first.snapshot.tasks[0].issues.filter((issue) => issue.severity === "blocking"), []);
   assert.deepEqual(first.report.entries.map((entry) => entry.status), ["planned"]);
   assert.ok(first.report.entries.every((entry) => !entry.actualRefs.length && !entry.testRefs.length && !entry.checks.length));
@@ -191,13 +196,16 @@ test("distributed snapshot and template bind real saved sources without recursiv
   const incidentalUi = withImplementationArtifacts(buildContext({ ...state, activeTab: "design", progress: 0.8 }, whole), projectId);
   assert.equal(incidentalUi.version, first.context.version);
   assert.ok(first.snapshot.manifest.every((source) => source.artifactId !== "requirements:source" && !source.artifactId.startsWith("analysis:")));
-  assert.doesNotMatch(JSON.stringify(first.original), /sourceFragment|\"text\":/);
+  assert.doesNotMatch(JSON.stringify(first.original), /sourceFragment/);
 });
 
-test("partial request scope keeps shared-rule dependencies as sources without adding implementation tasks", () => {
+test("partial request scope keeps shared-model dependencies without adding implementation tasks", () => {
   const state = savedState();
-  const second: AtomicRequirement = { ...state.requirementBaseline.requirements[0], id: "RETURN", sourceFragment: "归还操作需要保存记录", acceptanceCriteria: ["归还成功后有一条归还记录"] };
-  state.requirementBaseline.requirements.push(second);
+  const first = state.requirementBaseline.rules[0]!;
+  state.requirementBaseline.rules.push({ ...first, id: "RETURN-RULE", requirementId: "RETURN", text: "归还操作需要保存记录", sourceFragment: "归还操作需要保存记录", type: first.type });
+  const extra = state.requirementBaseline.rules[1]!;
+  state.rules.push({ id: extra.id, text: extra.text, sourceFragment: extra.sourceFragment, type: extra.type });
+  state.requirementModelTraceability.push({ ...state.requirementModelTraceability[0]!, ruleId: extra.id });
   const source = distributed(state, { requirementIds: ["BORROW"], artifactIds: [] });
   assert.ok(source.snapshot.manifest.some((item) => item.artifactId === "requirement:RETURN"));
   assert.deepEqual(source.snapshot.tasks.map((task) => task.id), ["implement:requirement:BORROW"]);
@@ -232,7 +240,7 @@ test("changing saved requirement to eight invalidates previous evidence and requ
   const after = distributed(savedState(8));
   assert.notEqual(after.snapshot.contextVersion, before.snapshot.contextVersion);
   assert.notEqual(after.snapshot.manifest.find((source) => source.artifactId === "requirement:BORROW")!.contentHash, before.snapshot.manifest.find((source) => source.artifactId === "requirement:BORROW")!.contentHash);
-  assert.ok(after.snapshot.tasks[0].acceptanceCriteria.some((criterion) => criterion.text.includes("第8本") && criterion.text.includes("第9本")));
+  assert.ok(after.snapshot.tasks[0].acceptanceCriteria.some((criterion) => criterion.text === savedState(8).rules[0].text));
   const stale = await local.verify({ root: local.root, snapshot: after.snapshot, report: oldReport, runChecks: true });
   assert.equal(stale.overall, "stale", JSON.stringify(stale));
   assert.deepEqual(stale.entries[0].checks, []);

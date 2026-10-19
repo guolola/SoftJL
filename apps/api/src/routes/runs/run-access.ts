@@ -1,4 +1,5 @@
 // Owns run route access context, project permission checks, and run metadata assembly.
+import { createHttpErrorResponse } from "../../server/http-error-response.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { ProjectPermission } from "@uml-platform/contracts";
 import type {
@@ -23,24 +24,6 @@ export interface RunAccessGuard {
   }): Promise<boolean>;
 }
 
-function stringHeader(request: FastifyRequest, name: string) {
-  const value = request.headers[name];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-export const defaultRunAccessGuard: RunAccessGuard = {
-  async resolveRunAccess(request) {
-    return {
-      userId: stringHeader(request, "x-uml-user-id"),
-      projectId: stringHeader(request, "x-uml-project-id"),
-    };
-  },
-  async canAccessProject({ projectId, access }) {
-    // Placeholder project guard until the real auth/project membership layer lands.
-    return access.projectId === projectId;
-  },
-};
-
 function projectIdFromRequestBody(body: unknown) {
   if (!body || typeof body !== "object" || !("projectId" in body)) {
     return undefined;
@@ -52,12 +35,7 @@ function projectIdFromRequestBody(body: unknown) {
 }
 
 export function runAccessDeniedMessage(reply: FastifyReply) {
-  return {
-    message:
-      reply.statusCode === 401
-        ? "Authentication required"
-        : "Project access denied",
-  };
+  return createHttpErrorResponse(reply);
 }
 
 export async function canReadProjectRuns(
@@ -160,13 +138,13 @@ export async function canReadRunRecord(
 ) {
   const metadata = record.metadata;
   if (!metadata?.userId && !metadata?.projectId) {
-    reply.code(401).send({ message: "Authentication required" });
+    reply.code(401).send(createHttpErrorResponse(reply));
     return false;
   }
 
   const access = await runAccessGuard.resolveRunAccess(request);
   if (!access.userId) {
-    reply.code(401).send({ message: "Authentication required" });
+    reply.code(401).send(createHttpErrorResponse(reply));
     return false;
   }
 
@@ -179,14 +157,14 @@ export async function canReadRunRecord(
       access,
     });
     if (!allowed) {
-      reply.code(403).send({ message: "Project access denied" });
+      reply.code(403).send(createHttpErrorResponse(reply));
       return false;
     }
     return true;
   }
 
   if (metadata.userId !== access.userId) {
-    reply.code(403).send({ message: "Run access denied" });
+    reply.code(403).send(createHttpErrorResponse(reply));
     return false;
   }
   return true;

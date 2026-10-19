@@ -77,12 +77,12 @@ describe('DashboardPage shell-06', () => {
     fireEvent.click(within(table).getByRole('button', { name: '进度' }))
     expect(within(table).getAllByRole('row')[1]).toHaveTextContent('项目 2')
   })
-  it('retains all cards when empty and offers project creation', async () => {
+  it('retains all cards when empty without the project creation banner', async () => {
     vi.mocked(dashboardApi.getSummary).mockResolvedValue(dashboardFixture(0))
     const navigate = vi.fn(); render(<DashboardPage onNavigate={navigate} />)
-    expect(await screen.findByTestId('dashboard-06-grid')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '新建项目' }))
-    expect(navigate).toHaveBeenCalledWith('/projects/new')
+    expect((await screen.findByTestId('dashboard-06-grid')).children).toHaveLength(12)
+    expect(screen.queryByText('还没有项目，创建后即可在这里查看统计。')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '新建项目' })).not.toBeInTheDocument()
     expect(screen.getByText('暂无生成任务')).toBeInTheDocument()
   })
   it('shows errors and retries instead of displaying sample data', async () => {

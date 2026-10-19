@@ -1,14 +1,16 @@
 // Resolves project-scoped run start commands into full pipeline request inputs.
+import { requirementRuleFacts } from "@uml-platform/contracts";
 import {
+  requirementBaselineSchema,
+  requirementRulesSchema,
   buildAcceptedRequirementSnapshot,
   buildFeasibilityImplementationFingerprint,
+  buildFeasibilityContextFingerprint,
   readFeasibilityBusinessFlowArtifact,
   designInputFingerprint,
-  normalizeSnapshotFingerprint,
-  normalizeDesignInputFingerprint,
+  designDependencies,
   snapshotInputFingerprint,
   designRecordBelongsToDiagramKinds,
-  findModelByDiagramKind,
   resolveModelArtifactIdentity,
   validateModelInput,
   type ModelingStage,
@@ -49,7 +51,7 @@ export type LoadProjectWorkspaceForRun = (
 ) => Promise<ProjectWorkspaceForRun | Record<string, unknown> | null | undefined>;
 
 type InputResolution<T> =
-  | { ok: true; input: T }
+  | { ok: true; input: T; workspaceState?: Record<string, unknown> }
   | { ok: false; statusCode: number; body: ApiErrorResponse };
 
 type ProjectGenerationPreflightKind =
@@ -101,18 +103,21 @@ function arrayValue(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+// Same contract as buildAcceptedRequirementSnapshot: every rule counts as generated.
 function acceptedFeasibilityRules(state: Record<string, unknown>) {
-  const rules = arrayValue(state.rules);
-  const baseline = recordValue(state.requirementBaseline);
-  const requirements = arrayValue(baseline.requirements);
-  if (requirements.length === 0) return rules;
-  const acceptedIds = new Set(
-    requirements
-      .filter((item) => recordValue(item).status === "accepted")
-      .map((item) => stringValue(recordValue(item).sourceRuleId))
-      .filter(Boolean),
-  );
-  return rules.filter((rule) => acceptedIds.has(stringValue(recordValue(rule).id)));
+  return arrayValue(state.rules);
+}
+
+// Routes consume saved current facts; invalid storage must never become a newly
+// accepted baseline merely because a generation command was submitted.
+function currentRequirementSource(state: Record<string, unknown>) {
+  const rules = requirementRulesSchema.safeParse(state.rules ?? []);
+  const baseline = requirementBaselineSchema.nullable().safeParse(state.requirementBaseline ?? null);
+  if (!rules.success || !baseline.success) return runInputResolutionError(409, "REQUIREMENT_BASELINE_BLOCKED");
+  if (baseline.data && snapshotInputFingerprint(baseline.data.rules.map(requirementRuleFacts)) !== snapshotInputFingerprint(rules.data)) {
+    return runInputResolutionError(409, "REQUIREMENT_BASELINE_BLOCKED");
+  }
+  return { ok: true as const, input: { rules: rules.data, baseline: baseline.data } };
 }
 
 function stringValue(value: unknown) {
@@ -147,8 +152,8 @@ const DESIGN_MODEL_DEPENDENCY_MAP: Record<
 > = {
   architecture: [],
   sequence: [],
-  navigation: ["sequence"],
-  class: ["sequence"],
+  navigation: [],
+  class: [],
   component: ["class"],
   deployment: ["component"],
   table: ["class"],
@@ -158,7 +163,7 @@ const DESIGN_REQUIREMENT_SOURCE_MAP: Record<DesignDiagramKind, DiagramKind[]> = 
   architecture: ["function"],
   sequence: ["usecase", "analysis"],
   navigation: ["prototype"],
-  class: ["class"],
+  class: ["class", "usecase"],
   component: [],
   deployment: ["deployment"],
   table: [],
@@ -206,26 +211,11 @@ function resolveRequirementCommandTargets(input: {
   selectedDiagrams: DiagramKind[];
   requestedDiagrams?: DiagramKind[];
   dependencyDiagrams?: DiagramKind[];
-  existingRequirementModels: unknown[];
 }) {
   const requestedDiagrams = orderedRequirementDiagrams(
     input.requestedDiagrams ?? input.selectedDiagrams,
   );
   const dependencyDiagrams = new Set(input.dependencyDiagrams ?? []);
-  const existing = new Set(
-    input.existingRequirementModels.flatMap((model) => {
-      const diagramKind = requirementDiagramKindFromWorkspaceRecord(model);
-      return diagramKind ? [diagramKind] : [];
-    }),
-  );
-  const selected = new Set(input.selectedDiagrams);
-  if (
-    selected.has("analysis") &&
-    !selected.has("usecase") &&
-    !existing.has("usecase")
-  ) {
-    dependencyDiagrams.add("usecase");
-  }
 
   return {
     selectedDiagrams: orderedRequirementDiagrams([
@@ -283,15 +273,7 @@ function normalizedFingerprintMatches(
   storedFingerprint: unknown,
   activeFingerprint: string,
 ) {
-  return (
-    normalizeSnapshotFingerprint(
-      typeof storedFingerprint === "string" ? storedFingerprint : null,
-    ) === activeFingerprint
-  );
-}
-
-function numberOrNull(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  return storedFingerprint === activeFingerprint;
 }
 
 function requirementModelIsStale(input: {
@@ -308,31 +290,8 @@ function requirementModelIsStale(input: {
     );
   }
 
-  const generatedDiagrams = new Set(
-    arrayValue(input.state.generatedDiagramTypes).filter(isRequirementDiagramKind),
-  );
-  if (!generatedDiagrams.has(input.diagram)) return false;
-
-  const diagramVersions = recordValue(input.state.diagramVersions);
-  const diagramVersion = numberOrNull(diagramVersions[input.diagram]);
-  const rulesVersion = numberOrNull(input.state.rulesVersion);
-  if (diagramVersion !== null && rulesVersion !== null) {
-    return diagramVersion !== rulesVersion;
-  }
-
-  const models = recordValue(input.state.models);
-  if (!findModelByDiagramKind(models, input.diagram)) {
-    return false;
-  }
-  const requirementInputFingerprint = input.state.requirementInputFingerprint;
-  return (
-    typeof requirementInputFingerprint === "string" &&
-    requirementInputFingerprint.trim().length > 0 &&
-    !normalizedFingerprintMatches(
-      requirementInputFingerprint,
-      input.activeRequirementFingerprint,
-    )
-  );
+  // Every consumed source needs an explicit receipt from the current workflow.
+  return true;
 }
 
 function activeRequirementFingerprintForState(state: Record<string, unknown>) {
@@ -488,10 +447,7 @@ function designChainIssues(input: {
         designInputFingerprints,
         modelKeysForWorkspaceRecord(entry),
       );
-      return (
-        Boolean(fingerprint) &&
-        normalizeDesignInputFingerprint(fingerprint) !== activeDesignFingerprint
-      );
+      return typeof fingerprint === "string" && fingerprint !== activeDesignFingerprint;
     })
     .map(modelKeyForWorkspaceRecord);
   const missingPlantUml = designModelEntries
@@ -553,9 +509,6 @@ function rejectProjectGenerationPreflight(input: {
   state: Record<string, unknown>;
   designDiagrams?: DesignDiagramKind[];
 }): InputResolution<never> | null {
-  const blockedRequirementReviews =
-    rejectBlockingRequirementReviewsForProjectCommand(input.state);
-  if (blockedRequirementReviews) return blockedRequirementReviews;
 
   const requirementSourceMissing =
     stringValue(input.state.requirementText).trim().length === 0;
@@ -591,11 +544,15 @@ function rejectProjectGenerationPreflight(input: {
     }
     const invalidContext = rejectInvalidModelStructures([contextModel], "feasibility");
     if (invalidContext) return invalidContext;
-      const contextFingerprint = buildAcceptedRequirementSnapshot(
-        input.state.rules ?? [], input.state.requirementBaseline ?? null,
-      ).snapshot.fingerprint;
+    const requirementFingerprint = buildAcceptedRequirementSnapshot(
+      input.state.rules ?? [], input.state.requirementBaseline ?? null,
+    ).snapshot.fingerprint;
+    const contextFingerprint = buildFeasibilityContextFingerprint({
+      rules: input.state.rules ?? [], requirementBaseline: input.state.requirementBaseline ?? null,
+      inputs: input.state.feasibilityInputs ?? {},
+    });
     if (
-      normalizeSnapshotFingerprint(stringValue(input.state.feasibilityContextFingerprint)) !==
+      stringValue(input.state.feasibilityContextFingerprint) !==
       contextFingerprint
     ) {
       return runInputResolutionError(409, "FEASIBILITY_CONTEXT_STALE");
@@ -604,7 +561,7 @@ function rejectProjectGenerationPreflight(input: {
     if (!businessFlow) return runInputResolutionError(409, "FEASIBILITY_BUSINESS_FLOW_MISSING");
     const invalidFlow = rejectInvalidModelStructures([businessFlow.model], "feasibility");
     if (invalidFlow) return invalidFlow;
-    if (businessFlow.fingerprint !== contextFingerprint) return runInputResolutionError(409, "FEASIBILITY_BUSINESS_FLOW_STALE");
+    if (businessFlow.fingerprint !== requirementFingerprint) return runInputResolutionError(409, "FEASIBILITY_BUSINESS_FLOW_STALE");
     const implementationFingerprint = buildFeasibilityImplementationFingerprint({
       rules: acceptedFeasibilityRules(input.state),
       requirementBaseline: input.state.requirementBaseline ?? null,
@@ -613,7 +570,7 @@ function rejectProjectGenerationPreflight(input: {
       inputs: recordValue(input.state.feasibilityInputs),
     });
     if (
-      normalizeSnapshotFingerprint(stringValue(input.state.feasibilityImplementationFingerprint)) !==
+      stringValue(input.state.feasibilityImplementationFingerprint) !==
       implementationFingerprint
     ) {
       return runInputResolutionError(409, "FEASIBILITY_IMPLEMENTATION_STALE");
@@ -636,6 +593,24 @@ function rejectProjectGenerationPreflight(input: {
       state: input.state,
     });
     if (staleRequirements) return staleRequirements;
+    const existing = Object.entries(recordValue(input.state.designModels));
+    const plan = resolveDesignCommandTargets({ selectedDiagrams: input.designDiagrams ?? [], existingDesignModels: existing.map(([, model]) => model) });
+    const generated = new Set<string>(plan.selectedDiagrams);
+    const consumed = new Set<string>();
+    const visit = (kind: string) => {
+      for (const dependency of designDependencies[kind] ?? []) {
+        if (consumed.has(dependency)) continue;
+        consumed.add(dependency); visit(dependency);
+      }
+    };
+    plan.selectedDiagrams.forEach(visit);
+    const active = designInputFingerprint(presentRecordValues(input.state.models), arrayValue(input.state.requirementModelTraceability));
+    const stored = stringRecordValue(input.state.designInputFingerprints);
+    const stale = existing.filter(entry => {
+      const kind = designDiagramKindFromWorkspaceRecord(entry[1]);
+      return kind && consumed.has(kind) && !generated.has(kind) && recordValueForAnyKey(stored, modelKeysForWorkspaceRecord(entry)) !== active;
+    }).map(modelKeyForWorkspaceRecord);
+    if (stale.length) return runInputResolutionError(409, "DESIGN_MODELS_STALE", { details: { modelIds: stale } });
   } else {
     const staleDiagrams = staleRequirementModelDiagrams({
       diagrams: requirementModelDiagramsFromState(input.state),
@@ -721,65 +696,6 @@ function rejectProjectGenerationPreflight(input: {
   return null;
 }
 
-const REVIEWABLE_REQUIREMENT_FIELDS = [
-  "actor",
-  "subject",
-  "action",
-  "object",
-  "condition",
-  "outcome",
-  "acceptanceCriteria",
-];
-
-function requirementHasPendingReviewField(requirement: Record<string, unknown>) {
-  const fieldProvenance = recordValue(requirement.fieldProvenance);
-  return REVIEWABLE_REQUIREMENT_FIELDS.some(
-    (field) => recordValue(fieldProvenance[field]).status === "pending-review",
-  );
-}
-
-function blockingRequirementReviewRuleIds(state: Record<string, unknown>) {
-  const baseline = recordValue(state.requirementBaseline);
-  const requirements = arrayValue(baseline.requirements);
-  if (requirements.length === 0) return [];
-  const candidates = recordValue(state.requirementReviewCandidates);
-  const blockedRuleIds = new Set<string>();
-  for (const requirementValue of requirements) {
-    const requirement = recordValue(requirementValue);
-    const sourceRuleId = stringValue(requirement.sourceRuleId);
-    if (!sourceRuleId) continue;
-    const candidateValue = candidates[sourceRuleId];
-    const hasCandidate = isPlainRecord(candidateValue);
-    if (!hasCandidate) continue;
-    const candidate = recordValue(candidateValue);
-    const candidatePending =
-      candidate.status === "pending" || candidate.status === "failed";
-    if (
-      candidatePending ||
-      requirement.status !== "accepted" ||
-      requirementHasPendingReviewField(requirement)
-    ) {
-      blockedRuleIds.add(sourceRuleId);
-    }
-  }
-  return Array.from(blockedRuleIds);
-}
-
-function rejectBlockingRequirementReviewsForProjectCommand(
-  state: Record<string, unknown>,
-): InputResolution<never> | null {
-  const blockedRuleIds = blockingRequirementReviewRuleIds(state);
-  if (blockedRuleIds.length === 0) return null;
-  return runInputResolutionError(
-    409,
-    "REQUIREMENT_REVIEWS_PENDING",
-    {
-      params: { count: blockedRuleIds.length },
-      details: { ruleIds: blockedRuleIds },
-    },
-  );
-}
-
 function compactRunInputText(value: unknown) {
   return typeof value === "string" || typeof value === "number"
     ? String(value).trim()
@@ -855,20 +771,7 @@ export async function resolveRequirementRunInput(
   metadata: RunInputMetadata | undefined,
   loadProjectWorkspace?: LoadProjectWorkspaceForRun,
 ): Promise<InputResolution<StartRunRequest>> {
-  const parsedCommand = startRunCommandSchema.safeParse(body);
-  const legacy = startRunRequestSchema.safeParse(body);
-  // Payloads without an explicit project id or workspace loader remain legacy
-  // full-run requests; project commands read the server's saved inputs.
-  if (legacy.success && (!parsedCommand.success ||
-    !parsedCommand.data.projectId || !loadProjectWorkspace)) {
-    if (legacy.data.selectedDiagrams.includes("analysis") && !legacy.data.selectedDiagrams.includes("usecase")) {
-      const invalid = rejectInvalidModelStructures(legacy.data.contextModels.filter((model) => model.diagramKind === "usecase"), "requirements");
-      if (invalid) return invalid;
-    }
-    return { ok: true, input: legacy.data };
-  }
-  if (!parsedCommand.success) throw parsedCommand.error;
-  const command: StartRunCommand = parsedCommand.data;
+  const command: StartRunCommand = startRunCommandSchema.parse(body);
   const rulesOnly = command.selectedDiagrams.length === 0;
   const workspace = await loadWorkspaceStateForCommand({
     commandProjectId: command.projectId,
@@ -879,7 +782,7 @@ export async function resolveRequirementRunInput(
   const requirementText = rulesOnly && command.requirementText !== undefined
     ? command.requirementText
     : stringValue(workspace.input.state.requirementText);
-  const preflight = rejectProjectGenerationPreflight({
+  const preflight = rulesOnly && command.attachments?.length ? null : rejectProjectGenerationPreflight({
     kind: "requirements",
     // A rules-only run commits the submitted draft after success. The saved
     // workspace can be empty before that first extraction.
@@ -887,30 +790,36 @@ export async function resolveRequirementRunInput(
   });
   if (preflight) return preflight;
   const contextModels = presentRecordValues(workspace.input.state.models);
-  const requirementSource = buildAcceptedRequirementSnapshot(
-    arrayValue(workspace.input.state.rules),
-    workspace.input.state.requirementBaseline ?? null,
-  );
+  const requirementSource = currentRequirementSource(workspace.input.state);
+  if (!requirementSource.ok) return requirementSource;
   const requirementTargets = resolveRequirementCommandTargets({
     selectedDiagrams: command.selectedDiagrams,
     requestedDiagrams: command.requestedDiagrams,
     dependencyDiagrams: command.dependencyDiagrams,
-    existingRequirementModels: contextModels,
   });
+  // Public commands consume saved upstreams; selecting usecase in this batch cannot fill a missing source.
+  if (requirementTargets.selectedDiagrams.includes("analysis") &&
+    !contextModels.some(model => requirementDiagramKindFromWorkspaceRecord(model) === "usecase")) {
+    return runInputResolutionError(409, "REQUIREMENT_MODELS_MISSING", { details: { missingDiagrams: ["usecase"] } });
+  }
   if (requirementTargets.selectedDiagrams.includes("analysis") && !requirementTargets.selectedDiagrams.includes("usecase")) {
     const invalid = rejectInvalidModelStructures(contextModels.filter((model) => requirementDiagramKindFromWorkspaceRecord(model) === "usecase"), "requirements");
     if (invalid) return invalid;
   }
   return {
     ok: true,
+    workspaceState: structuredClone(workspace.input.state),
     input: startRunRequestSchema.parse({
       projectId: workspace.input.projectId,
       requirementText,
+      attachments: rulesOnly ? command.attachments : undefined,
+      reasoning: command.reasoning,
       selectedDiagrams: requirementTargets.selectedDiagrams,
       requestedDiagrams: requirementTargets.requestedDiagrams,
       dependencyDiagrams: requirementTargets.dependencyDiagrams,
       // A rules-only run must not carry old rules into failed snapshots.
-      rules: rulesOnly ? [] : requirementSource.rules,
+      rules: rulesOnly ? [] : requirementSource.input.rules,
+      requirementBaseline: requirementSource.input.baseline,
       contextModels,
       contextRequirementModelTraceability: arrayValue(
         workspace.input.state.requirementModelTraceability,
@@ -926,13 +835,6 @@ export async function resolveDesignRunInput(
   metadata: RunInputMetadata | undefined,
   loadProjectWorkspace?: LoadProjectWorkspaceForRun,
 ): Promise<InputResolution<StartDesignRunRequest>> {
-  const legacy = startDesignRunRequestSchema.safeParse(body);
-  if (legacy.success) {
-    const filtered = filterReplacingDesignContext(legacy.data);
-    const invalid = rejectInvalidModelStructures(filtered.requirementModels, "requirements") ?? rejectInvalidModelStructures(filtered.existingDesignModels, "design");
-    return invalid ?? { ok: true, input: filtered };
-  }
-
   const command: StartDesignRunCommand = startDesignRunCommandSchema.parse(body);
   const workspace = await loadWorkspaceStateForCommand({
     commandProjectId: command.projectId,
@@ -955,9 +857,12 @@ export async function resolveDesignRunInput(
     designDiagrams: designTargets.requestedDiagrams,
   });
   if (preflight) return preflight;
+  const requirementSource = currentRequirementSource(workspace.input.state);
+  if (!requirementSource.ok) return requirementSource;
+  if (!requirementSource.input.baseline) return runInputResolutionError(409, "REQUIREMENT_BASELINE_BLOCKED");
   const input = filterReplacingDesignContext(startDesignRunRequestSchema.parse({
     projectId: workspace.input.projectId,
-    requirementBaseline: workspace.input.state.requirementBaseline,
+    requirementBaseline: requirementSource.input.baseline,
     requirementModels,
     requirementModelTraceability: arrayValue(workspace.input.state.requirementModelTraceability),
     selectedDiagrams: designTargets.selectedDiagrams,
@@ -966,6 +871,7 @@ export async function resolveDesignRunInput(
     existingDesignModelTraceability: arrayValue(workspace.input.state.designModelTraceability),
     existingDesignPlantUml: designPlantUmlArtifactsFromWorkspace(workspace.input.state),
     existingDesignSvgArtifacts: presentRecordValues(workspace.input.state.designSvgArtifacts),
+    reasoning: command.reasoning,
     providerSettings: command.providerSettings,
   }));
   const invalidDesign = rejectInvalidModelStructures(input.existingDesignModels, "design");
@@ -973,6 +879,7 @@ export async function resolveDesignRunInput(
   return {
     ok: true,
     input,
+    workspaceState: structuredClone(workspace.input.state),
   };
 }
 
@@ -1026,26 +933,15 @@ export async function resolveDocumentRunInput(
   metadata: RunInputMetadata | undefined,
   loadProjectWorkspace?: LoadProjectWorkspaceForRun,
 ): Promise<InputResolution<StartDocumentRunRequest>> {
-  const legacy = startDocumentRunRequestSchema.safeParse(body);
-  if (legacy.success && legacy.data.documentKind !== "feasibilityStudy") {
-    const invalid = rejectInvalidModelStructures(legacy.data.requirementModels ?? [], "requirements") ?? rejectInvalidModelStructures(legacy.data.designModels ?? [], "design");
-    return invalid ?? { ok: true, input: legacy.data };
-  }
-
-  // A full legacy request must not bypass feasibility dependencies or replace saved report inputs.
-  const command: StartDocumentRunCommand = legacy.success ? {
-    projectId: legacy.data.projectId,
-    documentKind: legacy.data.documentKind,
-    providerSettings: legacy.data.providerSettings,
-    useAiText: legacy.data.useAiText,
-    documentStyle: legacy.data.documentStyle,
-  } : startDocumentRunCommandSchema.parse(body);
+  const command: StartDocumentRunCommand = startDocumentRunCommandSchema.parse(body);
   const workspace = await loadWorkspaceStateForCommand({
     commandProjectId: command.projectId,
     metadata,
     loadProjectWorkspace,
   });
   if (!workspace.ok) return workspace;
+  const requirementSource = currentRequirementSource(workspace.input.state);
+  if (!requirementSource.ok) return requirementSource;
   const preflight = rejectProjectGenerationPreflight({
     kind: command.documentKind,
     state: workspace.input.state,
@@ -1053,20 +949,19 @@ export async function resolveDocumentRunInput(
   if (preflight) return preflight;
   return {
     ok: true,
+    workspaceState: structuredClone(workspace.input.state),
     input: startDocumentRunRequestSchema.parse({
       projectId: workspace.input.projectId,
       documentKind: command.documentKind,
       requirementText:
         stringValue(workspace.input.state.requirementText) ||
         (command.documentKind === "feasibilityStudy" ? "未提供/待确认" : ""),
-      requirementBaseline: command.documentKind === "feasibilityStudy"
-        ? buildAcceptedRequirementSnapshot(workspace.input.state.rules ?? [], workspace.input.state.requirementBaseline ?? null).baseline
-        : workspace.input.state.requirementBaseline ?? null,
+      requirementBaseline: requirementSource.input.baseline,
       rules: command.documentKind === "feasibilityStudy"
         ? acceptedFeasibilityRules(workspace.input.state)
         : arrayValue(workspace.input.state.rules),
       requirementModels: [
-        ...presentRecordValues(workspace.input.state.models),
+        ...presentRecordValues(workspace.input.state.models).filter(model => command.documentKind !== "feasibilityStudy" || recordValue(model).diagramKind !== "context"),
         ...(command.documentKind === "feasibilityStudy"
           ? [workspace.input.state.feasibilityContextModel]
           : []),
@@ -1075,21 +970,21 @@ export async function resolveDocumentRunInput(
         workspace.input.state.requirementModelTraceability,
       ),
       requirementPlantUml: [
-        ...requirementPlantUmlArtifactsFromWorkspace(workspace.input.state),
+        ...requirementPlantUmlArtifactsFromWorkspace(workspace.input.state).filter(artifact => command.documentKind !== "feasibilityStudy" || artifact.diagramKind !== "context"),
         ...(command.documentKind === "feasibilityStudy"
           ? [{
               diagramKind: "context",
-              modelId: "context",
+              modelId: stringValue(recordValue(workspace.input.state.feasibilityContextModel).modelId) || "context",
               source: stringValue(workspace.input.state.feasibilityContextPlantUml),
             }]
           : []),
       ],
       requirementSvgArtifacts: [
-        ...presentRecordValues(workspace.input.state.svgArtifacts),
+        ...presentRecordValues(workspace.input.state.svgArtifacts).filter(artifact => command.documentKind !== "feasibilityStudy" || recordValue(artifact).diagramKind !== "context"),
         ...(command.documentKind === "feasibilityStudy"
           ? [{
               diagramKind: "context",
-              modelId: "context",
+              modelId: stringValue(recordValue(workspace.input.state.feasibilityContextModel).modelId) || "context",
               svg: stringValue(workspace.input.state.feasibilityContextSvg),
               renderMeta: {
                 engine: "plantuml",
@@ -1113,6 +1008,7 @@ export async function resolveDocumentRunInput(
       feasibilityInputs: workspace.input.state.feasibilityInputs ?? {},
       providerSettings: command.providerSettings,
       useAiText: command.useAiText,
+      reasoning: command.reasoning,
       documentStyle: command.documentStyle,
     }),
   };

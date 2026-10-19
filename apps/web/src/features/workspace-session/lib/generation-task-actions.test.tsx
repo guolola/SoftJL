@@ -4,25 +4,25 @@ import { describe, expect, it } from "vitest";
 import { useGenerationTaskActions } from "./generation-task-actions";
 
 describe("workspace-session generation task actions", () => {
-  it("does not settle a rules-only task while its client repair phase is active", () => {
+  it("settles active model subtasks from the terminal server state", () => {
     const { result } = renderHook(() => useGenerationTaskActions());
     let taskId = "";
     act(() => {
       taskId = result.current.enqueueGenerationTask({
         kind: "requirements", title: "需求规则生成", providerModel: "fake-model",
-        message: "正在修复需求规则", startedAtMs: 1,
+        message: "正在生成用例模型", startedAtMs: 1,
         subtasks: [
           { id: "extract_rules", label: "抽取需求规则", status: "completed", message: null, errorMessage: null },
-          { id: "repair_rules", label: "修复需求规则", status: "repairing", message: null, errorMessage: null },
+          { id: "generate_models:usecase", label: "用例模型", status: "running", message: null, errorMessage: null },
         ],
       });
-      result.current.updateGenerationTask(taskId, (task) => ({ ...task, runId: "run-rules", status: "running" }));
+      result.current.updateGenerationTask(taskId, (task) => ({  ...task, runId: "run-rules", status: "running" }));
     });
     act(() => result.current.reconcileGenerationTasksWithProjectRuns([
-      { runId: "run-rules", status: "completed", completedAt: "2026-09-23T00:00:00.000Z" },
+      {  runId: "run-rules", status: "completed", completedAt: "2026-09-23T00:00:00.000Z" },
     ]));
-    expect(result.current.generationTasks[0].status).toBe("running");
-    expect(result.current.generationTasks[0].subtasks[1].status).toBe("repairing");
+    expect(result.current.generationTasks[0].status).toBe("completed");
+    expect(result.current.generationTasks[0].subtasks[1].status).toBe("completed");
   });
   it("clears only ordinary completed tasks and keeps failure, cancellation, and review evidence", () => {
     const { result } = renderHook(() => useGenerationTaskActions());
@@ -73,7 +73,7 @@ describe("workspace-session generation task actions", () => {
         ],
       });
       activeId = result.current.enqueueGenerationTask({
-        kind: "requirements",
+        kind: "design",
         title: "运行中任务",
         providerModel: "fake-model",
         message: "排队中",
@@ -109,7 +109,7 @@ describe("workspace-session generation task actions", () => {
       result.current.updateGenerationTask(activeId, (task) => ({
         ...task,
         status: "running",
-        message: "正在生成代码",
+        message: "正在生成设计模型",
       }));
       result.current.selectGenerationTask(completedId);
     });
@@ -339,8 +339,8 @@ describe("workspace-session generation task actions", () => {
 
     act(() => {
       taskId = result.current.enqueueGenerationTask({
-        kind: "requirements",
-        title: "需求生成",
+        kind: "design",
+        title: "代码生成",
         providerModel: "fake-model",
         message: "排队中",
         startedAtMs: 1,

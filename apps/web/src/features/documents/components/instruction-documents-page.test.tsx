@@ -1,5 +1,6 @@
 // Verifies the instruction document library keeps each generated DOCX visible.
-import { createDocumentRunSnapshot } from "../../../test/artifact-fixtures";
+import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
+import { createDocumentRunSnapshot } from "@/test/contract-fixtures";
 import { patchUserSettings } from "../../../shared/lib/user-settings";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -9,7 +10,7 @@ import type {
   DocumentLibraryItem,
   DocumentRunSnapshot,
 } from "@uml-platform/contracts";
-import { feasibilityInputsSchema, feasibilityImplementationPlanSchema, snapshotInputFingerprint, buildFeasibilityImplementationFingerprint } from "@uml-platform/contracts";
+import { feasibilityInputsSchema, completeFeasibilityImplementationPlanSchema, snapshotInputFingerprint, buildFeasibilityContextFingerprint, buildFeasibilityImplementationFingerprint } from "@uml-platform/contracts";
 import { useTheme } from "../../../shared/ui/theme-provider";
 import {
   createMockWorkspaceRepository,
@@ -20,12 +21,12 @@ import { designInputFingerprintFor } from "../../workspace-session/lib/workspace
 import { useWorkspaceShell } from "../../workspace-shell/state";
 import { InstructionDocumentsPage } from "./instruction-documents-page";
 
-const { onlyOfficeEditorHostMock } = vi.hoisted(() => ({
-  onlyOfficeEditorHostMock: vi.fn(() => <div data-testid="onlyoffice-editor" />),
+const { docxPreviewHostMock } = vi.hoisted(() => ({
+  docxPreviewHostMock: vi.fn((_props: { blob: Blob; onLoadError: () => void }) => <div data-testid="docx-preview" />),
 }));
 
-vi.mock("./only-office-editor-host", () => ({
-  OnlyOfficeEditorHost: onlyOfficeEditorHostMock,
+vi.mock("./docx-preview-host", () => ({
+  DocxPreviewHost: docxPreviewHostMock,
 }));
 
 const requirementModel = {
@@ -33,7 +34,7 @@ const requirementModel = {
   title: "订单系统用例",
   summary: "核心参与者和用例",
   notes: [],
-  actors: [],
+  actors: [{ id: "participant-user", name: "用户", actorType: "human", responsibilities: [] }],
   useCases: [
     {
       id: "usecase-submit-order",
@@ -41,12 +42,12 @@ const requirementModel = {
       goal: "用户提交订单",
       preconditions: [],
       postconditions: ["订单已提交"],
-      primaryActorId: null,
+      primaryActorId: "participant-user",
       supportingActorIds: [],
     },
   ],
   systemBoundaries: [],
-  relationships: [],
+  relationships: [{ id: "association-submit-order", type: "association", sourceId: "participant-user", targetId: "usecase-submit-order" }],
 };
 
 const designModel = {
@@ -55,7 +56,10 @@ const designModel = {
   title: "订单提交流程",
   summary: "订单提交的设计交互",
   notes: [],
-  participants: [],
+  participants: [
+    { id: "participant-user", name: "用户", participantType: "boundary" },
+    { id: "participant-order-service", name: "订单服务", participantType: "service" },
+  ],
   messages: [
     {
       id: "message-submit-order",
@@ -70,6 +74,10 @@ const designModel = {
 };
 
 const requirementModelTraceability = [
+  ...["participant-user", "association-submit-order"].map(elementId => ({
+    ruleId: "REQ-001",
+    target: { diagramKind: "usecase" as const, elementId, elementKind: elementId === "participant-user" ? "actor" : "relationship", label: elementId },
+  })),
   {
     ruleId: "REQ-001",
     target: {
@@ -82,6 +90,11 @@ const requirementModelTraceability = [
 ];
 
 const designModelTraceability = [
+  ...["participant-user", "participant-order-service"].map(elementId => ({
+    source: { modelId: "sequence", diagramKind: "sequence" as const, elementId, elementKind: "participant", label: elementId },
+    targets: [{ diagramKind: "usecase" as const, elementId: "usecase-submit-order", elementKind: "usecase", label: "提交订单" }],
+    mappingSource: "llm" as const,
+  })),
   {
     source: {
       modelId: "sequence",
@@ -203,6 +216,7 @@ function createControlledDocumentRepository() {
   const repository = createMockWorkspaceRepository({
     requirementText: "订单系统需求",
     models: { usecase: requirementModel as never },
+    diagramInputFingerprints: { usecase: snapshotInputFingerprint({ requirementText: "订单系统需求", rules: [] }) },
     requirementModelTraceability,
     designModels: { sequence: designModel as never },
     designModelTraceability,
@@ -258,7 +272,7 @@ function createControlledDocumentRepository() {
 }
 
 function templateCard(title: string) {
-  const titleElement = screen.getByText(title);
+  const titleElement = screen.getByRole("heading", { name: title, level: 3 });
   const card = titleElement.closest("article");
   if (!card) throw new Error(`Template card not found: ${title}`);
   return card;
@@ -267,9 +281,9 @@ function templateCard(title: string) {
 function createReadyFeasibilityWorkspace() {
   const rules = [{
     id: "R1",
-    category: "功能需求" as const,
+    type: "functional" as const,
     text: "用户可以提交维修预约。",
-    relatedDiagrams: ["usecase" as const],
+
   }];
   const contextModel = {
     diagramKind: "context" as const,
@@ -290,52 +304,14 @@ function createReadyFeasibilityWorkspace() {
     }],
   };
   const feasibilityInputs = feasibilityInputsSchema.parse({});
-  const feasibilityImplementationPlan = feasibilityImplementationPlanSchema.parse({
-    overview: "采用模块化 Web 实现。",
-    candidates: [{
-      id: "option-a",
-      name: "模块化方案",
-      summary: "按模块交付。",
-      advantages: ["易于实施"],
-      disadvantages: ["需要维护模块边界"],
-      estimatedCost: "待确认",
-      estimatedSchedule: "8 周",
-      sourceRequirementIds: ["R1"],
-      implementation: {
-        architecture: {
-          summary: "分层架构。",
-          modules: [{ id: "booking", name: "预约模块", responsibility: "处理维修预约", sourceRequirementIds: ["R1"] }],
-        },
-        dataStrategy: { summary: "关系数据存储。", sourceRequirementIds: ["R1"] },
-        integrations: [],
-        deploymentAndOperations: { summary: "容器化部署。", sourceRequirementIds: ["R1"] },
-        securityAndCompliance: { summary: "最小权限。", sourceRequirementIds: ["R1"] },
-        milestones: [{ id: "delivery", name: "交付预约模块", timeframe: "8 周", deliverables: ["预约模块"], sourceRequirementIds: ["R1"] }],
-        risks: [],
-        verdicts: [
-          { category: "technical" as const, verdict: "feasible" as const, rationale: "技术成熟。" },
-          { category: "operational" as const, verdict: "feasible" as const, rationale: "流程可执行。" },
-          { category: "schedule" as const, verdict: "feasible" as const, rationale: "周期可控。" },
-          { category: "economic" as const, verdict: "conditional" as const, rationale: "需确认预算。" },
-          { category: "legal" as const, verdict: "feasible" as const, rationale: "无额外限制。" },
-        ],
-        decision: "conditional-go" as const,
-        preconditions: ["确认预算"],
-      },
-    }],
-    recommendedCandidateId: "option-a",
-    recommendationRationale: "适合当前规模。",
-  });
+  const feasibilityImplementationPlan = completeFeasibilityImplementationPlanSchema.parse(FEASIBILITY_IMPLEMENTATION_EXAMPLE);
   return {
     rules,
     feasibilityInputs,
     feasibilityContextModel: contextModel,
     feasibilityContextPlantUml: "@startuml\n@enduml",
     feasibilityContextSvg: "<svg><text>维修预约系统</text></svg>",
-    feasibilityContextFingerprint: snapshotInputFingerprint({
-      rules,
-      requirementBaseline: null,
-    }),
+    feasibilityContextFingerprint: buildFeasibilityContextFingerprint({ rules, requirementBaseline: null, inputs: feasibilityInputs }),
     feasibilityImplementationPlan,
     feasibilityBusinessFlow: createBusinessFlowArtifact(rules),
     feasibilityImplementationFingerprint: buildFeasibilityImplementationFingerprint({
@@ -355,8 +331,6 @@ function storeManagedUserSettings() {
       providerConfigId: "provider-config-1",
       defaultModel: "gpt-5.5",
       providerModelOptions: ["gpt-5.5"],
-      imageModel: "nano-banana-pro",
-      fontSize: "md",
       autoGenerate: false,
       showStaleBanner: true,
     }),
@@ -364,6 +338,36 @@ function storeManagedUserSettings() {
 }
 
 describe("InstructionDocumentsPage", () => {
+  it("shows ordinary documents without generation controls and preserves preview navigation", async () => {
+    const user = userEvent.setup(); const onOpen = vi.fn();
+    const repository = createMockWorkspaceRepository();
+    const document = createDocument("ordinary-doc", "requirementsSpec", "普通项目需求.docx", "2026-10-16T08:00:00Z");
+    repository.listDocuments = vi.fn(async () => [document]);
+    repository.startDocumentRun = vi.fn();
+    render(withWorkspaceProviders(<InstructionDocumentsPage ordinary={{ onOpen, onBack: vi.fn() }} />, repository));
+    await screen.findByRole("heading", { name: "已生成说明书" });
+    expect(screen.queryByRole("heading", { name: "目标说明书" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "说明书样式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "生成" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "全选 / 全不选" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("generation-model-controls")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /需要处理/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "在线预览" }));
+    expect(onOpen).toHaveBeenCalledWith(document.id, document.fileName);
+    expect(repository.startDocumentRun).not.toHaveBeenCalled();
+  });
+
+  it("keeps the ordinary library available in read-only projects without a generation entry", async () => {
+    const repository = createMockWorkspaceRepository();
+    repository.listDocuments = vi.fn(async () => []);
+    render(withWorkspaceProviders(<InstructionDocumentsPage ordinary={{ disabled: true, onOpen: vi.fn(), onBack: vi.fn() }} />, repository));
+    await screen.findByRole("heading", { name: "已生成说明书" });
+    expect(screen.queryByRole("button", { name: "生成" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.getByText("在聊天中生成需求规格说明书和软件设计说明书，在此预览、下载和管理。")).toBeInTheDocument();
+  });
+
   it("requires a model for a real report after its artifact dependencies are satisfied", async () => {
     localStorage.clear();
     const repository = createMockWorkspaceRepository(createReadyFeasibilityWorkspace());
@@ -373,10 +377,12 @@ describe("InstructionDocumentsPage", () => {
     render(withWorkspaceProviders(<InstructionDocumentsPage />, repository));
     await screen.findByRole("heading", { name: "已生成说明书" });
     const card = templateCard("可行性研究报告");
-    const button = within(card).getByRole("button", { name: /生成并打开/ });
+    const button = screen.getByRole("button", { name: "生成" });
     expect(button).toBeDisabled();
     expect(within(card).queryByText("未选择模型供应商")).not.toBeInTheDocument();
+    expect(within(card).getByRole("img")).toHaveAttribute("data-generation-status", "blocked");
     const user = userEvent.setup();
+    await user.click(card);
     await user.click(screen.getByRole("button", { name: "有 3 项需要处理" }));
     const guidance = screen.getByRole("dialog", { name: "有 3 项需要处理" });
     expect(guidance).toHaveTextContent("未选择模型供应商");
@@ -384,6 +390,9 @@ describe("InstructionDocumentsPage", () => {
     await user.click(button);
     expect(repository.startDocumentRun).not.toHaveBeenCalled();
     act(() => patchUserSettings({ providerConfigId: "provider-1", defaultModel: "model-1", providerModelOptions: ["model-1"] }));
+    expect(within(card).getByRole("checkbox")).not.toBeChecked();
+    expect(button).toBeDisabled();
+    await user.click(card);
     expect(button).toBeEnabled();
   });
 
@@ -404,7 +413,7 @@ describe("InstructionDocumentsPage", () => {
     clearDialogSideEffects();
     localStorage.clear();
     vi.clearAllMocks();
-    onlyOfficeEditorHostMock.mockClear();
+    docxPreviewHostMock.mockClear();
   });
 
   it("renders and filters every generated document instance", async () => {
@@ -455,9 +464,10 @@ describe("InstructionDocumentsPage", () => {
     expect(within(generatedSection).getAllByText("128 B")).toHaveLength(3);
     expect(within(generatedSection).queryByText("来源运行")).not.toBeInTheDocument();
     const documentGrids = container.querySelectorAll(
-      '[data-workspace-density="compact-grid"]',
+      '[data-mobile-card-density="document-cards"]',
     );
-    expect(documentGrids.length).toBeGreaterThanOrEqual(2);
+    expect(documentGrids).toHaveLength(1);
+    expect(container.querySelectorAll('[data-mobile-card-density="model-targets"]')).toHaveLength(1);
     documentGrids.forEach((grid) => {
       expect(grid).toHaveAttribute("data-mobile-card-density", "document-cards");
       expect(grid.className).toContain("2xl:grid-cols-5");
@@ -480,7 +490,7 @@ describe("InstructionDocumentsPage", () => {
     expect(within(generatedSection).getByText("2 份")).toBeInTheDocument();
   });
 
-  it("renders template controls on the documents page instead of the automatic generate button", async () => {
+  it("uses shared selectable target cards and one generation toolbar without refresh buttons", async () => {
     const repository = createMockWorkspaceRepository();
     repository.listDocuments = vi.fn(async () => []);
     const user = userEvent.setup();
@@ -496,7 +506,14 @@ describe("InstructionDocumentsPage", () => {
     expect(
       screen.queryByRole("button", { name: /自动生成文档/i }),
     ).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /说明书样式/i })).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /说明书样式/i })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "刷新列表" })).not.toBeInTheDocument();
+    expect(screen.queryByText("请先勾选要生成的说明书。")).not.toBeInTheDocument();
+    expect(screen.queryByText(/自动目录.*标题编号.*SimSun/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "生成" })).toHaveLength(1);
+    const toolbar = screen.getByTestId("documents-generation-toolbar");
+    expect(toolbar.firstElementChild).toHaveAttribute("data-testid", "generation-model-controls");
+    expect(toolbar.lastElementChild).toBe(screen.getByRole("button", { name: "生成" }));
     expect(screen.getByText("可行性研究报告")).toBeInTheDocument();
     const feasibilityCard = templateCard("可行性研究报告");
     const requirementsCard = templateCard("需求规格说明书");
@@ -514,8 +531,13 @@ describe("InstructionDocumentsPage", () => {
     expect(screen.getByRole("heading", { name: "说明书", level: 1 }).parentElement).toContainElement(notice);
     for (const card of [feasibilityCard, requirementsCard, designCard]) {
       expect(within(card).queryByRole("button", { name: /需要处理/ })).not.toBeInTheDocument();
-      expect(within(card).queryByText(/请先|生成后可进入 Word 编辑器/)).not.toBeInTheDocument();
-      expect(within(card).getByRole("button", { name: "生成并打开" })).toBeDisabled();
+      expect(within(card).queryByRole("status")).not.toBeInTheDocument();
+      expect(within(card).getByRole("img")).toHaveAttribute("data-generation-status", "blocked");
+      expect(within(card).queryByRole("button", { name: /前往/ })).not.toBeInTheDocument();
+      expect(card).toHaveAttribute("data-slot", "spotlight-card");
+      expect(card).toHaveClass("h-[212px]", "sm:h-[236px]");
+      expect(within(card).getByRole("checkbox")).not.toBeChecked();
+      expect(within(card).queryByRole("button", { name: /生成|打开/ })).not.toBeInTheDocument();
     }
     await user.click(notice);
     const feedback = screen.getByRole("dialog", {
@@ -537,7 +559,7 @@ describe("InstructionDocumentsPage", () => {
     expect(screen.getByRole("dialog", { name: "有 3 项需要处理" })).toHaveTextContent("请先在设计模型页生成设计模型");
   });
 
-  it("enables the feasibility report from current analysis without requirement or design models", async () => {
+  it("generates the selected ready report while guarding blocked document targets", async () => {
     const repository = createMockWorkspaceRepository(createReadyFeasibilityWorkspace());
     repository.listDocuments = vi.fn(async () => []);
 
@@ -545,19 +567,50 @@ describe("InstructionDocumentsPage", () => {
 
     await screen.findByRole("heading", { name: "已生成说明书" });
 
-    expect(
-      within(templateCard("可行性研究报告")).getByRole("button", { name: /生成并打开/i }),
-    ).toBeEnabled();
-    expect(
-      within(templateCard("需求规格说明书")).getByRole("button", { name: /生成并打开/i }),
-    ).toBeDisabled();
-    expect(
-      within(templateCard("软件设计说明书")).getByRole("button", { name: /生成并打开/i }),
-    ).toBeDisabled();
+    const user = userEvent.setup();
+    const button = screen.getByRole("button", { name: "生成" });
+    expect(button).toBeDisabled();
+    await user.click(templateCard("可行性研究报告"));
+    expect(button).toBeEnabled();
+    await user.click(templateCard("需求规格说明书"));
+    expect(within(templateCard("需求规格说明书")).getByRole("checkbox")).not.toBeChecked();
+    expect(templateCard("需求规格说明书")).toHaveAttribute("aria-disabled", "true");
+    expect(button).toBeEnabled();
     expect(screen.getAllByRole("button", { name: /需要处理/ })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "有 2 项需要处理" })).toBeInTheDocument();
     expect(within(templateCard("可行性研究报告")).queryByText("生成后可进入 Word 编辑器。")).not.toBeInTheDocument();
   });
+
+  it("select all skips blocked cards and cannot force their selection", async () => {
+    const repository = createMockWorkspaceRepository(createReadyFeasibilityWorkspace());
+    repository.listDocuments = vi.fn(async () => []);
+    const user = userEvent.setup();
+    render(withWorkspaceProviders(<InstructionDocumentsPage />, repository));
+    await screen.findByRole("heading", { name: "已生成说明书" });
+    await user.click(screen.getByRole("button", { name: "全选" }));
+    expect(within(templateCard("可行性研究报告")).getByRole("checkbox")).toBeChecked();
+    for (const title of ["需求规格说明书", "软件设计说明书"]) {
+      const card = templateCard(title);
+      expect(card).toHaveAttribute("aria-disabled", "true");
+      fireEvent.click(card);
+      fireEvent.click(within(card).getByRole("checkbox"));
+      expect(within(card).getByRole("checkbox")).not.toBeChecked();
+    }
+    expect(screen.getByText("1/3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "生成" })).toBeEnabled();
+  });
+
+  it("select all leaves an entirely blocked library unselected", async () => {
+    const repository = createMockWorkspaceRepository();
+    repository.listDocuments = vi.fn(async () => []);
+    render(withWorkspaceProviders(<InstructionDocumentsPage />, repository));
+    await screen.findByRole("heading", { name: "已生成说明书" });
+    await userEvent.click(screen.getByRole("button", { name: "全选" }));
+    screen.getAllByRole("checkbox").forEach(checkbox => expect(checkbox).not.toBeChecked());
+    expect(screen.getByText("0/3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "生成" })).toBeDisabled();
+  });
+
 
   it("hides the header notice when all document prerequisites are satisfied", async () => {
     const repository = createMockWorkspaceRepository({
@@ -572,14 +625,19 @@ describe("InstructionDocumentsPage", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /需要处理/ })).not.toBeInTheDocument();
     });
-    expect(screen.getAllByRole("button", { name: "生成并打开" })).toHaveLength(3);
-    screen.getAllByRole("button", { name: "生成并打开" }).forEach((button) => {
-      expect(button).toBeEnabled();
-    });
+    const button = screen.getByRole("button", { name: "生成" });
+    expect(button).toBeDisabled();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "全选" }));
+    expect(button).toBeEnabled();
+    screen.getAllByRole("checkbox").forEach(checkbox => expect(checkbox).toBeChecked());
+    await user.click(screen.getByRole("button", { name: "全不选" }));
+    expect(button).toBeDisabled();
+    screen.getAllByRole("checkbox").forEach(checkbox => expect(checkbox).not.toBeChecked());
     expect(screen.queryByText("生成后可进入 Word 编辑器。")).not.toBeInTheDocument();
   });
 
-  it("explains stale feasibility artifacts and opens analysis with both selected", async () => {
+  it("warns for blocked regeneration even with an existing report and keeps reasons in header guidance", async () => {
     const readyWorkspace = createReadyFeasibilityWorkspace();
     const repository = createMockWorkspaceRepository({
       ...readyWorkspace,
@@ -587,13 +645,13 @@ describe("InstructionDocumentsPage", () => {
         ...readyWorkspace.rules,
         {
           id: "R2",
-          category: "业务规则",
+          type: "business-rule" as const,
           text: "超过借阅上限时系统必须阻止借书。",
-          relatedDiagrams: ["usecase"],
+
         },
       ],
     });
-    repository.listDocuments = vi.fn(async () => []);
+    repository.listDocuments = vi.fn(async () => [createDocument("old-feasibility", "feasibilityStudy", "可研旧版.docx", "2026-10-16T08:00:00Z")]);
     const user = userEvent.setup();
 
     render(
@@ -608,9 +666,14 @@ describe("InstructionDocumentsPage", () => {
 
     await screen.findByRole("heading", { name: "已生成说明书" });
     const feasibilityCard = templateCard("可行性研究报告");
-    expect(
-      within(feasibilityCard).getByRole("button", { name: /生成并打开/i }),
-    ).toBeDisabled();
+    expect(within(feasibilityCard).getByText("1")).toBeInTheDocument();
+    const warning = within(feasibilityCard).getByRole("img");
+    expect(warning).toHaveAttribute("data-generation-status", "blocked");
+    expect(warning.querySelector("svg")).toHaveClass("lucide-triangle-alert", "text-warning");
+    expect(within(feasibilityCard).queryByText(/需求规则已更新/)).not.toBeInTheDocument();
+    expect(within(feasibilityCard).queryByRole("button", { name: "前往可行性分析" })).not.toBeInTheDocument();
+    await user.click(feasibilityCard);
+    expect(screen.getByRole("button", { name: "生成" })).toBeDisabled();
 
     await user.click(
       screen.getByRole("button", { name: "有 3 项需要处理" }),
@@ -669,6 +732,7 @@ describe("InstructionDocumentsPage", () => {
     const repository = createMockWorkspaceRepository({
       requirementText: "订单系统需求",
       models: { usecase: requirementModel as never },
+      diagramInputFingerprints: { usecase: snapshotInputFingerprint({ requirementText: "订单系统需求", rules: [] }) },
     });
     const startDocumentRun = vi.spyOn(repository, "startDocumentRun");
     const user = userEvent.setup();
@@ -676,11 +740,12 @@ describe("InstructionDocumentsPage", () => {
     render(withWorkspaceProviders(<InstructionDocumentsPage />, repository));
 
     await screen.findByRole("heading", { name: "已生成说明书" });
-    await user.click(within(templateCard("需求规格说明书")).getByRole("button", { name: /说明书样式/i }));
+    await user.click(screen.getByRole("button", { name: /说明书样式/i }));
     await user.click(screen.getByRole("button", { name: "一级标题" }));
     fireEvent.change(await screen.findByLabelText("字号 pt"), { target: { value: "18" } });
     await user.click(screen.getByRole("button", { name: "完成" }));
-    await user.click(within(templateCard("需求规格说明书")).getByRole("button", { name: /生成并打开/i }));
+    await user.click(templateCard("需求规格说明书"));
+    await user.click(screen.getByRole("button", { name: "生成" }));
 
     await waitFor(() => {
       expect(startDocumentRun).toHaveBeenCalledWith(
@@ -696,10 +761,11 @@ describe("InstructionDocumentsPage", () => {
     });
   });
 
-  it("generates only the requirements spec from the requirements template action", async () => {
+  it("generates only the selected requirements specification from the shared action", async () => {
     const repository = createMockWorkspaceRepository({
       requirementText: "订单系统需求",
       models: { usecase: requirementModel as never },
+      diagramInputFingerprints: { usecase: snapshotInputFingerprint({ requirementText: "订单系统需求", rules: [] }) },
       designModels: { sequence: designModel as never },
     });
     const startDocumentRun = vi.spyOn(repository, "startDocumentRun");
@@ -708,7 +774,8 @@ describe("InstructionDocumentsPage", () => {
     render(withWorkspaceProviders(<InstructionDocumentsPage />, repository));
 
     await screen.findByRole("heading", { name: "已生成说明书" });
-    await user.click(within(templateCard("需求规格说明书")).getByRole("button", { name: /生成并打开/i }));
+    await user.click(templateCard("需求规格说明书"));
+    await user.click(screen.getByRole("button", { name: "生成" }));
 
     await waitFor(() => {
       expect(startDocumentRun).toHaveBeenCalledTimes(1);
@@ -718,7 +785,7 @@ describe("InstructionDocumentsPage", () => {
     );
   });
 
-  it("keeps document template buttons independent and opens only the first completed document", async () => {
+  it("starts selected documents once, locks selection during the batch and opens only the first completion", async () => {
     const { repository, subscribers, complete } =
       createControlledDocumentRepository();
     const user = userEvent.setup();
@@ -734,25 +801,21 @@ describe("InstructionDocumentsPage", () => {
     );
 
     await screen.findByRole("heading", { name: "已生成说明书" });
-    let requirementsButton = within(templateCard("需求规格说明书")).getByRole("button", { name: /生成并打开/i });
-    let designButton = within(templateCard("软件设计说明书")).getByRole("button", { name: /生成并打开/i });
-
-    await user.click(requirementsButton);
+    await user.click(templateCard("需求规格说明书"));
+    await user.click(templateCard("软件设计说明书"));
+    const generateButton = screen.getByRole("button", { name: "生成" });
+    await user.click(generateButton);
     await waitFor(() => {
       expect(subscribers.has("run-requirements")).toBe(true);
-    });
-    expect(requirementsButton).toBeDisabled();
-    expect(designButton).not.toBeDisabled();
-
-    requirementsButton = within(templateCard("需求规格说明书")).getByRole("button", { name: /生成并打开/i });
-    designButton = within(templateCard("软件设计说明书")).getByRole("button", { name: /生成并打开/i });
-    expect(designButton).not.toBeDisabled();
-    fireEvent.click(designButton);
-    await waitFor(() => {
       expect(subscribers.has("run-design")).toBe(true);
     });
-    expect(requirementsButton).toBeDisabled();
-    expect(designButton).toBeDisabled();
+    expect(generateButton).toBeDisabled();
+    expect(screen.getByRole("button", { name: "全选" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "全不选" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "选择模型" })).toBeDisabled();
+    screen.getAllByRole("checkbox").forEach(checkbox => expect(checkbox).toHaveAttribute("aria-disabled", "true"));
+    fireEvent.click(generateButton);
+    expect(repository.startDocumentRun).toHaveBeenCalledTimes(2);
 
     complete("run-design");
     await waitFor(() => {
@@ -768,6 +831,7 @@ describe("InstructionDocumentsPage", () => {
     expect(screen.getByTestId("active-selection")).toHaveTextContent(
       "doc-design",
     );
+    await waitFor(() => expect(generateButton).toBeEnabled());
   });
 
   it("shows a fresh list failure after every explicit retry", async () => {
@@ -801,128 +865,45 @@ describe("InstructionDocumentsPage", () => {
     expect(await screen.findByRole("dialog", { name: "说明书暂时无法读取" })).toBeInTheDocument();
   });
 
-  it("loads OnlyOffice config with the project theme and passes it to the editor", async () => {
-    localStorage.setItem("ui-theme", "light");
-    const document = createDocument(
-      "doc-requirements-1",
-      "requirementsSpec",
-      "需求规格说明书-20260520-160501-001.docx",
-      "2026-05-20T08:05:01.001Z",
-    );
+  it("loads authenticated DOCX bytes for preview and keeps the download action", async () => {
+    const document = createDocument("doc-preview", "requirementsSpec", "需求规格说明书.docx", "2026-05-20T08:05:01.001Z");
+    const blob = new Blob(["docx"]);
     const repository = createMockWorkspaceRepository();
     repository.listDocuments = vi.fn(async () => [document]);
-    repository.getOnlyOfficeEditorConfig = vi.fn(async (_documentId, uiTheme) => ({
-      document,
-      documentServerUrl: "http://127.0.0.1:8080",
-      config: {
-        documentType: "word",
-        document: {
-          fileType: "docx",
-          key: `${document.id}-v${document.version}`,
-          title: document.fileName,
-          url: `/api/documents/${document.id}/file`,
-        },
-        editorConfig: {
-          callbackUrl: `/api/documents/${document.id}/onlyoffice/callback`,
-          mode: "edit",
-          lang: "zh-CN",
-          customization: {
-            uiTheme,
-          },
-        },
-      },
-    }));
-
-    render(
-      withWorkspaceProviders(
-        <InstructionDocumentsPage activeDocumentId={document.id} />,
-        repository,
-      ),
-    );
-
-    await screen.findByTestId("onlyoffice-editor");
-
-    expect(repository.getOnlyOfficeEditorConfig).toHaveBeenCalledWith(
-      document.id,
-      "theme-classic-light",
-    );
-    const editorProps = (
-      onlyOfficeEditorHostMock.mock.calls as unknown as Array<[unknown]>
-    )[0]?.[0];
-    expect(editorProps).toEqual(
-      expect.objectContaining({
-        config: expect.objectContaining({
-          editorConfig: expect.objectContaining({
-            customization: { uiTheme: "theme-classic-light" },
-          }),
-        }),
-      }),
-    );
+    repository.downloadDocument = vi.fn(async () => ({ blob, fileName: document.fileName }));
+    render(withWorkspaceProviders(<InstructionDocumentsPage activeDocumentId={document.id} />, repository));
+    await screen.findByTestId("docx-preview");
+    expect(repository.downloadDocument).toHaveBeenCalledWith(document.id);
+    expect(docxPreviewHostMock.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ blob }));
+    expect(screen.getByRole("button", { name: "下载" })).toBeEnabled();
+    expect(screen.getByText(/需要编辑时，请下载 DOCX/)).toBeInTheDocument();
   });
 
-  it("reloads the OnlyOffice config with the next project theme", async () => {
-    localStorage.setItem("ui-theme", "light");
-    const document = createDocument(
-      "doc-requirements-1",
-      "requirementsSpec",
-      "需求规格说明书-20260520-160501-001.docx",
-      "2026-05-20T08:05:01.001Z",
-    );
+  it("keeps the current preview when the project theme changes", async () => {
+    const document = createDocument("doc-theme", "requirementsSpec", "需求规格说明书.docx", "2026-05-20T08:05:01.001Z");
     const repository = createMockWorkspaceRepository();
     repository.listDocuments = vi.fn(async () => [document]);
-    repository.getOnlyOfficeEditorConfig = vi.fn(async (_documentId, uiTheme) => ({
-      document,
-      documentServerUrl: "http://127.0.0.1:8080",
-      config: {
-        documentType: "word",
-        document: {
-          fileType: "docx",
-          key: `${document.id}-v${document.version}-${uiTheme}`,
-          title: document.fileName,
-          url: `/api/documents/${document.id}/file`,
-        },
-        editorConfig: {
-          callbackUrl: `/api/documents/${document.id}/onlyoffice/callback`,
-          mode: "edit",
-          lang: "zh-CN",
-          customization: {
-            uiTheme,
-          },
-        },
-      },
-    }));
+    repository.downloadDocument = vi.fn(async () => ({ blob: new Blob(["docx"]), fileName: document.fileName }));
     const user = userEvent.setup();
-
-    render(
-      withWorkspaceProviders(
-        <>
-          <ThemeToggleButton />
-          <InstructionDocumentsPage activeDocumentId={document.id} />
-        </>,
-        repository,
-      ),
-    );
-
-    await screen.findByTestId("onlyoffice-editor");
+    render(withWorkspaceProviders(<><ThemeToggleButton /><InstructionDocumentsPage activeDocumentId={document.id} /></>, repository));
+    await screen.findByTestId("docx-preview");
     await user.click(screen.getByRole("button", { name: "切换主题" }));
+    expect(repository.downloadDocument).toHaveBeenCalledTimes(1);
+  });
 
-    await waitFor(() => {
-      expect(repository.getOnlyOfficeEditorConfig).toHaveBeenCalledWith(
-        document.id,
-        "theme-dark",
-      );
-    });
-    const editorHostCalls =
-      onlyOfficeEditorHostMock.mock.calls as unknown as Array<[unknown]>;
-    const latestEditorProps = editorHostCalls[editorHostCalls.length - 1]?.[0];
-    expect(latestEditorProps).toEqual(
-      expect.objectContaining({
-        config: expect.objectContaining({
-          editorConfig: expect.objectContaining({
-            customization: { uiTheme: "theme-dark" },
-          }),
-        }),
-      }),
-    );
+  it("offers retry and download when fetching the preview fails", async () => {
+    const document = createDocument("doc-failed", "requirementsSpec", "需求规格说明书.docx", "2026-05-20T08:05:01.001Z");
+    const repository = createMockWorkspaceRepository();
+    repository.listDocuments = vi.fn(async () => [document]);
+    repository.downloadDocument = vi.fn().mockRejectedValueOnce(new Error("network")).mockResolvedValue({ blob: new Blob(["docx"]), fileName: document.fileName });
+    const user = userEvent.setup();
+    render(withWorkspaceProviders(<InstructionDocumentsPage activeDocumentId={document.id} />, repository));
+    await screen.findByRole("dialog", { name: "文档暂时无法预览" });
+    expect(screen.getByRole("button", { name: "下载当前 DOCX" })).toBeEnabled();
+    // Dismiss the feedback dialog before using the persistent inline retry action.
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByTestId("docx-preview");
+    expect(repository.downloadDocument).toHaveBeenCalledTimes(2);
   });
 });

@@ -167,7 +167,7 @@ export async function registerMcpRoutes(
           );
           const node = toNodeHandler(
             createMcpHandler(() => createPlatformMcpServer(access, principal), {
-              legacy: "stateless",
+              legacy: "reject",
             }),
           );
           reply.hijack();

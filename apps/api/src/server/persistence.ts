@@ -4,8 +4,6 @@ import { createInMemoryAuthStore, type AuthStore, } from "../auth/in-memory-auth
 import { createPostgresAuthRepository } from "../auth/postgres-auth-repository.js";
 import { createPostgresPoolFromEnv, getDatabaseUrl } from "../db/postgres.js";
 import { runMigrations } from "../db/migrations.js";
-import { createInMemoryAcademicAdminRepository, type AcademicAdminRepository, } from "../db/academic-admin-repository.js";
-import { createPostgresAcademicAdminRepository } from "../db/postgres-academic-admin-repository.js";
 import { createFileDocumentLibrary } from "../documents/library/document-library.js";
 import type { DocumentLibrary } from "../documents/library/document-library.js";
 import { createPostgresDocumentLibrary } from "../documents/library/postgres-document-library.js";
@@ -34,7 +32,6 @@ export type ApiPersistence = {
     documentLibrary: DocumentLibrary;
     providerUsageTracker?: ProviderUsageTracker;
     systemNoticeStore: SystemNoticeStore;
-    academicStore: AcademicAdminRepository;
     analyticsStore: RunTelemetryStore;
 };
 function hasInjectedPersistence(overrides: ApiPersistenceOverrides) {
@@ -86,9 +83,6 @@ export async function createApiPersistence({ nodeEnv, overrides = {}, }: {
         (pool
             ? createPostgresSystemNoticeStore(pool)
             : createInMemorySystemNoticeStore());
-    const academicStore = pool
-        ? createPostgresAcademicAdminRepository(pool)
-        : createInMemoryAcademicAdminRepository();
     const analyticsStore = overrides.analyticsStore ?? (pool
         ? createPostgresRunTelemetryStore(pool)
         : createInMemoryRunTelemetryStore());
@@ -100,7 +94,6 @@ export async function createApiPersistence({ nodeEnv, overrides = {}, }: {
         documentLibrary,
         providerUsageTracker,
         systemNoticeStore,
-        academicStore,
         analyticsStore,
     };
 }

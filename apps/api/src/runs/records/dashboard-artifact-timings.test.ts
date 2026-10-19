@@ -1,4 +1,4 @@
-// Checks real artifact boundaries, parallel models, retries and legacy missing timestamps.
+// Checks real artifact boundaries, parallel models, retries and unavailable timestamps.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { dashboardArtifactTimings, type DashboardTimingEvent } from "./dashboard-artifact-timings.js";
@@ -19,11 +19,11 @@ test("repairs stay in the sample, failed attempts are excluded, missing starts s
   const event = (type: string, subtaskStatus: string): DashboardTimingEvent => ({ type, stage: "generate_models", diagramKind: "class", subtaskId: "class", artifactKind: "model", subtaskStatus });
   const timings = dashboardArtifactTimings({ runKind: "requirements" }, [event("stage_progress", "running"), event("stage_progress", "repairing"), event("stage_progress", "failed"), event("stage_progress", "running"), event("artifact_ready", "completed")], [0, 2, 5, 10, 20].map(at));
   assert.equal(timings[0].startedAt, at(10));
-  const legacy = dashboardArtifactTimings({ runKind: "requirements" }, [event("artifact_ready", "completed")], [at(20)]);
-  assert.equal(legacy[0].startedAt, null);
+  const withoutStart = dashboardArtifactTimings({ runKind: "requirements" }, [event("artifact_ready", "completed")], [at(20)]);
+  assert.equal(withoutStart[0].startedAt, null);
   assert.deepEqual(dashboardArtifactTimings({ runKind: "requirements" }, [event("stage_progress", "failed")], [at(20)]), []);
-  const olderReady = { ...event("artifact_ready", "completed"), subtaskStatus: undefined };
-  assert.equal(dashboardArtifactTimings({ runKind: "requirements" }, [event("stage_progress", "running"), olderReady], [at(0), at(20)])[0].startedAt, at(0));
+  const readyWithoutOptionalStatus = { ...event("artifact_ready", "completed"), subtaskStatus: undefined };
+  assert.equal(dashboardArtifactTimings({ runKind: "requirements" }, [event("stage_progress", "running"), readyWithoutOptionalStatus], [at(0), at(20)])[0].startedAt, at(0));
 });
 test("document and implementation timings include only their own generation boundary", () => {
   const document = dashboardArtifactTimings({ runKind: "document", documentId: "doc-a", documentKind: "requirementsSpec", fileName: "需求.docx" }, [
@@ -37,7 +37,7 @@ test("document and implementation timings include only their own generation boun
   ], [0, 10, 30].map(at));
   assert.equal(implementation[0].startedAt, at(10)); assert.equal(implementation[0].artifactType, "feasibility:implementation");
 });
-test("historical batch-ready events retain independent model activity durations and exclude review calls", () => {
+test("historical batch-ready events cannot reconstruct per-model artifact timings", () => {
   const model = { modelId: "login", diagramKind: "sequence", title: "登录用例实现模型" };
   const events: DashboardTimingEvent[] = [
     { type: "run_activity", stage: "generate_design_sequence", callId: "one", subtaskId: "login", phase: "started" },
@@ -48,7 +48,6 @@ test("historical batch-ready events retain independent model activity durations 
   ];
   const snapshot = { runKind: "design", status: "completed", models: [model] };
   const result = dashboardArtifactTimings(snapshot, events, [0, 10, 11, 25, 30].map(at));
-  assert.equal(result.length, 1); assert.equal(result[0].artifactId, "login");
-  assert.equal(result[0].completedAt, at(10));
+  assert.deepEqual(result, []);
   assert.deepEqual(dashboardArtifactTimings({ ...snapshot, status: "failed" }, events, [0, 10, 11, 25, 30].map(at)), []);
 });

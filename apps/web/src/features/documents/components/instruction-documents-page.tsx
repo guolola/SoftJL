@@ -1,4 +1,4 @@
-// Hosts generated instruction documents and opens them in the configured Word editor.
+// Hosts generated instruction documents and previews their DOCX files in the browser.
 import { Card } from "../../../shared/ui/card";
 import {
   useCallback,
@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { PageContainer, PageHeader } from "../../../shared/template/layout/page";
@@ -13,9 +14,6 @@ import type { TFunction } from "i18next";
 import {
   type DocumentKind,
   type DocumentLibraryItem,
-  type DocumentStyleSettings,
-  type OnlyOfficeUiTheme,
-  type OnlyOfficeEditorConfigResponse,
 } from "@uml-platform/contracts";
 import {
   ArrowLeft,
@@ -24,10 +22,8 @@ import {
   HardDrive,
   Loader2,
   Palette,
-  RefreshCw,
   Search,
   SlidersHorizontal,
-  Sparkles,
 } from "lucide-react";
 import { Badge } from "../../../shared/ui/badge";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
@@ -41,48 +37,50 @@ import {
 } from "../../../shared/ui/feedback-dialog";
 import { cn } from "../../../shared/ui/utils";
 import { downloadBlobFile } from "../../../shared/lib/download";
-import { useWorkspaceRepository } from "../../../services/workspace-repository";
+import { useWorkspaceProjectId, useWorkspaceRepository } from "../../../services/workspace-repository";
 import { useWorkspaceSession } from "../../workspace-session/state";
+import { GenerationModelControls } from "../../workspace-session/components/generation-model-controls";
+import { ModelingGenerationButton } from "../../../shared/ui/modeling-generation-button";
 import { useWorkspaceShell } from "../../workspace-shell/state";
-import {
-  MobileCompactGrid,
-  mobileTouchTargetClass,
-} from "../../workspace-shell/components/mobile-density";
+import { MobileCompactGrid } from "../../workspace-shell/components/mobile-density";
 import { DocumentStyleDialog } from "./document-style-dialog";
 import { DocumentGuidanceDialog } from "./document-guidance-dialog";
-import { OnlyOfficeEditorHost } from "./only-office-editor-host";
+import { DocxPreviewHost } from "./docx-preview-host";
 import { cloneDefaultDocumentStyle } from "../lib/document-style";
-import { useTheme } from "../../../shared/ui/theme-provider";
 import { feasibilityArtifactState } from "../../feasibility/lib/feasibility-freshness";
-
-function onlyOfficeUiThemeForProjectTheme(theme: "light" | "dark"): OnlyOfficeUiTheme {
-  return theme === "light" ? "theme-classic-light" : "theme-dark";
-}
+import { ModelBentoCard } from "../../workspace-shell/components/model-bento-card";
+import { TargetSelectionActions } from "../../workspace-shell/components/target-selection-actions";
+import { DocumentManagementActions } from "./document-management-actions";
+import { DeletedDocuments } from "./deleted-documents";
 
 const DOCUMENT_DEFINITIONS = [
   {
     kind: "feasibilityStudy",
     title: "可行性研究报告",
     fileName: "可行性研究报告.docx",
-    source: "Generated from Feasibility Analysis",
+    source: "uxReview.feasibilitySource",
+    english: "Feasibility Study Report",
   },
   {
     kind: "requirementsSpec",
     title: "需求规格说明书",
     fileName: "需求规格说明书.docx",
-    source: "Generated from Requirement Model",
+    source: "uxReview.requirementsSource",
+    english: "Software Requirements Specification",
   },
   {
     kind: "softwareDesignSpec",
     title: "软件设计说明书",
     fileName: "软件设计说明书.docx",
-    source: "Generated from Design Model",
+    source: "uxReview.designSource",
+    english: "Software Design Specification",
   },
 ] satisfies Array<{
   kind: DocumentKind;
   title: string;
   fileName: string;
   source: string;
+  english: string;
 }>;
 
 const IDLE_DOCUMENT_GENERATION_STATE: Record<DocumentKind, boolean> = {
@@ -134,14 +132,6 @@ function formatFullUpdatedAt(value: string | null | undefined, locale: string, t
   }).format(date);
 }
 
-function documentStyleSummary(style: DocumentStyleSettings, t: TFunction) {
-  return [
-    t(style.includeTableOfContents ? "documentsPage.style.toc" : "documentsPage.style.noToc"),
-    t(style.autoNumberHeadings ? "documentsPage.style.numbered" : "documentsPage.style.manual"),
-    style.body?.eastAsiaFont ?? t("documentsPage.style.defaultFont"),
-  ];
-}
-
 function localizedDocumentTitle(kind: DocumentKind, t: TFunction) {
   return t(`documentsPage.kinds.${kind}`);
 }
@@ -166,57 +156,6 @@ function feasibilityDisabledReason(
     return t("documentsPage.prerequisites.feasibilityImplementationStale");
   }
   return null;
-}
-
-function TemplatePreview({
-  definition,
-  documentStyle,
-  onOpenStyle,
-}: {
-  definition: (typeof DOCUMENT_DEFINITIONS)[number];
-  documentStyle: DocumentStyleSettings;
-  onOpenStyle: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex h-36 flex-col gap-2 bg-muted/60 px-3 py-3 sm:h-44 sm:px-6 sm:py-5">
-      <div className="flex items-start justify-between gap-3">
-        <Badge variant="secondary" className="text-[10px]">
-          {t("documentsPage.courseTemplate")}
-        </Badge>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="size-9 p-0 sm:h-8 sm:w-auto sm:px-3"
-          onClick={onOpenStyle}
-          title={t("documentsPage.documentStyle")}
-          aria-label={t("documentsPage.documentStyle")}
-        >
-          <Palette className="size-3.5" />
-          <span className="hidden sm:inline">{t("documentsPage.documentStyle")}</span>
-        </Button>
-      </div>
-      <div className="mt-auto space-y-3">
-        <div>
-          <p className="text-xs text-muted-foreground">{t("documentsPage.generationTemplate")}</p>
-          <p className="mt-1 line-clamp-2 text-sm font-semibold text-foreground sm:text-lg">
-            {localizedDocumentTitle(definition.kind, t)}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-1.5 sm:gap-2">
-          {documentStyleSummary(documentStyle, t).map((item) => (
-            <span
-              key={item}
-              className="rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground sm:px-2.5 sm:py-1 sm:text-[11px]"
-            >
-              {item}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function GeneratedDocumentPreview({
@@ -264,60 +203,18 @@ function GeneratedDocumentPreview({
   );
 }
 
-function TemplateDocumentCard({
-  definition,
-  disabledReason,
-  generating,
-  documentStyle,
-  onOpenStyle,
-  onGenerate,
-}: {
-  definition: (typeof DOCUMENT_DEFINITIONS)[number];
-  disabledReason: string | null;
-  generating: boolean;
-  documentStyle: DocumentStyleSettings;
-  onOpenStyle: () => void;
-  onGenerate: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Card as="article" className="gap-0 py-0 group flex min-h-[236px] flex-col overflow-hidden transition-colors sm:min-h-[270px]">
-      <TemplatePreview
-        definition={definition}
-        documentStyle={documentStyle}
-        onOpenStyle={onOpenStyle}
-      />
-      <div className="flex flex-1 flex-col justify-end border-t border-border bg-card p-3 sm:p-4">
-        <Button
-          type="button"
-          size="sm"
-          className="h-10 sm:h-9"
-          disabled={Boolean(disabledReason) || generating}
-          title={disabledReason ?? t("documentsPage.generateKind", { title: localizedDocumentTitle(definition.kind, t) })}
-          onClick={onGenerate}
-        >
-          {generating ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="size-3.5" />
-          )}
-          {t("documentsPage.generateAndOpen")}
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
 function GeneratedDocumentCard({
   definition,
   document,
   onOpen,
   onDownload,
+  management,
 }: {
   definition: (typeof DOCUMENT_DEFINITIONS)[number];
   document: DocumentLibraryItem;
   onOpen: () => void;
   onDownload: () => void;
+  management?: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage === "en" ? "en-US" : "zh-CN";
@@ -335,7 +232,7 @@ function GeneratedDocumentCard({
               {document.fileName}
             </h3>
             <p className="mt-1 line-clamp-1 text-[11px] font-medium tracking-[0.02em] text-muted-foreground sm:mt-2 sm:text-xs">
-              {definition.source}
+              {t(definition.source)}
             </p>
             <p className="mt-1 text-[11px] text-muted-foreground">
               {formatUpdatedAt(document.updatedAt, locale, t)}
@@ -343,12 +240,12 @@ function GeneratedDocumentCard({
           </div>
         </div>
 
-        <div className="mt-auto flex gap-2">
+        <div className={cn("mt-auto grid gap-2", management ? "grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]" : "grid-cols-2")}>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className={cn("h-10 flex-1 sm:h-9", mobileTouchTargetClass)}
+            className="min-w-0 px-2 text-xs"
             onClick={(event) => {
               event.stopPropagation();
               onDownload();
@@ -360,15 +257,16 @@ function GeneratedDocumentCard({
           <Button
             type="button"
             size="sm"
-            className={cn("h-10 flex-1 sm:h-9", mobileTouchTargetClass)}
+            className="min-w-0 px-2 text-xs"
             onClick={(event) => {
               event.stopPropagation();
               onOpen();
             }}
           >
             <FileText className="size-3.5" />
-            {t("documentsPage.openEditor")}
+            {t("documentsPage.openPreview")}
           </Button>
+          {management}
         </div>
       </div>
     </Card>
@@ -376,13 +274,18 @@ function GeneratedDocumentCard({
 }
 
 export function InstructionDocumentsPage({
-  activeDocumentId,
+  activeDocumentId, ordinary,
 }: {
   activeDocumentId?: string;
+  ordinary?: {
+    disabled?: boolean;
+    revision?: string;
+    onOpen: (id: string) => void; onBack: () => void;
+  };
 }) {
   const { t } = useTranslation();
   const repository = useWorkspaceRepository();
-  const { theme } = useTheme();
+  const projectId = useWorkspaceProjectId();
   const { openFeedbackOnce } = useFeedbackDialog();
   const {
     models,
@@ -391,38 +294,47 @@ export function InstructionDocumentsPage({
     generateSoftwareDesignSpec,
     generateFeasibilityStudy,
     generationModelBlockedReason,
+    canUpdateWorkspace,
+    canStartRuns,
   } = useWorkspaceSession();
   const {
     openDesignHome,
-    openDocumentsHome,
-    openDocumentEditor,
+    openDocumentsHome: professionalDocumentsHome,
+    openDocumentEditor: professionalDocumentEditor,
     openFeasibilityHome,
     openRequirementsText,
   } = useWorkspaceShell();
+  const openDocumentsHome = ordinary?.onBack ?? professionalDocumentsHome;
+  const openDocumentEditor = ordinary?.onOpen ?? professionalDocumentEditor;
+  const definitions = ordinary ? DOCUMENT_DEFINITIONS.filter(item => item.kind !== "feasibilityStudy") : DOCUMENT_DEFINITIONS;
   const [documents, setDocuments] = useState<DocumentLibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [listErrorRevision, setListErrorRevision] = useState(0);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<DocumentKind | "all">("all");
-  const [editorConfig, setEditorConfig] =
-    useState<OnlyOfficeEditorConfigResponse | null>(null);
-  const [editorLoading, setEditorLoading] = useState(false);
-  const [editorError, setEditorError] = useState<string | null>(null);
+  const [managementRevision, setManagementRevision] = useState(0);
+  const [batchDownloading, setBatchDownloading] = useState(false);
+  const [preview, setPreview] = useState<{ documentId: string; blob: Blob; fileName: string } | null>(null);
+  const [previewRevision, setPreviewRevision] = useState(0);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [documentStyleDialogOpen, setDocumentStyleDialogOpen] = useState(false);
   const [documentStyle, setDocumentStyle] = useState(cloneDefaultDocumentStyle);
+  const [selectedDocumentKinds, setSelectedDocumentKinds] = useState<DocumentKind[]>([]);
+  const [documentBatchRunning, setDocumentBatchRunning] = useState(false);
+  const documentBatchRunningRef = useRef(false);
+  const selectableDocumentKindsRef = useRef<ReadonlySet<DocumentKind>>(new Set());
   const [documentGeneratingByKind, setDocumentGeneratingByKind] = useState(
     IDLE_DOCUMENT_GENERATION_STATE,
   );
   const activeDocumentGenerationsRef = useRef(IDLE_DOCUMENT_GENERATION_STATE);
-  const activeDocumentGenerationCountRef = useRef(0);
   const autoOpenClaimedRef = useRef(false);
   const hasRequirementModels = Object.values(models).some(Boolean);
   const hasDesignModels = Object.values(designModels).some(Boolean);
   const [feasibilityState, setFeasibilityState] = useState<ReturnType<
     typeof feasibilityArtifactState
   > | null>(null);
-  const onlyOfficeUiTheme = onlyOfficeUiThemeForProjectTheme(theme);
 
   const loadDocuments = useCallback(async () => {
     if (!repository.listDocuments) {
@@ -447,12 +359,18 @@ export function InstructionDocumentsPage({
     }
   }, [repository, t]);
 
+  const refreshManagedDocuments = useCallback(async () => {
+    await loadDocuments();
+    setManagementRevision(revision => revision + 1);
+  }, [loadDocuments]);
+
   useEffect(() => {
     void loadDocuments();
+    if (ordinary) return;
     void repository.loadWorkspace().then((workspace) => {
       setFeasibilityState(feasibilityArtifactState(workspace));
     });
-  }, [loadDocuments, repository]);
+  }, [loadDocuments, repository, ordinary]);
 
   const filteredDocuments = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -471,39 +389,35 @@ export function InstructionDocumentsPage({
   );
 
   useEffect(() => {
-    if (!activeDocumentId || !repository.getOnlyOfficeEditorConfig) {
-      setEditorConfig(null);
-      setEditorError(null);
+    setPreview(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+    if (!activeDocumentId) return;
+    if (!repository.downloadDocument) {
+      setPreviewError("documentsPage.errors.downloadUnsupported");
       return;
     }
     let active = true;
-    setEditorLoading(true);
-    setEditorError(null);
-    void repository
-      .getOnlyOfficeEditorConfig(activeDocumentId, onlyOfficeUiTheme)
-      .then((config) => {
-        if (!active) return;
-        setEditorConfig(config);
+    setPreviewLoading(true);
+    // Preview uses the same authenticated, project-scoped bytes as the DOCX download.
+    void repository.downloadDocument(activeDocumentId)
+      .then(file => {
+        if (active) setPreview({ documentId: activeDocumentId, ...file });
       })
       .catch(() => {
-        if (!active) return;
-        setEditorConfig(null);
-        setEditorError(
-          t("documentsPage.errors.editorConfigFailed"),
-        );
+        if (active) setPreviewError("documentsPage.errors.previewFailed");
       })
       .finally(() => {
-        if (active) setEditorLoading(false);
+        if (active) setPreviewLoading(false);
       });
-    return () => {
-      active = false;
-    };
-  }, [activeDocumentId, onlyOfficeUiTheme, repository, t]);
+    return () => { active = false; };
+  }, [activeDocumentId, previewRevision, repository]);
 
-  const handleOnlyOfficeLoadError = useCallback((description: string) => {
-    setEditorError(description);
-    setEditorConfig(null);
+  const handlePreviewLoadError = useCallback(() => {
+    setPreviewError("documentsPage.errors.previewFailed");
+    setPreview(null);
   }, []);
+  const currentPreview = preview?.documentId === activeDocumentId ? preview : null;
 
   const openDocument = useCallback(
     (document: DocumentLibraryItem) => {
@@ -514,25 +428,22 @@ export function InstructionDocumentsPage({
 
   const generateDocument = useCallback(
     async (kind: DocumentKind) => {
-      if (activeDocumentGenerationsRef.current[kind]) return;
+      if (ordinary || !selectableDocumentKindsRef.current.has(kind) || activeDocumentGenerationsRef.current[kind]) return;
 
-      if (activeDocumentGenerationCountRef.current === 0) {
-        autoOpenClaimedRef.current = false;
-      }
-      activeDocumentGenerationCountRef.current += 1;
       activeDocumentGenerationsRef.current = {
         ...activeDocumentGenerationsRef.current,
         [kind]: true,
       };
       setDocumentGeneratingByKind(activeDocumentGenerationsRef.current);
       try {
-        const snapshot =
-          kind === "requirementsSpec"
+        const snapshot = kind === "requirementsSpec"
             ? await generateRequirementsSpec(documentStyle)
             : kind === "softwareDesignSpec"
               ? await generateSoftwareDesignSpec(documentStyle)
               : await generateFeasibilityStudy(documentStyle);
 
+        // Only this run's published artifact can claim the batch's single automatic preview navigation.
+        if (!snapshot?.documentId) return;
         const nextDocuments = await loadDocuments();
         const document =
           nextDocuments.find((item) => item.id === snapshot?.documentId) ??
@@ -541,36 +452,33 @@ export function InstructionDocumentsPage({
           autoOpenClaimedRef.current = true;
           openDocument(document);
         }
+      } catch {
+        floatingAlert.error(t("documentsPage.errors.generateFailed"));
       } finally {
-        activeDocumentGenerationCountRef.current = Math.max(
-          0,
-          activeDocumentGenerationCountRef.current - 1,
-        );
         activeDocumentGenerationsRef.current = {
           ...activeDocumentGenerationsRef.current,
           [kind]: false,
         };
         setDocumentGeneratingByKind(activeDocumentGenerationsRef.current);
-        if (activeDocumentGenerationCountRef.current === 0) {
-          autoOpenClaimedRef.current = false;
-        }
       }
     },
     [
+      ordinary,
       generateRequirementsSpec,
       generateSoftwareDesignSpec,
       generateFeasibilityStudy,
       documentStyle,
       loadDocuments,
       openDocument,
+      t,
     ],
   );
 
   const downloadDocument = useCallback(
-    async (document: DocumentLibraryItem) => {
+    async (document: DocumentLibraryItem, notify = true) => {
       if (!repository.downloadDocument) {
         floatingAlert.error(t("documentsPage.errors.downloadUnsupported"));
-        return;
+        return false;
       }
       try {
         const downloaded = await repository.downloadDocument(
@@ -578,13 +486,29 @@ export function InstructionDocumentsPage({
           document.fileName,
         );
         downloadBlobFile(downloaded.fileName, downloaded.blob);
-        floatingAlert.success(t("documentsPage.downloaded", { fileName: downloaded.fileName }));
+        if (notify) floatingAlert.success(t("documentsPage.downloaded", { fileName: downloaded.fileName }));
+        return true;
       } catch {
         floatingAlert.error(t("documentsPage.errors.downloadFailed"));
+        return false;
       }
     },
     [repository, t],
   );
+
+  const batchDownload = async () => {
+    if (batchDownloading || filteredDocuments.length === 0) return;
+    setBatchDownloading(true);
+    try {
+      let count = 0;
+      for (const document of filteredDocuments) {
+        if (await downloadDocument(document, false)) count += 1;
+      }
+      if (count > 0) floatingAlert.success(t("projectShell.documentsUi.messages.batchDownloaded", { count }));
+    } finally {
+      setBatchDownloading(false);
+    }
+  };
 
   const listErrorFeedback = useMemo<FeedbackDialogState | null>(() => {
     if (!errorMessage) return null;
@@ -603,18 +527,18 @@ export function InstructionDocumentsPage({
       keepReopenEntry: true,
     };
   }, [errorMessage, listErrorRevision, loadDocuments, t]);
-  const editorErrorFeedback = useMemo<FeedbackDialogState | null>(() => {
-    if (!activeDocumentId || editorLoading || editorConfig || !editorError) return null;
+  const previewErrorFeedback = useMemo<FeedbackDialogState | null>(() => {
+    if (!activeDocumentId || previewLoading || currentPreview || !previewError) return null;
     return {
-      dedupeKey: `documents:editor:${activeDocumentId}`,
-      revision: editorError,
+      dedupeKey: `documents:preview:${activeDocumentId}`,
+      revision: previewError,
       tone: "warning",
-      title: t("documentsPage.editorNotReady"),
-      message: t("documentsPage.guidance.editorMessage"),
+      title: t("documentsPage.previewNotReady"),
+      message: t("documentsPage.guidance.previewMessage"),
       primaryAction: activeDocument
         ? {
             label: t("documentsPage.downloadCurrent"),
-            onSelect: () => downloadDocument(activeDocument),
+            onSelect: () => { void downloadDocument(activeDocument); },
           }
         : undefined,
       secondaryAction: {
@@ -627,9 +551,9 @@ export function InstructionDocumentsPage({
     activeDocument,
     activeDocumentId,
     downloadDocument,
-    editorConfig,
-    editorError,
-    editorLoading,
+    currentPreview,
+    previewError,
+    previewLoading,
     openDocumentsHome,
     t,
   ]);
@@ -638,8 +562,8 @@ export function InstructionDocumentsPage({
     if (listErrorFeedback) openFeedbackOnce(listErrorFeedback);
   }, [listErrorFeedback, openFeedbackOnce]);
   useEffect(() => {
-    if (editorErrorFeedback) openFeedbackOnce(editorErrorFeedback);
-  }, [editorErrorFeedback, openFeedbackOnce]);
+    if (previewErrorFeedback) openFeedbackOnce(previewErrorFeedback);
+  }, [previewErrorFeedback, openFeedbackOnce]);
 
   const requirementDisabledReason = hasRequirementModels
     ? null
@@ -655,11 +579,46 @@ export function InstructionDocumentsPage({
     }),
     [designDisabledReason, feasibilityState, requirementDisabledReason, generationModelBlockedReason, t],
   );
+  const canGenerateDocuments = !ordinary && canUpdateWorkspace && canStartRuns;
+  const selectableKinds = definitions.filter(definition => canGenerateDocuments && !disabledReasonByKind[definition.kind]).map(definition => definition.kind);
+  selectableDocumentKindsRef.current = new Set(selectableKinds);
+  const selectedKinds = selectableKinds.filter(kind => selectedDocumentKinds.includes(kind));
+  useEffect(() => {
+    // A changed prerequisite invalidates selection; becoming ready again needs an explicit new choice.
+    setSelectedDocumentKinds(current => {
+      const next = current.filter(kind => selectableDocumentKindsRef.current.has(kind));
+      return next.length === current.length ? current : next;
+    });
+  }, [canGenerateDocuments, disabledReasonByKind]);
+  const generationBlockedReason = !canGenerateDocuments
+    ? t("documentsPage.generationPermission")
+    : selectedKinds.length === 0
+      ? t("documentsPage.selectionRequired")
+      : selectedKinds.map(kind => disabledReasonByKind[kind]).find(Boolean) ?? null;
+  const selectionDisabled = loading || documentBatchRunning || !canGenerateDocuments;
+  const selectDocument = (kind: DocumentKind, selected: boolean) => {
+    if (selectionDisabled || documentBatchRunningRef.current || (selected && !selectableDocumentKindsRef.current.has(kind))) return;
+    setSelectedDocumentKinds(current => selected ? [...new Set([...current, kind])] : current.filter(item => item !== kind));
+  };
+  const generateSelectedDocuments = async () => {
+    // The same eligibility guard protects keyboard/click submission and the visible disabled state.
+    if (loading || documentBatchRunningRef.current || generationBlockedReason) return;
+    documentBatchRunningRef.current = true;
+    setDocumentBatchRunning(true);
+    autoOpenClaimedRef.current = false;
+    try {
+      await Promise.all(selectedKinds.map(kind => generateDocument(kind)));
+    } finally {
+      documentBatchRunningRef.current = false;
+      setDocumentBatchRunning(false);
+    }
+  };
   const prerequisiteFeedbackByKind = useMemo<
     Partial<Record<DocumentKind, FeedbackDialogState>>
   >(() => {
     const feedback: Partial<Record<DocumentKind, FeedbackDialogState>> = {};
-    for (const definition of DOCUMENT_DEFINITIONS) {
+    if (ordinary) return feedback;
+    for (const definition of definitions) {
       const reason = disabledReasonByKind[definition.kind];
       if (!reason) continue;
       const primaryAction = reason === generationModelBlockedReason ? undefined :
@@ -693,19 +652,11 @@ export function InstructionDocumentsPage({
       };
     }
     return feedback;
-  }, [
-    disabledReasonByKind,
-    generationModelBlockedReason,
-    feasibilityState,
-    openDesignHome,
-    openFeasibilityHome,
-    openRequirementsText,
-    t,
-  ]);
+  }, [ordinary, definitions, disabledReasonByKind, generationModelBlockedReason, t, openRequirementsText, openDesignHome, openFeasibilityHome, feasibilityState?.requiredArtifacts]);
   // Keep every document's recovery action available through the single header notice.
   const pageNotices = [
     listErrorFeedback,
-    ...DOCUMENT_DEFINITIONS.map((definition) => prerequisiteFeedbackByKind[definition.kind]),
+    ...definitions.map((definition) => prerequisiteFeedbackByKind[definition.kind]),
   ].filter((notice): notice is FeedbackDialogState => Boolean(notice));
   if (activeDocumentId) {
     return (
@@ -724,7 +675,7 @@ export function InstructionDocumentsPage({
             </Button>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-foreground">
-                {activeDocument?.fileName ?? editorConfig?.document.fileName ?? t("documentsPage.title")}
+                {activeDocument?.fileName ?? currentPreview?.fileName ?? t("documentsPage.title")}
               </div>
               <div className="text-xs text-muted-foreground">
                 {activeDocument
@@ -734,16 +685,6 @@ export function InstructionDocumentsPage({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9"
-              onClick={() => void loadDocuments()}
-            >
-              <RefreshCw className="size-3.5" />
-              {t("documentsPage.refresh")}
-            </Button>
             {activeDocument && (
               <Button
                 type="button"
@@ -758,27 +699,24 @@ export function InstructionDocumentsPage({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 bg-muted">
-          {editorLoading && (
-            <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+        <p className="border-b border-border bg-card px-4 py-2 text-xs text-muted-foreground">
+          {t("documentsPage.previewHint")}
+        </p>
+        <div className="h-[calc(100dvh-10rem)] min-h-[480px] bg-muted">
+          {previewLoading && (
+            <div role="status" className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              {t("documentsPage.editorLoading")}
+              {t("documentsPage.previewLoading")}
             </div>
           )}
-          {!editorLoading && editorConfig && (
-            <OnlyOfficeEditorHost
-              documentServerUrl={editorConfig.documentServerUrl}
-              config={editorConfig.config}
-              width="100%"
-              height="100%"
-              onLoadError={handleOnlyOfficeLoadError}
-            />
+          {!previewLoading && currentPreview && (
+            <DocxPreviewHost key={activeDocumentId} blob={currentPreview.blob} onLoadError={handlePreviewLoadError} />
           )}
-          {!editorLoading && !editorConfig && (
-            <div className="flex h-full items-center justify-center p-6">
-              {editorErrorFeedback ? (
-                <FeedbackReopenButton feedback={editorErrorFeedback} />
-              ) : null}
+          {!previewLoading && !currentPreview && previewErrorFeedback && (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
+              <p role="alert" className="text-sm text-muted-foreground">{t(previewError!)}</p>
+              <Button variant="outline" onClick={() => setPreviewRevision(value => value + 1)}>{t("feedback.actions.retry")}</Button>
+              <FeedbackReopenButton feedback={previewErrorFeedback} />
             </div>
           )}
         </div>
@@ -791,49 +729,49 @@ export function InstructionDocumentsPage({
       <div className="flex w-full flex-col gap-6">
         <PageHeader
           title={t("documentsPage.title")}
-          description={t("documentsPage.description")}
+          description={ordinary ? t("standardProject.documentDescription") : t("documentsPage.description")}
           notice={<DocumentGuidanceDialog notices={pageNotices} />}
         />
 
-        <section>
-          <div className="flex flex-wrap items-center justify-between gap-2 w-full justify-between gap-4">
-            <div className="flex shrink-0 items-center gap-3">
-              <div className="relative w-96">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  className="h-10 pl-9"
-                  placeholder={t("documentsPage.search")}
-                />
-              </div>
-              <label className="inline-flex h-10 items-center gap-2 text-sm text-muted-foreground">
-                <SlidersHorizontal className="size-4" />
-                <SelectControl
-                  value={typeFilter}
-                  onValueChange={(value) => setTypeFilter(value as DocumentKind | "all")}
-                  className="h-10 min-w-44"
-                  aria-label={t("documentsPage.typeFilter")}
-                  options={[
-                    { value: "all", label: t("documentsPage.allTypes") },
-                    { value: "feasibilityStudy", label: localizedDocumentTitle("feasibilityStudy", t) },
-                    { value: "requirementsSpec", label: localizedDocumentTitle("requirementsSpec", t) },
-                    { value: "softwareDesignSpec", label: localizedDocumentTitle("softwareDesignSpec", t) },
-                  ]}
-                />
-              </label>
+        {!ordinary && <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-xl font-semibold tracking-normal">{t("documentsPage.targets")}</h2>
+              <Badge variant="secondary" className="border-0 px-3 py-1 font-mono text-xs">{selectedKinds.length}/{definitions.length}</Badge>
+              <TargetSelectionActions disabled={selectionDisabled}
+                onSelectAll={() => { if (!selectionDisabled) setSelectedDocumentKinds(selectableKinds); }}
+                onClear={() => { if (!selectionDisabled) setSelectedDocumentKinds([]); }} />
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 shrink-0"
-              onClick={() => void loadDocuments()}
-            >
-              <RefreshCw className="size-4" />
-              {t("documentsPage.refresh")}
-            </Button>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={documentBatchRunning}
+                onClick={() => setDocumentStyleDialogOpen(true)}>
+                <Palette className="size-3.5" />{t("documentsPage.documentStyle")}
+              </Button>
+              <div className="flex min-w-0 items-center gap-2" data-testid="documents-generation-toolbar">
+                <GenerationModelControls ordinary={Boolean(ordinary)} disabled={selectionDisabled} />
+                <ModelingGenerationButton label={t("common.generate")} busy={documentBatchRunning}
+                  disabled={loading || documentBatchRunning || Boolean(generationBlockedReason)}
+                  title={generationBlockedReason ?? undefined} onClick={() => void generateSelectedDocuments()} />
+              </div>
+            </div>
           </div>
-        </section>
+          <MobileCompactGrid variant="model-targets">
+            {definitions.map((definition, index) => {
+              const title = localizedDocumentTitle(definition.kind, t);
+              const reason = disabledReasonByKind[definition.kind];
+              const selected = selectedKinds.includes(definition.kind);
+              const count = documents.filter(document => document.documentKind === definition.kind).length;
+              // Existing files do not imply that current inputs permit generating another version.
+              const status = documentGeneratingByKind[definition.kind] ? "running" : reason || !canGenerateDocuments ? "blocked" : count > 0 ? "completed" : "missing";
+              return <ModelBentoCard key={definition.kind} label={title} english={definition.english} description={t(definition.source)}
+                icon={FileText} categoryColorIndex={index} selected={selected} disabled={selectionDisabled || Boolean(reason)}
+                blockedReason={reason ?? undefined}
+                countLabel={count} checkboxLabel={title} ariaLabel={t(selected ? "documentsPage.deselectDocument" : "documentsPage.selectDocument", { title })}
+                onSelectedChange={value => selectDocument(definition.kind, value)}
+                status={status} />;
+            })}
+          </MobileCompactGrid>
+        </section>}
 
         {loading ? (
           <div className="flex min-h-52 items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -842,28 +780,6 @@ export function InstructionDocumentsPage({
           </div>
         ) : (
           <>
-            <section>
-              <MobileCompactGrid
-                minWidth={760}
-                variant="document-cards"
-              >
-              {DOCUMENT_DEFINITIONS.map((definition) => {
-                const generating = documentGeneratingByKind[definition.kind];
-                return (
-                  <TemplateDocumentCard
-                    key={definition.kind}
-                    definition={definition}
-                    disabledReason={disabledReasonByKind[definition.kind]}
-                    generating={generating}
-                    documentStyle={documentStyle}
-                    onOpenStyle={() => setDocumentStyleDialogOpen(true)}
-                    onGenerate={() => void generateDocument(definition.kind)}
-                  />
-                );
-              })}
-              </MobileCompactGrid>
-            </section>
-
             <section className="flex flex-col gap-4">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-foreground">
@@ -872,6 +788,23 @@ export function InstructionDocumentsPage({
                 <span className="text-xs text-muted-foreground">
                   {t("documentsPage.documentCount", { count: filteredDocuments.length })}
                 </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" variant="outline" disabled={batchDownloading || !filteredDocuments.length} onClick={() => void batchDownload()}>
+                  <Download className="size-4" />{t("projectShell.documentsUi.batchDownload")}
+                </Button>
+                <div className="relative min-w-0 flex-1 sm:max-w-96">
+                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input value={query} onChange={event => setQuery(event.target.value)} className="h-10 pl-9" placeholder={t("documentsPage.search")} />
+                </div>
+                <label className="inline-flex h-10 items-center gap-2 text-sm text-muted-foreground">
+                  <SlidersHorizontal className="size-4" />
+                  <SelectControl value={typeFilter} onValueChange={value => setTypeFilter(value as DocumentKind | "all")}
+                    className="h-10 min-w-44" aria-label={t("documentsPage.typeFilter")} options={[
+                      { value: "all", label: t("documentsPage.allTypes") },
+                      ...definitions.map(definition => ({ value: definition.kind, label: localizedDocumentTitle(definition.kind, t) })),
+                    ]} />
+                </label>
               </div>
               {filteredDocuments.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
@@ -889,20 +822,24 @@ export function InstructionDocumentsPage({
                       document={document}
                       onOpen={() => openDocument(document)}
                       onDownload={() => void downloadDocument(document)}
+                      management={projectId ? <DocumentManagementActions document={document} projectId={projectId}
+                        canManage={ordinary ? ordinary.disabled !== true : canUpdateWorkspace} onChanged={refreshManagedDocuments} /> : undefined}
                     />
                   ))}
                 </MobileCompactGrid>
               )}
+              {projectId && <DeletedDocuments projectId={projectId} canManage={ordinary ? ordinary.disabled !== true : canUpdateWorkspace}
+                revision={managementRevision} onChanged={refreshManagedDocuments} />}
             </section>
           </>
         )}
       </div>
-      <DocumentStyleDialog
+      {!ordinary && <DocumentStyleDialog
         open={documentStyleDialogOpen}
         onOpenChange={setDocumentStyleDialogOpen}
         value={documentStyle}
         onChange={setDocumentStyle}
-      />
+      />}
     </PageContainer>
   );
 }

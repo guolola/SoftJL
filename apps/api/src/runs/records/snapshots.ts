@@ -1,4 +1,5 @@
 // Creates initial snapshots for each run kind before pipelines start mutating them.
+import { requirementRuleFacts } from "@uml-platform/contracts";
 import {
   activeRequirementModels,
 
@@ -6,6 +7,7 @@ import {
   documentRunSnapshotSchema,
   feasibilityRunSnapshotSchema,
   runSnapshotSchema,
+  requirementRulesSchema,
 
   type DesignDiagramKind,
   type DesignRunSnapshot,
@@ -43,7 +45,6 @@ const DESIGN_DIAGRAM_ORDER: DesignDiagramKind[] = [
   "deployment",
 ];
 
-
 function formatDocumentTimestamp(date = new Date()) {
   const pad = (value: number, length = 2) => String(value).padStart(length, "0");
   const datePart = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(
@@ -61,19 +62,32 @@ export function createEmptySnapshot(
   selectedDiagrams: DiagramKind[],
   rules: RequirementRule[] = [],
   context: {
+    requirementBaseline?: RequirementBaseline | null;
     models?: DiagramModelSpec[];
     requirementModelTraceability?: RunSnapshot["requirementModelTraceability"];
     analysisTargetUseCaseIds?: string[];
     requestedDiagrams?: DiagramKind[];
     dependencyDiagrams?: DiagramKind[];
+    attachments?: RunSnapshot["attachments"];
+    reasoning?: boolean;
+    submittedRequirementText?: string;
+    tokenUsage?: RunSnapshot["tokenUsage"];
   } = {},
 ): RunSnapshot {
+  // Every model run snapshots current rules. Extraction
+  // retains the previous baseline solely to reconcile identities after extraction.
   const requirementBaseline = rules.length > 0
-    ? buildRequirementBaseline({ runId, requirementText, rules })
-    : buildEmptyRequirementBaseline({ runId });
+    ? buildRequirementBaseline({ runId, requirementText, rules, previousBaseline: context.requirementBaseline })
+    : context.requirementBaseline ?? buildEmptyRequirementBaseline({ runId });
   return runSnapshotSchema.parse({
+    operationType: selectedDiagrams.length ? "requirement_modeling" : "requirement_extraction",
+    outputManifest: [],
     runId,
     requirementText,
+    attachments: context.attachments,
+    reasoning: context.reasoning,
+    submittedRequirementText: context.submittedRequirementText,
+    tokenUsage: context.tokenUsage,
     selectedDiagrams,
     requestedDiagrams: context.requestedDiagrams,
     dependencyDiagrams: context.dependencyDiagrams,
@@ -97,6 +111,8 @@ export function createEmptySnapshot(
 export function createEmptyDesignSnapshot(
   runId: string,
   input: {
+    sequenceTargetUseCaseIds?: string[];
+    reasoning?: boolean;
     selectedDiagrams: DesignDiagramKind[];
     requirementBaseline: RequirementBaseline;
     requirementModels: DiagramModelSpec[];
@@ -109,6 +125,10 @@ export function createEmptyDesignSnapshot(
   },
 ): DesignRunSnapshot {
   return designRunSnapshotSchema.parse({
+    sequenceTargetUseCaseIds: input.sequenceTargetUseCaseIds,
+    operationType: "design_modeling",
+    reasoning: input.reasoning,
+    outputManifest: [],
     runId,
     requirementText: "",
     selectedDiagrams: DESIGN_DIAGRAM_ORDER.filter((diagram) =>
@@ -119,7 +139,8 @@ export function createEmptyDesignSnapshot(
           input.requestedDiagrams?.includes(diagram),
         )
       : undefined,
-    rules: [],
+    // New design runs capture the current baseline facts as their immutable rule input.
+    rules: requirementRulesSchema.parse(input.requirementBaseline.rules.map(requirementRuleFacts)),
     requirementBaseline: input.requirementBaseline,
     coverageMatrix: null,
     traceabilityMatrix: null,
@@ -140,12 +161,13 @@ export function createEmptyDesignSnapshot(
 export function createEmptyDocumentSnapshot(
   runId: string,
   input: {
+    reasoning?: boolean;
     documentKind: DocumentKind;
     requirementText: string;
     requirementBaseline?: RequirementBaseline | null;
     coverageMatrix?: CoverageMatrix | null;
     traceabilityMatrix?: TraceabilityMatrix | null;
-  },
+  } & Partial<import("@uml-platform/contracts").StartDocumentRunRequest>,
 ): DocumentRunSnapshot {
   const requirementBaseline =
     input.requirementBaseline ?? buildEmptyRequirementBaseline({ runId });
@@ -157,6 +179,11 @@ export function createEmptyDocumentSnapshot(
         ? `软件设计说明书-${timestamp}.docx`
         : `可行性研究报告-${timestamp}.docx`;
   return documentRunSnapshotSchema.parse({
+    operationType: "document_generation",
+    // Only complete generation inputs can authorize a later replay.
+    replayInput: input.rules && input.requirementModels && input.designModels ? input : undefined,
+    reasoning: input.reasoning,
+    outputManifest: [],
     runId,
     documentKind: input.documentKind,
     requirementText: input.requirementText,
@@ -179,6 +206,7 @@ export function createEmptyDocumentSnapshot(
 export function createEmptyFeasibilitySnapshot(
   runId: string,
   input: {
+    reasoning?: boolean;
     projectId: string;
     selectedArtifacts: FeasibilityArtifactKind[];
     providerSettings: ProviderSettingsInput;
@@ -197,6 +225,8 @@ export function createEmptyFeasibilitySnapshot(
   },
 ): FeasibilityRunSnapshot {
   return feasibilityRunSnapshotSchema.parse({
+    operationType: "feasibility_analysis",
+    outputManifest: [],
     runId,
     ...input,
     contextModel: input.contextModel ?? null,

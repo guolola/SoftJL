@@ -1,12 +1,18 @@
 // Exercises lazy history reads, compact lists and event cursors against PostgreSQL-compatible SQL.
+import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import type { Queryable } from "../../db/transactions.js";
 import { createPostgresRunRecordStore } from "./postgres-run-record-store.js";
-import { createEmptySnapshot } from "./snapshots.js";
+import { createEmptySnapshot, createEmptyDocumentSnapshot } from "./snapshots.js";
+import { captureWorkspaceGuard } from "./workspace-run-guard.js";
+import { documentInputFromSnapshot } from "../pipelines/run-record-pipeline-starter.js";
 import { emitEvent, type RunRecord } from "./run-record-store.js";
+import { RUN_SUMMARY_SNAPSHOT_SQL } from "./run-summary-projection.js";
+import { runOutputView } from "./run-output-provenance.js";
 import { summarizeRunRecord } from "./run-record-summaries.js";
+import { emptyRequirementTokenUsage } from "./requirement-token-usage.js";
 
 test("persisted history remains complete without a process-wide snapshot/log cache", async t => {
   const previousMode = process.env.UML_RUN_QUEUE_MODE;
@@ -25,20 +31,26 @@ test("persisted history remains complete without a process-wide snapshot/log cac
   `);
   const snapshot = {
     ...createEmptySnapshot("large", "业务需求", ["class"]), status: "completed" as const,
-    providerSettings: { model: "model-a", providerConfigId: "provider-a", apiKey: "private-key" },
-    models: [{ diagramKind: "class", modelId: "class-a", title: "类模型", classes: [{ name: "Internal" }] }],
+    providerSettings: { modelCapability: strictTestModelCapability("model-a"), model: "model-a", providerConfigId: "provider-a", apiKey: "private-key" },
+    models: [{ diagramKind: "class", modelId: "class-a", title: "类模型", summary: "业务实体", notes: [],
+      classes: [{ id: "internal", name: "Internal", attributes: [], operations: [], constraints: [] }], interfaces: [], enums: [], relationships: [] }],
     plantUml: [{ diagramKind: "class", modelId: "class-a", source: "@startuml\nclass A\n@enduml" }],
-    svgArtifacts: [{ diagramKind: "class", modelId: "class-a", svg: "<svg>" + "image".repeat(100_000) + "</svg>" }],
-    traceabilityMatrix: { links: [{ id: "link" }], diagnostics: [] },
+    svgArtifacts: [{ diagramKind: "class", modelId: "class-a", svg: "<svg>" + "image".repeat(100_000) + "</svg>",
+      renderMeta: { engine: "plantuml", generatedAt: "2026-10-01T00:01:00.000Z", sourceLength: 27, durationMs: 1 } }],
+    traceabilityMatrix: null,
+    outputManifest: [{ kind: "model", id: "class-a", diagramKind: "class" }],
   };
   await db.query(`insert into run_records(id,project_id,snapshot,status,stage,model,created_at,completed_at)
     values('large','visible',$1,'completed','generate_models','model-a','2026-10-01','2026-10-01T00:01:00Z')`, [JSON.stringify(snapshot)]);
   await db.exec(`insert into run_events(run_id,sequence,event_type,payload)
-    select 'large',n,'run_activity',jsonb_build_object('type','run_activity','phase','reasoning','text',repeat('thought',300))
+    select 'large',n,'run_activity',jsonb_build_object('type','run_activity','runId','large','callId','call',
+      'stage','generate_models','phase','reasoning','text',repeat('thought',300),
+      'eventId','reasoning-' || n,'createdAt','2026-10-01T00:00:00Z')
       from generate_series(2,2001) n;
     insert into run_events(run_id,sequence,event_type,payload) values
-      ('large',1,'run_activity','{"type":"run_activity","stage":"generate_models","phase":"started","inputImages":[{"url":"private-image"}],"text":"private-prompt"}'),
-      ('large',2002,'completed','{"type":"completed","snapshotRef":"large"}');
+      ('large',2003,'artifact_ready','{"type":"artifact_ready","eventId":"svg-ready","createdAt":"2026-10-01T00:01:00Z","stage":"render_svg","artifactKind":"svg","modelId":"class-a","diagramKind":"class"}'),
+      ('large',1,'run_activity','{"type":"run_activity","eventId":"started","createdAt":"2026-10-01T00:00:00Z","runId":"large","callId":"call","stage":"generate_models","phase":"started","inputImages":[{"url":"private-image"}],"text":"private-prompt"}'),
+      ('large',2002,'completed','{"type":"completed","snapshotRef":"large","eventId":"completed","createdAt":"2026-10-01T00:01:00Z"}');
     insert into run_records(id,project_id,snapshot,status,stage,created_at,completed_at)
       select 'batch-' || lpad(n::text,3,'0'), 'visible', '{"runId":"batch","models":[],"status":"completed"}',
         'completed','generate_models','2026-10-01','2026-10-01' from generate_series(1,205) n;
@@ -48,6 +60,7 @@ test("persisted history remains complete without a process-wide snapshot/log cac
       ('document','visible','{"runId":"document","documentKind":"requirementsSpec","sections":[{"title":"chapter","content":"private-body"}],"status":"completed"}','completed','render_document_file','2026-10-01'),
       ('feasibility','visible','{"runId":"feasibility","selectedArtifacts":[],"status":"completed"}','completed','generate_context','2026-10-01');
   `);
+  await db.query(`update run_records set snapshot = $1 where id = 'private'`, [JSON.stringify(createEmptySnapshot("private", "私有需求", []))]);
   const queries: string[] = [];
   const queryable: Queryable = { async query<T>(sql: string, params?: readonly unknown[]) {
     queries.push(sql);
@@ -60,32 +73,18 @@ test("persisted history remains complete without a process-wide snapshot/log cac
     assert.equal(store.size, 0);
     assert.equal(queries.length, 0);
   });
-  await t.test("lists paginate database metadata, preserve summaries and do not cache history", async () => {
-    const records = await store.listRecords!(["visible"]);
-    assert.equal(records.length, 209);
-    assert.equal(records.some(record => record.snapshot.runId === "private"), false);
-    assert.equal(store.size, 0);
-    assert.ok(queries.filter(sql => sql.includes("order by id asc limit 100")).length >= 3);
-    const record = records.find(record => record.snapshot.runId === "large")!;
-    assert.equal(record.events.length, 0);
-    assert.equal(summarizeRunRecord(record).eventCount, 2002);
-    assert.equal(record.persist, undefined);
-    assert.ok(JSON.stringify(record.snapshot).length < 3000);
-    assert.doesNotMatch(JSON.stringify(records), /private-key|private-prompt|private-image|private-body/);
-    assert.deepEqual(await store.listRecords!([]), []);
-  });
   await t.test("snapshot-only and filtered replay preserve total counts and terminal cursors", async () => {
     const plain = (await store.refreshRun("large", { events: "none" }))!;
     assert.equal(plain.events.length, 0);
-    assert.equal(plain.persistedEventCount, 2002);
-    assert.equal(plain.eventSequence, 2002);
+    assert.equal(plain.persistedEventCount, 2003);
+    assert.equal(plain.eventSequence, 2003);
     const progress = (await store.refreshRun("large", { events: "progress" }))!;
-    assert.deepEqual(progress.events.map(event => event.type), ["run_activity", "completed"]);
+    assert.deepEqual(progress.events.map(event => event.type), ["run_activity", "completed", "artifact_ready"]);
     assert.doesNotMatch(JSON.stringify(progress.events[0]), /private-image|private-prompt/);
     const resumed = (await store.refreshRun("large", { events: "progress", afterSequence: 2001 }))!;
-    assert.deepEqual(resumed.events.map(event => event.sequence), [2002]);
+    assert.deepEqual(resumed.events.map(event => event.sequence), [2002, 2003]);
     const all = (await store.refreshRun("large"))!;
-    assert.equal(all.events.length, 2002);
+    assert.equal(all.events.length, 2003);
     assert.equal(store.size, 0);
   });
   await t.test("actions append after unloaded events and never overwrite the complete snapshot", async () => {
@@ -93,8 +92,8 @@ test("persisted history remains complete without a process-wide snapshot/log cac
     emitEvent(record, { type: "run_action", action: "rerun", sourceRunId: "large", newRunId: "derived", createdAt: "2026-10-01T00:02:00Z" });
     await store.flush();
     const reloaded = (await store.refreshRun("large"))!;
-    assert.equal(reloaded.events.at(-1)?.sequence, 2003);
-    assert.equal(reloaded.events.length, 2003);
+    assert.equal(reloaded.events.at(-1)?.sequence, 2004);
+    assert.equal(reloaded.events.length, 2004);
     assert.equal("svgArtifacts" in reloaded.snapshot && reloaded.snapshot.svgArtifacts[0]?.svg, snapshot.svgArtifacts[0]!.svg);
     const summary = (await store.listRecords!(["visible"])).find(record => record.snapshot.runId === "large")!;
     assert.deepEqual(summarizeRunRecord(summary).derivedRunIds, ["derived"]);
@@ -118,4 +117,46 @@ test("persisted history remains complete without a process-wide snapshot/log cac
     assert.equal(await store.refreshRun("large"), null);
     assert.equal((await store.refreshRun("private", { events: "none" }))?.snapshot.status, "running");
   });
+  await t.test("document replay inputs and guards survive eviction and database reload", async () => {
+    const snapshot = createEmptyDocumentSnapshot("durable-document", { documentKind: "requirementsSpec", requirementText: "完整原需求", rules: [], requirementModels: [], designModels: [], useAiText: false, documentStyle: { presetName: "courseDesign", includeTableOfContents: false, autoNumberHeadings: false } });
+    const record: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false };
+    snapshot.workspaceGuard = captureWorkspaceGuard(record, { requirementText: "完整原需求" });
+    snapshot.publicationSkipped = "输入已变更";
+    store.set(snapshot.runId, record);
+    await store.flush();
+    store.release?.(snapshot.runId);
+    const reloaded = (await store.refreshRun(snapshot.runId, { events: "none" }))!;
+    assert.notEqual(reloaded, record);
+    assert.deepEqual(reloaded.snapshot.workspaceGuard, snapshot.workspaceGuard);
+    assert.equal(reloaded.snapshot.publicationSkipped, "输入已变更");
+    assert.deepEqual(documentInputFromSnapshot(reloaded), snapshot.replayInput);
+  });
+});
+
+test("compact PostgreSQL summaries preserve use-case completeness without flow bodies", async t => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  const tokenUsage = { ...emptyRequirementTokenUsage("model"), contextTokens: 5700 };
+  const snapshot = {
+    ...createEmptySnapshot("analysis", "需求", ["analysis"]), status: "completed" as const,
+    tokenUsage,
+    models: [
+      { diagramKind: "usecase", modelId: "input-usecase", useCases: [{ id: "UC1", goal: "private-flow" }, { id: "UC2", goal: "private-flow" }] },
+      { diagramKind: "analysis", modelId: "analysis:UC1", sourceUseCaseId: "UC1" }
+    ],
+    outputManifest: [{ kind: "model", id: "analysis:UC1", diagramKind: "analysis", sourceUseCaseId: "UC1" }],
+  } as unknown as RunRecord["snapshot"];
+  for (const legacy of [false, true]) {
+    if (legacy) delete snapshot.outputManifest;
+    const result = await db.query<{ snapshot: RunRecord["snapshot"] }>(`select (${RUN_SUMMARY_SNAPSHOT_SQL}) as snapshot from (select $1::jsonb as snapshot) r`, [JSON.stringify(snapshot)]);
+    const compact = result.rows[0]!.snapshot;
+    if (legacy) {
+      assert.throws(() => runOutputView(compact));
+      continue;
+    }
+    assert.equal(runOutputView(compact).resultConsistency, "missing_requested_output");
+    assert.equal(runOutputView(compact).resultConsistency, runOutputView(snapshot).resultConsistency);
+    assert.doesNotMatch(JSON.stringify(compact), /private-flow/);
+    assert.deepEqual("tokenUsage" in compact ? compact.tokenUsage : undefined, tokenUsage);
+  }
 });

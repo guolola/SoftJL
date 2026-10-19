@@ -1,12 +1,13 @@
 // Verifies design model page generation controls, traceability views, and stale diagram handling.
-import { createDesignRunSnapshot, createRenderMeta } from "../../../test/artifact-fixtures";
+import { createDesignRunSnapshot, createRenderMeta } from "@/test/contract-fixtures";
 import { createMockWorkspaceRepository } from "../../../services/workspace-repository/mock-repository";
 import { patchUserSettings } from "../../../shared/lib/user-settings";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { designDiagramKindSchema, runSnapshotSchema, type DesignRunSnapshot } from "@uml-platform/contracts";
+import { designDiagramKindSchema, designDiagramModelSpecSchema, runSnapshotSchema, createRequirementBaselineSnapshot, type DesignRunSnapshot } from "@uml-platform/contracts";
 import { librarySeatDemoFixture } from "../../../../../api/src/runs/demo/fixtures/library-seat-demo-fixture";
+import { modelFixture } from "../../../../../../packages/contracts/dist/testing/model-fixtures";
 import type { WorkspaceRepository } from "../../../services/workspace-repository";
 import {
   createRequirementBaseline,
@@ -15,9 +16,46 @@ import {
   createWorkspaceRecord,
   withWorkspaceProviders,
 } from "../../../test/workspace-test-utils";
-import { designInputFingerprint } from "../../../shared/lib/fingerprint";
+import { designInputFingerprint, snapshotInputFingerprint } from "../../../shared/lib/fingerprint";
+import { normalizeRequirementTraceabilityWithCoverage } from "../../../../../api/src/normalizers/traceability/traceability-normalizer";
 import { DesignModelPage } from "./design-model-page";
 import { useWorkspaceShell } from "../../workspace-shell/state";
+
+// Control tests add explicit manual source rules for old demo elements whose original types
+// no longer feed those models. Production never invents such source requirements.
+function completeRequirementSources() {
+  const snapshot = runSnapshotSchema.parse(librarySeatDemoFixture.requirementSnapshot);
+  const gaps = normalizeRequirementTraceabilityWithCoverage(snapshot.requirementModelTraceability, snapshot.rules,
+    snapshot.models.filter(model => model.diagramKind !== "analysis")).missingTargets;
+  for (const [index, target] of gaps.entries()) {
+    const rule = createRule({ id: `control-fixture-${index}`, type: target.diagramKind === "deployment" ? "operations" : "functional", text: `测试明确要求：${target.label}` });
+    snapshot.rules.push(rule);
+    snapshot.requirementModelTraceability.push({ ruleId: rule.id, target, reviewStatus: "confirmed", mappingSource: "llm" });
+  }
+  snapshot.requirementBaseline = createRequirementBaselineSnapshot({ runId: snapshot.runId, requirementText: snapshot.requirementText,
+    rules: snapshot.rules, previousBaseline: snapshot.requirementBaseline, origin: "manual" });
+  return snapshot;
+}
+
+// These fixtures model saved current sources; absent-rule scenarios supply an explicit empty rule list.
+function createCurrentWorkspaceRecord(overrides: Parameters<typeof createWorkspaceRecord>[0] = {}) {
+  const workspace = createWorkspaceRecord({
+    ...(overrides.requirementText && overrides.rules === undefined ? { rules: [createRule()] } : {}),
+    ...overrides,
+  });
+  const fingerprint = snapshotInputFingerprint({ requirementText: workspace.requirementText, rules: workspace.rules });
+  return { ...workspace,
+    requirementInputFingerprint: Object.hasOwn(overrides, "requirementInputFingerprint") ? workspace.requirementInputFingerprint : fingerprint,
+    diagramInputFingerprints: {
+      ...Object.fromEntries(Object.values(workspace.models).filter(Boolean).flatMap(model => [[model!.diagramKind, fingerprint], [model!.modelId ?? model!.diagramKind, fingerprint]])),
+      ...workspace.diagramInputFingerprints,
+    },
+  };
+}
+
+function createCurrentMockWorkspaceRepository(seed: Parameters<typeof createWorkspaceRecord>[0] = {}) {
+  return createMockWorkspaceRepository(createCurrentWorkspaceRecord(seed));
+}
 
 type StartDesignRunInput = Parameters<
   NonNullable<WorkspaceRepository["startDesignRun"]>
@@ -86,8 +124,6 @@ function storeManagedUserSettings() {
       providerConfigId: "provider-config-1",
       defaultModel: "gpt-5.5",
       providerModelOptions: ["gpt-5.5"],
-      imageModel: "nano-banana-pro",
-      fontSize: "md",
       autoGenerate: false,
       showStaleBanner: true,
     }),
@@ -95,8 +131,129 @@ function storeManagedUserSettings() {
 }
 
 describe("DesignModelPage", () => {
+  it("select all regenerates selected successful models even when another design model previously failed", async () => {
+    const snapshot = completeRequirementSources();
+    const kinds = designDiagramKindSchema.options.filter(kind => kind !== "deployment");
+    const savedModels = kinds.map(kind => designDiagramModelSpecSchema.parse(modelFixture("design", kind)));
+    const repository = createCurrentMockWorkspaceRepository({
+      requirementText: snapshot.requirementText, requirementBaseline: snapshot.requirementBaseline, rules: snapshot.rules,
+      rulesVersion: 1, rulesBasedOnTextVersion: 0,
+      models: Object.fromEntries(snapshot.models.map(model => [model.modelId ?? model.diagramKind, model])),
+      generatedDiagramTypes: [...new Set(snapshot.models.map(model => model.diagramKind))],
+      diagramVersions: Object.fromEntries(snapshot.models.map(model => [model.diagramKind, 1])),
+      requirementModelTraceability: snapshot.requirementModelTraceability,
+      designModels: Object.fromEntries(savedModels.map(model => [model.modelId!, model])),
+      generatedDesignDiagramTypes: kinds,
+      designSvgArtifacts: Object.fromEntries(savedModels.map(model => [model.modelId!, {
+        diagramKind: model.diagramKind, modelId: model.modelId, svg: "<svg/>", renderMeta: createRenderMeta({ engine: "plantuml" }),
+      }])),
+      designDiagramErrors: { "sequence:failed": { stage: "generate_design_sequence", error: { code: "RUN_RENDER_FAILED", category: "render", message: "之前生成失败", retryable: true } } },
+    });
+    const startDesignRun = vi.fn(async (_input: StartDesignRunInput) => ({ runId: "regenerate-selected" }));
+    repository.startDesignRun = startDesignRun;
+    repository.subscribeToDesignRun = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(withWorkspaceProviders(<DesignModelPage />, repository));
+    const group = await screen.findByRole("group", { name: "全选 / 全不选" });
+    await user.click(within(group).getByRole("button", { name: "全选" }));
+    // This fixture also permits deployment; select the six saved target types explicitly.
+    await user.click(screen.getByRole("checkbox", { name: "部署设计" }));
+    await user.click(screen.getByRole("button", { name: "生成" }));
+    const dialog = await screen.findByRole("dialog", { name: "确认生成设计模型" });
+    expect(within(dialog).queryByRole("heading", { name: "保留不变" })).not.toBeInTheDocument();
+    const updates = within(dialog).getByRole("list", { name: "模型生成范围" });
+    expect(updates).toHaveTextContent("总体架构图、用例实现设计、设计类图、界面关系图、数据库设计、组件（构件）关系");
+    await user.click(within(dialog).getByRole("button", { name: "确认生成" }));
+    await waitFor(() => expect(startDesignRun).toHaveBeenCalledTimes(1));
+    expect(new Set(startDesignRun.mock.calls[0][0].requestedDiagrams)).toEqual(new Set(kinds));
+    expect(new Set(startDesignRun.mock.calls[0][0].selectedDiagrams)).toEqual(new Set(kinds));
+  });
+
+  it("excludes missing requirement upstreams from card, checkbox, keyboard and bulk selection", async () => {
+    const snapshot = completeRequirementSources();
+    snapshot.models = snapshot.models.filter(model => model.diagramKind !== "deployment");
+    const savedModels = ["class", "component"].map(kind => designDiagramModelSpecSchema.parse(modelFixture("design", kind)));
+    const repository = createCurrentMockWorkspaceRepository({
+      requirementText: snapshot.requirementText, requirementBaseline: snapshot.requirementBaseline, rules: snapshot.rules,
+      models: Object.fromEntries(snapshot.models.map(model => [model.modelId ?? model.diagramKind, model])),
+      requirementModelTraceability: snapshot.requirementModelTraceability.filter(entry => entry.target.diagramKind !== "deployment"),
+      designModels: Object.fromEntries(savedModels.map(model => [model.modelId!, model])),
+      selectedDesignDiagramTypes: ["deployment"],
+    });
+    const user = userEvent.setup();
+    render(withWorkspaceProviders(<DesignModelPage />, repository));
+    const group = await screen.findByRole("group", { name: "全选 / 全不选" });
+    const card = screen.getByRole("button", { name: "选择部署设计" });
+    const checkbox = within(card).getByRole("checkbox");
+    expect(card).toHaveAttribute("aria-disabled", "true");
+    expect(checkbox).toHaveAttribute("aria-disabled", "true");
+    expect(checkbox).not.toBeChecked();
+    expect(within(card).queryByText("缺少上游模型：部署需求模型，请先生成")).not.toBeInTheDocument();
+    expect(within(card).getByRole("img", { name: "缺少上游模型：部署需求模型，请先生成" })).toHaveAttribute("data-generation-status", "blocked");
+    expect(within(card).queryByText(/将自动补齐/)).not.toBeInTheDocument();
+    expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+    await user.click(card);
+    await user.click(checkbox);
+    act(() => card.focus());
+    await user.keyboard("{Enter} ");
+    expect(checkbox).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "生成" })).toBeDisabled();
+    await user.click(within(group).getByRole("button", { name: "全选" }));
+    expect(checkbox).not.toBeChecked();
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "生成" }));
+    const confirmation = await screen.findByRole("dialog", { name: "确认生成设计模型" });
+    expect(confirmation).not.toHaveTextContent("部署设计");
+    expect(confirmation).not.toHaveTextContent("部署需求模型");
+  });
+
+  it("select all skips design targets whose upstream requirement model is stale", async () => {
+    const snapshot = completeRequirementSources();
+    const repository = createCurrentMockWorkspaceRepository({
+      requirementText: snapshot.requirementText, requirementBaseline: snapshot.requirementBaseline, rules: snapshot.rules,
+      rulesVersion: 2, rulesBasedOnTextVersion: 0,
+      models: Object.fromEntries(snapshot.models.map(model => [model.modelId ?? model.diagramKind, model])),
+      generatedDiagramTypes: [...new Set(snapshot.models.map(model => model.diagramKind))],
+      diagramVersions: Object.fromEntries(snapshot.models.map(model => [model.diagramKind, model.diagramKind === "class" ? 1 : 2])),
+      diagramInputFingerprints: { class: "stale:previous-rule-input" },
+      requirementModelTraceability: snapshot.requirementModelTraceability,
+    });
+    const user = userEvent.setup();
+    render(withWorkspaceProviders(<DesignModelPage />, repository));
+    const group = await screen.findByRole("group", { name: "全选 / 全不选" });
+    await user.click(within(group).getByRole("button", { name: "全选" }));
+    for (const label of ["设计类图", "数据库设计", "组件（构件）关系", "部署设计"]) {
+      const checkbox = screen.getByRole("checkbox", { name: label });
+      expect(checkbox).toHaveAttribute("aria-disabled", "true");
+      expect(checkbox).not.toBeChecked();
+    }
+    expect(screen.getByText("3/7")).toBeInTheDocument();
+  });
+
+  it("allows a stale downstream prerequisite when its class model is regenerated in the same batch", async () => {
+    const snapshot = completeRequirementSources();
+    const repository = createCurrentMockWorkspaceRepository({
+      requirementText: snapshot.requirementText, requirementBaseline: snapshot.requirementBaseline, rules: snapshot.rules,
+      rulesVersion: 1, rulesBasedOnTextVersion: 0,
+      models: Object.fromEntries(snapshot.models.map(model => [model.modelId ?? model.diagramKind, model])),
+      generatedDiagramTypes: [...new Set(snapshot.models.map(model => model.diagramKind))],
+      diagramVersions: Object.fromEntries(snapshot.models.map(model => [model.diagramKind, 1])),
+      requirementModelTraceability: snapshot.requirementModelTraceability,
+      designModels: { class: { ...classModel, modelId: "class" } }, designInputFingerprints: { class: "old-input" },
+    });
+    const user = userEvent.setup();
+    render(withWorkspaceProviders(<DesignModelPage />, repository));
+    await screen.findByRole("heading", { name: "目标模型" });
+    const table = screen.getByRole("checkbox", { name: "数据库设计" });
+    await waitFor(() => expect(table).toHaveAttribute("aria-disabled", "true"));
+    await user.click(screen.getByRole("checkbox", { name: "设计类图" }));
+    await waitFor(() => expect(table).not.toHaveAttribute("aria-disabled", "true"));
+    await user.click(table);
+    expect(table).toBeChecked();
+  });
+
   it.each([false, true])("allows all seven design targets with custom saved requirement IDs: %s", async (customIds) => {
-    const snapshot = runSnapshotSchema.parse(librarySeatDemoFixture.requirementSnapshot);
+    const snapshot = completeRequirementSources();
     if (customIds) {
       // Match production records whose IDs differ from their diagram kinds.
       const kinds = new Set(["function", "usecase", "class", "deployment"]);
@@ -110,7 +267,10 @@ describe("DesignModelPage", () => {
           : entry.target,
       }));
     }
-    const repository = createMockWorkspaceRepository({
+    const savedDesignSources = ["class", "component"].map(kind => designDiagramModelSpecSchema.parse(modelFixture("design", kind)));
+    const repository = createCurrentMockWorkspaceRepository({
+      designModels: Object.fromEntries(savedDesignSources.map(model => [model.modelId!, model])),
+      designInputFingerprints: Object.fromEntries(savedDesignSources.map(model => [model.modelId!, designInputFingerprint(snapshot.models, snapshot.requirementModelTraceability)])),
       requirementText: snapshot.requirementText,
       requirementBaseline: snapshot.requirementBaseline,
       rules: snapshot.rules,
@@ -135,9 +295,15 @@ describe("DesignModelPage", () => {
       expect(checkbox).toBeChecked();
     }
     expect(screen.getByText("7/7")).toBeInTheDocument();
+    const group = screen.getByRole("group", { name: "全选 / 全不选" });
+    await user.click(within(group).getByRole("button", { name: "全不选" }));
+    expect(screen.getByText("0/7")).toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox").every((checkbox) => checkbox.getAttribute("aria-checked") !== "true")).toBe(true);
+    await user.click(within(group).getByRole("button", { name: "全选" }));
+    expect(screen.getByText("7/7")).toBeInTheDocument();
     expect(screen.queryByText(/需求模型之间的追踪关系不完整/)).not.toBeInTheDocument();
     expect(screen.queryByText(/将自动补齐：/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /生成设计模型/ }));
+    await user.click(screen.getByRole("button", { name: "生成" }));
     const confirmation = await screen.findByRole("dialog", { name: "确认生成设计模型" });
     await user.click(within(confirmation).getByRole("button", { name: "确认生成" }));
     await waitFor(() => expect(startDesignRun).toHaveBeenCalledTimes(1));
@@ -147,19 +313,20 @@ describe("DesignModelPage", () => {
 
   it("shows real model eligibility independently of design prerequisites", async () => {
     localStorage.clear();
-    const repository = createMockWorkspaceRepository({ requirementText: "生成设计", rules: [createRule()], models: { usecase: useCaseModel }, selectedDesignDiagramTypes: ["sequence"] });
+    const repository = createCurrentMockWorkspaceRepository({ requirementText: "生成设计", rules: [createRule()], models: { usecase: useCaseModel }, selectedDesignDiagramTypes: ["sequence"] });
     repository.getProjectAccess = async () => ({ capabilities: ["update_project", "start_runs"], generationExecutionMode: "provider" });
     repository.startDesignRun = vi.fn();
     render(withWorkspaceProviders(<DesignModelPage />, repository));
     const targetHeading = await screen.findByRole("heading", { name: "目标模型" });
     const targetRow = targetHeading.parentElement?.parentElement as HTMLElement;
     expect(within(targetRow).getByText("0/7")).toBeInTheDocument();
-    expect(within(targetRow).getByRole("button", { name: "未选择模型" })).toBeEnabled();
-    const button = await screen.findByRole("button", { name: /生成设计模型/ });
-    expect(within(targetRow).getByRole("button", { name: /生成设计模型/ })).toBe(button);
+    expect(within(targetRow).getByRole("combobox", { name: "选择模型" })).toBeEnabled();
+    const button = await screen.findByRole("button", { name: "生成" });
+    expect(button).toHaveClass("h-7", "px-2.5");
+    expect(within(targetRow).getByRole("button", { name: "生成" })).toBe(button);
     expect(button).toBeDisabled();
     expect(screen.queryByText("未选择模型供应商")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "未选择模型" })).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "选择模型" })).toBeEnabled();
     await userEvent.setup().click(button);
     expect(repository.startDesignRun).not.toHaveBeenCalled();
     act(() => patchUserSettings({ providerConfigId: "provider-1", defaultModel: "model-1", providerModelOptions: ["model-1"] }));
@@ -176,7 +343,7 @@ describe("DesignModelPage", () => {
 
   it("does not interrupt an empty project with an automatic prerequisite dialog", async () => {
     const repository: WorkspaceRepository = {
-      loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
+      loadWorkspace: vi.fn(async () => createCurrentWorkspaceRecord()),
       updateRequirementText: vi.fn(async () => {}),
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
@@ -188,7 +355,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -211,11 +377,12 @@ describe("DesignModelPage", () => {
   });
 
   it("opens the trace matrix for the requirement model with a coverage gap", async () => {
-    const repository = createMockWorkspaceRepository({
-      requirementText: "生成 UML",
-      rules: [createRule()],
-      models: { class: classModel },
-      generatedDiagramTypes: ["class"],
+    const snapshot = completeRequirementSources();
+    const repository = createCurrentMockWorkspaceRepository({
+      models: Object.fromEntries(snapshot.models.map(model => [model.modelId ?? model.diagramKind, model])),
+      requirementModelTraceability: snapshot.requirementModelTraceability.filter(entry => entry.target.diagramKind !== "class"),
+      rules: snapshot.rules, requirementText: snapshot.requirementText, requirementBaseline: snapshot.requirementBaseline,
+      generatedDiagramTypes: snapshot.models.map(model => model.diagramKind),
       selectedDesignDiagramTypes: ["class"],
     });
     function SelectionProbe() {
@@ -224,20 +391,33 @@ describe("DesignModelPage", () => {
         selection.kind === "requirement-trace-matrix" ? selection.diagram : selection.kind
       }</output>;
     }
-    const user = userEvent.setup();
     render(withWorkspaceProviders(<><DesignModelPage /><SelectionProbe /></>, repository));
-    await screen.findByRole("heading", { name: "目标模型" });
-    await user.click(await screen.findByRole("button", { name: /需要处理/ }));
-    const guidance = screen.getByRole("dialog", { name: "设计模型暂时无法生成" });
-    await user.click(within(guidance).getByRole("button", { name: "查看跟踪矩阵" }));
+    const target = await screen.findByRole("checkbox", { name: "设计类图" });
+    expect(target).not.toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByText("需求模型追踪关系不完整，请先回到需求页处理")).not.toBeInTheDocument();
+  });
 
-    expect(screen.getByTestId("workspace-selection")).toHaveTextContent("class");
+  it("keeps architecture selectable when only domain model traceability is incomplete", async () => {
+    const snapshot = completeRequirementSources();
+    const repository = createCurrentMockWorkspaceRepository({
+      requirementText: snapshot.requirementText, rules: snapshot.rules,
+      requirementBaseline: snapshot.requirementBaseline,
+      models: Object.fromEntries(snapshot.models.map(model => [model.modelId ?? model.diagramKind, model])),
+      generatedDiagramTypes: snapshot.models.map(model => model.diagramKind),
+      requirementModelTraceability: snapshot.requirementModelTraceability.filter(entry => entry.target.diagramKind !== "class"),
+    });
+    render(withWorkspaceProviders(<DesignModelPage />, repository));
+    const architecture = await screen.findByRole("checkbox", { name: "总体架构图" });
+    await waitFor(() => expect(architecture).not.toHaveAttribute("aria-disabled", "true"));
+    expect(screen.getByRole("checkbox", { name: "设计类图" })).not.toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(screen.getByRole("button", { name: "选择总体架构图" }));
+    expect(architecture).toBeChecked();
   });
 
   it("treats per-use-case analysis models as available requirement sources", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
           models: {
             usecase: useCaseModel,
@@ -256,7 +436,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -275,8 +454,9 @@ describe("DesignModelPage", () => {
   it("treats generated prototype model aliases as available requirement sources", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
+          rules: [createRule({  })],
           models: {
             usecase: useCaseModel,
             "proto-1": prototypeModel,
@@ -294,21 +474,20 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
 
     render(withWorkspaceProviders(<DesignModelPage />, repository));
 
-    expect(screen.getByRole("checkbox", { name: /页面导航模型/ })).not.toHaveAttribute("aria-disabled", "true");
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: /页面导航模型/ })).not.toHaveAttribute("aria-disabled", "true"));
   });
 
-  it("keeps downstream design selection separate and confirms missing sequence dependency", async () => {
+  it("generates navigation without adding a sequence dependency", async () => {
     const snapshot: DesignRunSnapshot = createDesignRunSnapshot({
       runId: "design-run",
       requirementText: "生成 UML",
-      selectedDiagrams: ["sequence", "navigation"],
+      selectedDiagrams: ["navigation"],
       rules: [],
       requirementBaseline: createRequirementBaseline(),
       requirementModels: [useCaseModel],
@@ -345,10 +524,10 @@ describe("DesignModelPage", () => {
     const startDesignRun = vi.fn(async () => ({ runId: "design-run" }));
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
           requirementBaseline: createRequirementBaseline(),
-          rules: [createRule({ relatedDiagrams: ["usecase", "prototype"] })],
+          rules: [createRule({  })],
           rulesVersion: 1,
           models: {
             usecase: useCaseModel,
@@ -402,7 +581,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -412,16 +590,16 @@ describe("DesignModelPage", () => {
     await userEvent.click(await screen.findByRole("button", { name: "选择页面导航模型" }));
     expect(screen.getByRole("checkbox", { name: /用例实现设计/ })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: /页面导航模型/ })).toBeChecked();
-    await userEvent.click(screen.getByRole("button", { name: /生成设计模型/ }));
+    await userEvent.click(screen.getByRole("button", { name: "生成" }));
     const confirmation = await screen.findByRole("dialog", { name: "确认生成设计模型" });
-    expect(within(confirmation).getByText("设计依赖补齐")).toBeInTheDocument();
-    expect(within(confirmation).getByText("用例实现设计")).toBeInTheDocument();
+    expect(within(confirmation).queryByText("设计依赖补齐")).not.toBeInTheDocument();
+    expect(within(confirmation).queryByText("用例实现设计")).not.toBeInTheDocument();
     await userEvent.click(within(confirmation).getByRole("button", { name: "确认生成" }));
 
     await waitFor(() => {
       expect(startDesignRun).toHaveBeenCalledWith(
         expect.objectContaining({
-          selectedDiagrams: ["sequence", "navigation"],
+          selectedDiagrams: ["navigation"],
           requestedDiagrams: ["navigation"],
         }),
       );
@@ -432,110 +610,41 @@ describe("DesignModelPage", () => {
     expect(input).toHaveProperty("requirementBaseline");
   });
 
-  it("auto-fills component and class dependencies before deployment design", async () => {
-    const startDesignRun = vi.fn(async () => ({ runId: "design-run" }));
-    const repository: WorkspaceRepository = {
-      loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
-          requirementText: "生成 UML",
-          requirementBaseline: createRequirementBaseline(),
-          rules: [
-            createRule({
-              relatedDiagrams: ["usecase", "class", "deployment"],
-            }),
-          ],
-          models: {
-            usecase: useCaseModel,
-            "analysis:uc": analysisModel,
-            class: classModel,
-            deployment: {
-              diagramKind: "deployment",
-              title: "部署需求模型",
-              summary: "部署约束",
-              notes: [],
-              nodes: [],
-              databases: [],
-              components: [],
-              externalSystems: [],
-              artifacts: [],
-              relationships: [],
-            },
-          },
-          requirementModelTraceability: [
-            ...createUseCaseRelationshipTrace(useCaseModel, "r1"),
-            {
-              ruleId: "r1",
-              target: {
-                diagramKind: "usecase",
-                elementId: "actor",
-                elementKind: "actor",
-                label: "用户",
-              },
-            },
-            {
-              ruleId: "r1",
-              target: {
-                diagramKind: "usecase",
-                elementId: "uc",
-                elementKind: "usecase",
-                label: "生成模型",
-              },
-            },
-            {
-              ruleId: "r1",
-              target: {
-                diagramKind: "usecase",
-                elementId: "system",
-                elementKind: "system-boundary",
-                label: "平台",
-              },
-            },
-          ],
-        }),
-      ),
-      updateRequirementText: vi.fn(async () => {}),
-      startRun: vi.fn(),
-      subscribeToRun: vi.fn(),
-      getRunSnapshot: vi.fn(),
-      startDesignRun,
-      subscribeToDesignRun: vi.fn(),
-      getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
-      saveRunHistory: vi.fn(),
-      listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
-      deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
-    };
-
+  it("requires saved design upstreams even when their generation targets are selected", async () => {
+    const snapshot = completeRequirementSources();
+    const repository = createCurrentMockWorkspaceRepository({
+      requirementText: snapshot.requirementText, rules: snapshot.rules,
+      requirementBaseline: snapshot.requirementBaseline,
+      models: Object.fromEntries(snapshot.models.map(model => [model.modelId ?? model.diagramKind, model])),
+      requirementModelTraceability: snapshot.requirementModelTraceability,
+    });
     const user = userEvent.setup();
     render(withWorkspaceProviders(<DesignModelPage />, repository));
-
-    await screen.findByText("设计模型");
-    await user.click(screen.getByRole("button", { name: "选择部署设计" }));
-
-    await user.click(screen.getByRole("button", { name: /生成设计模型/ }));
-    const confirmation = await screen.findByRole("dialog", { name: "确认生成设计模型" });
-    expect(within(confirmation).getByText("设计依赖补齐")).toBeInTheDocument();
-    expect(confirmation).toHaveTextContent("用例实现设计、设计类图、组件（构件）关系");
-    await user.click(within(confirmation).getByRole("button", { name: "确认生成" }));
-
-    await waitFor(() => {
-      expect(startDesignRun).toHaveBeenCalledWith(
-        expect.objectContaining({
-          selectedDiagrams: ["sequence", "class", "component", "deployment"],
-          requestedDiagrams: ["deployment"],
-        }),
-      );
-    });
+    const group = await screen.findByRole("group", { name: "全选 / 全不选" });
+    await user.click(within(group).getByRole("button", { name: "全选" }));
+    expect(screen.getByRole("checkbox", { name: "设计类图" })).toBeChecked();
+    for (const label of ["数据库设计", "组件（构件）关系", "部署设计"]) {
+      const checkbox = screen.getByRole("checkbox", { name: label });
+      expect(checkbox).toHaveAttribute("aria-disabled", "true");
+      expect(checkbox).not.toBeChecked();
+    }
+    expect(screen.getByText("4/7")).toBeInTheDocument();
+    const deployment = screen.getByRole("button", { name: "选择部署设计" });
+    const warning = within(deployment).getByRole("img", { name: "缺少上游模型：组件（构件）关系，请先生成" });
+    expect(within(deployment).queryByText("缺少上游模型：组件（构件）关系，请先生成")).not.toBeInTheDocument();
+    await user.hover(warning);
+    expect(await screen.findByText("缺少上游模型：组件（构件）关系，请先生成")).toBeVisible();
+    await user.unhover(warning);
+    await user.click(deployment);
+    expect(screen.getByRole("checkbox", { name: "部署设计" })).not.toBeChecked();
   });
 
-  it("allows interface relation design and flags missing prototype source for auto-fill", async () => {
+  it("blocks navigation when its prototype source is missing", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
+          rules: [createRule({  })],
           requirementBaseline: createRequirementBaseline(),
           models: {
             usecase: useCaseModel,
@@ -562,7 +671,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -570,15 +678,17 @@ describe("DesignModelPage", () => {
     render(withWorkspaceProviders(<DesignModelPage />, repository));
 
     await screen.findByText("设计模型");
-    expect(screen.getByRole("checkbox", { name: /页面导航模型/ })).toBeEnabled();
-    expect(screen.getAllByText(/将自动补齐：原型界面关系/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("checkbox", { name: /页面导航模型/ })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("img", { name: "缺少上游模型：原型界面关系，请先生成" })).toBeInTheDocument();
+    expect(screen.queryByText("缺少上游模型：原型界面关系，请先生成")).not.toBeInTheDocument();
   });
 
-  it("keeps design diagrams selectable when their prerequisite requirement models are missing", async () => {
+  it("disables design targets and clears selection when requirement upstreams are missing", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
+          rules: [createRule({  })],
           models: {
             usecase: useCaseModel,
           },
@@ -596,7 +706,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -607,23 +716,22 @@ describe("DesignModelPage", () => {
     await screen.findByText("设计模型");
     const sequenceCheckbox = screen.getByRole("checkbox", { name: /用例实现设计/ });
     const classDiagramCheckbox = screen.getByRole("checkbox", { name: /设计类图/ });
-    expect(sequenceCheckbox).toBeEnabled();
-    expect(classDiagramCheckbox).toBeEnabled();
+    expect(sequenceCheckbox).toHaveAttribute("aria-disabled", "true");
+    expect(classDiagramCheckbox).toHaveAttribute("aria-disabled", "true");
     expect(classDiagramCheckbox).not.toBeChecked();
     await user.click(screen.getByRole("button", { name: "选择设计类图" }));
-    expect(classDiagramCheckbox).toBeChecked();
-    await user.click(screen.getByRole("button", { name: "取消选择设计类图" }));
     expect(classDiagramCheckbox).not.toBeChecked();
-    expect(screen.getAllByText(/将自动补齐：领域概念模型/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("img", { name: "缺少上游模型：领域概念模型，请先生成" })).toBeInTheDocument();
     expect(screen.getByText("0/7")).toBeInTheDocument();
     expect(screen.queryByText("0/1")).not.toBeInTheDocument();
   });
 
-  it("keeps downstream design diagrams selectable when the use case prerequisite is missing", async () => {
+  it("blocks downstream design targets when the use-case source is missing", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
+          rules: [createRule({  })],
           models: {
             class: classModel,
           },
@@ -640,7 +748,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -654,13 +761,13 @@ describe("DesignModelPage", () => {
     expect(sequenceCheckbox).toBeEnabled();
     expect(classDiagramCheckbox).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "选择设计类图" }));
-    expect(classDiagramCheckbox).toBeChecked();
+    expect(classDiagramCheckbox).not.toBeChecked();
   });
 
   it.each(["usecase", "usecase-home-security"])("disables sequence generation for an empty use case model saved as %s", async (modelId) => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
           models: {
             [modelId]: {
@@ -683,7 +790,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -693,9 +799,9 @@ describe("DesignModelPage", () => {
     await screen.findByText("设计模型");
     expect(screen.getByRole("checkbox", { name: /用例实现设计/ })).toHaveAttribute("aria-disabled", "true");
     expect(
-      screen.getAllByText("需求阶段用例模型没有可生成用例实现设计的用例").length,
+      screen.getAllByRole("img", { name: "需求阶段用例模型没有可用于设计的用例" }).length,
     ).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /生成设计模型/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "生成" })).toBeDisabled();
   });
 
   it("blocks design generation when existing requirement model inputs are stale", async () => {
@@ -703,16 +809,17 @@ describe("DesignModelPage", () => {
     const startDesignRun = vi.fn();
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
           rules: [createRule()],
           rulesVersion: 2,
           rulesBasedOnTextVersion: 1,
           models: {
-            usecase: useCaseModel,
+            usecase: useCaseModel, "analysis:uc": analysisModel,
           },
           generatedDiagramTypes: ["usecase"],
           diagramVersions: { usecase: 1 },
+          diagramInputFingerprints: { usecase: "stale:previous-rule-input" },
           requirementModelTraceability: [
             ...createUseCaseRelationshipTrace(useCaseModel, "r1"),
             {
@@ -756,7 +863,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -766,21 +872,21 @@ describe("DesignModelPage", () => {
     await screen.findByText("设计模型");
     expect(screen.getByRole("checkbox", { name: /用例实现设计/ })).toHaveAttribute("aria-disabled", "true");
     expect(
-      screen.getAllByText(/已有需求阶段用例模型基于旧规则，请先回到需求页更新/).length,
+      screen.getAllByRole("img", { name: /已有需求阶段用例模型基于旧规则，请先回到需求页更新/ }).length,
     ).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /生成设计模型/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "生成" })).toBeDisabled();
     expect(startRun).not.toHaveBeenCalled();
     expect(startDesignRun).not.toHaveBeenCalled();
   });
 
-  it("shows a top-level blocker when existing use-case realization design no longer covers current use cases", async () => {
+  it("allows selecting class generation when existing use-case realization coverage is incomplete", async () => {
     const startDesignRun = vi.fn();
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
           models: {
-            usecase: useCaseModel,
+            usecase: useCaseModel, "analysis:uc": analysisModel,
             class: classModel,
           },
           selectedDesignDiagramTypes: ["class"],
@@ -835,7 +941,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -845,35 +950,24 @@ describe("DesignModelPage", () => {
     await screen.findByRole("img", { name: /用例实现设计：/, hidden: true });
     expect(screen.getByText("0/7")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "设计模型暂时无法生成" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /有 1 项需要处理/ }));
-    const blocker = await screen.findByRole("dialog", {
-      name: "设计模型暂时无法生成",
-    });
-    await waitFor(() => {
-      expect(
-        within(blocker).getByText("已有用例实现设计覆盖不足，请先手动更新用例实现设计"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      within(blocker).getByRole("button", { name: "查看用例实现设计" }),
-    ).toBeInTheDocument();
-    await userEvent.click(within(blocker).getByRole("button", { name: "我知道了" }));
-    expect(screen.getByRole("checkbox", { name: /设计类图/ })).not.toBeChecked();
+    expect(screen.queryByText("已有用例实现设计覆盖不足，请先手动更新用例实现设计")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: /设计类图/ }));
+    expect(screen.getByRole("checkbox", { name: /设计类图/ })).toBeChecked();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "有 1 项需要处理" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /生成设计模型/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "生成" })).toBeEnabled();
     expect(screen.getByRole("img", { name: /用例实现设计：/ })).toBeInTheDocument();
     expect(screen.queryByText("已生成设计模型")).not.toBeInTheDocument();
     expect(startDesignRun).not.toHaveBeenCalled();
   });
 
-  it("keeps a view action on generated design diagram cards", async () => {
+  it("selects generated design diagram cards without showing navigation actions", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
+          rules: [createRule({  })],
           models: {
-            usecase: useCaseModel,
+            usecase: useCaseModel, "analysis:uc": analysisModel,
           },
           selectedDesignDiagramTypes: ["sequence"],
           generatedDesignDiagramTypes: ["sequence"],
@@ -930,7 +1024,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -949,15 +1042,17 @@ describe("DesignModelPage", () => {
     expect(within(sequenceCard).getByRole("img", { name: /用例实现设计：/ })).toBeInTheDocument();
     expect(screen.queryByText("2 个用例实现设计")).not.toBeInTheDocument();
 
-    await user.click(within(sequenceCard).getByRole("button", { name: "查看" }));
-
+    expect(within(sequenceCard).queryByRole("button", { name: /查看|打开/ })).not.toBeInTheDocument();
+    await user.click(sequenceCard);
+    expect(sequenceCheckbox).toBeChecked();
+    await user.click(sequenceCard);
     expect(sequenceCheckbox).not.toBeChecked();
   });
 
   it("does not show confirmed auto-filled design traceability as pending repair records", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
           models: {
             usecase: useCaseModel,
@@ -1019,7 +1114,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -1035,112 +1129,18 @@ describe("DesignModelPage", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps table selection separate and confirms missing sequence and class dependencies", async () => {
-    const snapshot: DesignRunSnapshot = createDesignRunSnapshot({
-      runId: "design-run-table",
-      requirementText: "生成 UML",
-      selectedDiagrams: ["sequence", "class", "table"],
-      rules: [],
-      requirementBaseline: createRequirementBaseline(),
-      requirementModels: [useCaseModel, classModel],
-      models: [],
-      plantUml: [],
-      svgArtifacts: [],
-      diagramErrors: {},
-      designTrace: [],
-      currentStage: "render_svg",
-      status: "completed",
-      error: null,
+  it("blocks database design until its class model has been generated", async () => {
+    const repository = createCurrentMockWorkspaceRepository({
+      requirementText: "生成 UML", models: { usecase: useCaseModel, class: classModel },
     });
-    const startDesignRun = vi.fn(async () => ({ runId: "design-run-table" }));
-    const repository: WorkspaceRepository = {
-      loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
-          requirementText: "生成 UML",
-          requirementBaseline: createRequirementBaseline(),
-          rules: [createRule({ relatedDiagrams: ["usecase", "class"] })],
-          rulesVersion: 1,
-          diagramVersions: { usecase: 1, class: 1, analysis: 1 },
-          generatedDiagramTypes: ["usecase", "class", "analysis"],
-          models: {
-            usecase: useCaseModel,
-            class: classModel,
-            "analysis:uc": analysisModel,
-          },
-          requirementModelTraceability: [
-            ...createUseCaseRelationshipTrace(useCaseModel, "r1"),
-            {
-              ruleId: "r1",
-              target: {
-                diagramKind: "usecase",
-                elementId: "actor",
-                elementKind: "actor",
-                label: "用户",
-              },
-            },
-            {
-              ruleId: "r1",
-              target: {
-                diagramKind: "usecase",
-                elementId: "uc",
-                elementKind: "usecase",
-                label: "生成模型",
-              },
-            },
-            {
-              ruleId: "r1",
-              target: {
-                diagramKind: "usecase",
-                elementId: "system",
-                elementKind: "system-boundary",
-                label: "平台",
-              },
-            },
-          ],
-        }),
-      ),
-      updateRequirementText: vi.fn(async () => {}),
-      startRun: vi.fn(),
-      subscribeToRun: vi.fn(),
-      getRunSnapshot: vi.fn(),
-      startDesignRun,
-      subscribeToDesignRun: vi.fn(async (_runId, onEvent) => {
-        onEvent({ type: "completed", snapshot });
-      }),
-      getDesignRunSnapshot: vi.fn(async () => snapshot),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
-      saveRunHistory: vi.fn(),
-      listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
-      deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
-    };
-
+    const user = userEvent.setup();
     render(withWorkspaceProviders(<DesignModelPage />, repository));
-
-    await userEvent.click(await screen.findByRole("checkbox", { name: /数据库设计/ }));
-    expect(screen.getByRole("checkbox", { name: /用例实现设计/ })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /设计类图/ })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /数据库设计/ })).toBeChecked();
-    await userEvent.click(screen.getByRole("button", { name: /生成设计模型/ }));
-    const confirmation = await screen.findByRole("dialog", { name: "确认生成设计模型" });
-    expect(within(confirmation).getByText("设计依赖补齐")).toBeInTheDocument();
-    expect(within(confirmation).getByText("用例实现设计、设计类图")).toBeInTheDocument();
-    await userEvent.click(within(confirmation).getByRole("button", { name: "确认生成" }));
-
-    await waitFor(() => {
-      expect(startDesignRun).toHaveBeenCalledWith(
-        expect.objectContaining({
-          selectedDiagrams: ["sequence", "class", "table"],
-          requestedDiagrams: ["table"],
-        }),
-      );
-    });
-    const input = (startDesignRun.mock.calls[0] as unknown as [StartDesignRunInput] | undefined)?.[0];
-    expect(input).not.toHaveProperty("requirementText");
-    expect(input).not.toHaveProperty("rules");
-    expect(input).toHaveProperty("requirementBaseline");
+    const table = await screen.findByRole("checkbox", { name: "数据库设计" });
+    expect(table).toHaveAttribute("aria-disabled", "true");
+    await user.click(screen.getByRole("button", { name: "选择数据库设计" }));
+    expect(table).not.toBeChecked();
+    expect(within(screen.getByRole("button", { name: "选择数据库设计" })).getByRole("img", { name: "缺少上游模型：设计类图，请先生成" })).toBeInTheDocument();
+    expect(screen.queryByText("缺少上游模型：设计类图，请先生成")).not.toBeInTheDocument();
   });
 
   it("allows database design when the current design class diagram is keyed by model id", async () => {
@@ -1157,7 +1157,7 @@ describe("DesignModelPage", () => {
     };
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
+        createCurrentWorkspaceRecord({
           requirementText: "生成 UML",
           models: {
             usecase: useCaseModel,
@@ -1185,7 +1185,6 @@ describe("DesignModelPage", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };

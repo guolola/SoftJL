@@ -1,7 +1,8 @@
 // Computes generation preflight blockers and dependency plans without mutating session state.
 import {
-  designDiagramKindFromRecordKey,
   validateModelInput,
+  candidateRulesForDiagram,
+  REQUIREMENT_MODEL_RULE_TYPES,
   type DiagramModelSpec,
   type RequirementBaseline,
 } from "@uml-platform/contracts";
@@ -9,17 +10,15 @@ import type {
   DesignDiagramType,
   DiagramType,
 } from "../../../entities/diagram/model";
-import { getDesignModelId, findRequirementModelByKind } from "../../../entities/diagram/model";
+import { findRequirementModelByKind, getDiagramLabel } from "../../../entities/diagram/model";
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
 import type { GenerationResultDialogState } from "../components/generation-dialogs";
 import { i18n } from "../../../shared/i18n/i18n";
 import {
   requestOpenProjectWorkspaceTarget,
-  requestOpenRequirementRule,
   type ProjectWorkspaceTarget,
 } from "../../../shared/lib/app-navigation";
-import { requirementRuleIdsBlockingGeneration } from "./requirement-review";
 import {
   DESIGN_REQUIREMENT_SOURCE_MAP,
   collectExistingDesignDiagramKinds,
@@ -38,10 +37,9 @@ import {
   designFingerprintMatches,
   designInputFingerprintFor,
   fingerprintMatches,
-  hasCompleteRequirementTraceability,
+  hasRequirementSources,
   isRequirementDiagramStale,
   requirementInputFingerprintFor,
-  sequenceModelsCoverUseCases,
 } from "./workspace-context";
 
 type PreflightBlock = Pick<
@@ -85,7 +83,7 @@ interface SharedRequirementPreflightInput {
   requirementBaseline: RequirementBaseline | null;
   requirementInputFingerprint: string | null;
   requirementModelTraceability: WorkspaceRecord["requirementModelTraceability"];
-  requirementReviewCandidates: WorkspaceRecord["requirementReviewCandidates"];
+
   requirementText: string;
   rules: RequirementRule[];
   rulesBasedOnTextVersion: number | null;
@@ -119,23 +117,30 @@ function staleRulesBlock(targetLabel: string): PreflightBlock {
   };
 }
 
-function pendingReviewBlock(
-  pendingReviews: string[],
-  targetLabel: string,
-): PreflightBlock {
+export function missingRequirementRulesReason(plan: RequirementAutoUpstreamPlan) {
+  if (!plan.needsRulesRun) return null;
+  return "缺少需求规则，请先抽取或添加规则。需求模型按固定类型映射表关联规则。";
+}
+
+function missingMappedRulesBlock(diagrams: readonly DiagramType[], rules: readonly RequirementRule[]): PreflightBlock | null {
+  const diagram = diagrams.find(kind => candidateRulesForDiagram(rules, kind).length === 0);
+  if (!diagram) return null;
+  const types = REQUIREMENT_MODEL_RULE_TYPES[diagram].map(type => i18n.t(`requirementSemantics.kinds.${type}`)).join("、");
   return {
-    title: "需求规则待确认",
-    tone: "warning",
-    message: "请先确认需求规则修复结果",
-    stageLabel: "需求规则",
-    targetLabel,
-    primaryAction: pendingReviews[0]
-      ? {
-          label: i18n.t("feedback.actions.pendingRules"),
-          onSelect: () => requestOpenRequirementRule(pendingReviews[0]!),
-        }
-      : openWorkspaceAction("system-requirements", "systemRequirements"),
+    title: "缺少对应类型的需求规则", tone: "warning",
+    message: `${getDiagramLabel(diagram, i18n.t)}需要以下类型的需求规则：${types}。请先添加规则或修改需求类型。`,
+    stageLabel: "需求规则", targetLabel: getDiagramLabel(diagram, i18n.t),
+    primaryAction: openWorkspaceAction("system-requirements", "systemRequirements"),
   };
+}
+
+function missingRulesBlock(plan: RequirementAutoUpstreamPlan, targetLabel: string): PreflightBlock | null {
+  const message = missingRequirementRulesReason(plan);
+  return message ? {
+    title: "缺少对应需求规则", tone: "warning", message,
+    stageLabel: "需求规则", targetLabel,
+    primaryAction: openWorkspaceAction("system-requirements", "systemRequirements"),
+  } : null;
 }
 
 function invalidStructureBlock(models: unknown[], stage: "requirements" | "design", targetLabel: string): PreflightBlock | null {
@@ -149,49 +154,6 @@ function invalidStructureBlock(models: unknown[], stage: "requirements" | "desig
       ? openWorkspaceAction("requirement-models", "requirementModels")
       : openWorkspaceAction("design-models", "designModels"),
   };
-}
-
-function designDiagramHasError(
-  diagramErrors: WorkspaceRecord["designDiagramErrors"],
-  diagram: DesignDiagramType,
-) {
-  return Object.keys(diagramErrors).some((id) => {
-    if (id === diagram) return true;
-    if (id.startsWith(`${diagram}:`)) return true;
-    return designDiagramKindFromRecordKey(id) === diagram;
-  });
-}
-
-function designDiagramHasViewableArtifact(
-  input: Pick<DesignGenerationPreflightInput, "designModels" | "designSvgArtifacts">,
-  diagram: DesignDiagramType,
-) {
-  return Object.values(input.designModels)
-    .filter((model) => model.diagramKind === diagram)
-    .some((model) => Boolean(input.designSvgArtifacts[getDesignModelId(model)]));
-}
-
-function requestedDesignDiagramsForPreflight(
-  input: DesignGenerationPreflightInput,
-) {
-  const requestedDiagrams = orderedDesignDiagrams(
-    input.only ?? input.selectedDesignDiagrams,
-  );
-  const shouldResumeFailedBatch =
-    requestedDiagrams.length > 1 &&
-    Object.keys(input.designDiagramErrors).length > 0;
-  if (!shouldResumeFailedBatch) return requestedDiagrams;
-
-  return requestedDiagrams.filter((diagram) => {
-    if (designDiagramHasError(input.designDiagramErrors, diagram)) return true;
-    if (
-      diagram === "sequence" &&
-      !sequenceModelsCoverUseCases(input.designModels, findRequirementModelByKind(input.models, "usecase"))
-    ) {
-      return true;
-    }
-    return !designDiagramHasViewableArtifact(input, diagram);
-  });
 }
 
 function hasStaleRules(input: SharedRequirementPreflightInput) {
@@ -211,15 +173,6 @@ function hasStaleRules(input: SharedRequirementPreflightInput) {
   return { activeRequirementFingerprint, stale };
 }
 
-function pendingRequirementReviewRuleIds(
-  input: SharedRequirementPreflightInput,
-) {
-  return requirementRuleIdsBlockingGeneration(
-    input.requirementBaseline,
-    input.requirementReviewCandidates,
-  );
-}
-
 export function analyzeRequirementGenerationPreflight(
   input: RequirementGenerationPreflightInput,
 ): RequirementGenerationPreflight {
@@ -230,13 +183,6 @@ export function analyzeRequirementGenerationPreflight(
   const { activeRequirementFingerprint, stale } = hasStaleRules(input);
   if (stale) {
     return { status: "blocked", block: staleRulesBlock("已选需求模型") };
-  }
-  const pendingReviews = pendingRequirementReviewRuleIds(input);
-  if (pendingReviews.length > 0) {
-    return {
-      status: "blocked",
-      block: pendingReviewBlock(pendingReviews, "已选需求模型"),
-    };
   }
   // Regeneration may replace an invalid source; analysis alone must consume a valid saved use case.
   if (diagrams.includes("analysis") && !diagrams.includes("usecase")) {
@@ -249,19 +195,22 @@ export function analyzeRequirementGenerationPreflight(
     existingModels: input.models,
     rules: input.rules,
   });
-  if (plan.needsRulesRun && input.rules.length === 0 && !input.requirementText.trim()) {
+  const rulesBlock = missingRulesBlock(plan, "已选需求模型");
+  if (rulesBlock) return { status: "blocked", block: rulesBlock };
+  // All generation entry points require saved upstreams, even when the same batch selects them.
+  if (diagrams.includes("analysis") && !hasRequirementModelKind(input.models, "usecase")) {
     return {
       status: "blocked",
       block: {
-        title: "缺少需求来源",
-        tone: "warning",
-        message: "缺少需求来源，无法自动生成需求规则",
-        stageLabel: "需求规则",
-        targetLabel: "已选需求模型",
-        primaryAction: openWorkspaceAction("system-requirements", "systemRequirements"),
+        title: "缺少上游模型", tone: "warning",
+        message: i18n.t("requirements.useCaseRequired"),
+        stageLabel: "需求模型", targetLabel: "需求分析模型",
+        primaryAction: openWorkspaceAction("requirement-models", "requirementModels"),
       },
     };
   }
+  const mappedBlock = missingMappedRulesBlock(plan.effectiveDiagrams, input.rules);
+  if (mappedBlock) return { status: "blocked", block: mappedBlock };
   if (
     diagrams.includes("analysis") &&
     hasRequirementModelKind(input.models, "usecase") &&
@@ -302,16 +251,10 @@ export function analyzeRequirementGenerationPreflight(
 export function analyzeDesignGenerationPreflight(
   input: DesignGenerationPreflightInput,
 ): DesignGenerationPreflight {
-  const requestedDiagrams = requestedDesignDiagramsForPreflight(input);
+  // Generate always honors the user's current selection. Failed-only scope belongs to the explicit task-retry action.
+  const requestedDiagrams = orderedDesignDiagrams(input.only ?? input.selectedDesignDiagrams);
   if (requestedDiagrams.length === 0) {
     return { status: "empty" };
-  }
-  const pendingReviews = pendingRequirementReviewRuleIds(input);
-  if (pendingReviews.length > 0) {
-    return {
-      status: "blocked",
-      block: pendingReviewBlock(pendingReviews, "已选设计模型"),
-    };
   }
   const { activeRequirementFingerprint, stale } = hasStaleRules(input);
   if (stale) {
@@ -336,6 +279,10 @@ export function analyzeDesignGenerationPreflight(
     requirementModels: input.models,
     rules: input.rules,
   });
+  const rulesBlock = missingRulesBlock(requirementPlan, "已选设计模型");
+  if (rulesBlock) return { status: "blocked", block: rulesBlock };
+  const mappedBlock = missingMappedRulesBlock(requirementPlan.effectiveDiagrams, input.rules);
+  if (mappedBlock) return { status: "blocked", block: mappedBlock };
   const requiredExistingRequirementSources = orderedRequirementDiagrams(
     requestedDiagrams.flatMap((diagram) =>
       DESIGN_REQUIREMENT_SOURCE_MAP[diagram].filter((source) =>
@@ -372,10 +319,11 @@ export function analyzeDesignGenerationPreflight(
     };
   }
   const existingRequirementTraceabilityComplete =
-    hasCompleteRequirementTraceability(
+    hasRequirementSources(
       Object.values(input.models),
       input.requirementModelTraceability,
       input.manualModelEditStatus,
+      requiredExistingRequirementSources,
     );
   const existingRequirementTraceabilityMissing =
     requiredExistingRequirementSources.length > 0 &&
@@ -401,29 +349,6 @@ export function analyzeDesignGenerationPreflight(
     ),
     input.requirementModelTraceability,
   );
-  const sequenceWillGenerate =
-    resolvedDesignPlan.effectiveDiagrams.includes("sequence");
-  const needsExistingSequenceDependency = resolvedDesignPlan.effectiveDiagrams.some(
-    (diagram) => diagram === "class" || diagram === "navigation",
-  );
-  if (
-    needsExistingSequenceDependency &&
-    !sequenceWillGenerate &&
-    existingDesignDiagrams.includes("sequence") &&
-    !sequenceModelsCoverUseCases(input.designModels, findRequirementModelByKind(input.models, "usecase"))
-  ) {
-    return {
-      status: "blocked",
-      block: {
-        title: "设计依赖需更新",
-        tone: "warning",
-        message: "已有用例实现设计覆盖不足，请先手动更新用例实现设计",
-        stageLabel: "设计模型",
-        targetLabel: "已选设计模型",
-        primaryAction: openWorkspaceAction("design-models", "designModels"),
-      },
-    };
-  }
   if (
     (requestedDiagrams.includes("table") ||
       requestedDiagrams.includes("component")) &&

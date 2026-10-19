@@ -94,7 +94,7 @@ function render(model: AnyDiagramModel, stage: ModelingStage) {
       const source = renderActivityGraph(model);
       // Verify the explicit renderer emitted declarations and the actual edge statement, not just labels.
       for (const item of getModelGraphElements(model)) {
-        if (!source.includes(`as ${alias(item.id)}`) && !source.includes(`<> ${alias(item.id)}`)) throw new Error(`Activity rendering omitted ${item.id}`);
+        if (!source.includes(`as ${alias(item.id)}`)) throw new Error(`Activity rendering omitted ${item.id}`);
         emitted.set(item.id, { elementId: item.id, alias: alias(item.id) });
       }
       for (const edge of model.relationships) {

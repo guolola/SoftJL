@@ -38,7 +38,7 @@ API 路由只解析输入并调用领域能力。生成任务按“路由 → �
 
 ### 运行依赖
 
-生产环境使用 PostgreSQL 持久化、Redis/BullMQ 承载队列、PM2 运行 Next.js Web、API 和渲染服务、Nginx 负责反向代理。OnlyOffice 是文档在线编辑的可选外部服务。
+生产环境使用 PostgreSQL 持久化、Redis/BullMQ 承载队列、PM2 运行 Next.js Web、API 和渲染服务、Nginx 负责反向代理。文档使用浏览器内 DOCX 预览与下载，无需额外编辑服务器。
 
 ## 操作与维护
 

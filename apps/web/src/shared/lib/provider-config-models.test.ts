@@ -51,7 +51,7 @@ describe("provider config model helpers", () => {
     expect(
       sortProviderConfigsByScope([
         { id: "project", name: "项目 Provider", scopeType: "project" },
-        { id: "other", name: "其他 Provider", scopeType: "organization" },
+        { id: "other", name: "其他 Provider", scopeType: "unknown" },
         { id: "system", name: "系统 Provider", scopeType: "system" },
         { id: "user-b", name: "用户 B", scopeType: "user" },
         { id: "user-a", name: "用户 A", scopeType: "user" },

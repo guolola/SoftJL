@@ -1,5 +1,5 @@
 // Derives stale flags, generation blockers, and visible run status for the session provider.
-import { validateModelInput, type DiagramModelSpec, type RequirementBaseline } from "@uml-platform/contracts";
+import { designRequirementModelIds, validateModelInput, type DiagramModelSpec, type RequirementBaseline } from "@uml-platform/contracts";
 import type {
   DesignDiagramType,
   DiagramType,
@@ -7,15 +7,14 @@ import type {
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
 import type { GenerationTask, RunDiagnostics } from "../model/session-state";
-import { getDesignModelId } from "../../../entities/diagram/model";
-import { requirementRuleIdsBlockingGeneration } from "./requirement-review";
+import { getDesignModelId, getRequirementModelId } from "../../../entities/diagram/model";
 import type { createEmptyRunUiState } from "./run-ui-state";
 import {
   designFingerprintMatches,
   designInputFingerprintFor,
   fingerprintMatches,
-  hasCompleteDesignTraceability,
-  hasCompleteRequirementTraceability,
+  hasDesignSources,
+  hasRequirementSources,
   isRequirementDiagramStale,
   requirementInputFingerprintFor,
 } from "./workspace-context";
@@ -41,8 +40,9 @@ interface WorkspaceDerivedStatusInput {
   requirementBaseline: RequirementBaseline | null;
   requirementInputFingerprint: string | null;
   requirementModelTraceability: WorkspaceRecord["requirementModelTraceability"];
-  requirementReviewCandidates: WorkspaceRecord["requirementReviewCandidates"];
+
   requirementText: string;
+  committedRequirementText?: string;
   hasUncommittedRequirementDraft: boolean;
   rules: RequirementRule[];
   rulesBasedOnTextVersion: number | null;
@@ -53,29 +53,26 @@ interface WorkspaceDerivedStatusInput {
 }
 
 export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
-  const requirementSourceMissing = input.requirementText.trim().length === 0;
+  // Draft edits do not change the source on which published rules/models depend.
+  const requirementText = input.committedRequirementText ?? input.requirementText;
+  const requirementSourceMissing = requirementText.trim().length === 0;
   const currentRequirementInputFingerprint = requirementInputFingerprintFor(
-    input.requirementText,
+    requirementText,
     input.rules,
   );
   const isRulesStale =
     input.rules.length > 0 &&
-    (input.hasUncommittedRequirementDraft ||
-      requirementSourceMissing ||
-      (input.requirementInputFingerprint
-      ? !fingerprintMatches(
+    (requirementSourceMissing ||
+      (!input.requirementInputFingerprint || !fingerprintMatches(
           input.requirementInputFingerprint,
           currentRequirementInputFingerprint,
-        )
-      : input.rulesBasedOnTextVersion !== null &&
-        input.rulesBasedOnTextVersion !== input.textVersion));
+        )));
   const rulesStaleReason: "source-missing" | "text" | "rules" | null =
     !isRulesStale
       ? null
       : requirementSourceMissing
         ? "source-missing"
-        : input.hasUncommittedRequirementDraft ||
-            input.rulesBasedOnTextVersion !== null &&
+        : input.rulesBasedOnTextVersion !== null &&
             input.rulesBasedOnTextVersion !== input.textVersion
           ? "text"
           : "rules";
@@ -103,11 +100,18 @@ export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
           }),
         ),
   );
-  const requirementTraceabilityComplete = hasCompleteRequirementTraceability(
+  const requirementTraceabilityComplete = hasRequirementSources(
     Object.values(input.models),
     input.requirementModelTraceability,
     input.manualModelEditStatus,
   );
+  const staleRequirementModelIds = Object.entries(input.models).flatMap(([id, model]) => {
+    if (!model) return [];
+    const key = getRequirementModelId(model);
+    const stamp = input.diagramInputFingerprints[key] ?? input.diagramInputFingerprints[id] ?? input.diagramInputFingerprints[model.diagramKind];
+    return requirementSourceMissing || (stamp ? !fingerprintMatches(stamp, currentRequirementInputFingerprint)
+      : staleDiagrams.includes(model.diagramKind)) ? [key] : [];
+  });
   const requirementTraceabilityMissing =
     input.requirementModelTraceability.length > 0
       ? !requirementTraceabilityComplete
@@ -127,7 +131,7 @@ export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
         currentDesignInputFingerprint,
       ),
     );
-  const designTraceabilityComplete = hasCompleteDesignTraceability(
+  const designTraceabilityComplete = hasDesignSources(
     Object.values(input.designModels),
     input.designModelTraceability,
     input.manualModelEditStatus,
@@ -139,17 +143,10 @@ export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
   const requirementTraceabilityStale =
     generatedRequirementDiagramSet.size > 0 &&
     (requirementInputStale || requirementTraceabilityMissing);
-  const pendingRequirementReviewRuleIds = requirementRuleIdsBlockingGeneration(
-    input.requirementBaseline,
-    input.requirementReviewCandidates,
-  );
-  const requirementReviewBlockedReason =
-    pendingRequirementReviewRuleIds.length > 0
-      ? "请先确认需求规则修复结果"
-      : null;
-  const designGenerationBlockedReason = !input.requirementText.trim()
+  // Extracted rules count as generated; rule confirmation never gates design generation.
+  const designGenerationBlockedReason = !requirementText.trim()
     ? "请先输入需求文本"
-    : requirementReviewBlockedReason ?? (Object.values(input.models).some((model) => model && validateModelInput(model, "requirements").some((issue) => issue.severity === "error"))
+    : (Object.values(input.models).some((model) => model && validateModelInput(model, "requirements").some((issue) => issue.severity === "error"))
       ? "上游需求模型未通过结构校验，请修复或重新生成后继续设计" : null);
   const staleDesignReasons: Record<string, string> = {};
   const staleDesignModelIds = Object.values(input.designModels).flatMap((model) => {
@@ -159,8 +156,13 @@ export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
       storedDesignFingerprint,
       currentDesignInputFingerprint,
     );
+    const dependencies = designRequirementModelIds({ ...input }, modelId);
+    const staleSource = dependencies.some((id) => {
+      const source = input.models[id];
+      return !source || staleRequirementModelIds.includes(getRequirementModelId(source));
+    });
     const reason =
-      requirementInputStale
+      requirementSourceMissing || staleSource
         ? requirementSourceMissing
           ? "需求源头已删除，此设计模型为旧产物，需重新输入需求并重跑。"
           : "需求文本或规则指纹已变化，此设计模型需更新。"
@@ -190,7 +192,6 @@ export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
       input.visibleGenerationTask?.errorMessage ?? input.runUiState.errorMessage,
     isRulesStale,
     rulesStaleReason,
-    requirementReviewBlockedReason,
     requirementTraceabilityStale,
     runMessage:
       input.visibleGenerationTask?.message ?? input.runUiState.runMessage,
@@ -201,6 +202,7 @@ export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
     staleDesignDiagrams,
     staleDesignModelIds,
     staleDiagrams,
+    staleRequirementModelIds,
     currentRunDiagnostics:
       input.visibleGenerationTask?.diagnostics ?? input.currentRunDiagnostics,
   };

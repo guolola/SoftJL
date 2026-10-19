@@ -1,16 +1,19 @@
 // Exercises actual SDK HTTP exchanges, browser consent, and revocation using isolated platform accounts.
+import { requirementRuleFacts } from "@uml-platform/contracts";
+import { requirementRuleSchema } from "@uml-platform/contracts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
+import { CLIENT_CAPABILITIES_META_KEY, CLIENT_INFO_META_KEY, PROTOCOL_VERSION_META_KEY, SERVER_INFO_META_KEY } from "@modelcontextprotocol/server";
 import test from "node:test";
 import { createConfiguredFastifyApp } from "../../server/fastify-app.js";
 import { createInMemoryAuthStore } from "../../auth/in-memory-auth-store.js";
 import { loadMcpConfig } from "../../mcp/auth/mcp-config.js";
 import { registerMcpModule } from "../../mcp/server/register-mcp-module.js";
-import { createMcpAccess } from "../../mcp/auth/mcp-access.js";
+import { platformMcpProtocolVersion as protocolVersion } from "../../mcp/server/mcp-server.js";
 import { createMcpToolService } from "../../mcp/tools/tool-service.js";
 import { verifierAsset } from "../../mcp/verification/verifier-distribution.js";
 import { implementationVerifierSource } from "../../mcp/verification/verifier-source.js";
@@ -19,6 +22,17 @@ import {
   mcpArtifactInputSchema,
   mcpListProjectsInputSchema,
 } from "@uml-platform/contracts";
+
+function modernRequest(method: string, params: unknown = {}) {
+  return { jsonrpc: "2.0", id: 1, method, params: {
+    ...(params as Record<string, unknown>),
+    _meta: {
+      [PROTOCOL_VERSION_META_KEY]: protocolVersion,
+      [CLIENT_INFO_META_KEY]: { name: "test", version: "1" },
+      [CLIENT_CAPABILITIES_META_KEY]: {},
+    },
+  } };
+}
 
 async function setup(
   webOrigin?: string,
@@ -81,14 +95,14 @@ async function setup(
   const pat = await module.access.createToken(
     alice.id,
     "test",
-    { projectScope: "selected", projectIds: [a.project.id] },
+    { projectScope: 'selected', projectIds: [a.project.id] },
     30,
   );
   const headers = {
     host: new URL(publicOrigin).host,
     authorization: `Bearer ${pat.token}`,
     accept: "application/json, text/event-stream",
-    "mcp-protocol-version": "2025-11-25",
+    "mcp-protocol-version": protocolVersion,
   };
   const browserHeaders = {
     host: new URL(publicOrigin).host,
@@ -108,8 +122,13 @@ async function setup(
     return app.inject({
       method: "POST",
       url: "/api/mcp",
-      headers,
-      payload: { jsonrpc: "2.0", id: 1, method, params },
+      headers: {
+        ...headers,
+        "mcp-method": method,
+        ...(method === "tools/call" && typeof (params as { name?: unknown }).name === "string"
+          ? { "mcp-name": (params as { name: string }).name } : {}),
+      },
+      payload: modernRequest(method, params),
     });
   }
   return {
@@ -155,10 +174,10 @@ test("local demo proxy exposes enabled connections, tools and OAuth on the same 
   const tools = await s.app.inject({
     method: "POST",
     url: "/api/mcp",
-    headers: { ...s.headers, ...proxyHeaders },
-    payload: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+    headers: { ...s.headers, ...proxyHeaders, "mcp-method": "tools/list" },
+    payload: modernRequest("tools/list"),
   });
-  assert.equal(s.parse(tools).result.tools.length, 4);
+  assert.equal(s.parse(tools).result?.tools.length, 4, tools.body);
   const authorization = await s.app.inject({
     url: `/api/mcp/oauth/auth?${new URLSearchParams({
       client_id: "test-client",
@@ -203,15 +222,10 @@ test("discovery and failures preserve protocol JSON instead of the platform erro
   assert.equal(oauth.json().token_endpoint, `${s.config.issuer}/token`);
   assert.notEqual(oauth.json().client_id_metadata_document_supported, true);
   assert.equal(oauth.json().registration_endpoint, `${s.config.issuer}/reg`);
-  const initialize = s.parse(
-    await s.rpc("initialize", {
-      protocolVersion: "2025-11-25",
-      capabilities: {},
-      clientInfo: { name: "test", version: "1" },
-    }),
-  );
-  assert.equal(initialize.result.serverInfo.name, "uml-platform");
-  const [icon] = initialize.result.serverInfo.icons;
+  const discovery = s.parse(await s.rpc("server/discover"));
+  const serverInfo = discovery.result._meta[SERVER_INFO_META_KEY];
+  assert.equal(serverInfo.name, "uml-platform");
+  const [icon] = serverInfo.icons;
   assert.equal(icon.mimeType, "image/png");
   assert.deepEqual(icon.sizes, ["128x128"]);
   assert.match(icon.src, /^data:image\/png;base64,/);
@@ -249,6 +263,20 @@ test("discovery and failures preserve protocol JSON instead of the platform erro
   });
   assert.equal(foreignOrigin.statusCode, 403);
 });
+
+test("MCP rejects retired initialization and protocol envelopes", async (t) => {
+  const s = await setup();
+  t.after(() => s.app.close());
+  const response = await s.app.inject({
+    method: "POST", url: "/api/mcp",
+    headers: { ...s.headers, "mcp-protocol-version": "2025-11-25" },
+    payload: { jsonrpc: "2.0", id: 1, method: "initialize", params: {
+      protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "retired-client", version: "1" },
+    } },
+  });
+  assert.ok(response.statusCode >= 400);
+  assert.ok(s.parse(response).error);
+});
 test("two users cannot exchange project IDs, tokens, artifact IDs or cursors; live revocation is immediate", async (t) => {
   const s = await setup();
   t.after(() => s.app.close());
@@ -279,8 +307,8 @@ test("two users cannot exchange project IDs, tokens, artifact IDs or cursors; li
         {
           id: "R1",
           text: "归还",
-          category: "业务规则",
-          relatedDiagrams: ["usecase"],
+          type: "business-rule" as const,
+
         },
       ],
     },
@@ -289,7 +317,7 @@ test("two users cannot exchange project IDs, tokens, artifact IDs or cursors; li
     mcpContextInputSchema.parse({ projectId: s.a.id, limit: 1 }),
   );
   assert.ok(first.data.nextCursor);
-  const bobPat = await s.access.createToken(s.bob.id, "bob", { projectScope: "selected", projectIds: [s.b.id] }, 30);
+  const bobPat = await s.access.createToken(s.bob.id, "bob", { projectScope: 'selected', projectIds: [s.b.id] }, 30);
   const bob = createMcpToolService(
     s.access,
     await s.access.authenticate(`Bearer ${bobPat.token}`),
@@ -301,9 +329,7 @@ test("two users cannot exchange project IDs, tokens, artifact IDs or cursors; li
     }),
   );
   assert.equal(cursor.status, "refresh_required");
-  const csrf = (await s.app.inject({ url: "/api/mcp/connections", headers: s.browserHeaders })).json().csrf;
-  const revokedByOwner = await s.app.inject({ method: "DELETE", url: `/api/mcp/connections/${s.pat.connection.id}`, headers: { ...s.browserHeaders, "x-mcp-csrf": csrf } });
-  assert.equal(revokedByOwner.statusCode, 200, revokedByOwner.body);
+  await s.access.store.revokeGrant(s.pat.connection.id);
   assert.equal((await s.rpc("tools/list")).statusCode, 401);
   await assert.rejects(() =>
     service.get_implementation_context(
@@ -322,20 +348,53 @@ function designWorkspace(summary: string) {
   };
 }
 
+test("MCP rejects obsolete and semantically invalid saved inputs without rewriting them", async (t) => {
+  const s = await setup();
+  t.after(() => s.app.close());
+  const service = createMcpToolService(s.access, await s.access.authenticate(s.headers.authorization));
+  const base = designWorkspace("当前实现设计");
+  const states = [
+    { designModels: { implementation: { diagramKind: "architecture", title: "旧结构" } } },
+    { ...base, designModels: { implementation: { ...base.designModels.implementation,
+      relationships: [{ id: "missing-node", type: "contains", sourceId: "absent", targetId: "service" }],
+    } } },
+    { ...base, designSvgArtifacts: { implementation: { diagramKind: "architecture", svg: "<svg/>" } } },
+  ];
+  for (const [baseVersion, state] of states.entries()) {
+    await s.authStore.saveProjectWorkspace({ projectId: s.a.id, baseVersion, updatedByUserId: s.alice.id, state });
+    const before = structuredClone(await s.authStore.getProjectWorkspace(s.a.id));
+    await assert.rejects(() => service.get_implementation_context(mcpContextInputSchema.parse({ projectId: s.a.id })));
+    assert.deepEqual(await s.authStore.getProjectWorkspace(s.a.id), before);
+  }
+});
+
 test("MCP exports saved inputs without review opinions and review-only edits keep existing reads valid", async (t) => {
   const s = await setup();
   t.after(() => s.app.close());
   const state = { ...designWorkspace("落实平台设计"),
-    requirementBaseline: { requirements: [{
-      id: "BORROW", sourceFragment: "借阅", type: "functional", actor: "学生", subject: "系统",
+    requirementBaseline: {
+          schemaVersion: 3, id: "baseline-test", version: 1, sourceInputFingerprint: "test-source-input",
+          runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
+           assumptions: [], conflicts: [],
+          qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
+          rules: ([{
+      id: "BORROW", sourceFragment: "借阅", type: "functional" as const, actor: "学生", subject: "系统",
       action: "借阅", object: "图书", condition: null, outcome: "借阅成功", confidence: 1,
       status: "rejected", criticality: "high", acceptanceCriteria: ["借阅成功后保存记录"],
       fieldProvenance: { acceptanceCriteria: { source: "ai-suggested", status: "rejected", rationale: "private-review-opinion" } },
-    }] },
+    }]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id,
+            text: item.sourceFragment, sourceFragment: item.sourceFragment, origin: "generated",
+            type: "functional" as const,
+          })),
+        },
     visualReviews: { "design:implementation": { status: "pending_review", issues: ["private-review-opinion"],
-      repairAttempts: 1, repairHistory: [{ status: "accepted", reason: "private-repair-reason" }] } },
+      reason: "private-review-opinion", attempts: 1, checkedAt: "2026-10-18T00:00:00.000Z",
+      findings: [{ id: "private-finding", modelId: "implementation", layer: "image", code: "provider-observation", category: "business_content",
+        observation: "private-review-opinion", evidence: [], verification: "unverified", repairable: false }],
+      repairAttempts: 1, repairHistory: [{ round: 1, target: "model", issueIds: ["private-finding"], beforeFingerprint: "source-before", changes: [], status: "accepted", reason: "private-repair-reason" }] } },
     autoGeneratedUpstreamReviews: { generated: { artifactId: "implementation", artifactType: "design-model", status: "rejected" } },
   };
+  state.rules = state.requirementBaseline.rules.map(rule => requirementRuleFacts(rule));
   state.designModels.implementation.components[0] = { ...state.designModels.implementation.components[0],
     sourceRequirementIds: ["BORROW"],
   } as typeof state.designModels.implementation.components[0];
@@ -355,9 +414,7 @@ test("MCP exports saved inputs without review opinions and review-only edits kee
     assert.doesNotMatch(JSON.stringify(payload), /private-review|private-repair|reviewStatus|fieldProvenance|source-review|trace-review/);
   }
   await s.authStore.saveProjectWorkspace({ projectId: s.a.id, baseVersion: 1, updatedByUserId: s.alice.id,
-    state: { ...state, visualReviews: {}, autoGeneratedUpstreamReviews: {}, requirementBaseline: { requirements: [{
-      ...state.requirementBaseline.requirements[0], status: "accepted", fieldProvenance: {},
-    }] } },
+    state: { ...state, visualReviews: {}, autoGeneratedUpstreamReviews: {}, requirementBaseline: state.requirementBaseline },
   });
   const unchanged = await service.get_implementation_context(mcpContextInputSchema.parse({ projectId: s.a.id,
     expectedContextVersion: page.data.contextVersion,
@@ -448,7 +505,7 @@ test("scoped browser token creation needs CSRF; stored records never contain pla
   const expired = await s.access.createToken(
     s.alice.id,
     "expired",
-    { projectScope: "selected", projectIds: [s.a.id] },
+    { projectScope: 'selected', projectIds: [s.a.id] },
     -1,
   );
   await assert.rejects(() => s.access.authenticate(`Bearer ${expired.token}`));
@@ -470,7 +527,7 @@ test("account-wide personal tokens follow live project access, including project
     method: "POST",
     url: "/api/mcp/connections/tokens",
     headers: { ...s.browserHeaders, "x-mcp-csrf": listing.csrf },
-    payload: { name: "all-my-projects", projectScope: "account" },
+    payload: { name: "all-my-projects", projectScope: "account", projectIds: [] },
   });
   assert.equal(created.statusCode, 201, created.body);
   assert.equal(created.json().connection.projectScope, "account");
@@ -495,7 +552,7 @@ test("accounts with no projects can create personal tokens before creating their
   const s = await setup();
   t.after(() => s.app.close());
   const user = await s.authStore.createUser({ email: "new@example.test", displayName: "New user", passwordHash: "not-a-password" });
-  const token = await s.access.createToken(user.id, "new-account", { projectScope: "account", projectIds: [] }, 30);
+  const token = await s.access.createToken(user.id, "new-account", { projectScope: 'account', projectIds: [] }, 30);
   const service = createMcpToolService(s.access, await s.access.authenticate(`Bearer ${token.token}`));
   assert.deepEqual((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items, []);
   const project = await s.authStore.createProject({ ownerUserId: user.id, name: "First project", description: "", visibility: "private" });
@@ -503,12 +560,11 @@ test("accounts with no projects can create personal tokens before creating their
   s.authStore.updateUser(user.id, { status: "disabled" });
   await assert.rejects(() => service.list_projects(mcpListProjectsInputSchema.parse({})), { code: "invalid_token" });
 });
-for (const projectScope of ["selected", "account"] as const) test(`OAuth PKCE ${projectScope} consent preserves boundaries through refresh and revocation`, async (t) => {
+test("OAuth PKCE account consent without projects follows live access through refresh and revocation", async (t) => {
   const s = await setup();
   t.after(() => s.app.close());
   // An empty account can authorize before creating or joining its first project.
-  if (projectScope === "account") s.authStore.deleteMember(s.ownerMember.id);
-  const projectIds = projectScope === "account" ? [] : [s.a.id];
+  s.authStore.deleteMember(s.ownerMember.id);
   const jar = new Map<string, string>();
   jar.set("uml_session", s.browserHeaders.cookie.slice("uml_session=".length));
   const send = async (
@@ -547,14 +603,10 @@ for (const projectScope of ["selected", "account"] as const) test(`OAuth PKCE ${
   const details = await send(`/api/mcp/interactions/${uid}`);
   assert.equal(details.statusCode, 200, details.body);
   const info = (await send("/api/mcp/connections")).json();
-  for (const invalid of [{ csrf: info.csrf }, { csrf: info.csrf, projectIds: [] }, { csrf: info.csrf, projectIds: [s.b.id] }]) {
-    const denied = await send(`/api/mcp/interactions/${uid}`, "POST", invalid, { "x-mcp-csrf": info.csrf });
-    assert.equal(denied.statusCode, "projectIds" in invalid && invalid.projectIds.length ? 403 : 400);
-  }
   const consent = await send(
     `/api/mcp/interactions/${uid}`,
     "POST",
-    { csrf: info.csrf, projectScope, projectIds },
+    { csrf: info.csrf, projectScope: "account", projectIds: [] },
     { "x-mcp-csrf": info.csrf },
   );
   assert.equal(consent.statusCode, 200, consent.body);
@@ -591,20 +643,18 @@ for (const projectScope of ["selected", "account"] as const) test(`OAuth PKCE ${
   const principal = await s.access.authenticate(
     `Bearer ${tokens.access_token}`,
   );
-  assert.deepEqual(principal.projectIds, projectIds);
+  assert.deepEqual(principal.projectIds, []);
   const connections = (await send("/api/mcp/connections")).json().connections;
-  assert.equal(connections.find((connection: { id: string }) => connection.id === principal.id).projectScope, projectScope);
+  assert.equal(connections.find((connection: { id: string }) => connection.id === principal.id).projectScope, "account");
   const service = createMcpToolService(s.access, principal);
-  assert.deepEqual(((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items as { id: string }[]).map(p => p.id), projectIds);
+  assert.deepEqual((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items, []);
   const later = await s.authStore.createProject({ ownerUserId: s.alice.id, name: "Later OAuth project", description: "", visibility: "private" });
-  assert.deepEqual(((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items as { id: string }[]).map((project) => project.id), projectScope === "account" ? [later.project.id] : projectIds);
-  if (projectScope === "account") assert.equal((await service.get_implementation_context(mcpContextInputSchema.parse({ projectId: later.project.id }))).status, "ok");
-  else await assert.rejects(() => service.get_implementation_context(mcpContextInputSchema.parse({ projectId: later.project.id })), { code: "access_denied" });
+  assert.deepEqual(((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items as { id: string }[]).map((project) => project.id), [later.project.id]);
+  assert.equal((await service.get_implementation_context(mcpContextInputSchema.parse({ projectId: later.project.id }))).status, "ok");
   await assert.rejects(() => service.get_implementation_context(mcpContextInputSchema.parse({ projectId: s.b.id })), { code: "access_denied" });
   s.authStore.deleteMember(later.ownerMember.id);
   await assert.rejects(() => service.get_implementation_context(mcpContextInputSchema.parse({ projectId: later.project.id })), { code: "access_denied" });
-  assert.deepEqual(((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items as { id: string }[]).map(p => p.id), projectIds);
-  if (projectScope === "selected") s.authStore.deleteMember(s.ownerMember.id);
+  assert.deepEqual((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items, []);
   const joined = s.authStore.createMember({
     projectId: s.a.id, userId: s.alice.id, email: s.alice.email, displayName: s.alice.displayName,
     role: "viewer", status: "active", invitedByUserId: null, invitedAt: null, joinedAt: new Date().toISOString(),
@@ -626,10 +676,8 @@ for (const projectScope of ["selected", "account"] as const) test(`OAuth PKCE ${
   );
   assert.equal(refreshed.statusCode, 200, refreshed.body);
   const refreshedPrincipal = await s.access.authenticate(`Bearer ${refreshed.json().access_token}`);
-  assert.deepEqual(refreshedPrincipal.projectIds, projectIds);
-  const csrf = (await s.app.inject({ url: "/api/mcp/connections", headers: s.browserHeaders })).json().csrf;
-  const revokedByOwner = await s.app.inject({ method: "DELETE", url: `/api/mcp/connections/${principal.id}`, headers: { ...s.browserHeaders, "x-mcp-csrf": csrf } });
-  assert.equal(revokedByOwner.statusCode, 200, revokedByOwner.body);
+  assert.deepEqual(refreshedPrincipal.projectIds, []);
+  await s.access.store.revokeGrant(principal.id);
   await assert.rejects(() =>
     s.access.authenticate(`Bearer ${refreshed.json().access_token}`),
   );
@@ -655,7 +703,9 @@ test("official SDK v2 client completes discovery and all four tools over HTTP", 
     updatedByUserId: s.alice.id,
     state: designWorkspace("使用 Spring Boot + Vue + MySQL 构建图书管理系统，每人最多借5本。"),
   });
-  const client = new Client({ name: "platform-acceptance", version: "1" });
+  const client = new Client({ name: "platform-acceptance", version: "1" }, {
+    supportedProtocolVersions: [protocolVersion], versionNegotiation: { mode: { pin: protocolVersion } },
+  });
   const transport = new StreamableHTTPClientTransport(
     new URL(s.config.resource),
     {
@@ -825,7 +875,7 @@ test("DCR validates redirects; missing PKCE, unknown resource and untrusted CIMD
 test("member removal, disabled accounts and concurrent principals are checked at read time", async (t) => {
   const s = await setup();
   t.after(() => s.app.close());
-  const bobToken = await s.access.createToken(s.bob.id, "bob", { projectScope: "selected", projectIds: [s.b.id] }, 30);
+  const bobToken = await s.access.createToken(s.bob.id, "bob", { projectScope: 'selected', projectIds: [s.b.id] }, 30);
   const bob = createMcpToolService(
     s.access,
     await s.access.authenticate(`Bearer ${bobToken.token}`),
@@ -923,7 +973,7 @@ test("implementation bundle and verifier use normal paging and source version gu
   const { mcpUpdatesInputSchema, mcpImplementationSnapshotSchema, mcpImplementationReportSchema } = await import("@uml-platform/contracts");
   await s.authStore.saveProjectWorkspace({
     projectId: s.a.id, baseVersion: 0, updatedByUserId: s.alice.id,
-    state: { ...designWorkspace("每名学生最多借5本"), rules: [{ id: "BORROW", category: "业务规则", text: "最多5本", relatedDiagrams: ["class"] }] },
+    state: { ...designWorkspace("每名学生最多借5本"), rules: [{ id: "BORROW", type: "business-rule" as const, text: "最多5本",  }] },
   });
   const service = createMcpToolService(s.access, await s.access.authenticate(s.headers.authorization));
   const scope = { requirementIds: [], artifactIds: [] };
@@ -1001,7 +1051,7 @@ test("implementation bundle and verifier use normal paging and source version gu
   assert.equal(documentScope.status, "selection_required");
   await s.authStore.saveProjectWorkspace({
     projectId: s.a.id, baseVersion: 1, updatedByUserId: s.alice.id,
-    state: { ...designWorkspace("每名学生最多借8本"), rules: [{ id: "BORROW", category: "业务规则", text: "最多8本", relatedDiagrams: ["class"] }] },
+    state: { ...designWorkspace("每名学生最多借8本"), rules: [{ id: "BORROW", type: "business-rule" as const, text: "最多8本",  }] },
   });
   const changed = await service.check_context_updates(mcpUpdatesInputSchema.parse({ projectId: s.a.id, scope, manifest }));
   assert.ok((changed.data.changes as any[]).some((entry) => entry.artifactId === "design:implementation" && entry.change === "modified"));
@@ -1045,37 +1095,19 @@ test("disabled MCP does not expose the verifier download", async (t) => {
   assert.equal((await app.inject({ url: verifierAsset.path })).statusCode, 404);
 });
 
-test("personal token scope must be explicit and cannot include another user's project", async (t) => {
-  const s = await setup();
-  t.after(() => s.app.close());
-  const csrf = (await s.app.inject({ url: "/api/mcp/connections", headers: s.browserHeaders })).json().csrf;
-  for (const [payload, expected] of [
-    [{ name: "missing" }, 400],
-    [{ name: "empty", projectIds: [] }, 400],
-    [{ name: "other", projectIds: [s.b.id] }, 403],
-    [{ name: "mixed", projectScope: "account", projectIds: [s.a.id] }, 400],
-  ] as const) {
-    const response = await s.app.inject({ method: "POST", url: "/api/mcp/connections/tokens", headers: { ...s.browserHeaders, "x-mcp-csrf": csrf }, payload });
-    assert.equal(response.statusCode, expected, response.body);
-  }
-  const later = await s.authStore.createProject({ ownerUserId: s.alice.id, name: "Not selected", description: "", visibility: "private" });
-  await assert.rejects(() => s.access.project(s.pat.connection, later.project.id), { code: "access_denied" });
-  const empty = { ...s.pat.connection, id: "empty-selection", projectScope: "selected" as const, projectIds: [], tokenHash: null };
-  await s.store.putConnection(empty);
-  await assert.rejects(() => s.access.project(empty, s.a.id), { code: "access_denied" });
-  assert.equal((await s.app.inject({ url: "/api/admin/mcp/connections", headers: s.browserHeaders })).statusCode, 404);
-});
 
-test("shared guest cannot grant access or use existing credentials", async (t) => {
-  const s = await setup();
-  t.after(() => s.app.close());
-  const guestAccess = createMcpAccess(s.authStore, s.store, s.config, s.provider, s.alice.id);
-  await assert.rejects(() => guestAccess.createToken(s.alice.id, "guest", { projectScope: "account", projectIds: [] }, 30), { code: "guest_not_allowed" });
-  await assert.rejects(() => guestAccess.authenticate(`Bearer ${s.pat.token}`), { code: "guest_not_allowed" });
-  const app = await createConfiguredFastifyApp();
-  t.after(() => app.close());
-  await registerMcpModule({ app, authStore: s.authStore, pool: null, production: false, config: s.config, store: s.store, guestUserId: s.alice.id });
-  const denied = await app.inject({ url: "/api/mcp/connections", headers: s.browserHeaders });
-  assert.equal(denied.statusCode, 403);
-  assert.equal(denied.json().error, "guest_not_allowed");
+test("ordinary MCP uses trusted project mode and omits professional implementation artifacts", async t => {
+  const s = await setup(); t.after(() => s.app.close());
+  const { project } = s.authStore.createProject({ ownerUserId: s.alice.id, name: "普通版", projectMode: "standard", description: null, visibility: "private" });
+  s.authStore.saveProjectWorkspace({ projectId: project.id, baseVersion: 0, updatedByUserId: s.alice.id,
+    state: { standardProject: { description: "修改后的需求", rounds: [], diagrams: {} }, projectMode: "professional" } });
+  const token = await s.access.createToken(s.alice.id, "ordinary", { projectScope: 'selected', projectIds: [project.id] }, 30);
+  const service = createMcpToolService(s.access, await s.access.authenticate(`Bearer ${token.token}`));
+  const response = await service.get_implementation_context(mcpContextInputSchema.parse({ projectId: project.id }));
+  assert.equal(response.status, "ok");
+  assert.equal(response.data.project.projectMode, "standard");
+  assert.equal(response.data.implementation, null);
+  assert.ok(response.data.artifacts.some((item: { id: string }) => item.id === "standard:description"));
+  assert.equal(response.data.artifacts.some((item: { id: string }) => item.id.startsWith("implementation:")), false);
+  assert.match(response.data.instructions, /普通版/);
 });

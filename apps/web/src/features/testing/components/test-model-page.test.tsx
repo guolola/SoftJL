@@ -1,4 +1,4 @@
-// Verifies black-box test generation stays compatible with historical use case models.
+// Verifies black-box tests require actual use-case event flows and retain saved coverage.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -23,14 +23,34 @@ function createRepository(record = createWorkspaceRecord()): WorkspaceRepository
     testProviderSettings: vi.fn(),
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
-    restoreRunHistory: vi.fn(async () => null),
     deleteRunHistory: vi.fn(async () => []),
     clearRunHistory: vi.fn(async () => {}),
   };
 }
 
 describe("TestModelPage", () => {
-  it("keeps empty-project prerequisites compact until the user asks for details", async () => {
+  it.each([undefined, [], [{ id: "main", name: "主事件流", flowType: "main", steps: [] }]])(
+    "blocks generation when recorded event flows or steps are missing: %j",
+    async (eventFlows) => {
+      const repository = createRepository(createWorkspaceRecord({
+        rules: [createRule({ id: "r1", text: "用户提交预约。" })],
+        models: { usecase: {
+          diagramKind: "usecase", title: "预约", summary: "预约流程", notes: [], actors: [],
+          useCases: [{ id: "uc-book", name: "预约", goal: "提交预约", preconditions: [],
+            postconditions: ["预约已提交"], supportingActorIds: [], eventFlows }],
+          systemBoundaries: [], relationships: [],
+        } as unknown as UseCaseDiagramSpec },
+      }));
+      render(withWorkspaceProviders(<TestModelPage />, repository));
+      const generate = await screen.findByRole("button", { name: "生成" });
+      await waitFor(() => expect(generate).toBeDisabled());
+      expect(screen.getByText("用例事件流或步骤不完整，请先补全需求用例模型后生成测试")).toBeInTheDocument();
+      await userEvent.setup().click(generate);
+      expect(repository.updateTestGenerationResult).not.toHaveBeenCalled();
+    },
+  );
+
+  it("shows empty-project prerequisites inline and opens guidance details", async () => {
     const user = userEvent.setup();
     render(withWorkspaceProviders(<TestModelPage />, createRepository()));
 
@@ -48,15 +68,15 @@ describe("TestModelPage", () => {
     ).toBeInTheDocument();
     await user.click(within(guidance).getByRole("button", { name: "我知道了" }));
     expect(reopen).toBeInTheDocument();
-    expect(screen.queryByText("需求阶段用例模型缺失，无法生成测试用例")).not.toBeInTheDocument();
+    expect(screen.getByText("需求阶段用例模型缺失，无法生成测试用例")).toBeInTheDocument();
   });
 
-  it.each(["usecase", "usecase-home-security"])("generates fallback black-box cases from a use case model stored under %s", async (modelKey) => {
-    const legacyUseCaseModel = {
+  it.each(["usecase", "usecase-home-security"])("generates black-box cases from recorded event flows stored under %s", async (modelKey) => {
+    const useCaseModel = {
       diagramKind: "usecase",
       modelId: modelKey,
       title: "图书馆用例模型",
-      summary: "旧历史模型未携带 eventFlows 字段。",
+      summary: "模型记录完整事件流。",
       notes: [],
       actors: [{ id: "actor_admin", name: "图书管理员", actorType: "human", responsibilities: [] }],
       useCases: [
@@ -67,6 +87,7 @@ describe("TestModelPage", () => {
           preconditions: ["目标图书可借阅"],
           postconditions: ["生成借阅记录"],
           supportingActorIds: [],
+          eventFlows: [{ id: "uc_borrow-main", name: "主事件流", flowType: "main", steps: [{ order: 1, actor: "actor", actorAction: "登记借阅", systemAction: "生成借阅记录", expectedResult: "生成借阅记录" }] }],
         },
       ],
       systemBoundaries: [],
@@ -77,12 +98,12 @@ describe("TestModelPage", () => {
         rules: [
           createRule({
             id: "r1",
-            category: "功能需求",
+            type: "functional" as const,
             text: "系统应支持图书借阅功能，允许读者从图书馆借出图书。",
-            relatedDiagrams: ["usecase"],
+
           }),
         ],
-        models: { [modelKey]: legacyUseCaseModel },
+        models: { [modelKey]: useCaseModel },
       }),
     );
 
@@ -93,7 +114,7 @@ describe("TestModelPage", () => {
     expect(statsGrid).toBeInTheDocument();
 
     const user = userEvent.setup();
-    const generateButton = await screen.findByRole("button", { name: "生成测试用例" });
+    const generateButton = await screen.findByRole("button", { name: "生成" });
     await waitFor(() => expect(generateButton).toBeEnabled());
     await user.click(generateButton);
 
@@ -139,14 +160,14 @@ describe("TestModelPage", () => {
         preconditions: [],
         postconditions: ["预约已提交"],
         supportingActorIds: [],
-        eventFlows: [],
+        eventFlows: [{ id: "main", name: "主事件流", flowType: "main", steps: [{ order: 1, actor: "actor", actorAction: "提交预约", expectedResult: "预约已提交" }] }],
       }],
       systemBoundaries: [],
       relationships: [],
     } as unknown as UseCaseDiagramSpec;
     const repository = createRepository(
       createWorkspaceRecord({
-        rules: [createRule({ id: "r-book", text: "用户可以提交预约。", relatedDiagrams: ["usecase"] })],
+        rules: [createRule({ id: "r-book", text: "用户可以提交预约。",  })],
         models: { usecase: useCaseModel },
       }),
     );
@@ -156,7 +177,7 @@ describe("TestModelPage", () => {
     const user = userEvent.setup();
     render(withWorkspaceProviders(<TestModelPage />, repository));
 
-    const generateButton = await screen.findByRole("button", { name: "生成测试用例" });
+    const generateButton = await screen.findByRole("button", { name: "生成" });
     await waitFor(() => expect(generateButton).toBeEnabled());
     await user.click(generateButton);
     const first = await screen.findByRole("dialog", { name: "测试用例生成失败" });
@@ -229,7 +250,7 @@ describe("TestModelPage", () => {
           preconditions: [],
           postconditions: ["预约进入待审核状态"],
           supportingActorIds: [],
-          eventFlows: [],
+          eventFlows: [{ id: "main", name: "主事件流", flowType: "main", steps: [{ order: 1, actor: "actor", actorAction: "提交预约", expectedResult: "预约已提交" }] }],
         },
       ],
       systemBoundaries: [],
@@ -241,13 +262,13 @@ describe("TestModelPage", () => {
           createRule({
             id: "r1",
             text: "用户可以提交预约。",
-            relatedDiagrams: ["usecase"],
+
           }),
           createRule({
             id: "r2",
-            category: "业务规则",
+            type: "business-rule" as const,
             text: "审批人必须拒绝重复报销。",
-            relatedDiagrams: ["usecase"],
+
           }),
         ],
         models: { usecase: useCaseModel },
@@ -256,7 +277,7 @@ describe("TestModelPage", () => {
 
     render(withWorkspaceProviders(<TestModelPage />, repository));
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "生成测试用例" }));
+    await user.click(await screen.findByRole("button", { name: "生成" }));
 
     await waitFor(() =>
       expect(repository.updateTestGenerationResult).toHaveBeenCalledWith(

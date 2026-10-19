@@ -14,7 +14,7 @@ function record(): RunRecord {
 }
 function activities(run: RunRecord) { return run.events.filter((e): e is RunActivityEvent => e.type === "run_activity"); }
 
-test("demo generation preserves ordinary output and labels fixture reasoning for visual checks", async (t) => {
+test("demo generation preserves ordinary output and labels fixture reasoning for structure checks", async (t) => {
   const previous = process.env.UML_DEMO_OFFLINE_STAGE_DELAY_MS;
   process.env.UML_DEMO_OFFLINE_STAGE_DELAY_MS = "0";
   t.after(() => { if (previous === undefined) delete process.env.UML_DEMO_OFFLINE_STAGE_DELAY_MS; else process.env.UML_DEMO_OFFLINE_STAGE_DELAY_MS = previous; });
@@ -40,15 +40,16 @@ test("demo generation preserves ordinary output and labels fixture reasoning for
   assert.deepEqual(createRunRecordStore(serializeRunRecordStore(store)).get(run.snapshot.runId)?.events, run.events);
   if (!("visualReviews" in run.snapshot)) throw new Error("fixture");
   const review = run.snapshot.visualReviews.activity;
-  assert.equal(review.attempts, 2); assert.equal(review.repairAttempts, 1);
-  assert.equal(review.repairHistory?.[0].status, "accepted");
-  const checks = events.filter((event) => event.modelId === "activity" && event.operation === "visual_check" && event.phase === "started");
-  assert.equal(checks.length, 2); assert.notEqual(checks[0].inputImages?.[0].url, checks[1].inputImages?.[0].url);
-  assert.equal(review.repairHistory?.[0].callId, events.find((event) => event.operation === "render_repair" && event.phase === "started")?.callId);
+  assert.equal(review.attempts, 0); assert.equal(review.repairAttempts, 0);
+  assert.equal(review.status, "passed");
+  assert.deepEqual(review.repairHistory, []);
+  assert.equal(review.renderStatus, "passed"); assert.equal(review.imageStatus, "skipped");
+  assert.ok(events.every(event => event.operation !== "structure_check"));
+  assert.ok(events.every((event) => event.operation !== "visual_check" && event.operation !== "render_repair" && !event.inputImages?.length));
   assert.equal(run.snapshot.visualReviews.usecase.checkOutcome, "differences");
   assert.equal(run.snapshot.visualReviews.usecase.repairAttempts, 1);
   assert.equal(run.snapshot.visualReviews.usecase.repairHistory?.[0].status, "rejected");
-  assert.deepEqual(run.snapshot.visualReviews.usecase.findings?.map((finding) => finding.category), ["model_structure", "business_constraint", "render_mismatch"]);
+  assert.deepEqual(run.snapshot.visualReviews.usecase.findings?.map((finding) => finding.category), ["model_structure", "business_constraint"]);
   assert.match(run.snapshot.visualReviews.usecase.stopReason!, /证据不足/);
 });
 
@@ -60,15 +61,15 @@ test("design demo shows FK structure correction with independently attributed ca
   await completeOfflineDemoDesignRun(run, { selectedDiagrams: ["table", "sequence"] } as Parameters<typeof completeOfflineDemoDesignRun>[1]);
   if (!("visualReviews" in run.snapshot)) throw new Error("fixture");
   const review = run.snapshot.visualReviews["table:seat-reservation-db"];
-  assert.equal(review.status, "passed"); assert.equal(review.structureAttempts, 2); assert.equal(review.attempts, 1);
+  assert.equal(review.status, "passed"); assert.equal(review.structureAttempts, 0); assert.equal(review.attempts, 0);
   assert.equal(review.repairAttempts, 1); assert.match(review.repairHistory?.[0].changes.join("") ?? "", /外键标记/);
   const events = activities(run).filter((event) => event.modelId === "table:seat-reservation-db" && event.phase === "started");
-  assert.deepEqual(events.map((event) => event.operation), ["structure_check", "model_repair", "structure_check", "visual_check"]);
-  assert.equal(new Set(events.map((event) => event.callId)).size, 4);
+  assert.deepEqual(events.map((event) => event.operation), ["model_repair"]);
+  assert.equal(new Set(events.map((event) => event.callId)).size, 1);
   assert.ok(run.events.every((event) => runEventSchema.safeParse(event).success));
   const incomplete = run.snapshot.visualReviews["sequence:uc-submit-reservation"];
-  assert.equal(incomplete.checkOutcome, "not_completed");
-  assert.deepEqual(incomplete.findings?.map((finding) => finding.category), ["check_execution", "other"]);
+  assert.equal(incomplete.checkOutcome, "differences");
+  assert.deepEqual(incomplete.findings?.map((finding) => finding.category), ["other"]);
   assert.equal(incomplete.repairAttempts, 0);
 });
 

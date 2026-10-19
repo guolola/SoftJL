@@ -1,9 +1,8 @@
 // Verifies workspace repository persistence, remote API mapping, history compaction, and subscription behavior.
-import { createRenderMeta } from "../../test/artifact-fixtures";
+import { createRenderMeta } from "@/test/contract-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   AtomicRequirement,
-
   DiagramModelSpec,
   RequirementBaseline,
 } from "@uml-platform/contracts";
@@ -12,7 +11,6 @@ import {
   createHttpWorkspaceRepository,
   createMockWorkspaceRepository,
   type StartDocumentRunInput,
-
   createStartRunInput,
 } from "./index";
 import {
@@ -37,8 +35,6 @@ function storeManagedUserSettings() {
       providerConfigId: managedProviderSettings.providerConfigId,
       defaultModel: managedProviderSettings.model,
       providerModelOptions: [managedProviderSettings.model],
-      imageModel: "nano-banana-pro",
-      fontSize: "md",
       autoGenerate: false,
       showStaleBanner: true,
     }),
@@ -52,9 +48,9 @@ function createAtomicRequirement(
   return {
     id: "REQ-001",
     sourceRuleId: "r1",
-    sourceFragment: "系统应允许用户提交订单。",
+    sourceFragment: "用户提交订单。",
     sourceLocation: { section: "input", startOffset: 0, endOffset: 12 },
-    type: "functional",
+    type: "functional" as const,
     actor: null,
     subject: "系统",
     action: "允许提交",
@@ -75,9 +71,14 @@ function createRequirementBaseline(
   requirements: AtomicRequirement[],
 ): RequirementBaseline {
   return {
+      id: "baseline-test",
+      version: 1,
+      sourceInputFingerprint: "test-source-input",
     runId: "run-baseline",
     sourceDocumentId: "inline-requirement",
-    requirements,
+    schemaVersion: 3 as const,
+
+      rules: (requirements).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
     assumptions: [],
     conflicts: [],
     qualityReport: {
@@ -105,7 +106,6 @@ describe("createStartRunInput", () => {
         apiBaseUrl: "https://ai.comfly.org",
         apiKey: "",
         defaultModel: "gpt-5.5",
-        fontSize: "md",
         autoGenerate: false,
         showStaleBanner: true,
       }),
@@ -121,8 +121,6 @@ describe("createStartRunInput", () => {
         apiBaseUrl: "https://ai.comfly.org/v1/chat/completions",
         apiKey: "sk-demo",
         defaultModel: "gpt-5.5",
-        imageModel: "nano-banana-pro",
-        fontSize: "md",
         autoGenerate: false,
         showStaleBanner: true,
       }),
@@ -140,7 +138,6 @@ describe("createStartRunInput", () => {
         apiKey: "sk-stale",
         defaultModel: "gpt-5.5",
         providerModelOptions: ["gpt-5.5"],
-        fontSize: "md",
         autoGenerate: false,
         showStaleBanner: true,
       }),
@@ -154,7 +151,6 @@ describe("createStartRunInput", () => {
     });
   });
 
-
 });
 
 describe("createHttpWorkspaceRepository", () => {
@@ -163,7 +159,7 @@ describe("createHttpWorkspaceRepository", () => {
     localStorage.clear();
   });
 
-  it.each([undefined, "provider", "offline-demo", "unknown"])("loads project generation mode with permissions: %s", async (generationExecutionMode) => {
+  it.each(["provider", "offline-demo"])("loads project generation mode with permissions: %s", async (generationExecutionMode) => {
     const fetchMock = vi.fn(async (_url: unknown) => new Response(JSON.stringify({
       capabilities: ["update_project", "start_runs"], generationExecutionMode,
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -171,105 +167,25 @@ describe("createHttpWorkspaceRepository", () => {
     const repository = createHttpWorkspaceRepository({ projectId: "project-mode" });
     expect(await repository.getProjectAccess!()).toEqual({
       capabilities: ["update_project", "start_runs"],
-      generationExecutionMode: generationExecutionMode === "offline-demo" ? "offline-demo" : "provider",
+      generationExecutionMode,
     });
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/projects/project-mode");
   });
 
-  it("uses progress requirement subscriptions when no project scope is available", async () => {
-    class MockEventSource {
-      onmessage: ((event: MessageEvent<string>) => void) | null = null;
-      onerror: (() => void) | null = null;
-
-      close() {}
-
-      constructor(url: string) {
-        void url;
-        queueMicrotask(() => {
-          this.onmessage?.({
-            data: JSON.stringify({
-              type: "failed",
-              error: {
-                code: "PLATFORM_PROVIDER_AUTH_FAILED",
-                message: "LLM request failed with HTTP 401",
-                category: "platform_provider",
-                retryable: false,
-              },
-            }),
-          } as MessageEvent<string>);
-          this.onerror?.();
-        });
-      }
-    }
-
-    vi.stubGlobal("EventSource", MockEventSource);
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      expect(url).toContain("view=progress");
-      return new Response(`data: ${JSON.stringify({ type: "failed", error: { code: "PLATFORM_PROVIDER_AUTH_FAILED", message: "LLM request failed with HTTP 401", category: "platform_provider", retryable: false } })}\n\n`);
-    }));
-
-    const repository = createHttpWorkspaceRepository();
-
-    await expect(repository.subscribeToRun("run-1", () => {})).rejects.toThrow(
-      "当前模型服务配置不可用，请联系管理员处理。",
-    );
+  it.each([undefined, "unknown"])("rejects missing or unknown project generation mode: %s", async generationExecutionMode => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ capabilities: ["start_runs"], generationExecutionMode }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    await expect(createHttpWorkspaceRepository({ projectId: "current" }).getProjectAccess!()).rejects.toThrow();
   });
 
-  it("uses legacy requirement snapshot fallback when no project scope is available", async () => {
-    class MockEventSource {
-      onmessage: ((event: MessageEvent<string>) => void) | null = null;
-      onerror: (() => void) | null = null;
-
-      close() {}
-
-      constructor(url: string) {
-        void url;
-        queueMicrotask(() => {
-          this.onerror?.();
-        });
-      }
-    }
-
-    vi.stubGlobal("EventSource", MockEventSource);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              runId: "run-2",
-              requirementText: "生成 UML",
-              selectedDiagrams: ["usecase"],
-              rules: [],
-              models: [],
-              plantUml: [],
-              svgArtifacts: [],
-              currentStage: "extract_rules",
-              status: "failed",
-              error: {
-                code: "PLATFORM_PROVIDER_AUTH_FAILED",
-                message: "LLM request failed with HTTP 401",
-                category: "platform_provider",
-                retryable: false,
-              },
-            }),
-            {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json",
-              },
-            },
-          ),
-      ),
-    );
-
+  it("requires project scope for subscriptions and history reads", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    localStorage.setItem("uml-run-history", JSON.stringify([{ id: "old-run" }]));
     const repository = createHttpWorkspaceRepository();
-
-    await expect(repository.subscribeToRun("run-2", () => {})).rejects.toThrow(
-      "当前模型服务配置不可用，请联系管理员处理。",
-    );
+    await expect(repository.subscribeToRun("run-1", vi.fn())).rejects.toThrow("请先登录并进入项目");
+    await expect(repository.getRunHistoryItem("old-run")).rejects.toThrow("请先登录并进入项目");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
-
 
   it("rejects document operations when no project scope is available", async () => {
     localStorage.setItem(
@@ -278,8 +194,6 @@ describe("createHttpWorkspaceRepository", () => {
         apiBaseUrl: "https://ai.comfly.org",
         apiKey: "sk-demo",
         defaultModel: "gpt-5.5",
-        imageModel: "nano-banana-pro",
-        fontSize: "md",
         autoGenerate: false,
         showStaleBanner: true,
       }),
@@ -291,12 +205,6 @@ describe("createHttpWorkspaceRepository", () => {
     await expect(repository.listDocuments!()).rejects.toThrow(
       "请先登录并进入项目",
     );
-    await expect(
-      repository.getOnlyOfficeEditorConfig!(
-        "doc-requirements-1",
-        "theme-classic-light",
-      ),
-    ).rejects.toThrow("请先登录并进入项目");
     await expect(
       repository.startDocumentRun!({
         documentKind: "requirementsSpec",
@@ -346,6 +254,8 @@ describe("createHttpWorkspaceRepository", () => {
         return new Response(
           JSON.stringify({
             runId: "run-project-1",
+            operationType: "requirement_modeling",
+            outputManifest: [],
             requirementText: "生成 UML",
             selectedDiagrams: ["usecase"],
             rules: [],
@@ -388,25 +298,6 @@ describe("createHttpWorkspaceRepository", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
-      if (
-        url.includes(
-          "/api/projects/library-booking/documents/doc-1/editor-config",
-        )
-      ) {
-        return new Response(
-          JSON.stringify({
-            documentServerUrl: "http://127.0.0.1:8080",
-            document: { id: "doc-1", fileName: "doc.docx" },
-            config: {
-              editorConfig: { customization: { uiTheme: "theme-dark" } },
-            },
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
       }
       return new Response(new Blob(["docx"]), {
         status: 200,
@@ -460,17 +351,10 @@ describe("createHttpWorkspaceRepository", () => {
       useAiText: true,
     });
     await repository.listDocuments!();
-    await repository.getOnlyOfficeEditorConfig!("doc-1", "theme-dark");
     await repository.downloadDocument!("doc-1");
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/projects/library-booking/documents"),
-      expect.anything(),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "/api/projects/library-booking/documents/doc-1/editor-config?uiTheme=theme-dark",
-      ),
       expect.anything(),
     );
     expect(fetchMock).toHaveBeenCalledWith(
@@ -489,6 +373,7 @@ describe("createHttpWorkspaceRepository", () => {
     const startRunBody = JSON.parse(String(startRunCall?.[1]?.body));
     expect(startRunBody).toEqual({
       projectId: "library-booking",
+      reasoning: false,
       selectedDiagrams: ["usecase"],
       requestedDiagrams: ["usecase"],
       dependencyDiagrams: [],
@@ -545,8 +430,8 @@ describe("createHttpWorkspaceRepository", () => {
                 {
                   id: "FR1",
                   text: "日历仅供公众使用。",
-                  category: "业务规则",
-                  relatedDiagrams: ["usecase"],
+                  type: "business-rule" as const,
+
                 },
               ],
               selectedDiagramTypes: ["usecase"],
@@ -602,9 +487,9 @@ describe("createHttpWorkspaceRepository", () => {
     const requirementText = "订单需求";
     const originalRule = {
       id: "r1",
-      category: "功能需求" as const,
+      type: "functional" as const,
       text: "用户提交订单。",
-      relatedDiagrams: ["usecase" as const],
+
     };
     const updatedRule = {
       ...originalRule,
@@ -639,18 +524,7 @@ describe("createHttpWorkspaceRepository", () => {
               rulesBasedOnTextVersion: 0,
               requirementBaseline: oldBaseline,
               requirementQualityReport: oldBaseline.qualityReport,
-              requirementReviewCandidates: {
-                r1: {
-                  ruleId: "r1",
-                  beforeRequirement: oldRequirement,
-                  afterRequirement: null,
-                  repairRationale: null,
-                  blockingReasons: [],
-                  status: "failed",
-                  errorMessage: "旧规则无法自动修复。",
-                  createdAt: "2026-06-21T00:00:00.000Z",
-                },
-              },
+
               requirementInputFingerprint: snapshotInputFingerprint({
                 requirementText,
                 rules: [originalRule],
@@ -710,7 +584,7 @@ describe("createHttpWorkspaceRepository", () => {
         },
       ],
       requirementQualityReport: null,
-      requirementReviewCandidates: {},
+
       rulesBasedOnTextVersion: 0,
       rulesVersion: 5,
     });
@@ -727,7 +601,6 @@ describe("createHttpWorkspaceRepository", () => {
     ]);
     expect(retriedState.requirementBaseline).toBeNull();
     expect(retriedState.requirementQualityReport).toBeNull();
-    expect(retriedState.requirementReviewCandidates).toEqual({});
     expect(retriedState.rulesBasedOnTextVersion).toBe(0);
     expect(retriedState.rulesVersion).toBe(5);
   });
@@ -736,9 +609,9 @@ describe("createHttpWorkspaceRepository", () => {
     const requirementText = "订单需求";
     const rule = {
       id: "r1",
-      category: "功能需求" as const,
+      type: "functional" as const,
       text: "用户提交订单。",
-      relatedDiagrams: ["usecase" as const],
+
     };
     const fingerprint = snapshotInputFingerprint({
       requirementText,
@@ -753,18 +626,7 @@ describe("createHttpWorkspaceRepository", () => {
       requirementText,
       requirementBaseline: oldBaseline,
       requirementQualityReport: oldBaseline.qualityReport,
-      requirementReviewCandidates: {
-        r1: {
-          ruleId: "r1",
-          beforeRequirement: oldRequirement,
-          afterRequirement: null,
-          repairRationale: null,
-          blockingReasons: [],
-          status: "failed",
-          errorMessage: "旧规则无法自动修复。",
-          createdAt: "2026-06-21T00:00:00.000Z",
-        },
-      },
+
     });
 
     await repository.updateRequirementRules?.([rule], {
@@ -782,7 +644,7 @@ describe("createHttpWorkspaceRepository", () => {
         },
       ],
       requirementQualityReport: null,
-      requirementReviewCandidates: {},
+
       rulesBasedOnTextVersion: 0,
       rulesVersion: 1,
     });
@@ -798,7 +660,6 @@ describe("createHttpWorkspaceRepository", () => {
     ]);
     expect(workspace.requirementBaseline).toBeNull();
     expect(workspace.requirementQualityReport).toBeNull();
-    expect(workspace.requirementReviewCandidates).toEqual({});
     expect(workspace.rulesBasedOnTextVersion).toBe(0);
     expect(workspace.rulesVersion).toBe(1);
   });
@@ -864,16 +725,17 @@ describe("createHttpWorkspaceRepository", () => {
     expect(startCalls).toHaveLength(0);
   });
 
-  it("does not start a project requirement run when auto-completed rule mapping save failed", async () => {
+  it("does not start a project requirement run when a rule category edit failed to save", async () => {
     const existingRule = {
       id: "r1",
-      category: "功能需求" as const,
+      type: "functional" as const,
       text: "用户可以浏览公开活动。",
-      relatedDiagrams: ["usecase" as const],
+
     };
     const mappedRule = {
       ...existingRule,
-      relatedDiagrams: ["usecase" as const, "class" as const],
+      type: "business-rule" as const,
+
     };
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       if (
@@ -1177,6 +1039,7 @@ describe("createHttpWorkspaceRepository", () => {
       notes: [],
       participants: [],
       messages: [],
+      fragments: [],
     };
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       if (
@@ -1368,7 +1231,7 @@ describe("createHttpWorkspaceRepository", () => {
       reads += 1;
       return new Response(JSON.stringify({ projectId: "library-booking", version: reads, state: {
         requirementText: "预约需求",
-        visualReviews: { "requirements:usecase": { status: "pending_review", issues: ["标签不可读"], reason: "请人工确认", attempts: 3, checkedAt: reads === 1 ? "check-old" : "check-new" } },
+        visualReviews: { "requirements:usecase": { findings: [], status: "pending_review", issues: ["标签不可读"], reason: "请人工确认", attempts: 3, checkedAt: reads === 1 ? "check-old" : "check-new" } },
       } }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -1379,288 +1242,18 @@ describe("createHttpWorkspaceRepository", () => {
     expect(writes).toBe(1);
   });
 
-  it("retries requirement review state saves after a project workspace conflict", async () => {
-    const reviewedRequirement = createAtomicRequirement({
-      actor: "用户",
-      status: "accepted",
-    });
-    const reviewedBaseline = createRequirementBaseline([reviewedRequirement]);
-    const candidates = {
-      r1: {
-        ruleId: "r1",
-        beforeRequirement: createAtomicRequirement(),
-        afterRequirement: reviewedRequirement,
-        repairRationale: "补齐参与者。",
-        blockingReasons: [],
-        status: "accepted" as const,
-        errorMessage: null,
-        createdAt: "2026-05-27T00:00:00.000Z",
-      },
-    };
-    let workspaceReads = 0;
-    let workspaceWrites = 0;
-    const savedBodies: Array<Record<string, unknown>> = [];
-    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
-      if (
-        url.endsWith("/api/projects/library-booking/workspace") &&
-        !options?.method
-      ) {
-        workspaceReads += 1;
-        return new Response(
-          JSON.stringify({
-            projectId: "library-booking",
-            version: workspaceReads === 1 ? 1 : 2,
-            state: {
-              requirementText:
-                workspaceReads === 1 ? "原需求" : "其他成员刚更新的需求",
-              rules: [
-                {
-                  id: "r1",
-                  category: "功能需求",
-                  text: "用户提交订单。",
-                  relatedDiagrams: ["usecase"],
-                },
-              ],
-            },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      if (
-        url.endsWith("/api/projects/library-booking/workspace") &&
-        options?.method === "PUT"
-      ) {
-        workspaceWrites += 1;
-        savedBodies.push(JSON.parse(String(options.body)));
-        if (workspaceWrites === 1) {
-          return new Response(
-            JSON.stringify({
-              message: "项目已由其他成员更新，请刷新最新状态后再保存。",
-              currentVersion: 2,
-            }),
-            { status: 409, headers: { "Content-Type": "application/json" } },
-          );
-        }
-        return new Response(
-          JSON.stringify({
-            projectId: "library-booking",
-            version: 3,
-            state: savedBodies.at(-1)?.state,
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      return new Response(JSON.stringify({ message: "unexpected request" }), {
-        status: 500,
-      });
-    });
+
+  it("loads an empty workspace without restoring historical runs", async () => {
+    const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => new Response(JSON.stringify({
+      projectId: "library-booking", version: 0, state: {},
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
-
-    const repository = createHttpWorkspaceRepository({
-      projectId: "library-booking",
-    });
-    await repository.loadWorkspace();
-    await repository.updateRequirementReviewState?.(
-      reviewedBaseline,
-      candidates,
-    );
-
-    expect(workspaceReads).toBe(2);
-    expect(workspaceWrites).toBe(2);
-    expect(savedBodies[1]?.baseVersion).toBe(2);
-    expect(
-      (savedBodies[1]?.state as Record<string, unknown>).requirementText,
-    ).toBe("其他成员刚更新的需求");
-    expect(
-      (
-        (savedBodies[1]?.state as Record<string, unknown>)
-          .requirementBaseline as RequirementBaseline
-      ).requirements[0]?.actor,
-    ).toBe("用户");
-    expect(
-      (
-        (savedBodies[1]?.state as Record<string, unknown>)
-          .requirementReviewCandidates as typeof candidates
-      ).r1.status,
-    ).toBe("accepted");
-  });
-
-  it("restores project run snapshots through the server without uploading the workspace", async () => {
-    const snapshot = createRunSnapshot({
-      runId: "run-restore",
-      requirementText: "恢复后的项目需求",
-      selectedDiagrams: ["usecase"],
-    });
-    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
-      if (
-        url.endsWith("/api/projects/library-booking/workspace") &&
-        !options?.method
-      ) {
-        return new Response(
-          JSON.stringify({
-            projectId: "library-booking",
-            version: 4,
-            updatedAt: "2026-05-22T02:00:00.000Z",
-            state: { requirementText: "旧需求" },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      if (url.endsWith("/api/projects/library-booking/runs/run-restore")) {
-        return new Response(
-          JSON.stringify({
-            projectId: "library-booking",
-            run: {
-              runId: "run-restore",
-              status: "completed",
-              stage: "render_svg",
-              snapshotAvailable: true,
-              canRestore: true,
-            },
-            snapshot,
-            events: [],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      if (
-        url.endsWith(
-          "/api/projects/library-booking/runs/run-restore/restore-workspace",
-        ) &&
-        options?.method === "POST"
-      ) {
-        return new Response(
-          JSON.stringify({
-            projectId: "library-booking",
-            version: 5,
-            updatedAt: "2026-05-22T02:05:00.000Z",
-            state: { requirementText: "恢复后的项目需求" },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      if (url.endsWith("/api/projects/library-booking/runs")) {
-        return new Response(
-          JSON.stringify({
-            projectId: "library-booking",
-            runs: [
-              {
-                runId: "run-restore",
-                status: "completed",
-                stage: "render_svg",
-                createdAt: "2026-05-22T01:00:00.000Z",
-                model: "gpt-5.5",
-                snapshotAvailable: true,
-                canRestore: true,
-              },
-            ],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      if (
-        url.endsWith("/api/projects/library-booking/workspace") &&
-        options?.method === "PUT"
-      ) {
-        return new Response(
-          JSON.stringify({
-            projectId: "library-booking",
-            version: 5,
-            updatedAt: "2026-05-22T02:05:00.000Z",
-            state: JSON.parse(String(options.body)).state,
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      return new Response(JSON.stringify({ message: "unexpected request" }), {
-        status: 500,
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const repository = createHttpWorkspaceRepository({
-      projectId: "library-booking",
-    });
-    const item = await repository.restoreRunHistory("run-restore");
-
-    expect(item?.snapshot).toBeNull();
-    const restoreCall = fetchMock.mock.calls.find(
-      ([url, options]) =>
-        String(url).endsWith(
-          "/api/projects/library-booking/runs/run-restore/restore-workspace",
-        ) && options?.method === "POST",
-    );
-    expect(restoreCall).toBeTruthy();
-    expect(JSON.parse(String(restoreCall?.[1]?.body))).toEqual({
-      mode: "restore",
-    });
-    const saveCall = fetchMock.mock.calls.find(
-      ([url, options]) =>
-        String(url).endsWith("/api/projects/library-booking/workspace") &&
-        options?.method === "PUT",
-    );
-    expect(saveCall).toBeFalsy();
-    const detailCall = fetchMock.mock.calls.find(([url]) =>
-      String(url).endsWith("/api/projects/library-booking/runs/run-restore"),
-    );
-    expect(detailCall).toBeTruthy();
-  });
-
-  it("rejects project document run restore before calling workspace restore", async () => {
-    const fetchMock = vi.fn(async (url: string, _options?: RequestInit) => {
-      if (url.endsWith("/api/projects/library-booking/runs/run-doc")) {
-        return new Response(
-          JSON.stringify({
-            projectId: "library-booking",
-            run: {
-              runId: "run-doc",
-              status: "completed",
-              runKind: "document",
-              documentKind: "requirementsSpec",
-              snapshotAvailable: true,
-              canRestore: false,
-              documentDownloadAvailable: true,
-            },
-            snapshot: {
-              runId: "run-doc",
-              documentKind: "requirementsSpec",
-              requirementText: "图书馆预约需求",
-              documentId: "doc-1",
-              sections: [],
-              fileName: "requirements.docx",
-              mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-              byteLength: 1234,
-              missingArtifacts: [],
-              currentStage: "render_document_file",
-              status: "completed",
-              error: null,
-            },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      return new Response(JSON.stringify({ message: "unexpected request" }), {
-        status: 500,
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const repository = createHttpWorkspaceRepository({
-      projectId: "library-booking",
-    });
-
-    await expect(repository.restoreRunHistory("run-doc")).rejects.toThrow(
-      "说明书快照不能恢复为项目工作台。",
-    );
+    const repository = createHttpWorkspaceRepository({ projectId: "library-booking" });
+    const workspace = await repository.loadWorkspace();
+    expect(workspace.requirementText).toBe("");
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(
-      fetchMock.mock.calls.some(
-        ([url, options]) =>
-          String(url).endsWith(
-            "/api/projects/library-booking/runs/run-doc/restore-workspace",
-          ) && options?.method === "POST",
-      ),
-    ).toBe(false);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/projects/library-booking/workspace");
+    expect(repository).not.toHaveProperty("restoreRunHistory");
   });
 
   it("lists project run history from summaries without hydrating run details", async () => {
@@ -1676,9 +1269,8 @@ describe("createHttpWorkspaceRepository", () => {
                 stage: "generate_models",
                 createdAt: "2026-05-22T01:00:00.000Z",
                 snapshotAvailable: true,
-                canRestore: false,
               },
-              {
+              { operationType: "requirement_modeling" as const,
                 runId: "run-complete",
                 status: "completed",
                 stage: "render_svg",
@@ -1695,9 +1287,8 @@ describe("createHttpWorkspaceRepository", () => {
                 partialFailure: true,
                 createdAt: "2026-05-22T00:00:00.000Z",
                 snapshotAvailable: true,
-                canRestore: true,
               },
-              {
+              { operationType: "requirement_modeling" as const,
                 runId: "run-interrupted",
                 status: "interrupted",
                 stage: "generate_models",
@@ -1708,9 +1299,8 @@ describe("createHttpWorkspaceRepository", () => {
                 latestActionAt: "2026-05-21T23:40:00.000Z",
                 createdAt: "2026-05-21T23:30:00.000Z",
                 snapshotAvailable: true,
-                canRestore: true,
               },
-              {
+              { operationType: "requirement_modeling" as const,
                 runId: "run-retry",
                 status: "queued",
                 stage: "generate_models",
@@ -1720,9 +1310,8 @@ describe("createHttpWorkspaceRepository", () => {
                 sourceRunStatus: "interrupted",
                 createdAt: "2026-05-21T23:40:00.000Z",
                 snapshotAvailable: true,
-                canRestore: false,
               },
-              {
+              { operationType: "document_generation" as const,
                 runId: "run-doc-failed",
                 status: "failed",
                 stage: "render_document_file",
@@ -1732,9 +1321,8 @@ describe("createHttpWorkspaceRepository", () => {
                 documentDownloadAvailable: true,
                 createdAt: "2026-05-21T23:00:00.000Z",
                 snapshotAvailable: true,
-                canRestore: true,
               },
-              {
+              { operationType: "document_generation" as const,
                 runId: "run-doc-warning",
                 status: "completed",
                 stage: "render_document_file",
@@ -1753,9 +1341,8 @@ describe("createHttpWorkspaceRepository", () => {
                 ],
                 createdAt: "2026-05-21T22:00:00.000Z",
                 snapshotAvailable: true,
-                canRestore: true,
               },
-              {
+              { operationType: "document_generation" as const,
                 runId: "run-doc-deleted",
                 status: "completed",
                 stage: "render_document_file",
@@ -1770,7 +1357,6 @@ describe("createHttpWorkspaceRepository", () => {
                 documentByteLength: 2048,
                 createdAt: "2026-05-21T21:00:00.000Z",
                 snapshotAvailable: true,
-                canRestore: false,
               },
             ],
           }),
@@ -1838,13 +1424,12 @@ describe("createHttpWorkspaceRepository", () => {
     ]);
     expect(history[1]?.summary).toContain("失败原因 任务遇到内部错误，请联系管理员。");
     expect(history[1]?.summary).toContain(
-      "图级失败 1 张图：总体业务流程（render_svg：图表生成失败，请稍后重试。）",
+      "图级失败 1 张图：总体业务流程（图表生成失败，请稍后重试。）",
     );
     expect(history[2]).toMatchObject({
       status: "interrupted",
       runKind: "requirements",
       stage: "generate_models",
-      canRestore: false,
       snapshotAvailable: true,
     });
     expect(history[2]?.summary).toContain("服务中断，可重试");
@@ -1864,7 +1449,6 @@ describe("createHttpWorkspaceRepository", () => {
     expect(history[3]?.summary).toContain("重试自 run-interrupted");
     expect(history[4]).toMatchObject({
       status: "failed",
-      canRestore: false,
       documentDownloadAvailable: false,
     });
     expect(history[4]?.summary).toContain("失败原因 任务遇到内部错误，请联系管理员。");
@@ -1878,7 +1462,6 @@ describe("createHttpWorkspaceRepository", () => {
       documentVersion: 2,
       documentStatus: "active",
       documentByteLength: 2048,
-      canRestore: false,
       documentDownloadAvailable: true,
       missingArtifactCount: 2,
       missingArtifactSummary: [
@@ -1945,6 +1528,10 @@ describe("createHttpWorkspaceRepository", () => {
     const existingUseCase = {
       diagramKind: "usecase",
       modelId: "req-usecase",
+      title: "借书用例",
+      summary: "保存已有需求模型",
+      notes: [],
+      systemBoundaries: [],
       actors: [],
       useCases: [],
       relationships: [],
@@ -1952,6 +1539,11 @@ describe("createHttpWorkspaceRepository", () => {
     const generatedClass = {
       diagramKind: "class",
       modelId: "req-class",
+      title: "借书领域类图",
+      summary: "保存本次领域模型",
+      notes: [],
+      interfaces: [],
+      enums: [],
       classes: [],
       relationships: [],
     };
@@ -1962,9 +1554,9 @@ describe("createHttpWorkspaceRepository", () => {
       rules: [
         {
           id: "R1",
-          category: "功能需求",
+          type: "functional" as const,
           text: "系统应支持借书。",
-          relatedDiagrams: ["class"],
+
         },
       ],
       models: [generatedClass as never],
@@ -2044,6 +1636,10 @@ describe("createHttpWorkspaceRepository", () => {
     const concurrentUseCase = {
       diagramKind: "usecase",
       modelId: "req-usecase",
+      title: "借书用例",
+      summary: "保存成员更新的需求模型",
+      notes: [],
+      systemBoundaries: [],
       actors: [],
       useCases: [],
       relationships: [],
@@ -2051,14 +1647,19 @@ describe("createHttpWorkspaceRepository", () => {
     const generatedClass = {
       diagramKind: "class",
       modelId: "req-class",
+      title: "借书领域类图",
+      summary: "保存本次领域模型",
+      notes: [],
+      interfaces: [],
+      enums: [],
       classes: [],
       relationships: [],
     };
     const concurrentRule = {
       id: "R-current",
-      category: "功能需求",
+      type: "functional" as const,
       text: "其他成员刚补充最新借书需求。",
-      relatedDiagrams: ["usecase"],
+
     };
     const snapshot = createRunSnapshot({
       runId: "run-terminal-class",
@@ -2067,9 +1668,9 @@ describe("createHttpWorkspaceRepository", () => {
       rules: [
         {
           id: "R-old",
-          category: "功能需求",
+          type: "functional" as const,
           text: "系统应支持借书。",
-          relatedDiagrams: ["class"],
+
         },
       ],
       models: [generatedClass as never],
@@ -2177,9 +1778,9 @@ describe("createHttpWorkspaceRepository", () => {
       title: "总体业务流程",
       summary: "报名流程",
       notes: [],
-      partitions: [],
-      nodes: [],
-      edges: [],
+      swimlanes: [],
+      nodes: [{ id: "start", type: "start" }, { id: "end", type: "end" }],
+      relationships: [{ id: "finish", type: "control_flow", sourceId: "start", targetId: "end" }],
     };
     const snapshot = createRunSnapshot({
       runId: "run-partial-failed",
@@ -2188,9 +1789,9 @@ describe("createHttpWorkspaceRepository", () => {
       rules: [
         {
           id: "R1",
-          category: "功能需求",
+          type: "functional" as const,
           text: "用户可以浏览活动页面。",
-          relatedDiagrams: ["activity", "prototype"],
+
         },
       ],
       models: [generatedActivity as never],
@@ -2241,6 +1842,10 @@ describe("createHttpWorkspaceRepository", () => {
                 usecase: {
                   diagramKind: "usecase",
                   modelId: "req-usecase",
+                  title: "活动日历用例",
+                  summary: "保存已有需求模型",
+                  notes: [],
+                  systemBoundaries: [],
                   actors: [],
                   useCases: [],
                   relationships: [],
@@ -2301,6 +1906,7 @@ describe("createHttpWorkspaceRepository", () => {
       notes: [],
       actors: [],
       useCases: [],
+      systemBoundaries: [],
       relationships: [],
     };
     const contextClass = {
@@ -2371,10 +1977,11 @@ describe("createHttpWorkspaceRepository", () => {
                 deployment: "@startuml\nnode Existing\n@enduml",
               },
               svgArtifacts: {
-                usecase: { diagramKind: "usecase", svg: "<svg>usecase</svg>" },
-                class: { diagramKind: "class", svg: "<svg>class</svg>" },
+                usecase: { diagramKind: "usecase", renderMeta: createRenderMeta(), svg: "<svg>usecase</svg>" },
+                class: { diagramKind: "class", renderMeta: createRenderMeta(), svg: "<svg>class</svg>" },
                 deployment: {
                   diagramKind: "deployment",
+                  renderMeta: createRenderMeta(),
                   svg: "<svg>deployment</svg>",
                 },
               },
@@ -2445,10 +2052,10 @@ describe("createHttpWorkspaceRepository", () => {
       title: "既有用例模型",
       summary: "既有用例",
       notes: [],
-      actors: [],
-      useCases: [{ id: "uc_view", name: "查看活动" }],
+      actors: [{ id: "viewer", name: "用户", actorType: "human", responsibilities: [] }],
+      useCases: [{ id: "uc_view", name: "查看活动", goal: "浏览活动", preconditions: [], postconditions: [], supportingActorIds: [], eventFlows: [] }],
       systemBoundaries: [],
-      relationships: [],
+      relationships: [{ id: "view-activities", type: "association", sourceId: "viewer", targetId: "uc_view" }],
     };
     const snapshotContextUseCase = {
       ...existingUseCase,
@@ -2482,9 +2089,7 @@ describe("createHttpWorkspaceRepository", () => {
       title: "原型界面关系",
       summary: "原型关系",
       notes: [],
-      pages: [],
-      modules: [],
-      entryPoints: [],
+      nodes: [],
       relationships: [],
     };
     const analysisModel = {
@@ -2567,15 +2172,17 @@ describe("createHttpWorkspaceRepository", () => {
                 "proto-1": "@startuml\nprototype\n@enduml",
               },
               svgArtifacts: {
-                usecase: { diagramKind: "usecase", svg: "<svg>usecase</svg>" },
-                class: { diagramKind: "class", svg: "<svg>class</svg>" },
+                usecase: { diagramKind: "usecase", renderMeta: createRenderMeta(), svg: "<svg>usecase</svg>" },
+                class: { diagramKind: "class", renderMeta: createRenderMeta(), svg: "<svg>class</svg>" },
                 deployment: {
                   diagramKind: "deployment",
+                  renderMeta: createRenderMeta(),
                   svg: "<svg>deployment</svg>",
                 },
                 "proto-1": {
                   diagramKind: "prototype",
                   modelId: "proto-1",
+                  renderMeta: createRenderMeta(),
                   svg: "<svg>prototype</svg>",
                 },
               },
@@ -2643,19 +2250,18 @@ describe("createHttpWorkspaceRepository", () => {
       prototype: 1,
       analysis: 1,
     });
-    expect(
-      Object.keys(
-        savedState?.diagramInputFingerprints as Record<string, string>,
-      ),
-    ).toEqual(["analysis"]);
+    const receipts = savedState?.diagramInputFingerprints as Record<string, string>;
+    expect(receipts["analysis:uc_view"]).toBe(snapshotInputFingerprint({ requirementText: snapshot.requirementText, rules: snapshot.rules }));
+    for (const id of ["usecase", "class", "deployment", "prototype"]) expect(receipts[id]).toBe("stale:unknown");
+
   });
 
-  it("keeps accepted workspace review state over older requirement model snapshot baselines", async () => {
+  it("preserves the explicit generated baseline", async () => {
     const rule = {
       id: "r1",
-      category: "功能需求" as const,
+      type: "functional" as const,
       text: "用户提交订单。",
-      relatedDiagrams: ["usecase" as const],
+
     };
     const reviewedRequirement = createAtomicRequirement({
       actor: "用户",
@@ -2699,18 +2305,7 @@ describe("createHttpWorkspaceRepository", () => {
               rules: [rule],
               requirementBaseline: reviewedBaseline,
               requirementQualityReport: reviewedBaseline.qualityReport,
-              requirementReviewCandidates: {
-                r1: {
-                  ruleId: "r1",
-                  beforeRequirement: createAtomicRequirement(),
-                  afterRequirement: reviewedRequirement,
-                  repairRationale: "补齐参与者。",
-                  blockingReasons: [],
-                  status: "accepted",
-                  errorMessage: null,
-                  createdAt: "2026-05-27T00:00:00.000Z",
-                },
-              },
+
             },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
@@ -2744,30 +2339,7 @@ describe("createHttpWorkspaceRepository", () => {
       durationMs: 100,
     });
 
-    expect(
-      (savedState?.requirementBaseline as RequirementBaseline).requirements[0]
-        ?.status,
-    ).toBe("accepted");
-    expect(
-      (savedState?.requirementBaseline as RequirementBaseline).requirements[0]
-        ?.actor,
-    ).toBe("用户");
-    expect(
-      (savedState?.requirementBaseline as RequirementBaseline).qualityReport
-        .status,
-    ).toBe("passed");
-    expect(
-      (savedState?.requirementBaseline as RequirementBaseline).qualityReport
-        .issues,
-    ).toEqual([]);
-    expect(
-      (
-        savedState?.requirementReviewCandidates as Record<
-          string,
-          { status: string }
-        >
-      ).r1.status,
-    ).toBe("accepted");
+    expect(savedState?.requirementBaseline).toEqual(snapshot.requirementBaseline);
     expect(savedState?.generatedDiagramTypes).toContain("usecase");
     expect(
       (savedState?.diagramInputFingerprints as Partial<Record<string, string>>)
@@ -2778,9 +2350,9 @@ describe("createHttpWorkspaceRepository", () => {
   it("uses current reviewed rules and returned models when persisting requirement model snapshots", async () => {
     const currentRule = {
       id: "r1",
-      category: "功能需求" as const,
+      type: "functional" as const,
       text: "用户提交当前订单。",
-      relatedDiagrams: ["usecase" as const],
+
     };
     const snapshotRule = {
       ...currentRule,
@@ -2789,7 +2361,7 @@ describe("createHttpWorkspaceRepository", () => {
     const snapshot = createRunSnapshot({
       runId: "run-usecase",
       requirementText: "订单需求",
-      selectedDiagrams: [],
+      selectedDiagrams: ["usecase"],
       rules: [snapshotRule],
       models: [
         {
@@ -2871,7 +2443,7 @@ describe("createHttpWorkspaceRepository", () => {
     ).toBe(expectedSnapshotFingerprint);
   });
 
-  it("keeps server-synced repair candidates after a rules-only run", async () => {
+  it("discards retired server-synced repair candidates after a rules-only run", async () => {
     const requirement = createAtomicRequirement();
     const baseline = createRequirementBaseline([requirement]);
     const snapshot = createRunSnapshot({
@@ -2881,9 +2453,9 @@ describe("createHttpWorkspaceRepository", () => {
       rules: [
         {
           id: "r1",
-          category: "功能需求",
+          type: "functional" as const,
           text: "用户提交订单。",
-          relatedDiagrams: ["usecase"],
+
         },
       ],
       requirementBaseline: baseline,
@@ -2902,18 +2474,7 @@ describe("createHttpWorkspaceRepository", () => {
               requirementText: "订单需求",
               rules: snapshot.rules,
               requirementBaseline: baseline,
-              requirementReviewCandidates: {
-                r1: {
-                  ruleId: "r1",
-                  beforeRequirement: requirement,
-                  afterRequirement: createAtomicRequirement({ actor: "用户" }),
-                  repairRationale: "补齐参与者。",
-                  blockingReasons: [],
-                  status: "pending",
-                  errorMessage: null,
-                  createdAt: "2026-05-27T00:00:00.000Z",
-                },
-              },
+
             },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
@@ -2939,8 +2500,6 @@ describe("createHttpWorkspaceRepository", () => {
       durationMs: 100,
     });
 
-    const synced = await repository.loadWorkspace();
-    expect(synced.requirementReviewCandidates.r1?.status).toBe("pending");
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
   });
 
@@ -2948,10 +2507,13 @@ describe("createHttpWorkspaceRepository", () => {
     const requirementModel = {
       diagramKind: "usecase",
       modelId: "usecase",
-      actors: [],
-      useCases: [{ id: "uc-book-seat", name: "预约座位" }],
+      title: "座位预约用例",
+      summary: "学生预约座位",
+      notes: [],
+      actors: [{ id: "student", name: "学生", actorType: "human", responsibilities: [] }],
+      useCases: [{ id: "uc-book-seat", name: "预约座位", goal: "完成座位预约", preconditions: [], postconditions: [], supportingActorIds: [], eventFlows: [] }],
       systemBoundaries: [],
-      relationships: [],
+      relationships: [{ id: "book-seat", type: "association", sourceId: "student", targetId: "uc-book-seat" }],
     };
     const requirementModelTraceability = [
       {
@@ -2972,12 +2534,22 @@ describe("createHttpWorkspaceRepository", () => {
     const existingClass = {
       diagramKind: "class",
       modelId: "class",
-      classes: [{ id: "class-booking", name: "Booking" }],
+      title: "预约设计类图",
+      summary: "预约领域结构",
+      notes: [],
+      interfaces: [],
+      enums: [],
+      relationships: [],
+      classes: [{ id: "class-booking", name: "Booking", attributes: [], operations: [], constraints: [] }],
     };
     const generatedTable = {
       diagramKind: "table",
       modelId: "table",
-      tables: [{ id: "table-bookings", name: "bookings", columns: [] }],
+      title: "预约数据库表",
+      summary: "持久化预约记录",
+      notes: [],
+      relationships: [],
+      tables: [{ id: "table-bookings", name: "bookings", columns: [{ id: "id", name: "id", dataType: "bigint", nullable: false }], relationalConstraints: [{ id: "pk-bookings", type: "primary-key", columnIds: ["id"] }] }],
     };
     const existingClassTraceability = {
       source: {
@@ -3019,12 +2591,14 @@ describe("createHttpWorkspaceRepository", () => {
     };
     const snapshot = {
       runId: "design-table",
+      operationType: "design_modeling",
+      outputManifest: [{ kind: "model", id: "table", diagramKind: "table" }],
       requirementText: "图书馆需求",
       rules: [
         {
           id: "rule-book-seat",
-          source: "用户可以预约座位。",
-          keywords: ["预约座位"],
+          text: "用户可以预约座位。",
+          type: "functional" as const,
         },
       ],
       selectedDiagrams: ["table"],
@@ -3036,8 +2610,8 @@ describe("createHttpWorkspaceRepository", () => {
       svgArtifacts: [
         {
           diagramKind: "table",
+          renderMeta: createRenderMeta({ generatedAt: "2026-05-24T00:00:00.000Z" }),
           svg: "<svg />",
-          generatedAt: "2026-05-24T00:00:00.000Z",
         },
       ],
       diagramErrors: {},
@@ -3065,8 +2639,8 @@ describe("createHttpWorkspaceRepository", () => {
               designSvgArtifacts: {
                 class: {
                   diagramKind: "class",
+                  renderMeta: createRenderMeta({ generatedAt: "2026-05-24T00:00:00.000Z" }),
                   svg: "<svg />",
-                  generatedAt: "2026-05-24T00:00:00.000Z",
                 },
               },
               designInputFingerprints: { class: currentDesignFingerprint },
@@ -3118,6 +2692,9 @@ describe("createHttpWorkspaceRepository", () => {
     const oldSequence = {
       diagramKind: "sequence",
       modelId: "sequence:uc_old",
+      title: "已有用例实现设计",
+      summary: "上一版本交互",
+      notes: [],
       sourceUseCaseId: "uc_old",
       participants: [],
       messages: [],
@@ -3126,6 +2703,9 @@ describe("createHttpWorkspaceRepository", () => {
     const newSequence = {
       diagramKind: "sequence",
       modelId: "sequence:uc-1",
+      title: "新生成用例实现设计",
+      summary: "当前版本交互",
+      notes: [],
       sourceUseCaseId: "uc-1",
       participants: [],
       messages: [],
@@ -3134,10 +2714,18 @@ describe("createHttpWorkspaceRepository", () => {
     const existingClass = {
       diagramKind: "class",
       modelId: "class",
+      title: "已有设计类图",
+      summary: "保留已有设计结构",
+      notes: [],
+      interfaces: [],
+      enums: [],
+      relationships: [],
       classes: [],
     };
     const snapshot = {
       runId: "design-sequence",
+      operationType: "design_modeling",
+      outputManifest: [{ kind: "model", id: "sequence:uc-1", diagramKind: "sequence" }],
       requirementText: "图书馆需求",
       rules: [],
       selectedDiagrams: ["sequence"],
@@ -3214,9 +2802,10 @@ describe("createHttpWorkspaceRepository", () => {
                 "sequence:uc_old": {
                   diagramKind: "sequence",
                   modelId: "sequence:uc_old",
+                  renderMeta: createRenderMeta(),
                   svg: "<svg data-old />",
                 },
-                class: { diagramKind: "class", svg: "<svg />" },
+                class: { diagramKind: "class", renderMeta: createRenderMeta(), svg: "<svg />" },
               },
               designInputFingerprints: {
                 "sequence:uc_old": "old-fp",
@@ -3320,17 +2909,26 @@ describe("createHttpWorkspaceRepository", () => {
                 [modelKey]: {
                   diagramKind: "usecase",
                   modelId: modelKey,
-                  actors: [],
+                  title: "座位预约用例",
+                  summary: "查询和预约座位",
+                  notes: [],
+                  actors: [{ id: "student", name: "学生", actorType: "human", responsibilities: [] }],
                   useCases: [
-                    { id: "uc-1", name: "查询座位" },
-                    { id: "uc-2", name: "预约座位" },
+                    { id: "uc-1", name: "查询座位", goal: "获取空闲座位", preconditions: [], postconditions: [], supportingActorIds: [], eventFlows: [] },
+                    { id: "uc-2", name: "预约座位", goal: "完成预约", preconditions: [], postconditions: [], supportingActorIds: [], eventFlows: [] },
                   ],
                   systemBoundaries: [],
-                  relationships: [],
+                  relationships: [
+                    { id: "query-seat", type: "association", sourceId: "student", targetId: "uc-1" },
+                    { id: "book-seat", type: "association", sourceId: "student", targetId: "uc-2" },
+                  ],
                 },
                 "analysis:uc-1": {
                   diagramKind: "analysis",
                   modelId: "analysis:uc-1",
+                  title: "查询座位分析",
+                  summary: "当前用例分析",
+                  notes: [],
                   sourceUseCaseId: "uc-1",
                   participants: [],
                   messages: [],
@@ -3339,6 +2937,9 @@ describe("createHttpWorkspaceRepository", () => {
                 "analysis:uc_old": {
                   diagramKind: "analysis",
                   modelId: "analysis:uc_old",
+                  title: "已删除用例分析",
+                  summary: "不再被当前用例引用",
+                  notes: [],
                   sourceUseCaseId: "uc_old",
                   participants: [],
                   messages: [],
@@ -3353,11 +2954,13 @@ describe("createHttpWorkspaceRepository", () => {
                 "analysis:uc-1": {
                   diagramKind: "analysis",
                   modelId: "analysis:uc-1",
+                  renderMeta: createRenderMeta(),
                   svg: "<svg />",
                 },
                 "analysis:uc_old": {
                   diagramKind: "analysis",
                   modelId: "analysis:uc_old",
+                  renderMeta: createRenderMeta(),
                   svg: "<svg data-old />",
                 },
               },
@@ -3395,6 +2998,9 @@ describe("createHttpWorkspaceRepository", () => {
                 "sequence:uc-1": {
                   diagramKind: "sequence",
                   modelId: "sequence:uc-1",
+                  title: "查询座位设计",
+                  summary: "当前用例设计",
+                  notes: [],
                   sourceUseCaseId: "uc-1",
                   participants: [],
                   messages: [],
@@ -3403,6 +3009,9 @@ describe("createHttpWorkspaceRepository", () => {
                 "sequence:uc_old": {
                   diagramKind: "sequence",
                   modelId: "sequence:uc_old",
+                  title: "已删除用例设计",
+                  summary: "不再被当前用例引用",
+                  notes: [],
                   sourceUseCaseId: "uc_old",
                   participants: [],
                   messages: [],
@@ -3417,11 +3026,13 @@ describe("createHttpWorkspaceRepository", () => {
                 "sequence:uc-1": {
                   diagramKind: "sequence",
                   modelId: "sequence:uc-1",
+                  renderMeta: createRenderMeta(),
                   svg: "<svg />",
                 },
                 "sequence:uc_old": {
                   diagramKind: "sequence",
                   modelId: "sequence:uc_old",
+                  renderMeta: createRenderMeta(),
                   svg: "<svg data-old />",
                 },
               },
@@ -3521,6 +3132,9 @@ describe("createHttpWorkspaceRepository", () => {
     const oldSequence = {
       diagramKind: "sequence",
       modelId: "sequence:uc_old",
+      title: "已有用例实现设计",
+      summary: "保留失败前的成功结果",
+      notes: [],
       sourceUseCaseId: "uc_old",
       participants: [],
       messages: [],
@@ -3528,6 +3142,8 @@ describe("createHttpWorkspaceRepository", () => {
     };
     const snapshot = {
       runId: "design-sequence-failed",
+      operationType: "design_modeling",
+      outputManifest: [],
       requirementText: "图书馆需求",
       rules: [],
       selectedDiagrams: ["sequence"],
@@ -3579,6 +3195,7 @@ describe("createHttpWorkspaceRepository", () => {
                 "sequence:uc_old": {
                   diagramKind: "sequence",
                   modelId: "sequence:uc_old",
+                  renderMeta: createRenderMeta(),
                   svg: "<svg data-old />",
                 },
               },
@@ -3665,15 +3282,6 @@ describe("createHttpWorkspaceRepository", () => {
     expect(
       requirementDocuments.every((document) => document.version === 1),
     ).toBe(true);
-    const editorConfig = await repository.getOnlyOfficeEditorConfig!(
-      firstSnapshot.documentId!,
-      "theme-dark",
-    );
-    expect(editorConfig.config.editorConfig).toEqual(
-      expect.objectContaining({
-        customization: { uiTheme: "theme-dark" },
-      }),
-    );
   });
 
   it("stores mock run history in localStorage with the configured limit", async () => {
@@ -3772,166 +3380,7 @@ describe("createHttpWorkspaceRepository", () => {
     );
   });
 
-  it("persists requirement review candidates in the mock workspace", async () => {
-    const beforeRequirement = createAtomicRequirement();
-    const afterRequirement = createAtomicRequirement({
-      actor: "用户",
-      status: "accepted",
-      confidence: 0.82,
-    });
-    const repository = createMockWorkspaceRepository({
-      requirementReviewCandidates: {
-        r1: {
-          ruleId: "r1",
-          beforeRequirement,
-          afterRequirement,
-          repairRationale: "补齐参与者。",
-          blockingReasons: ["缺少参与者"],
-          status: "pending",
-          errorMessage: null,
-          createdAt: "2026-05-27T00:00:00.000Z",
-        },
-      },
-    });
 
-    await expect(repository.loadWorkspace()).resolves.toMatchObject({
-      requirementReviewCandidates: {
-        r1: expect.objectContaining({ status: "pending" }),
-      },
-    });
-
-    await repository.updateRequirementReviewCandidates?.({
-      r1: {
-        ruleId: "r1",
-        beforeRequirement,
-        afterRequirement,
-        repairRationale: "补齐参与者。",
-        blockingReasons: ["缺少参与者"],
-        status: "accepted",
-        errorMessage: null,
-        createdAt: "2026-05-27T00:00:00.000Z",
-      },
-    });
-
-    await expect(repository.loadWorkspace()).resolves.toMatchObject({
-      requirementReviewCandidates: {
-        r1: expect.objectContaining({ status: "accepted" }),
-      },
-    });
-  });
-
-  it("posts batch requirement rule repairs through the API proxy", async () => {
-    const requirement = createAtomicRequirement();
-    const baseline = createRequirementBaseline([requirement]);
-    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
-      if (url.endsWith("/api/runs/requirement-rule-repairs")) {
-        const body = JSON.parse(String(options?.body));
-        return new Response(
-          JSON.stringify({
-            candidates: [
-              {
-                ruleId: "r1",
-                requirement: {
-                  ...requirement,
-                  actor: "用户",
-                  status: "accepted",
-                  confidence: 0.82,
-                },
-                qualityReport: baseline.qualityReport,
-                repairRationale: "补齐参与者。",
-                blockingReasons: [],
-              },
-            ],
-            failures: [],
-            receivedTargetRuleIds: body.targetRuleIds,
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      return new Response(JSON.stringify({ message: "unexpected request" }), {
-        status: 500,
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const repository = createHttpWorkspaceRepository({
-      projectId: "library-booking",
-    });
-    const response = await repository.repairRequirementRules?.({
-      requirementText: "订单需求",
-      rules: [
-        {
-          id: "r1",
-          category: "功能需求",
-          text: "用户可以提交订单。",
-          relatedDiagrams: ["usecase"],
-        },
-      ],
-      targetRuleIds: ["r1"],
-      baseline,
-      providerSettings: managedProviderSettings,
-    });
-
-    expect(response?.candidates[0]?.ruleId).toBe("r1");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/runs/requirement-rule-repairs",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          "X-UML-Project-Id": "library-booking",
-        }),
-      }),
-    );
-    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(requestBody.projectId).toBe("library-booking");
-    expect(requestBody.targetRuleIds).toEqual(["r1"]);
-  });
-
-  it("keeps explicit provider settings for requirement rule repairs", async () => {
-    const requirement = createAtomicRequirement();
-    const baseline = createRequirementBaseline([requirement]);
-    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
-      if (url.endsWith("/api/runs/requirement-rule-repairs")) {
-        const body = JSON.parse(String(options?.body));
-        return new Response(
-          JSON.stringify({
-            candidates: [],
-            failures: body.targetRuleIds.map((ruleId: string) => ({
-              ruleId,
-              errorMessage: "需要人工确认。",
-            })),
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      return new Response(JSON.stringify({ message: "unexpected request" }), {
-        status: 500,
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const repository = createHttpWorkspaceRepository({
-      projectId: "library-booking",
-    });
-    await repository.repairRequirementRules?.({
-      requirementText: "订单需求",
-      rules: [
-        {
-          id: "r1",
-          category: "功能需求",
-          text: "用户可以提交订单。",
-          relatedDiagrams: ["usecase"],
-        },
-      ],
-      targetRuleIds: ["r1"],
-      baseline,
-      providerSettings: managedProviderSettings,
-    });
-
-    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(requestBody.projectId).toBe("library-booking");
-    expect(requestBody.providerSettings).toEqual(managedProviderSettings);
-  });
 });
 
 describe("buildApiUrl", () => {
@@ -3946,12 +3395,6 @@ describe("buildApiUrl", () => {
 
   it("appends api paths to origin-only absolute bases", () => {
     expect(buildApiUrl("/api/runs", "https://example.com")).toBe(
-      "https://example.com/api/runs",
-    );
-  });
-
-  it("does not duplicate api for absolute bases ending in /api", () => {
-    expect(buildApiUrl("/api/runs", "https://example.com/api/")).toBe(
       "https://example.com/api/runs",
     );
   });

@@ -1,7 +1,7 @@
 // Provides the optional Redis/BullMQ boundary for offloading run pipelines to workers.
 import { Queue, Worker, type ConnectionOptions, type Job } from "bullmq";
 import { Redis } from "ioredis";
-import type { RunEvent, StartDocumentRunRequest } from "@uml-platform/contracts";
+import { runEventSchema, type RunEvent, type StartDocumentRunRequest } from "@uml-platform/contracts";
 import type { RunRecord, RunRecordStore } from "../records/run-record-store.js";
 
 export const DEFAULT_RUN_QUEUE_NAME = "generation-runs";
@@ -122,7 +122,7 @@ export async function flushRunStoreIfAvailable(runs: RunRecordStore) {
 export function reviveQueuedRunRecord(job: QueuedRunJob): RunRecord {
   return {
     snapshot: job.record.snapshot,
-    events: job.record.events,
+    events: job.record.events.map(event => runEventSchema.parse(event)),
     listeners: new Set(),
     terminal: job.record.terminal,
     metadata: job.record.metadata,
@@ -204,9 +204,11 @@ export function createBullMqRunQueue(config: RunQueueConfig): RunQueue {
       subscriber.on("message", (receivedChannel: string, message: string) => {
         if (receivedChannel !== channel || closed) return;
         try {
-          listener(JSON.parse(message) as RunEvent);
+          listener(runEventSchema.parse(JSON.parse(message)));
         } catch (error) {
-          console.warn("[run-queue] ignored invalid run event message", error);
+          onError?.(error);
+          if (!initialSubscribeSettled) rejectInitialSubscribe?.(error);
+          void close();
         }
       });
       subscriber.on("error", (error: unknown) => {

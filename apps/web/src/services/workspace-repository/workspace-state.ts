@@ -1,12 +1,13 @@
 // Normalizes workspace records and merges saved run snapshots into repository state.
-import { rebuildRequirementQualityReport } from "@uml-platform/contracts";
 import {
-  useCaseScopedSourceId as getUseCaseScopedSourceId,
+  assertCurrentWorkspaceState,
+  assertCurrentRunSnapshot,
+  invalidateDesignDependents,
+  requirementOutputFingerprints,
+  reuseRequirementBaseline,
+  workspaceGuardConflicts,
+  useCaseScopedSourceId as resolveUseCaseScopedSourceId,
   currentUseCaseSourceIds,
-  isLegacyCodeSnapshot,
-  stripRetiredCodeData,
-  compareRequirementSemantics,
-  type AtomicRequirement,
   designDiagramKindFromRecordKey,
   designRecordBelongsToDiagramKinds,
   designTraceabilityTouchesDiagramKinds,
@@ -37,7 +38,6 @@ import type { RequirementRule } from "../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../entities/workspace/model";
 import {
   designInputFingerprint,
-  normalizeSnapshotFingerprint,
   snapshotInputFingerprint,
 } from "../../shared/lib/fingerprint";
 
@@ -52,9 +52,8 @@ function fingerprintMatches(
   storedFingerprint: string | null | undefined,
   currentFingerprint: string,
 ) {
-  return normalizeSnapshotFingerprint(storedFingerprint) === currentFingerprint;
+  return (storedFingerprint) === currentFingerprint;
 }
-
 
 function hasWholeDesignDiagramError(
   diagramErrors: DesignRunSnapshot["diagramErrors"],
@@ -71,12 +70,11 @@ function successfulDesignDiagramsFromSnapshot(
   snapshot: DesignRunSnapshot,
   designRecords: ReturnType<typeof mapDesignSnapshotToRecords>,
 ) {
-  const selectedDesignDiagrams = new Set(snapshot.selectedDiagrams);
   const artifactDesignDiagrams = Array.from(
     new Set(
       snapshot.svgArtifacts
         .filter((artifact) => {
-          if (!selectedDesignDiagrams.has(artifact.diagramKind)) return false;
+          if (!acceptedModelIds(snapshot).has(getDesignArtifactId(artifact))) return false;
           if (hasWholeDesignDiagramError(snapshot.diagramErrors, artifact.diagramKind)) {
             return false;
           }
@@ -90,7 +88,6 @@ function successfulDesignDiagramsFromSnapshot(
     new Set(
       Object.values(designRecords.modelMap)
         .filter((model) => {
-          if (!selectedDesignDiagrams.has(model.diagramKind)) return false;
           if (hasWholeDesignDiagramError(snapshot.diagramErrors, model.diagramKind)) {
             return false;
           }
@@ -99,153 +96,13 @@ function successfulDesignDiagramsFromSnapshot(
         .map((model) => model.diagramKind),
     ),
   );
-  const successful = new Set([...artifactDesignDiagrams, ...modelDesignDiagrams]);
-  return snapshot.selectedDiagrams.filter((diagram) => successful.has(diagram));
+  return Array.from(new Set([...artifactDesignDiagrams, ...modelDesignDiagrams]));
 }
 
-type RequirementReviewCandidate =
-  WorkspaceRecord["requirementReviewCandidates"][string];
-type BaselineRequirement = RequirementBaseline["requirements"][number];
-
-const REVIEWABLE_REQUIREMENT_FIELDS = [
-  "actor",
-  "subject",
-  "action",
-  "object",
-  "condition",
-  "outcome",
-  "acceptanceCriteria",
-] as const;
-
-
-function acceptedRequirementFromCandidate(
-  candidate: RequirementReviewCandidate,
-  currentRequirement: BaselineRequirement,
-): AtomicRequirement | null {
-  if (candidate.status !== "accepted") return null;
-  const reviewed = candidate.afterRequirement ?? candidate.beforeRequirement;
-  if (!reviewed) return null;
-  if (
-    candidate.afterRequirement &&
-    compareRequirementSemantics(
-      candidate.beforeRequirement,
-      candidate.afterRequirement,
-    ).lostFacts.length > 0
-  ) {
-    return null;
-  }
-  const fieldProvenance = { ...reviewed.fieldProvenance };
-  for (const field of REVIEWABLE_REQUIREMENT_FIELDS) {
-    const provenance = fieldProvenance[field];
-    if (!provenance) continue;
-    fieldProvenance[field] = {
-      ...provenance,
-      status: "accepted",
-      issueIds: [],
-    };
-  }
-  return {
-    ...reviewed,
-    id: currentRequirement.id,
-    sourceRuleId: currentRequirement.sourceRuleId ?? reviewed.sourceRuleId,
-    status: "accepted",
-    confidence: Math.max(reviewed.confidence, currentRequirement.confidence),
-    fieldProvenance,
-  };
-}
-
-
-function reconcileAcceptedReviewCandidates(
-  baseline: RequirementBaseline,
-  candidates: WorkspaceRecord["requirementReviewCandidates"],
-): RequirementBaseline {
-  const acceptedRuleIds = new Set(
-    Object.entries(candidates)
-      .filter(([, candidate]) => candidate.status === "accepted")
-      .map(([ruleId]) => ruleId),
-  );
-  if (acceptedRuleIds.size === 0) return baseline;
-
-  const acceptedRequirementIds = new Set<string>();
-  const requirements = baseline.requirements.map((requirement) => {
-    const ruleId = requirement.sourceRuleId;
-    const candidate = ruleId ? candidates[ruleId] : undefined;
-    if (!candidate || candidate.status !== "accepted") return requirement;
-    const reviewed = acceptedRequirementFromCandidate(candidate, requirement);
-    if (!reviewed) return requirement;
-    acceptedRequirementIds.add(requirement.id);
-    acceptedRequirementIds.add(reviewed.id);
-    return reviewed;
-  });
-  if (acceptedRequirementIds.size === 0) return baseline;
-
-  const issues = baseline.qualityReport.issues.filter(
-    (issue) =>
-      !issue.requirementId || !acceptedRequirementIds.has(issue.requirementId),
-  );
-  return {
-    ...baseline,
-    requirements,
-    qualityReport: rebuildRequirementQualityReport(baseline, requirements, issues),
-  };
-}
-
-function reviewCandidateStillNeeded(
-  baseline: RequirementBaseline,
-  ruleId: string,
-) {
-  const qualityIssueRequirementIds = new Set(
-    baseline.qualityReport.issues.map((issue) => issue.requirementId),
-  );
-  const reviewRequiredRequirementIds = new Set(
-    baseline.qualityReport.reviewRequiredRequirementIds,
-  );
-  return baseline.requirements.some((requirement) => {
-    if (requirement.sourceRuleId !== ruleId) return false;
-    if (reviewRequiredRequirementIds.has(requirement.id)) return true;
-    if (qualityIssueRequirementIds.has(requirement.id)) return true;
-    if (requirement.status !== "accepted") return true;
-    return Object.values(requirement.fieldProvenance).some(
-      (provenance) =>
-        provenance?.status === "pending-review" ||
-        provenance?.status === "rejected",
-    );
-  });
-}
-
-function pruneRequirementReviewCandidatesForBaseline(
-  candidates: WorkspaceRecord["requirementReviewCandidates"],
-  baseline: RequirementBaseline,
-) {
-  const next = { ...candidates };
-  for (const [ruleId, candidate] of Object.entries(next) as Array<
-    [string, RequirementReviewCandidate]
-  >) {
-    if (
-      (candidate.status === "pending" || candidate.status === "failed") &&
-      !reviewCandidateStillNeeded(baseline, ruleId)
-    ) {
-      delete next[ruleId];
-    }
-  }
-  return next;
-}
-
-function applyRequirementBaselineToWorkspace(
-  workspace: WorkspaceRecord,
-  baseline: RequirementBaseline,
-) {
-  const reconciledBaseline = reconcileAcceptedReviewCandidates(
-    baseline,
-    workspace.requirementReviewCandidates,
-  );
-  workspace.requirementBaseline = reconciledBaseline;
-  workspace.requirementQualityReport = reconciledBaseline.qualityReport;
-  workspace.requirementReviewCandidates =
-    pruneRequirementReviewCandidatesForBaseline(
-      workspace.requirementReviewCandidates,
-      reconciledBaseline,
-    );
+function applyRequirementBaselineToWorkspace(workspace: WorkspaceRecord, baseline: RequirementBaseline) {
+  const resolved = reuseRequirementBaseline(workspace.requirementBaseline, baseline);
+  workspace.requirementBaseline = structuredClone(resolved);
+  workspace.requirementQualityReport = structuredClone(resolved.qualityReport);
 }
 
 export function createEmptyWorkspace(): WorkspaceRecord {
@@ -257,7 +114,7 @@ export function createEmptyWorkspace(): WorkspaceRecord {
     rules: [],
     requirementBaseline: null,
     requirementQualityReport: null,
-    requirementReviewCandidates: {},
+
     autoGeneratedUpstreamReviews: {},
     models: {},
     requirementModelTraceability: [],
@@ -275,8 +132,7 @@ export function createEmptyWorkspace(): WorkspaceRecord {
     designDiagramErrors: {},
     manualModelEditStatus: {},
 
-
-    testGenerationResult: null,
+testGenerationResult: null,
     requirementInputFingerprint: null,
     diagramInputFingerprints: {},
     designInputFingerprints: {},
@@ -324,7 +180,7 @@ export function createEmptyWorkspace(): WorkspaceRecord {
 }
 
 export function cloneWorkspace(workspace: WorkspaceRecord): WorkspaceRecord {
-  return stripRetiredCodeData(structuredClone(workspace)) as WorkspaceRecord;
+  return structuredClone(workspace);
 }
 
 type UseCaseScopedDiagram = "analysis" | "sequence";
@@ -344,7 +200,7 @@ function scopedSourceUseCaseId(
   model: unknown,
   prefix: UseCaseScopedDiagram,
 ) {
-  return getUseCaseScopedSourceId(model, prefix, recordKey);
+  return resolveUseCaseScopedSourceId(model, prefix, recordKey);
 }
 
 function isOrphanUseCaseScopedRecord(
@@ -373,33 +229,6 @@ function omitRecordKeys<T extends Record<string, unknown>>(
     delete next[key];
   }
   return next as T;
-}
-
-
-function repairMissingDesignInputFingerprints(workspace: WorkspaceRecord) {
-  if (
-    workspace.generatedDesignDiagramTypes.length === 0 ||
-    Object.keys(workspace.designModels).length === 0
-  ) {
-    return workspace;
-  }
-  const currentDesignFingerprint = designInputFingerprint(
-    Object.values(workspace.models).filter(Boolean),
-    workspace.requirementModelTraceability,
-  );
-  let repaired = false;
-  const designInputFingerprints = { ...workspace.designInputFingerprints };
-  for (const [modelId, model] of Object.entries(workspace.designModels)) {
-    if (!workspace.generatedDesignDiagramTypes.includes(model.diagramKind)) {
-      continue;
-    }
-    if (!designInputFingerprints[modelId]) {
-      designInputFingerprints[modelId] = currentDesignFingerprint;
-      repaired = true;
-    }
-  }
-  if (!repaired) return workspace;
-  return { ...workspace, designInputFingerprints };
 }
 
 function assertGeneratedDesignChainComplete(workspace: WorkspaceRecord) {
@@ -475,12 +304,11 @@ function completeGeneratedDesignDiagrams(
 }
 
 function finalizeSnapshotWorkspace(workspace: WorkspaceRecord) {
-  const repaired = repairMissingDesignInputFingerprints(workspace);
   const finalized = {
-    ...repaired,
+    ...workspace,
     generatedDesignDiagramTypes: completeGeneratedDesignDiagrams(
-      repaired,
-      repaired.generatedDesignDiagramTypes,
+      workspace,
+      workspace.generatedDesignDiagramTypes,
     ),
   };
   assertGeneratedDesignChainComplete(finalized);
@@ -631,24 +459,42 @@ function pruneUseCaseScopedWorkspace(workspace: WorkspaceRecord): WorkspaceRecor
 }
 
 export function mergeWorkspaceState(state?: Partial<WorkspaceRecord>): WorkspaceRecord {
+  assertCurrentWorkspaceState(state ?? {});
   const merged = {
     ...createEmptyWorkspace(),
     ...(state ?? {}),
   };
+  // Validation leaves the original current facts and their saved source versions unchanged.
   merged.feasibilityInputs = feasibilityInputsSchema.parse(
     state?.feasibilityInputs ?? {},
   );
   merged.feasibilityContextTraceability = [
     ...(state?.feasibilityContextTraceability ?? []),
   ];
-  return repairMissingDesignInputFingerprints(pruneUseCaseScopedWorkspace(merged));
+  return pruneUseCaseScopedWorkspace(merged);
 }
 
 export function applySnapshotToWorkspace(
   workspace: WorkspaceRecord,
   snapshot: RunHistorySnapshot,
 ): WorkspaceRecord {
-  if (isLegacyCodeSnapshot(snapshot)) throw new Error("Code prototype snapshots are no longer supported.");
+  assertCurrentWorkspaceState(workspace);
+  assertCurrentRunSnapshot(snapshot);
+  const next = applySnapshotToWorkspaceRecords(workspace, snapshot);
+  if (next === workspace) return workspace;
+  if (!isDesignRunSnapshot(snapshot) && !isDocumentRunSnapshot(snapshot))
+    Object.assign(next.diagramInputFingerprints, requirementOutputFingerprints(snapshot));
+  const regenerated = isDesignRunSnapshot(snapshot) ? snapshot.models.filter(model =>
+    snapshot.outputManifest.some(output => output.kind === "model" && output.id === (model.modelId ?? model.diagramKind)))
+    .map(model => model.diagramKind) : [];
+  return invalidateDesignDependents(workspace, next, regenerated) as unknown as WorkspaceRecord;
+}
+
+function applySnapshotToWorkspaceRecords(
+  workspace: WorkspaceRecord,
+  snapshot: RunHistorySnapshot,
+): WorkspaceRecord {
+  if (snapshot.publicationSkipped || snapshot.workspaceGuard && workspaceGuardConflicts({ snapshot }, { ...workspace }).length) return workspace;
   const next = cloneWorkspace(workspace);
   const currentHasRequirementText = next.requirementText.trim().length > 0;
   const currentHasRequirements =
@@ -718,8 +564,7 @@ export function applySnapshotToWorkspace(
     applyRequirementBaselineToWorkspace(next, snapshot.requirementBaseline);
   }
 
-
-  if (isDesignRunSnapshot(snapshot)) {
+if (isDesignRunSnapshot(snapshot)) {
     const designRecords = mapDesignSnapshotToRecords(snapshot);
     const erroredDesignDiagrams = new Set(
       Object.keys(snapshot.diagramErrors)
@@ -748,24 +593,6 @@ export function applySnapshotToWorkspace(
       designRecords.modelMap,
       successfulAffectedDesignDiagrams,
     );
-    const requirementDiagrams = snapshot.requirementModels.map(
-      (model) => model.diagramKind,
-    );
-    const canMergeRequirementContextFromSnapshot =
-      requirementDiagrams.length > 0 &&
-      snapshotRequirementText.trim().length > 0 &&
-      snapshotRules.length > 0 &&
-      (!currentHasRequirements ||
-        fingerprintMatches(
-          snapshotRequirementFingerprint,
-          workspaceRequirementFingerprint,
-        ));
-    const currentRequirementVersion = fingerprintMatches(
-      next.requirementInputFingerprint,
-      workspaceRequirementFingerprint,
-    )
-      ? next.rulesVersion
-      : next.rulesVersion + 1;
     const currentDesignFingerprint = designInputFingerprint(
       snapshot.requirementModels,
       snapshot.requirementModelTraceability,
@@ -837,46 +664,6 @@ export function applySnapshotToWorkspace(
       workspace.designModels,
     );
     next.selectedDiagramTypes = [];
-    if (canMergeRequirementContextFromSnapshot) {
-      next.models = {
-        ...clearRequirementScopedRecord(next.models, requirementDiagrams),
-        ...(Object.fromEntries(
-          snapshot.requirementModels.map((model) => [
-            getRequirementModelId(model),
-            model,
-          ]),
-        ) as WorkspaceRecord["models"]),
-      };
-      next.requirementModelTraceability = mergeRequirementTraceability(
-        next.requirementModelTraceability,
-        snapshot.requirementModelTraceability,
-        requirementDiagrams,
-      );
-      next.generatedDiagramTypes = Array.from(
-        new Set([...next.generatedDiagramTypes, ...requirementDiagrams]),
-      );
-      next.requirementInputFingerprint = workspaceRequirementFingerprint;
-      next.rulesVersion = currentRequirementVersion;
-      next.rulesBasedOnTextVersion = 0;
-      next.diagramInputFingerprints = {
-        ...next.diagramInputFingerprints,
-        ...Object.fromEntries(
-          requirementDiagrams.map((diagram) => [
-            diagram,
-            snapshotRequirementFingerprint,
-          ]),
-        ),
-      };
-      next.diagramVersions = {
-        ...next.diagramVersions,
-        ...Object.fromEntries(
-          requirementDiagrams.map((diagram) => [
-            diagram,
-            currentRequirementVersion,
-          ]),
-        ),
-      };
-    }
     return finalizeSnapshotWorkspace(next);
   }
 
@@ -898,30 +685,14 @@ export function applySnapshotToWorkspace(
   const artifactDiagrams = Array.from(
     new Set(
       [
-        ...snapshot.plantUml.map((artifact) => artifact.diagramKind),
-        ...snapshot.svgArtifacts.map((artifact) => artifact.diagramKind),
+        ...snapshot.plantUml.filter(artifact => acceptedModelIds(snapshot).has(getRequirementArtifactId(artifact))).map((artifact) => artifact.diagramKind),
+        ...snapshot.svgArtifacts.filter(artifact => acceptedModelIds(snapshot).has(getRequirementArtifactId(artifact))).map((artifact) => artifact.diagramKind),
       ].filter(
         (diagram): diagram is DiagramType => !erroredDiagrams.has(diagram),
       ),
     ),
   ) as DiagramType[];
-  const selectedModelDiagrams = modelDiagrams.filter((diagram) =>
-    snapshot.selectedDiagrams.includes(diagram),
-  );
-  const canFallbackToContextModels =
-    snapshot.selectedDiagrams.length === 0 &&
-    Object.keys(snapshot.diagramErrors).length === 0;
-  const successfulAffected = Array.from(
-    new Set(
-      artifactDiagrams.length > 0
-        ? artifactDiagrams
-        : selectedModelDiagrams.length > 0
-          ? selectedModelDiagrams
-          : canFallbackToContextModels
-            ? modelDiagrams
-            : [],
-    ),
-  );
+  const successfulAffected = Array.from(new Set([...artifactDiagrams, ...modelDiagrams]));
   const affectedForErrors = Array.from(
     new Set([
       ...snapshot.selectedDiagrams,
@@ -987,28 +758,10 @@ export function applySnapshotToWorkspace(
       successfulAffected.map((diagram) => [diagram, nextRulesVersion]),
     ),
   };
-  next.diagramInputFingerprints = {
-    ...next.diagramInputFingerprints,
-    ...Object.fromEntries(
-      successfulAffected.map((diagram) => [
-        diagram,
-        snapshotRequirementFingerprint,
-      ]),
-    ),
-  };
+  next.diagramInputFingerprints = clearRequirementScopedRecord(
+    next.diagramInputFingerprints, successfulAffected, workspace.models,
+  );
   return finalizeSnapshotWorkspace(next);
-}
-
-export function restoreSnapshotToWorkspace(
-  workspace: WorkspaceRecord,
-  snapshot: RunHistorySnapshot,
-): WorkspaceRecord {
-  const base = {
-    ...createEmptyWorkspace(),
-    id: workspace.id,
-    name: workspace.name,
-  };
-  return applySnapshotToWorkspace(base, snapshot);
 }
 
 function clearAndMergeDiagramErrors<T extends string, V>(
@@ -1139,19 +892,23 @@ export function stableWorkspaceState(
   return state;
 }
 
+// Only accepted model outputs may overwrite persisted model, source and preview records.
+function acceptedModelIds(snapshot: Pick<RunSnapshot, "outputManifest">) {
+  return new Set(snapshot.outputManifest.filter(output => output.kind === "model").map(output => output.id));
+}
 function mapSnapshotToRecords(snapshot: RunSnapshot) {
   return {
     modelMap: Object.fromEntries(
-      snapshot.models.map((model) => [getRequirementModelId(model), model]),
+      snapshot.models.filter(model => acceptedModelIds(snapshot).has(getRequirementModelId(model))).map((model) => [getRequirementModelId(model), model]),
     ) as WorkspaceRecord["models"],
     plantUmlMap: Object.fromEntries(
-      snapshot.plantUml.map((artifact) => [
+      snapshot.plantUml.filter(artifact => acceptedModelIds(snapshot).has(getRequirementArtifactId(artifact))).map((artifact) => [
         getRequirementArtifactId(artifact),
         artifact.source,
       ]),
     ) as WorkspaceRecord["plantUml"],
     svgMap: Object.fromEntries(
-      snapshot.svgArtifacts.map((artifact) => [
+      snapshot.svgArtifacts.filter(artifact => acceptedModelIds(snapshot).has(getRequirementArtifactId(artifact))).map((artifact) => [
         getRequirementArtifactId(artifact),
         artifact,
       ]),
@@ -1162,16 +919,16 @@ function mapSnapshotToRecords(snapshot: RunSnapshot) {
 function mapDesignSnapshotToRecords(snapshot: DesignRunSnapshot) {
   return {
     modelMap: Object.fromEntries(
-      snapshot.models.map((model) => [getDesignModelId(model), model]),
+      snapshot.models.filter(model => acceptedModelIds(snapshot).has(getDesignModelId(model))).map((model) => [getDesignModelId(model), model]),
     ) as WorkspaceRecord["designModels"],
     plantUmlMap: Object.fromEntries(
-      snapshot.plantUml.map((artifact) => [
+      snapshot.plantUml.filter(artifact => acceptedModelIds(snapshot).has(getDesignArtifactId(artifact))).map((artifact) => [
         getDesignArtifactId(artifact),
         artifact.source,
       ]),
     ) as WorkspaceRecord["designPlantUml"],
     svgMap: Object.fromEntries(
-      snapshot.svgArtifacts.map((artifact) => [
+      snapshot.svgArtifacts.filter(artifact => acceptedModelIds(snapshot).has(getDesignArtifactId(artifact))).map((artifact) => [
         getDesignArtifactId(artifact),
         artifact,
       ]),

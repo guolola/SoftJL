@@ -25,7 +25,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/当前版本-v2.0.0-2563eb?style=flat-square" alt="当前版本 v2.0.0" />
+  <img src="https://img.shields.io/badge/当前版本-v2.2.0-2563eb?style=flat-square" alt="当前版本 v2.2.0" />
   <img src="https://img.shields.io/badge/Frontend-React%20%2B%20Next.js-61dafb?style=flat-square" alt="React and Next.js" />
   <img src="https://img.shields.io/badge/API-Fastify%20%2B%20Zod-111827?style=flat-square" alt="Fastify and Zod" />
   <img src="https://img.shields.io/badge/UML-PlantUML-f59e0b?style=flat-square" alt="PlantUML" />
@@ -54,7 +54,7 @@
 
 - **分析与设计**：需求规则、可行性分析、UML 模型与系统设计。
 - **测试与讲解依据**：测试用例、覆盖矩阵、追踪矩阵和任务记录，帮助核对自己的工作。
-- **工程文档**：可行性研究报告、需求规格说明书、软件设计说明书，支持版本管理与 DOCX 下载；在线编辑需配置 OnlyOffice。
+- **工程文档**：可行性研究报告、需求规格说明书、软件设计说明书，支持版本管理与 DOCX 下载；支持浏览器内 DOCX 预览；下载后可用 Word 兼容编辑器修改。
 - **代码实现依据**：已保存的设计和验收条件，供兼容的 Coding Agent 读取，在外部仓库中实现与测试。
 
 生成后仍需检查内容、按学校要求整理文档并验证系统运行结果。工程说明书可作为项目报告的材料，不等同于完整毕业论文。Coding Agent 的真实客户端兼容性与生成代码验收仍待完成，详见 [接入说明](docs/integrations/coding-agent-mcp.md)。
@@ -62,6 +62,31 @@
 ## 项目简介
 
 SoftJL Community 是可独立部署的 AI 软件工程工作台，保留从需求分析到工程文档的完整实践流程。社区版来自 SoftJL 的独立源码快照，使用新的提交历史维护。
+
+## v2.2.0 更新重点
+
+本次更新完善来源映射与成果同步，重点包括：
+
+- **只补缺失来源**：用有次数上限的小请求补齐缺失元素，保留已生成模型和已确认映射；来源完整时不增加调用。
+- **成果及时同步**：连续返回的需求模型预览和可行性成果无需刷新即可更新，同时保护后续人工修改。
+- **映射率可核对**：按当前矩阵范围的全部元素计算，搜索、分页不改变比例，分析模型总览与单图口径一致。
+- **附件提示更明确**：需求输入区直接说明支持的文本格式和模型视觉能力要求。
+- **项目协作简化**：移除组织、课程、班级、团队及其关联字段、权限和配额；项目可见性统一为私有或公开，通过成员邀请协作。
+
+本版本直接采用 `current_platform_schema_v2` 安装基线，不再执行旧社区版迁移链。
+
+## 生成链路优化
+
+生成流程重点优化等待时间，减少重复模型输入。
+
+- **按依赖组织上下文**：仅携带当前任务来源；单用例生成保留目标及 include/extend 等依赖，业务约束与完整目标模型继续保留。
+- **按诊断局部修复**：使用带版本校验的字段补丁，无法定位时才扩大到当前产物重生成。
+- **并行推进与失败项重试**：独立设计分支并行处理，重试失败模型实例时保留已成功成果。
+- **普通版与专业版项目**：普通版通过持续对话按需生成图表；专业版保留需求、可行性、设计、测试和追踪的完整流程。两者均支持自带模型，名称不表示付费档位。
+- **展示实际消耗**：任务历史汇总供应商报告的输入、输出、缓存等 Token，包含适用的修复与失败调用，缺失用量不补造。
+- **内置文档预览**：直接预览 DOCX，无需单独部署文档服务器。
+
+[发布说明](release-notes.md)提供可复现的合成输入样本对比。实际总耗时和总 Token 还受项目规模、模型、供应商延迟及修复次数影响，样本结果不代表线上节省比例。
 
 ## 核心能力
 
@@ -81,7 +106,7 @@ SoftJL Community 是可独立部署的 AI 软件工程工作台，保留从需�
 | 📄 可行性研究报告 | ✅ | ✅ | 生成、版本管理与 DOCX 下载 |
 | 📄 需求规格说明书 | ✅ | ✅ | 生成、版本管理与 DOCX 下载 |
 | 📄 软件设计说明书 | ✅ | ✅ | 生成、版本管理与 DOCX 下载 |
-| ✏️ 说明书在线编辑 | ✅ | ✅ | 依赖 OnlyOffice 文档服务；社区版需自行配置，官网以编辑入口可用状态为准 |
+| 👁️ 内置 DOCX 预览与下载 | ✅ | ✅ | 在浏览器预览生成结果，下载后使用 Word 兼容编辑器修改 |
 | 🎨 图表编辑与导出 | ✅ | ✅ | PlantUML 编辑与 SVG 导出 |
 | 🔗 来源追踪与变更影响 | ✅ | ✅ | 查看产物来源、依赖关系与版本变化 |
 | 👥 项目与成员管理 | ✅ | ✅ | 账号认证、项目成员与角色权限 |
@@ -122,6 +147,26 @@ MCP 本地体验使用 `npm run dev:mcp`（先完成下方首次安装与构建�
 
 社区版直接进入项目列表，未登录时进入登录流程。功能范围以本页说明为准。
 
+以下建模截图在当前本地社区版中使用示例数据拍摄。
+
+### 快速建模
+
+通过对话输入需求、查看工具执行状态，并从左侧打开已保存模型。
+
+![快速建模：需求对话与已保存模型导航](docs/images/readme-quick-modeling.jpg)
+
+示例设计类图包含 **20 个类、4 个接口、2 个枚举和 21 条关系**，覆盖控制器、业务服务、仓储与领域对象，可查看属性、方法及关联。
+
+![快速建模：包含控制器、业务服务、仓储与领域对象的设计类图](docs/images/readme-quick-modeling-diagram.jpg)
+
+### 工程建模
+
+按需求、可行性、建模、测试和说明书流程逐步推进，在工作区检查模型元素与来源关系。
+
+示例预约时序图包含 **6 个参与者、19 条消息和 3 个条件分支**，展示预约成功、座位被占用及重复预约时的交互。
+
+![工程建模：包含业务校验与异常分支的提交预约时序图](docs/images/readme-engineering-modeling.jpg)
+
 ### 项目仪表盘
 
 下图为仪表盘统计区域截图。数值取决于账号可访问的项目与任务记录，不是上述操作案例的生成结果。
@@ -161,7 +206,7 @@ flowchart LR
 
 ### 1. 准备环境
 
-安装 Node.js 22、npm 10、Java 21 和 Graphviz。Docker 用于可选的 PostgreSQL 与 OnlyOffice，本地临时体验无需 Docker。首次渲染服务安装可能下载 PDF 中文字体，需要网络。
+安装 Node.js 22.19+、npm 10、Java 21 和 Graphviz。Docker 用于可选的 PostgreSQL，本地临时体验无需 Docker。首次渲染服务安装可能下载 PDF 中文字体，需要网络。
 
 ### 2. 安装并启动核心服务
 
@@ -182,15 +227,15 @@ npm run dev
 | API | `4101` |
 | Render Service | `4002` |
 
-Web 输出 `Ready` 后打开首页；`http://localhost:3000/api/health` 和 `http://127.0.0.1:4002/health` 应返回 `status: "ok"`。核心服务支持生成与下载文档，在线编辑需另行启用 OnlyOffice。
+Web 输出 `Ready` 后打开首页；`http://localhost:3000/api/health` 和 `http://127.0.0.1:4002/health` 应返回 `status: "ok"`。核心服务支持生成、内置 DOCX 预览与下载，无需额外文档服务器。
 
-### 3. 选择持久化与在线编辑
+### 3. 选择持久化
 
 本机安装 Docker 后，运行 `npm run dev:postgres` 启动专用开发数据库和核心服务，数据库保存在 Docker 数据卷。脚本中的数据库凭据仅适用于本机开发，生产环境必须替换。不要把已有完整版数据库用于社区版。
 
 已有 PostgreSQL 时，将根目录 [.env.example](.env.example) 复制为 `.env`，设置 `DATABASE_URL` 和自己生成的 `UML_PROVIDER_CONFIG_SECRET`，再运行 `npm run dev`。根目录启动入口加载该文件；密钥与数据库连接配置不要提交。保管加密密钥，随意更换会使已保存的供应商凭据无法解密。
 
-需要 OnlyOffice 在线编辑时，先启动 Docker 引擎，再运行 `npm run dev:full`。脚本检查本机 `8080` 端口的 OnlyOffice，不可用时创建或启动对应容器；首次运行会下载镜像。外部文档服务和生产配置见 [生产环境配置](docs/deployment/production-environment.md)。
+文档生成后可直接在浏览器预览 DOCX，并下载到本地修改。`npm run dev:full` 保留为核心服务的兼容启动别名。生产配置见 [生产环境配置](docs/deployment/production-environment.md)。
 
 ### 4. 配置模型服务
 
@@ -204,7 +249,7 @@ Web 输出 `Ready` 后打开首页；`http://localhost:3000/api/health` 和 `htt
 | --- | --- |
 | `npm run dev` | 自动构建共享包并启动核心服务，默认使用临时内存 |
 | `npm run dev:postgres` | 使用本机 PostgreSQL 开发数据库持久化数据 |
-| `npm run dev:full` | 检查 OnlyOffice 并启动支持在线编辑的环境 |
+| `npm run dev:full` | 核心服务兼容启动别名，包含内置文档预览 |
 | `npm run dev:postgres:demo` | 启动带就绪检查的 PostgreSQL 演示环境 |
 | `npm run dev:api:safe` | 以安全开发配置单独启动 API |
 | `npm run dev:render` | 单独启动 PlantUML 渲染服务 |
@@ -230,6 +275,10 @@ Web 输出 `Ready` 后打开首页；`http://localhost:3000/api/health` 和 `htt
 | `npm run audit:docs` | 检查文档命名、结构、链接和杂物 |
 
 > 构建输出、根目录 `.local-*` 临时文件、环境配置、私钥、日志和本地运行数据保持 Git 忽略。
+
+## 版本与升级
+
+当前版本为 **v2.2.0**，详见[发布说明与部署要求](release-notes.md)。首次部署使用空数据库初始化 `current_platform_schema_v2`；已采用该基线的数据库可继续使用。不再保留旧社区版迁移链或历史模型格式兼容。应用会拒绝旧数据库结构，不执行旧库升级；新建项目时明确选择普通版或专业版。
 
 ## 在线访问
 

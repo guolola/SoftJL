@@ -30,7 +30,7 @@ export function protectedDesignGenerationKinds(current: Record<string, unknown>,
     const entries = Object.entries(current).filter(([id, model]) => designRecordBelongsToDiagramKinds(id, model, [kind]));
     if (artifacts && entries.some(([id]) => (["source", "svg"] as const).some((type) => {
       const key = `${type}:${kind}:${id}`;
-      if (!base[key]) return false;
+      if (!base[key] && !applied[key]) return false;
       const value = snapshotInputFingerprint(artifactBody((type === "source" ? artifacts.currentSources : artifacts.currentSvgs)[id], type));
       return value !== base[key] && value !== applied[key] && value !== snapshotInputFingerprint(artifactBody((type === "source" ? artifacts.generatedSources : artifacts.generatedSvgs)[id], type));
     }))) return true;

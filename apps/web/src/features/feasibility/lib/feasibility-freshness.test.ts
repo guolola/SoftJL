@@ -1,12 +1,14 @@
+import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
 import { describe, expect, it } from "vitest";
 import {
   feasibilityInputsSchema,
+  completeFeasibilityImplementationPlanSchema,
+  createRequirementBaselineSnapshot,
   buildFeasibilityImplementationFingerprint,
-  snapshotInputFingerprint,
+  buildFeasibilityContextFingerprint,
 } from "@uml-platform/contracts";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
 import {
-  createRequirementBaseline,
   createBusinessFlowArtifact,
   createRule,
   createWorkspaceRecord,
@@ -15,23 +17,13 @@ import { feasibilityArtifactState, includeFeasibilityDependencies } from "./feas
 
 function readyWorkspace() {
   const rules = [createRule()];
-  const requirementBaseline = createRequirementBaseline();
+  const requirementBaseline = createRequirementBaselineSnapshot({ runId: "freshness", requirementText: rules[0]!.text, rules });
   const feasibilityInputs = feasibilityInputsSchema.parse({});
   const feasibilityContextModel = {
     diagramKind: "context",
     modelId: "context",
   } as unknown as NonNullable<WorkspaceRecord["feasibilityContextModel"]>;
-  const feasibilityImplementationPlan = {
-    candidates: [
-      {
-        id: "candidate-1",
-        implementation: {},
-      },
-    ],
-    recommendedCandidateId: "candidate-1",
-  } as unknown as NonNullable<
-    WorkspaceRecord["feasibilityImplementationPlan"]
-  >;
+  const feasibilityImplementationPlan = completeFeasibilityImplementationPlanSchema.parse(FEASIBILITY_IMPLEMENTATION_EXAMPLE);
 
   return createWorkspaceRecord({
     rules,
@@ -40,9 +32,10 @@ function readyWorkspace() {
     feasibilityContextModel,
     feasibilityContextPlantUml: "@startuml\n@enduml",
     feasibilityContextSvg: "<svg />",
-    feasibilityContextFingerprint: snapshotInputFingerprint({
+    feasibilityContextFingerprint: buildFeasibilityContextFingerprint({
       rules,
       requirementBaseline,
+      inputs: feasibilityInputs,
     }),
     feasibilityImplementationPlan,
     feasibilityBusinessFlow: createBusinessFlowArtifact(rules, requirementBaseline),
@@ -57,6 +50,27 @@ function readyWorkspace() {
 }
 
 describe("feasibilityArtifactState", () => {
+  it("does not certify an incomplete plan from a matching fingerprint", () => {
+    const workspace = readyWorkspace();
+    workspace.feasibilityImplementationPlan!.candidates[0]!.implementation!.costEstimates = [];
+    const state = feasibilityArtifactState(workspace);
+    expect(state.implementationExists).toBe(false);
+    expect(state.reportReady).toBe(false);
+    expect(state.requiredArtifacts).toContain("implementation");
+  });
+
+  it("marks context and its implementation stale when saved supplementary facts change", () => {
+    const workspace = readyWorkspace();
+    expect(feasibilityArtifactState(workspace).contextStatus).toBe("ready");
+    workspace.feasibilityInputs.projectName = "更新的系统名称";
+    const state = feasibilityArtifactState(workspace);
+    expect(state.contextStatus).toBe("stale");
+    expect(state.businessFlowStatus).toBe("ready");
+    expect(state.implementationStatus).toBe("stale");
+    expect(state.reportReady).toBe(false);
+    expect(state.requiredArtifacts).toEqual(["context", "implementation"]);
+  });
+
   it("invalidates implementation and report readiness after flow or traceability edits", () => {
     for (const edit of [
       (workspace: WorkspaceRecord) => { workspace.feasibilityBusinessFlow!.model.nodes[1]!.name += "变更"; },
@@ -81,7 +95,7 @@ describe("feasibilityArtifactState", () => {
     expect(feasibilityArtifactState(workspace).reportReady).toBe(false);
   });
 
-  it("retains legacy plans as stale and selects only missing or stale dependencies", () => {
+  it("marks plans with missing current dependencies as stale and selects only missing or stale dependencies", () => {
     const workspace = readyWorkspace();
     workspace.feasibilityBusinessFlow = null;
     let state = feasibilityArtifactState(workspace);
@@ -100,6 +114,11 @@ describe("feasibilityArtifactState", () => {
     workspace.feasibilityInputs.teamSize = 10;
     expect(feasibilityArtifactState(workspace).businessFlowStale).toBe(false);
     workspace.rules[0]!.text += "更新业务规则";
+    // A manual rule commit creates its baseline before any freshness read.
+    workspace.requirementBaseline = createRequirementBaselineSnapshot({
+      runId: "manual-rules", requirementText: workspace.requirementText, rules: workspace.rules,
+      previousBaseline: workspace.requirementBaseline, origin: "manual",
+    });
     expect(feasibilityArtifactState(workspace).businessFlowStale).toBe(true);
   });
 

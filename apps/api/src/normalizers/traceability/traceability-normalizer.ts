@@ -1,5 +1,8 @@
 // Validates generated traceability references against the model elements that actually exist.
 import {
+  useCaseParticipationGaps,
+  requirementTypeAppliesToModel,
+  diagramKindSchema,
   type DesignDiagramModelSpec,
   type DesignModelTraceabilityEntry,
   type DiagramModelSpec,
@@ -230,6 +233,7 @@ function isBusinessElementKind(kind: string) {
 
 export function collectModelRefs(
   models: Array<DiagramModelSpec | DesignDiagramModelSpec>,
+  includeStructuralRelationships = false,
 ): RefMaps {
   const refs: ModelElementRef[] = [];
   for (const model of models) {
@@ -305,7 +309,7 @@ export function collectModelRefs(
     for (const relationship of ensureArray(record.relationships)) {
       if (!isPlainRecord(relationship)) continue;
       if (
-        diagramKind === "activity" &&
+        !includeStructuralRelationships && diagramKind === "activity" &&
         (!businessElementIds.has(pinOwners.get(compactString(relationship.sourceId)) ?? compactString(relationship.sourceId)) ||
           !businessElementIds.has(pinOwners.get(compactString(relationship.targetId)) ?? compactString(relationship.targetId)))
       ) {
@@ -348,15 +352,16 @@ function collectRelationshipEndpointRefs(
 
   for (const model of models) {
     const diagramKind = model.diagramKind;
+    const modelId = model.modelId;
     const record = model as unknown as Record<string, unknown>;
     for (const relationship of ensureArray(record.relationships)) {
       if (!isPlainRecord(relationship)) continue;
       const relationshipId = compactString(relationship.id);
       if (!relationshipId) continue;
-      const relationshipRef = refs.byKey.get(refKey(diagramKind, relationshipId));
+      const relationshipRef = refs.byKey.get(refKey(diagramKind, relationshipId, modelId));
       if (!relationshipRef) continue;
       const endpoints = relationshipEndpointIds(relationship)
-        .map((id) => refs.byKey.get(refKey(diagramKind, id)))
+        .map((id) => refs.byKey.get(refKey(diagramKind, id, modelId)))
         .filter((ref): ref is ModelElementRef => Boolean(ref));
       if (endpoints.length > 0) {
         endpointsByRelationship.set(refEntryKey(relationshipRef), endpoints);
@@ -438,13 +443,19 @@ export function normalizeRequirementTraceabilityWithCoverage(
   rules: RequirementRule[],
   models: DiagramModelSpec[],
 ): RequirementTraceabilityCoverageResult {
-  const validRules = new Set(rules.map((rule) => rule.id.toLowerCase()));
+  const validRules = new Map(rules.map((rule) => [rule.id.toLowerCase(), rule]));
   const requirementRefs = collectModelRefs(models);
+  // Optional sources on real start/end flows are valid references. They do not
+  // become mandatory business coverage targets just because the LLM supplied them.
+  const referenceCatalog = collectModelRefs(models, true);
   const traceability = ensureArray(raw).flatMap((entry) => {
     if (!isPlainRecord(entry)) return [];
     const ruleId = compactString(entry.ruleId);
     if (!ruleId || !validRules.has(ruleId.toLowerCase())) return [];
-    const target = resolveRef(entry.target, requirementRefs);
+    const target = resolveRef(entry.target, referenceCatalog);
+    const diagram = diagramKindSchema.safeParse(target?.diagramKind);
+    // LLM element references must stay inside the deterministic model-level association.
+    if (!diagram.success || !requirementTypeAppliesToModel(validRules.get(ruleId.toLowerCase())!.type, diagram.data)) return [];
     return target
       ? [
           {
@@ -465,62 +476,37 @@ export function normalizeRequirementTraceabilityWithCoverage(
   return { traceability, missingTargets };
 }
 
-function scoreRequirementRuleForTarget(
-  rule: RequirementRule,
-  target: ModelElementRef,
-) {
-  const ruleText = `${rule.id} ${rule.category} ${rule.text}`.toLowerCase();
-  const targetLabel = target.label.toLowerCase();
-  const targetId = target.elementId.toLowerCase();
-  let score = rule.relatedDiagrams.some((diagram) => diagram === target.diagramKind)
-    ? 10
-    : 0;
-  if (targetLabel && ruleText.includes(targetLabel)) score += 8;
-  if (targetId && ruleText.includes(targetId)) score += 6;
-  for (const token of targetLabel.split(/[\s:：,，.。;；/\\|_\-]+/)) {
-    if (token.length >= 2 && ruleText.includes(token)) score += 2;
-  }
-  return score;
-}
-
-export function autoFillRequirementTraceability(
-  missingTargets: ModelElementRef[],
+// A declared actor link is a structural repair, so reuse the use case's existing
+// rule bindings as reviewable candidates; never invent rules or cover new business elements.
+export function reconcileRequirementTraceabilityAfterRepair(
+  raw: unknown,
   rules: RequirementRule[],
-): RequirementModelTraceabilityEntry[] {
-  if (rules.length === 0) return [];
-  return missingTargets.flatMap((target, targetIndex): RequirementModelTraceabilityEntry[] => {
-    const candidates = rules.filter((rule) =>
-      rule.relatedDiagrams.some((diagram) => diagram === target.diagramKind),
-    );
-    const fallback =
-      candidates[targetIndex % Math.max(candidates.length, 1)] ??
-      rules[targetIndex % rules.length];
-    if (!fallback) return [];
-    const scored = (candidates.length > 0 ? candidates : rules).reduce(
-      (current, rule) =>
-        scoreRequirementRuleForTarget(rule, target) >
-        scoreRequirementRuleForTarget(current, target)
-          ? rule
-          : current,
-      fallback,
-    );
-    const best =
-      scoreRequirementRuleForTarget(scored, target) > 10 ? scored : fallback;
-    const deterministic = scoreRequirementRuleForTarget(best, target) > 10;
-    return [
-      {
-        ruleId: best.id,
+  original: DiagramModelSpec,
+  candidate: DiagramModelSpec,
+): RequirementTraceabilityCoverageResult {
+  const coverage = normalizeRequirementTraceabilityWithCoverage(raw, rules, [candidate]);
+  if (original.diagramKind !== "usecase" || candidate.diagramKind !== "usecase" ||
+      original.modelId !== candidate.modelId || !coverage.missingTargets.length) return coverage;
+
+  const originalTrace = normalizeRequirementTraceability(raw, rules, [original]);
+  const derived: RequirementModelTraceabilityEntry[] = [];
+  for (const gap of useCaseParticipationGaps(original).gaps) {
+    if (!candidate.relationships.some((edge) => edge.id === gap.relationship.id &&
+        edge.type === "association" && edge.sourceId === gap.actorId && edge.targetId === gap.useCaseId)) continue;
+    const target = coverage.missingTargets.find((ref) => ref.elementId === gap.relationship.id);
+    if (!target) continue;
+    for (const binding of originalTrace.filter((entry) => entry.target.elementId === gap.useCaseId)) {
+      derived.push({
+        ruleId: binding.ruleId,
         target,
-        // Text similarity is a suggested link even when its score is high.
         mappingSource: "auto-filled-pending-review",
         reviewStatus: "pending",
-        confidence: deterministic ? "medium" : "low",
-        rationale: deterministic
-          ? "由需求规则文本与模型元素名称相似度建立映射。"
-          : "由需求规则关联图类型自动建立候选映射，需复核。",
-      },
-    ];
-  });
+        confidence: binding.confidence ?? "low",
+        rationale: `按用例 ${gap.useCaseId} 明确声明的参与者 ${gap.actorId} 补齐关联，沿用该用例的需求规则映射，需复核。`,
+      });
+    }
+  }
+  return normalizeRequirementTraceabilityWithCoverage([...coverage.traceability, ...derived], rules, [candidate]);
 }
 
 export function normalizeDesignTraceability(

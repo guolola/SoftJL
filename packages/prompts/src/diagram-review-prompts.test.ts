@@ -17,6 +17,8 @@ for (const stage of ["feasibility", "requirements", "design"] as ModelingStage[]
     for (const text of [structure, image, repair]) { assert.ok(text.includes(`${stage}.${kind}`)); assert.ok(text.includes(JSON.stringify(model))); }
     assert.match(structure, /business_content/); assert.match(image, /先独立观察图片/); assert.match(repair, /禁止自由增删业务内容/);
     assert.ok(image.includes("CURRENT_SOURCE")); assert.ok(repair.includes("verified-rule"));
+    assert.match(repair, /只返回 \{"changes"/);
+    assert.doesNotMatch(repair, /兼容模式|"model":完整模型/);
   });
 }
 test("large authoritative current models are never string-truncated by review builders", () => {

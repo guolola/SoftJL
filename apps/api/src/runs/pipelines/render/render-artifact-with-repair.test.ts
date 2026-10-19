@@ -1,4 +1,5 @@
 // Verifies PlantUML render artifacts are normalized before run snapshots persist.
+import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
@@ -12,6 +13,7 @@ import type { RunRecord } from "../../records/run-record-store.js";
 import { renderArtifactWithRepair } from "./render-artifact-with-repair.js";
 
 const providerSettings: ProviderSettings = {
+  modelCapability: strictTestModelCapability("test-model"),
   apiBaseUrl: "https://llm.test",
   apiKey: "test-key",
   model: "test-model",

@@ -626,6 +626,7 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
                 </span>)}
         </div></SettingRow>
         <SettingRow label={t("providerSettings.autoRules")} hint={t("providerSettings.autoRulesHint")} htmlFor="auto-rules"><Switch id="auto-rules" checked={settings.autoGenerate} onCheckedChange={value => update("autoGenerate", value)}/></SettingRow>
+        <SettingRow label={t("providerSettings.completionSound")} hint={t("providerSettings.completionSoundHint")} htmlFor="completion-sound"><Switch id="completion-sound" checked={settings.completionSound} onCheckedChange={value => update("completionSound",value)} /></SettingRow>
         <SettingRow label={t("providerSettings.staleBanner")} hint={t("providerSettings.staleBannerHint")} htmlFor="stale-banner"><Switch id="stale-banner" checked={settings.showStaleBanner} onCheckedChange={value => update("showStaleBanner", value)}/></SettingRow>
       </div>
 

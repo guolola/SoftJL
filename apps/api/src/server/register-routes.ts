@@ -8,6 +8,8 @@ import { registerHealthRoutes } from "../routes/health/register-health-routes.js
 import { registerAuthRoutes } from "../routes/auth/register-auth-routes.js";
 import { registerCaseRoutes } from "../routes/cases/register-case-routes.js";
 import { registerDocumentRoutes } from "../routes/documents/register-document-routes.js";
+import { registerStandardProjectRoutes } from "../routes/standard/register-standard-project-routes.js";
+import { createModelCatalog } from "./model-catalog.js";
 import { registerProjectRoutes } from "../routes/projects/register-project-routes.js";
 import { registerDashboardRoutes } from "../routes/dashboard/register-dashboard-routes.js";
 import { registerProviderConfigRoutes } from "../routes/provider-configs/register-provider-config-routes.js";
@@ -32,7 +34,6 @@ import { runDocumentStagePipeline } from "../runs/pipelines/document-pipeline.js
 import { runStagePipeline } from "../runs/pipelines/requirements-pipeline.js";
 import { createProjectWorkspaceSync } from "../routes/runs/project-workspace-sync.js";
 import type { GenerationUsageService } from "../generation/generation-usage.js";
-import type { AcademicAdminRepository } from "../db/academic-admin-repository.js";
 import type { SystemNoticeStore } from "../system-notices/records/system-notice-store.js";
 import { DEFAULT_SSE_ALLOW_ORIGIN } from "./defaults.js";
 import { resolveRuntimeCwd } from "./runtime.js";
@@ -48,7 +49,6 @@ export type RegisterApiRoutesOptions = {
     mailAdapter: MailAdapter;
     generationUsage: GenerationUsageService;
     nodeEnv: string | null;
-    academicStore: AcademicAdminRepository;
     runs: RunRecordStore;
     documentLibrary: DocumentLibrary;
     providerConfigs: ProviderConfigStore;
@@ -64,7 +64,7 @@ export type RegisterApiRoutesOptions = {
     databaseProbe?: () => Promise<void>;
     testRunAccessContext?: RunAccessContext;
 };
-export function registerApiRoutes({ app, healthPayload, versionPayload, authStore, mailAdapter, generationUsage, nodeEnv, academicStore, runs, documentLibrary, providerConfigs, providerUsageTracker, llmScheduler, runQueue, llmTransport, renderClient, pngRenderClient, pdfRenderClient, systemNoticeStore, analyticsStore, databaseProbe, testRunAccessContext, }: RegisterApiRoutesOptions) {
+export function registerApiRoutes({ app, healthPayload, versionPayload, authStore, mailAdapter, generationUsage, nodeEnv, runs, documentLibrary, providerConfigs, providerUsageTracker, llmScheduler, runQueue, llmTransport, renderClient, pngRenderClient, pdfRenderClient, systemNoticeStore, analyticsStore, databaseProbe, testRunAccessContext, }: RegisterApiRoutesOptions) {
     const activeUserIdFromRequest = async (request: FastifyRequest) => {
         const sessionId = readSessionCookie(request);
         const session = sessionId ? await authStore.getActiveSession(sessionId) : null;
@@ -79,6 +79,8 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
         const member = await authStore.findProjectMember(projectId, userId);
         return Boolean(member && hasProjectPermission(member.role, permission));
     };
+    const modelCatalog = createModelCatalog(app, nodeEnv);
+    registerStandardProjectRoutes({ app, authStore, llmTransport, llmScheduler, renderClient, pngRenderClient, modelCatalog, providerConfigs, providerUsageTracker, generationUsage, analyticsStore, documentLibrary });
     registerHealthRoutes({ app, healthPayload, versionPayload });
     registerAuthRoutes({
         app,
@@ -97,8 +99,6 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
         authStore,
         mailAdapter,
         nodeEnv,
-        academicStore,
-        runs,
     });
     registerDashboardRoutes({ app, authStore, runs, documentLibrary });
     registerCaseRoutes({ app, authStore, renderClient });
@@ -128,6 +128,7 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
     });
     registerRunRoutes({
         app,
+        modelCatalog,
         runs,
         documentLibrary,
         llmTransport,
@@ -175,6 +176,7 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
     });
     registerFeasibilityRoutes({
         app,
+        modelCatalog,
         runs,
         renderClient,
         pngRenderClient,

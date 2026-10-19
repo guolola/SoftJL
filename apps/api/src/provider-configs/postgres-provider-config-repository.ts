@@ -1,9 +1,9 @@
 // Persists provider configuration views and encrypted API keys in PostgreSQL.
+import { randomUUID } from "node:crypto";
 import { createSecretKey, encryptSecret, decryptSecret, hashSecret } from "./provider-secret.js";
-import {
-  randomUUID,
-} from "node:crypto";
 import type { ProviderModelCapabilityMap } from "@uml-platform/contracts";
+import { providerConfigScopeTypeSchema, providerModelCapabilityMapSchema } from "@uml-platform/contracts";
+import { z } from "zod";
 import type { Queryable } from "../db/transactions.js";
 import {
   maskApiKey,
@@ -13,7 +13,7 @@ import {
   type ProviderConfigView,
   type ProviderRiskState,
 } from "./provider-config-store.js";
-import { normalizeProviderAllowedModels, requireAllowedModels } from "./default-provider-models.js";
+import { normalizeProviderAllowedModels } from "./default-provider-models.js";
 import {
   inferOpenAiCompatibleProvider,
   normalizeManagedProviderBaseUrl,
@@ -34,12 +34,12 @@ type ProviderConfigRow = {
   last_used_at: string | Date | null;
   risk_state: ProviderRiskState;
   default_model: string;
-  allowed_models: string[] | string | null;
-  model_capabilities: ProviderModelCapabilityMap | string | null;
+  allowed_models: string[];
+  model_capabilities: ProviderModelCapabilityMap;
   quota: string;
   status: ProviderConfigStatus;
-  scope_type?: "system" | "user" | "project";
-  scope_id?: string | null;
+  scope_type: "system" | "user" | "project";
+  scope_id: string | null;
   breaker_state: "closed" | "open";
   breaker_failure_count: string | number;
   breaker_opened_at: string | Date | null;
@@ -66,25 +66,19 @@ export type PostgresProviderConfigRepository = ReturnType<
 >;
 
 
+
+
+
 function toIsoString(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value;
 }
 
 function mapProviderRow(row: ProviderConfigRow): ProviderConfigView {
-  const persistedAllowedModels = Array.isArray(row.allowed_models)
-    ? row.allowed_models
-    : row.allowed_models
-      ? JSON.parse(row.allowed_models)
-      : null;
-  const persistedModelCapabilities =
-    typeof row.model_capabilities === "string"
-      ? JSON.parse(row.model_capabilities)
-      : row.model_capabilities;
-  const allowedModels = normalizeProviderAllowedModels(
-    row.default_model,
-    persistedAllowedModels,
-    { baseUrl: row.base_url, provider: row.provider },
-  );
+  const allowedModels = z.array(z.string().min(1)).min(1).parse(row.allowed_models);
+  const modelCapabilities = providerModelCapabilityMapSchema.parse(row.model_capabilities);
+  if (row.breaker_state === "open" && (!row.breaker_opened_at || !Number.isFinite(new Date(row.breaker_opened_at).getTime()))) {
+    throw new ProviderConfigPolicyError("Open provider circuit requires its recorded opening timestamp");
+  }
   return {
     id: row.id,
     name: row.name,
@@ -100,14 +94,11 @@ function mapProviderRow(row: ProviderConfigRow): ProviderConfigView {
     riskState: row.risk_state,
     defaultModel: row.default_model,
     allowedModels,
-    modelCapabilities: normalizeProviderModelCapabilities(
-      allowedModels,
-      persistedModelCapabilities,
-    ),
+    modelCapabilities,
     quota: row.quota,
     status: row.status,
-    scopeType: row.scope_type ?? "system",
-    scopeId: row.scope_id ?? null,
+    scopeType: providerConfigScopeTypeSchema.parse(row.scope_type),
+    scopeId: z.string().min(1).nullable().parse(row.scope_id),
     breakerState: row.breaker_state,
     breakerFailureCount: Number(row.breaker_failure_count),
     breakerOpenedAt: row.breaker_opened_at ? toIsoString(row.breaker_opened_at) : null,
@@ -129,6 +120,23 @@ function mapAuditRow(row: AuditLogRow): ProviderAuditLog {
   };
 }
 
+function requireAllowedModels(
+  defaultModel: string,
+  allowedModels: string[] | undefined,
+) {
+  const normalized = normalizeProviderAllowedModels(allowedModels ?? []);
+  if (normalized.length === 0) {
+    throw new ProviderConfigPolicyError(
+      "Provider config requires at least one allowed model",
+    );
+  }
+  if (!normalized.includes(defaultModel)) {
+    throw new ProviderConfigPolicyError(
+      "Provider default model must be included in allowed models",
+    );
+  }
+  return normalized;
+}
 
 const providerViewColumns = `
   id,
@@ -225,14 +233,11 @@ export function createPostgresProviderConfigRepository({
       const id = randomUUID();
       const maskedKey = maskApiKey(apiKey);
       const defaultModel = input.defaultModel.trim();
-      const allowedModels = requireAllowedModels(defaultModel, input.allowedModels, {
-        baseUrl,
-        provider,
-      });
+      const allowedModels = requireAllowedModels(defaultModel, input.allowedModels);
       const modelCapabilities = normalizeProviderModelCapabilities(
         allowedModels,
         input.modelCapabilities,
-        { fillMissing: Boolean(input.modelCapabilities) },
+        { fillMissing: true },
       );
       const keyPurpose =
         input.keyPurpose?.trim() || "admin-configured provider key";
@@ -364,7 +369,6 @@ export function createPostgresProviderConfigRepository({
       const allowedModels = requireAllowedModels(
         defaultModel,
         input.allowedModels ?? existing.allowedModels,
-        { baseUrl, provider },
       );
       const modelCapabilities = normalizeProviderModelCapabilities(
         allowedModels,
@@ -685,7 +689,7 @@ export function createPostgresProviderConfigRepository({
           set breaker_probe_started_at = $2
           where id = $1
             and breaker_state = 'open'
-            and coalesce(breaker_opened_at, breaker_last_failure_at, updated_at)
+            and breaker_opened_at
               <= $2::timestamptz - ($3 * interval '1 millisecond')
             and (
               breaker_probe_started_at is null
@@ -720,7 +724,8 @@ export function createPostgresProviderConfigRepository({
           status: "cooldown" as const,
         };
       }
-      const openedAt = row.breaker_opened_at ?? row.breaker_last_failure_at ?? row.updated_at;
+      const providerConfig = mapProviderRow(row);
+      const openedAt = providerConfig.breakerOpenedAt!;
       const cooldownRemainingMs = Math.max(
         0,
         new Date(openedAt).getTime() + cooldownMs - now.getTime(),
@@ -731,7 +736,7 @@ export function createPostgresProviderConfigRepository({
         : 0;
       return {
         acquired: false as const,
-        providerConfig: mapProviderRow(row),
+        providerConfig,
         retryAfterSeconds: Math.max(
           1,
           Math.ceil(Math.max(cooldownRemainingMs, leaseRemainingMs) / 1_000),

@@ -1,5 +1,4 @@
 // Stores document metadata in PostgreSQL while delegating DOCX blobs to a storage backend.
-import { versionItemFromDocument } from "./document-versions.js";
 import {
   documentLibraryItemSchema,
   documentLibraryVersionItemSchema,
@@ -9,8 +8,6 @@ import {
 import type { Queryable } from "../../db/transactions.js";
 import type {
   DocumentLibrary,
-  DocumentWorkspaceCredentials,
-  OnlyOfficeDocumentAccessPurpose,
 } from "./document-library.js";
 
 interface DocumentRecordRow {
@@ -26,7 +23,7 @@ interface DocumentRecordRow {
   version: number;
   status: string;
   run_id: string | null;
-  source_run_id?: string | null;
+  source_run_id: string | null;
   storage_key: string;
   metadata: unknown;
   created_at: Date | string;
@@ -56,33 +53,13 @@ function toIsoString(value: Date | string) {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function readMetadata(value: unknown): Record<string, unknown> {
-  if (!value) return {};
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === "object"
-        ? (parsed as Record<string, unknown>)
-        : {};
-    } catch {
-      return {};
-    }
-  }
-  return typeof value === "object" ? (value as Record<string, unknown>) : {};
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" && value.trim() ? value : null;
-}
-
 function storageKeyForDocument(item: DocumentLibraryItem) {
   return `${item.workspaceId}/${item.id}/document.docx`;
 }
 
 function rowToDocumentItem(row: DocumentRecordRow) {
-  const metadata = readMetadata(row.metadata);
-  const workspaceId = row.workspace_id ?? readString(metadata.workspaceId);
-  const fileName = row.file_name ?? readString(metadata.fileName);
+  const workspaceId = row.workspace_id;
+  const fileName = row.file_name;
   if (!workspaceId || !fileName) return null;
 
   return documentLibraryItemSchema.parse({
@@ -94,25 +71,18 @@ function rowToDocumentItem(row: DocumentRecordRow) {
     title: row.title,
     fileName,
     mimeType: row.mime_type,
-    byteLength:
-      row.byte_length ??
-      (typeof metadata.byteLength === "number" ? metadata.byteLength : 0),
+    byteLength: row.byte_length,
     version: row.version,
     status: row.status,
-    sourceRunId:
-      row.source_run_id ??
-      row.run_id ??
-      readString(metadata.sourceRunId) ??
-      null,
+    sourceRunId: row.source_run_id,
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
   });
 }
 
 function rowToVersionItem(row: DocumentVersionRow) {
-  const metadata = readMetadata(row.metadata);
-  const workspaceId = row.workspace_id ?? readString(metadata.workspaceId);
-  const fileName = row.file_name ?? readString(metadata.fileName);
+  const workspaceId = row.workspace_id;
+  const fileName = row.file_name;
   if (!workspaceId || !fileName) return null;
 
   return documentLibraryVersionItemSchema.parse({
@@ -123,14 +93,11 @@ function rowToVersionItem(row: DocumentVersionRow) {
     version: row.version,
     fileName,
     mimeType: row.mime_type,
-    byteLength:
-      row.byte_length ??
-      (typeof metadata.byteLength === "number" ? metadata.byteLength : 0),
-    sourceRunId: row.source_run_id ?? readString(metadata.sourceRunId) ?? null,
+    byteLength: row.byte_length,
+    sourceRunId: row.source_run_id,
     createdAt: toIsoString(row.created_at),
   });
 }
-
 
 function metadataForDocument(item: DocumentLibraryItem) {
   return {
@@ -284,9 +251,6 @@ export function createPostgresDocumentLibrary({
   db,
   blobStorage,
 }: PostgresDocumentLibraryOptions): DocumentLibrary {
-  async function authenticateWorkspace(credentials: DocumentWorkspaceCredentials) {
-    return blobStorage.authenticateWorkspace(credentials);
-  }
 
   async function listDocuments(
     workspaceId: string,
@@ -468,26 +432,10 @@ export function createPostgresDocumentLibrary({
     const versions = result.rows
       .map(rowToVersionItem)
       .filter((item): item is DocumentLibraryVersionItem => Boolean(item));
-    return versions.length > 0 ? versions : [versionItemFromDocument(document)];
-  }
-
-  function createOnlyOfficeConfig(
-    input: Parameters<DocumentLibrary["createOnlyOfficeConfig"]>[0],
-  ) {
-    return blobStorage.createOnlyOfficeConfig(input);
-  }
-
-  function verifyOnlyOfficeAccessToken(input: {
-    documentId: string;
-    purpose: OnlyOfficeDocumentAccessPurpose;
-    token: string | null | undefined;
-    accessTokenSecret: string;
-  }) {
-    return blobStorage.verifyOnlyOfficeAccessToken(input);
+    return versions;
   }
 
   return {
-    authenticateWorkspace,
     listDocuments,
     listAllDocuments,
     getDocument,
@@ -498,7 +446,5 @@ export function createPostgresDocumentLibrary({
     deleteDocument,
     restoreDocument,
     listDocumentVersions,
-    createOnlyOfficeConfig,
-    verifyOnlyOfficeAccessToken,
   };
 }

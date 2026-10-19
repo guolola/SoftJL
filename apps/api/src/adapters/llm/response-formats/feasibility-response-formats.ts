@@ -190,10 +190,6 @@ const implementationSchema = strictObject({
   costEstimates: { type: "array", minItems: 1, items: costEstimateSchema },
   benefitEstimates: { type: "array", minItems: 1, items: benefitEstimateSchema },
   absenceDeclarations: { type: "array", items: absenceSchema },
-  oneTimeCosts: stringArraySchema,
-  recurringCosts: stringArraySchema,
-  quantitativeBenefits: stringArraySchema,
-  qualitativeBenefits: stringArraySchema,
   risks: { type: "array", minItems: 3, maxItems: 5, items: riskSchema },
   verdicts: { type: "array", minItems: 5, maxItems: 5, items: verdictSchema },
   decision: { type: "string", enum: ["go", "conditional-go", "no-go"] },
@@ -273,10 +269,6 @@ export const REPAIR_FEASIBILITY_ECONOMICS_RESPONSE_FORMAT =
     "costEstimates",
     "benefitEstimates",
     "absenceDeclarations",
-    "oneTimeCosts",
-    "recurringCosts",
-    "quantitativeBenefits",
-    "qualitativeBenefits",
   ]);
 export const REPAIR_FEASIBILITY_VERDICT_RESPONSE_FORMAT =
   candidateSectionRepairFormat("feasibility_verdict_repair", [

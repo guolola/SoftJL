@@ -33,7 +33,7 @@ export function ChainOfThoughtContent({ className, ...props }: ComponentProps<ty
 }
 
 export function ChainOfThoughtStep({ icon: Icon = Circle, iconClassName, label, status = "complete", statusLabel, children, className, ...props }:
-  Omit<ComponentProps<"section">, "title"> & { icon?: LucideIcon; iconClassName?: string; label: ReactNode; status?: "complete" | "active" | "pending"; statusLabel?: string }) {
+  Omit<ComponentProps<"section">, "title"> & { icon?: LucideIcon; iconClassName?: string; label: ReactNode; status?: "complete" | "active" | "pending"; statusLabel?: ReactNode }) {
   return <section {...props} className={cn("flex min-w-0 gap-2 text-sm leading-6 text-muted-foreground", className)} data-slot="chain-of-thought-step" data-status={status}>
     <div className="flex w-4 shrink-0 flex-col items-center gap-2 pt-1">
       <Icon aria-hidden="true" className={cn("size-4 shrink-0", status === "active" && "text-foreground", iconClassName)} />

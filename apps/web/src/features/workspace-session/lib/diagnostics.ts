@@ -1,6 +1,6 @@
 // Converts run events into bounded diagnostics state for the workspace shell.
 
-import type { RunEvent, RunStage } from "@uml-platform/contracts";
+import type { RunEventInput, RunStage } from "@uml-platform/contracts";
 import { localizeRunFailure } from "../../../shared/i18n/api-errors";
 import type { DiagnosticEvent, RunDiagnostics } from "../model/session-state";
 import { isTerminalRunEvent } from "./run-events";
@@ -66,10 +66,10 @@ export function formatStageForDiagnostics(stage: RunStage | null) {
     render_document_file: "写入说明书文件",
     generate_plantuml: "生成图源码",
     render_svg: "渲染图像",
-    verify_diagram_visual: "视觉检查",
+    verify_diagram_visual: "模型结构检查",
     generate_context: "生成系统环境图",
-    generate_business_flow: "生成业务与系统流程图",
-    render_business_flow: "渲染业务与系统流程图",
+    generate_business_flow: "生成业务流程图",
+    render_business_flow: "渲染业务流程图",
     render_context: "渲染系统环境图",
     generate_implementation: "生成实现方案",
   };
@@ -106,7 +106,7 @@ export function sanitizeDiagnosticText(text: string) {
     ["render_document_file", "写入说明书文件"],
     ["generate_plantuml", "生成图源码"],
     ["render_svg", "渲染图像"],
-    ["verify_diagram_visual", "视觉检查"],
+    ["verify_diagram_visual", "模型结构检查"],
     ["PlantUML", "图源码"],
     ["SVG", "图像"],
     [ "代码文件"],
@@ -136,16 +136,16 @@ export function appendDiagnosticStream(current: string, chunk: string) {
 }
 
 export function isMeaningfulLlmChunkEvent(
-  event: RunEvent,
+  event: RunEventInput,
 ): boolean {
   return event.type === "llm_chunk" && event.chunk.trim().length > 0;
 }
 
-export function shouldDisplayDiagnosticEvent(event: RunEvent) {
+export function shouldDisplayDiagnosticEvent(event: RunEventInput) {
   return event.type !== "llm_chunk" && event.type !== "run_activity" && event.type !== "stage_finished";
 }
 
-export function summarizeEvent(event: RunEvent): DiagnosticEvent {
+export function summarizeEvent(event: RunEventInput): DiagnosticEvent {
   const at = new Date().toISOString();
   const suffix = `${at}:${Math.random().toString(36).slice(2, 8)}`;
   switch (event.type) {
@@ -244,7 +244,7 @@ export function summarizeEvent(event: RunEvent): DiagnosticEvent {
   }
 }
 
-export function getProgressFromEvent(event: RunEvent) {
+export function getProgressFromEvent(event: RunEventInput) {
   switch (event.type) {
     case "queued":
       return 5;
@@ -299,7 +299,7 @@ export function getProgressFromEvent(event: RunEvent) {
 
 export function deriveRunDiagnosticsFromEvent(
   current: RunDiagnostics,
-  event: RunEvent,
+  event: RunEventInput,
   diagnosticEvent: DiagnosticEvent,
 ) {
   const meaningfulChunk = isMeaningfulLlmChunkEvent(event);

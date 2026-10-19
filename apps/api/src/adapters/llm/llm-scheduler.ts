@@ -383,6 +383,7 @@ export function createScheduledLlmTransport({
       let usage: LlmRequestTelemetry["usage"] = null;
       let usageUnavailableReason: string | null = null;
       let formatFallbackCount = 0;
+      let requestRetryCount = 0;
       let failure: unknown = null;
       let completedNormally = false;
 
@@ -392,10 +393,15 @@ export function createScheduledLlmTransport({
           const providerStream = transport.streamChatCompletion({
             runContext: input.runContext,
             providerSettings: input.providerSettings,
+            reasoning: input.reasoning,
             messages: input.messages as ChatMessage[],
             responseFormat:
               input.responseFormat as ChatCompletionResponseFormat | null | undefined,
             abortSignal: input.abortSignal,
+            onRequestRetry(event) {
+              requestRetryCount += 1;
+              input.onRequestRetry?.(event);
+            },
             onResponseFormatFallback(event) {
               formatFallbackCount += 1;
               input.onResponseFormatFallback?.(event);
@@ -486,7 +492,7 @@ export function createScheduledLlmTransport({
             outcome: completedNormally ? "success" : cancelled ? "cancelled" : "failed",
             statusCode: providerError?.status ?? null,
             errorCategory,
-            retryCount: usageUnavailableReason === "provider_rejected_stream_usage" ? 1 : 0,
+            retryCount: requestRetryCount + (usageUnavailableReason === "provider_rejected_stream_usage" ? 1 : 0),
             formatFallbackCount,
             usageUnavailableReason: usage ? null : usageUnavailableReason ?? "provider_did_not_return_usage",
           };

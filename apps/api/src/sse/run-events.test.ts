@@ -19,8 +19,8 @@ test("progress SSE strips provider bodies and images while preserving replay ord
   const app = Fastify();
   const started: RunEvent = { type: "run_activity", runId: "run-1", callId: "call", eventId: "start", createdAt: "2026-10-12T00:00:00Z", stage: "generate_models", phase: "started", format: "technical", inputImages: [{ url: "data:image/png;base64,secret-image" }] };
   const snapshot = createEmptySnapshot("run-1", "需求全文", ["usecase"]); snapshot.status = "completed";
-  const events: RunEvent[] = [started, { ...started, eventId: "thought", phase: "reasoning", text: "隐藏思考正文" }, { ...started, eventId: "answer", phase: "output", text: "生成正文" }, { ...started, eventId: "done", phase: "completed" }, { type: "completed", eventId: "terminal", snapshot }];
-  registerRunEventsRoute({ app, runs: new Map([["run-1", { snapshot, events, listeners: new Set(), terminal: true }]]), path: "/runs/:runId/events", notFoundMessage: "missing", defaultAllowOrigin: "http://localhost:5173" });
+  const events: RunEvent[] = [started, { ...started, eventId: "thought", phase: "reasoning", text: "隐藏思考正文" }, { ...started, eventId: "answer", phase: "output", text: "生成正文" }, { ...started, eventId: "done", phase: "completed" }, { createdAt: "2026-10-18T00:00:00.000Z", type: "completed", eventId: "terminal", snapshot }];
+  registerRunEventsRoute({ app, runs: new Map([["run-1", { snapshot, events, listeners: new Set(), terminal: true }]]), path: "/runs/:runId/events",  defaultAllowOrigin: "http://localhost:3000" });
   const response = await app.inject({ method: "GET", url: "/runs/run-1/events?view=progress" });
   const replay = response.body.split("\n").filter((line) => line.startsWith("data:")).map((line) => JSON.parse(line.slice(5)));
   assert.deepEqual(replay.map((event) => event.eventId), ["start", "done", "terminal"]);
@@ -30,7 +30,7 @@ test("progress SSE strips provider bodies and images while preserving replay ord
 });
 
 function createCompletedRunRecord(): RunRecord {
-  const event = {
+  const event = { eventId: 'fixture-1', createdAt: "2026-10-18T00:00:00.000Z",
     type: "completed",
     snapshot: completedSnapshot,
   } as RunEvent;
@@ -46,13 +46,39 @@ function createCompletedRunRecord(): RunRecord {
 test("SSE sequence cursor resumes only new progress and validates cursor values", async () => {
   const { app, runs } = await createSseTestApp();
   const record = runs.get("run-1")!;
-  record.events = [{ type: "queued", sequence: 1 }, { type: "stage_started", stage: "generate_models", sequence: 2 }, { type: "completed", snapshot: completedSnapshot, sequence: 3 }];
+  record.events = [{ eventId: 'fixture-2', createdAt: "2026-10-18T00:00:00.000Z", type: "queued", sequence: 1 }, { eventId: 'fixture-3', createdAt: "2026-10-18T00:00:00.000Z", type: "stage_started", stage: "generate_models", sequence: 2 }, { eventId: 'fixture-4', createdAt: "2026-10-18T00:00:00.000Z", type: "completed", snapshot: completedSnapshot, sequence: 3 }];
   const resumed = await app.inject({ method: "GET", url: "/runs/run-1/events?view=progress&afterSequence=2" });
   assert.match(resumed.body, /id: 3/);
   assert.doesNotMatch(resumed.body, /"queued"|"stage_started"/);
   const invalid = await app.inject({ method: "GET", url: "/runs/run-1/events?afterSequence=-1" });
   assert.equal(invalid.statusCode, 400);
   await app.close();
+});
+
+test("SSE replay preserves persisted events without inventing event identity or time", async () => {
+  const { app, runs } = await createSseTestApp();
+  const record = runs.get("run-1")!;
+  record.eventCreatedAt = ["2026-10-18T00:00:00.000Z"];
+  const response = await app.inject({ method: "GET", url: "/runs/run-1/events" });
+  const replay = response.body.split("\n").filter((line) => line.startsWith("data:")).map((line) => JSON.parse(line.slice(5)));
+  assert.deepEqual(replay, record.events);
+  assert.equal(replay[0].sequence, undefined);
+  assert.equal(replay[0].eventId, record.events[0].eventId);
+  assert.equal(replay[0].createdAt, record.events[0].createdAt);
+  await app.close();
+});
+
+test("SSE rejects history missing event identity or time before opening a stream", async () => {
+  for (const field of ["eventId", "createdAt"]) {
+    const { app, runs } = await createSseTestApp();
+    const event = runs.get("run-1")!.events[0] as unknown as Record<string, unknown>;
+    delete event[field];
+    const response = await app.inject({ method: "GET", url: "/runs/run-1/events" });
+    assert.equal(response.statusCode, 500);
+    assert.doesNotMatch(response.headers["content-type"] ?? "", /text\/event-stream/);
+    assert.equal(Object.hasOwn(event, field), false);
+    await app.close();
+  }
 });
 
 async function createSseTestApp() {
@@ -64,8 +90,8 @@ async function createSseTestApp() {
     app,
     runs,
     path: "/runs/:runId/events",
-    notFoundMessage: "Run not found",
-    defaultAllowOrigin: "http://localhost:5173",
+
+    defaultAllowOrigin: "http://localhost:3000",
     heartbeatMs: 1000,
   });
 
@@ -74,14 +100,14 @@ async function createSseTestApp() {
 
 test("replays history before buffered terminal publications and deduplicates overlapping live events", async () => {
   const app = Fastify();
-  const started: RunEvent = { type: "stage_started", stage: "generate_models", eventId: "stage-one" };
-  const record: RunRecord = { snapshot: { ...completedSnapshot, status: "running" }, events: [{ type: "queued", eventId: "queued" }, started], listeners: new Set(), terminal: false };
+  const started: RunEvent = { createdAt: "2026-10-18T00:00:00.000Z", type: "stage_started", stage: "generate_models", eventId: "stage-one" };
+  const record: RunRecord = { snapshot: { ...completedSnapshot, status: "running" }, events: [{ createdAt: "2026-10-18T00:00:00.000Z", type: "queued", eventId: "queued" }, started], listeners: new Set(), terminal: false };
   let closed = false;
   registerRunEventsRoute({
-    app, runs: new Map([["run-1", record]]), path: "/runs/:runId/events", notFoundMessage: "missing", defaultAllowOrigin: "http://localhost:5173",
+    app, runs: new Map([["run-1", record]]), path: "/runs/:runId/events",  defaultAllowOrigin: "http://localhost:3000",
     subscribeRunEvents: async (_runId, receive) => {
       receive(started);
-      receive({ type: "cancelled", eventId: "end", message: "已取消" });
+      receive({ createdAt: "2026-10-18T00:00:00.000Z", type: "cancelled", eventId: "end", message: "已取消" });
       return { close: async () => { closed = true; } };
     },
   });
@@ -115,21 +141,21 @@ async function withApiCorsOrigins<T>(
 }
 
 test("run event SSE allows an allowlisted default origin", async () => {
-  await withApiCorsOrigins("http://localhost:5173", async () => {
+  await withApiCorsOrigins("http://localhost:3000", async () => {
     const { app } = await createSseTestApp();
 
     const response = await app.inject({
       method: "GET",
       url: "/runs/run-1/events",
       headers: {
-        origin: "http://localhost:5173",
+        origin: "http://localhost:3000",
       },
     });
 
     assert.equal(response.statusCode, 200);
     assert.equal(
       response.headers["access-control-allow-origin"],
-      "http://localhost:5173",
+      "http://localhost:3000",
     );
     assert.equal(response.headers["access-control-allow-credentials"], "true");
 
@@ -189,7 +215,7 @@ test("run event SSE keeps no-origin requests usable", async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(
     response.headers["access-control-allow-origin"],
-    "http://localhost:5173",
+    "http://localhost:3000",
   );
   assert.match(response.body, /"type":"completed"/);
 
@@ -214,7 +240,7 @@ test("run event SSE closes after a live cancelled event", async () => {
     url: "/runs/run-cancel/events",
   });
   setTimeout(() => {
-    emitEvent(record, {
+    emitEvent(record, { eventId: 'fixture-5', createdAt: "2026-10-18T00:00:00.000Z",
       type: "cancelled",
       message: "Run cancelled by user",
     } as RunEvent);
@@ -249,8 +275,8 @@ test("run event SSE forwards subscribed Redis events and closes after terminal e
     app,
     runs,
     path: "/runs/:runId/events",
-    notFoundMessage: "Run not found",
-    defaultAllowOrigin: "http://localhost:5173",
+
+    defaultAllowOrigin: "http://localhost:3000",
     heartbeatMs: 1000,
     subscribeRunEvents: async (runId, listener) => {
       assert.equal(runId, "run-redis");
@@ -268,7 +294,7 @@ test("run event SSE forwards subscribed Redis events and closes after terminal e
     url: "/runs/run-redis/events",
   });
   setTimeout(() => {
-    redisListener?.({
+    redisListener?.({ eventId: 'fixture-6', createdAt: "2026-10-18T00:00:00.000Z",
       type: "completed",
       snapshot: completedSnapshot,
     } as RunEvent);
@@ -304,8 +330,8 @@ test("run event SSE ends when the Redis subscriber fails during streaming", asyn
     app,
     runs,
     path: "/runs/:runId/events",
-    notFoundMessage: "Run not found",
-    defaultAllowOrigin: "http://localhost:5173",
+
+    defaultAllowOrigin: "http://localhost:3000",
     heartbeatMs: 1000,
     subscribeRunEvents: async (_runId, _listener, onError) => {
       failSubscriber = onError ?? null;

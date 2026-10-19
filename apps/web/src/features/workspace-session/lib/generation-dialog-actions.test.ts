@@ -1,3 +1,4 @@
+import { createRequirementBaselineSnapshot } from "@uml-platform/contracts";
 // Verifies generation result dialog copy for document completion edge cases.
 import { describe, expect, it } from "vitest";
 import {
@@ -6,7 +7,6 @@ import {
   requirementRunCompletionDialog,
 } from "./generation-dialog-actions";
 import { operationFailureForCode } from "./operation-failure";
-import type { RequirementBaseline } from "@uml-platform/contracts";
 import {
   clearRequirementRuleRequest,
   pendingRequirementRuleRequest,
@@ -19,9 +19,6 @@ describe("documentRunCompletionDialog", () => {
       diagramFailureCount: 0,
       isRulesOnly: true,
       ignoredCount: 2,
-      qualityHintCount: 0,
-      repairFailedCount: 0,
-      repairPendingCount: 0,
       runId: "rules-with-skips",
     });
     expect(dialog.tone).toBe("warning");
@@ -66,7 +63,7 @@ describe("documentRunCompletionDialog", () => {
         params: { count: 1 }, details: { ruleIds: ["r2"] },
       }),
       runId: null, stageLabel: "设计模型",
-      requirementBaseline: { requirements: [{ id: "REQ-002", sourceRuleId: "r2" }] } as RequirementBaseline,
+      requirementBaseline: createRequirementBaselineSnapshot({ runId: "test", requirementText: "用户预约", rules: [{ id: "r2", text: "用户预约", type: "functional" as const }] }),
     });
     expect(dialog.message).toContain("r2（REQ-002）");
     dialog.primaryAction?.onSelect?.();

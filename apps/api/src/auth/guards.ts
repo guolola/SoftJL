@@ -1,4 +1,5 @@
 // Shared auth, project permission, and admin guards for route modules and future admin workers.
+import { createHttpErrorResponse } from "../server/http-error-response.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AdminRole, ProjectPermission } from "@uml-platform/contracts";
 import {
@@ -49,21 +50,21 @@ async function requireAuthWithCookie(
 
   if (!session || !user) {
     reply.code(401);
-    return { message: "Authentication required" } as const;
+    return createHttpErrorResponse(reply);
   }
 
   if (user.status !== "active") {
     reply.code(403);
-    return { message: "User is not active" } as const;
+    return createHttpErrorResponse(reply);
   }
 
   return { user, session };
 }
 
 export function isAuthError(
-  value: AuthContext | { message: string },
-): value is { message: string } {
-  return "message" in value;
+  value: AuthContext | ReturnType<typeof createHttpErrorResponse>,
+): value is ReturnType<typeof createHttpErrorResponse> {
+  return "error" in value;
 }
 
 export async function requireProjectPermission(
@@ -79,22 +80,22 @@ export async function requireProjectPermission(
   const project = await authStore.getProject(projectId);
   if (!project || project.status === "deleted") {
     reply.code(404);
-    return { message: "Project not found" } as const;
+    return createHttpErrorResponse(reply);
   }
 
   const member = await authStore.findProjectMember(projectId, auth.user.id);
   if (!member || !hasProjectPermission(member.role, permission)) {
     reply.code(403);
-    return { message: "Project permission required" } as const;
+    return createHttpErrorResponse(reply);
   }
 
   return { ...auth, project, member };
 }
 
 export function isProjectPermissionError(
-  value: ProjectPermissionContext | { message: string },
-): value is { message: string } {
-  return "message" in value;
+  value: ProjectPermissionContext | ReturnType<typeof createHttpErrorResponse>,
+): value is ReturnType<typeof createHttpErrorResponse> {
+  return "error" in value;
 }
 
 export async function requireAdminRole(
@@ -108,7 +109,7 @@ export async function requireAdminRole(
 
   if (!(await authStore.userHasSystemRole(auth.user.id, roles))) {
     reply.code(403);
-    return { message: "Admin role required" } as const;
+    return createHttpErrorResponse(reply);
   }
 
   return auth;

@@ -3,10 +3,15 @@ import { expect, test } from "@playwright/test";
 import { mockProjectApi, projectId } from "./fixtures/project-workspace";
 
 test("30,000 provider fragments do not accumulate in progress UI and click P95 stays below 200ms", async ({ page }, info) => {
-  await mockProjectApi(page);
+  // The stress scenario needs a valid empty workspace, independently of model-navigation fixtures.
+  await mockProjectApi(page, {
+    rules: [], models: {}, designModels: {}, svgArtifacts: {}, designSvgArtifacts: {},
+    requirementModelTraceability: [], designModelTraceability: [],
+    selectedDiagramTypes: [], generatedDiagramTypes: [], selectedDesignDiagramTypes: [], generatedDesignDiagramTypes: [],
+  });
   const runId = "run-performance";
   const createdAt = new Date().toISOString();
-  const run = { runId, projectId, runKind: "design", status: "running", stage: "generate_design_models", createdAt };
+  const run = { runId, projectId, runKind: "design", operationType: "design_modeling", status: "running", stage: "generate_design_models", createdAt };
   const events = Array.from({ length: 20 }, (_, index) => ({ type: "run_activity", runId, eventId: `start-${index}`, sequence: index + 1, callId: `call-${index}`, stage: "generate_design_models", subtaskId: `model-${index}`, subtaskLabel: `模型 ${index}`, format: "technical", phase: "started", createdAt }));
   await page.route(`**/api/projects/${projectId}/runs`, (route) => route.fulfill({ json: { projectId, runs: [run] } }));
   await page.route(`**/api/projects/${projectId}/runs/${runId}*`, (route) => route.fulfill({ json: { projectId, run, events, cursor: 20 } }));
@@ -27,8 +32,8 @@ test("30,000 provider fragments do not accumulate in progress UI and click P95 s
         controller.enqueue(encoder.encode(body));
         await new Promise(requestAnimationFrame);
       }
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "stage_finished", stage: "generate_design_models", eventId: "stage-end", status: "cancelled" })}\n\n`));
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "cancelled", runId, eventId: "end", sequence: 30021, message: "压力测试完成" })}\n\n`));
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "stage_finished", stage: "generate_design_models", eventId: "stage-end", createdAt, sequence: 30021, status: "cancelled" })}\n\n`));
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "cancelled", runId, eventId: "end", createdAt, sequence: 30022, message: "压力测试完成" })}\n\n`));
       (window as any).performanceFeedFinished = true;
     };
   }, { runId, createdAt });

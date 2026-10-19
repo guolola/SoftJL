@@ -1,6 +1,32 @@
 // Projects the supported Zod contract vocabulary to provider schemas; unsupported constructs fail closed.
 import { z } from "zod";
 
+// Project only the affected field, selecting union variants from the current object's discriminator.
+export function contractFieldSchema(schema: z.ZodTypeAny, value: unknown, path: string): Record<string, any> | undefined {
+  const find = (node: z.ZodTypeAny, current: any, parts: string[]): z.ZodTypeAny | undefined => {
+    if (node instanceof z.ZodOptional || node instanceof z.ZodNullable) return find(node.unwrap(), current, parts);
+    if (node instanceof z.ZodDefault) return find(node.removeDefault(), current, parts);
+    if (node instanceof z.ZodEffects) return find(node.innerType(), current, parts);
+    if (node instanceof z.ZodDiscriminatedUnion) {
+      const variant = node.optionsMap.get(current?.[node.discriminator]);
+      if (variant) return find(variant, current, parts);
+    }
+    if (node instanceof z.ZodUnion || node instanceof z.ZodDiscriminatedUnion) {
+      const fields = node.options.map((option: z.ZodTypeAny) => find(option, current, parts)).filter(Boolean) as z.ZodTypeAny[];
+      return fields.length === 1 ? fields[0] : fields.length > 1 ? z.union(fields as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]) : undefined;
+    }
+    if (!parts.length) return node;
+    const [key, ...rest] = parts;
+    if (node instanceof z.ZodObject && node.shape[key!]) return find(node.shape[key!], current?.[key!], rest);
+    if (node instanceof z.ZodArray && /^\d+$/.test(key!)) return find(node.element, current?.[key!], rest);
+    if (node instanceof z.ZodRecord) return find(node.valueSchema, current?.[key!], rest);
+    return undefined;
+  };
+  const field = find(schema, value, path ? path.split(".") : []);
+  if (!field) return undefined;
+  try { return contractResponseSchema(field); } catch { return undefined; }
+}
+
 export function contractResponseSchema(schema: z.ZodTypeAny): Record<string, any> {
   if (schema instanceof z.ZodOptional) return contractResponseSchema(schema.unwrap());
   if (schema instanceof z.ZodNullable) return { anyOf: [contractResponseSchema(schema.unwrap()), { type: "null" }] };

@@ -1,5 +1,8 @@
 // Maps project run API summaries into the shared run history item contract.
-import type { RunError } from "@uml-platform/contracts";
+import type { RunError, RunOperationType } from "@uml-platform/contracts";
+import {
+  assertCurrentRunSnapshot,
+} from "@uml-platform/contracts";
 import {
   createRunHistoryTitle,
   formatDocumentMissingArtifactSummary,
@@ -17,6 +20,7 @@ export type ProjectRunDetailResponse = {
   projectId?: string;
   run?: {
     runId?: string;
+    operationType?: RunOperationType;
     model?: string | null;
     status?: string | null;
     stage?: string | null;
@@ -29,9 +33,8 @@ export type ProjectRunDetailResponse = {
     partialFailure?: boolean | null;
     missingArtifactCount?: number | null;
     missingArtifactSummary?: string[] | null;
-    
-    
-    
+
+
     sourceRunId?: string | null;
     sourceAction?: string | null;
     sourceRunStatus?: string | null;
@@ -40,7 +43,6 @@ export type ProjectRunDetailResponse = {
     latestActionRunId?: string | null;
     latestActionAt?: string | null;
     snapshotAvailable?: boolean | null;
-    canRestore?: boolean | null;
     documentDownloadAvailable?: boolean | null;
     documentId?: string | null;
     documentFileName?: string | null;
@@ -59,6 +61,7 @@ export type ProjectRunDetailResponse = {
 export type ProjectRunsResponse = {
   runs?: Array<{
     runId?: string;
+    operationType?: RunOperationType;
     status?: string | null;
     stage?: string | null;
     runKind?: string | null;
@@ -75,9 +78,8 @@ export type ProjectRunsResponse = {
     partialFailure?: boolean | null;
     missingArtifactCount?: number | null;
     missingArtifactSummary?: string[] | null;
-    
-    
-    
+
+
     sourceRunId?: string | null;
     sourceAction?: string | null;
     sourceRunStatus?: string | null;
@@ -86,7 +88,6 @@ export type ProjectRunsResponse = {
     latestActionRunId?: string | null;
     latestActionAt?: string | null;
     snapshotAvailable?: boolean | null;
-    canRestore?: boolean | null;
     documentDownloadAvailable?: boolean | null;
     documentId?: string | null;
     documentFileName?: string | null;
@@ -101,44 +102,9 @@ type ProjectRunResponse =
   | NonNullable<ProjectRunsResponse["runs"]>[number]
   | ProjectRunDetailResponse["run"];
 
-export function isProjectDocumentRun(
-  run: ProjectRunResponse,
-  snapshot?: RunHistorySnapshot | null,
-) {
-  return (
-    run?.runKind === "document" ||
-    Boolean(run?.documentKind) ||
-    Boolean(snapshot && isDocumentRunSnapshot(snapshot))
-  );
-}
-
-export function canRestoreProjectRunWorkspace(
-  run: ProjectRunResponse,
-  snapshot?: RunHistorySnapshot | null,
-) {
-  if (isProjectDocumentRun(run, snapshot) || run?.runKind === "feasibility") return false;
-  return run?.canRestore ?? Boolean(snapshot);
-}
-
 export function normalizeProjectHistoryResponse(payload: unknown): RunHistoryItem[] {
   if (!payload || typeof payload !== "object") return [];
-  const record = payload as {
-    history?: RunHistoryItem[];
-    items?: RunHistoryItem[];
-    runs?: ProjectRunsResponse["runs"];
-  };
-  const persisted = record.history ?? record.items;
-  if (persisted) {
-    return persisted.filter((item): item is RunHistoryItem => {
-      return (
-        !!item &&
-        typeof item.id === "string" &&
-        typeof item.createdAt === "string" &&
-        typeof item.title === "string" &&
-        typeof item.providerModel === "string"
-      );
-    });
-  }
+  const record = payload as { runs?: ProjectRunsResponse["runs"] };
   return (record.runs ?? [])
     .map((run) => projectRunSummaryToHistoryItem(run))
     .filter((item): item is RunHistoryItem => item !== null);
@@ -148,12 +114,11 @@ export function projectRunSummaryToHistoryItem(
   run: ProjectRunResponse,
   snapshot?: RunHistorySnapshot | null,
 ): RunHistoryItem | null {
+  if (snapshot) assertCurrentRunSnapshot(snapshot);
   const runId = run?.runId?.trim();
   if (!runId) return null;
   const documentDownloadAvailable =
     run.status === "completed" && Boolean(run.documentDownloadAvailable);
-  const interrupted = run.status === "interrupted";
-  const canRestore = interrupted ? false : canRestoreProjectRunWorkspace(run, snapshot);
   const createdAt =
     run.completedAt ??
     run.startedAt ??
@@ -226,10 +191,8 @@ export function projectRunSummaryToHistoryItem(
     partialFailure: run.partialFailure ?? null,
     missingArtifactCount: run.missingArtifactCount ?? null,
     missingArtifactSummary: run.missingArtifactSummary ?? null,
-    
-    
-    
-    canRestore,
+
+
     snapshotAvailable: run.snapshotAvailable ?? Boolean(snapshot),
     documentDownloadAvailable,
   };
@@ -243,8 +206,8 @@ function projectRunStageTitle(run: ProjectRunDetailResponse["run"]) {
   if (run.runKind === "feasibility" && run.stage === "generate_context") return "生成系统环境图";
   if (run.runKind === "feasibility" && run.stage === "render_context") return "渲染系统环境图";
   if (run.runKind === "feasibility" && run.stage === "generate_implementation") return "生成实现方案";
-  if (run.runKind === "feasibility" && run.stage === "generate_business_flow") return "生成业务与系统流程图";
-  if (run.runKind === "feasibility" && run.stage === "render_business_flow") return "渲染业务与系统流程图";
+  if (run.runKind === "feasibility" && run.stage === "generate_business_flow") return "生成业务流程图";
+  if (run.runKind === "feasibility" && run.stage === "render_business_flow") return "渲染业务流程图";
   const stage = run.stage ?? "";
   if (stage === "render_svg") {
     return run.runKind === "design" ? "渲染设计图表" : "渲染需求图表";
@@ -256,7 +219,7 @@ function projectRunStageTitle(run: ProjectRunDetailResponse["run"]) {
   if (stage.includes("extract_rules")) return "抽取需求规则";
   if (stage.includes("generate_models")) return "生成需求模型";
   if (run.runKind === "design") return "设计模型生成";
-  
+
   if (run.runKind === "document") return "说明书生成";
   if (run.runKind === "feasibility") return "可行性分析生成";
   return "需求模型生成";
@@ -265,7 +228,7 @@ function projectRunStageTitle(run: ProjectRunDetailResponse["run"]) {
 function projectRunKindLabel(run: ProjectRunDetailResponse["run"]) {
   if (!run) return "运行阶段";
   if (run.runKind === "design") return "设计阶段";
-  
+
   if (run.runKind === "document") return "说明书";
   if (run.runKind === "feasibility") return "可行性分析";
   return "需求阶段";
@@ -282,7 +245,7 @@ function projectRunSummary(run: ProjectRunDetailResponse["run"]) {
     run?.diagramErrorSummary,
     { design: run?.runKind === "design" },
   );
-  
+
   const parts = [
     run?.sourceRunId ? `${runActionLabel(run.sourceAction)}自 ${run.sourceRunId}` : null,
     run?.latestActionRunId
@@ -296,12 +259,11 @@ function projectRunSummary(run: ProjectRunDetailResponse["run"]) {
         ? "失败原因 任务遇到内部错误，请联系管理员。"
         : null,
     diagramErrors,
-    
+
     formatDocumentMissingArtifactSummary(
       run?.missingArtifactSummary,
       run?.missingArtifactCount,
     ),
-    canRestoreProjectRunWorkspace(run) ? "快照可恢复" : null,
     run?.status === "completed" && run?.documentDownloadAvailable
       ? "文档可下载"
       : null,

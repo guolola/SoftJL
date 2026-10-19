@@ -1,7 +1,11 @@
 // Orchestrates document text, diagram image rendering, and DOCX export for document runs.
+import { MAX_GENERATION_REPAIR_ATTEMPTS } from "@uml-platform/contracts";
+import { GenerationRepairSession } from "./shared/generation-repair.js";
+import { acceptRunOutput } from "../records/run-output-provenance.js";
 
 import { createStageLifecycle } from "./shared/stage-lifecycle.js";
 import { createRunLlmChunkHandlers } from "./shared/llm-chunk-events.js";
+import { withRunReasoning } from "./shared/run-reasoning.js";
 import {
   artifactReadyRunEventSchema,
   completedRunEventSchema,
@@ -16,7 +20,6 @@ import {
 } from "@uml-platform/contracts";
 import {
   buildGenerateDocumentContentPrompt,
-  buildRepairDocumentContentPrompt,
 } from "@uml-platform/prompts";
 import { type LlmTransport } from "../../llm.js";
 import type { DocumentLibrary } from "../../documents/library/document-library.js";
@@ -46,7 +49,7 @@ import {
   logFailedStructuredOutput,
 } from "./shared/structured-output.js";
 
-const MAX_DOCUMENT_CONTENT_REPAIR_ATTEMPTS = 2;
+const MAX_DOCUMENT_CONTENT_REPAIR_ATTEMPTS = MAX_GENERATION_REPAIR_ATTEMPTS;
 
 function normalizeDocumentContentOutput(raw: unknown) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
@@ -99,7 +102,7 @@ async function generateDocumentSectionsWithRepair(
   } : fullContext) };
   if (chapter) context.canonicalSections = chapter.sections.map(({ level, title, diagramKind, diagramModelId, table }) => ({ level, title, diagramKind, diagramModelId, tableHeaders: table?.headers }));
   let prompt = buildGenerateDocumentContentPrompt(input.documentKind, context);
-  let previousOutput = "";
+  const repair = new GenerationRepairSession(chapter ? `document:chapter:${chapter.index}` : `document:${input.documentKind}`, context, ["sections"], MAX_GENERATION_REPAIR_ATTEMPTS, prompt, documentContentResultSchema);
   let lastErrorMessage = "";
   const responseFormat = getDocumentContentResponseFormat(providerSettings);
 
@@ -109,16 +112,16 @@ async function generateDocumentSectionsWithRepair(
     attempt += 1
   ) {
     throwIfRunCancelled(record);
-    const content = await collectTextResult(
+    let content = await collectTextResult(
       llmTransport,
       providerSettings,
       createMessages(prompt),
-      createRunLlmChunkHandlers({ record, stage: "generate_document_text", subtaskId: chapter ? `document:chapter:${chapter.index}` : undefined, subtaskLabel: chapter?.sections[0]?.title }),
-      responseFormat,
+      createRunLlmChunkHandlers({ record, stage: "generate_document_text", subtaskId: chapter ? `document:chapter:${chapter.index}` : undefined, subtaskLabel: chapter?.sections[0]?.title, modelId: chapter ? `document:chapter:${chapter.index}` : `document:${input.documentKind}`, operation: repair.repairing ? "model_repair" : undefined, round: repair.repairing ? repair.attempts : undefined }),
+      repair.repairing ? { type: "json_object" } : responseFormat,
     );
-    previousOutput = content;
 
     try {
+      content = repair.accept(content);
       const sections = documentContentResultSchema.parse(
         normalizeDocumentContentOutput(parseJson(content)),
       ).sections;
@@ -156,12 +159,13 @@ async function generateDocumentSectionsWithRepair(
         }),
       );
 
-      prompt = buildRepairDocumentContentPrompt(
-        input.documentKind,
-        context,
-        previousOutput,
-        lastErrorMessage,
-      );
+      const paths = chapter && sections.length !== chapter.sections.length ? ["sections"] : sections.flatMap((section, index) => {
+        const result: string[] = [];
+        if (findForbiddenDocumentPhrases([section]).length || findUnsupportedDocumentClaims(input, [section]).length) result.push(`sections.${index}.body`, `sections.${index}.table`);
+        if (chapter && (section.title.trim() !== chapter.sections[index]?.title.trim() || section.level !== chapter.sections[index]?.level)) result.push(`sections.${index}.title`, `sections.${index}.level`);
+        return result;
+      });
+      prompt = repair.prepare(lastErrorMessage, { paths, instruction: `修复《${input.documentKind === "requirementsSpec" ? "需求规格说明书" : input.documentKind === "softwareDesignSpec" ? "软件设计说明书" : "可行性研究报告"}》当前章节，严格保留 canonicalSections 标题、顺序和层级；不得虚构年份、资料或业务事实。`, sourceFacts: context, sourceLabel: "当前产物上下文" });
     } catch (error) {
       logFailedStructuredOutput(
         "generate_document_text",
@@ -188,12 +192,13 @@ async function generateDocumentSectionsWithRepair(
         }),
       );
 
-      prompt = buildRepairDocumentContentPrompt(
-        input.documentKind,
-        context,
-        previousOutput,
-        lastErrorMessage,
-      );
+      // A missing subsection changes the chapter collection, even when an individual field also fails schema validation.
+      let paths: string[] | undefined;
+      try {
+        const output = parseJson<{ sections?: unknown[] }>(content);
+        if (chapter && Array.isArray(output.sections) && output.sections.length !== chapter.sections.length) paths = ["sections"];
+      } catch { /* Syntax failures retain their syntax-only recovery scope. */ }
+      prompt = repair.prepare(error, { paths, instruction: `修复《${input.documentKind === "requirementsSpec" ? "需求规格说明书" : input.documentKind === "softwareDesignSpec" ? "软件设计说明书" : "可行性研究报告"}》当前章节，严格保留 canonicalSections 标题、顺序和层级；不得虚构年份、资料或业务事实。`, sourceFacts: context, sourceLabel: "当前产物上下文" });
     }
   }
 
@@ -243,6 +248,7 @@ export async function runDocumentStagePipeline(
   onPreparedStage?: (stage: RunStage) => Promise<void>,
 ) {
   const snapshot = record.snapshot as DocumentRunSnapshot;
+  llmTransport = withRunReasoning(llmTransport, snapshot.reasoning);
   snapshot.feasibilityImplementationPlan = input.feasibilityImplementationPlan;
   snapshot.feasibilityInputs = input.feasibilityInputs;
   assertRequirementBaselineAllowsDownstream(snapshot.requirementBaseline);
@@ -252,7 +258,7 @@ export async function runDocumentStagePipeline(
     stages.advance(stage);
     snapshot.currentStage = stage;
     snapshot.status = "running";
-    emitEvent(record, stageStartedRunEventSchema.parse({ type: "stage_started", stage, tracksCompletion: true }));
+    emitEvent(record, stageStartedRunEventSchema.parse({ type: "stage_started", stage }));
     emitEvent(
       record,
       stageProgressRunEventSchema.parse({
@@ -265,8 +271,9 @@ export async function runDocumentStagePipeline(
   };
 
   throwIfRunCancelled(record);
-  updateStage("generate_document_text", "正在生成说明书正文");
+  // Validate report sources before announcing generation or consuming provider/render resources.
   let sections = fallbackDocumentSections(input);
+  updateStage("generate_document_text", "正在生成说明书正文");
   if (input.useAiText && input.documentKind !== "feasibilityStudy") {
     const generatedSections = await generateDocumentChapters(
       record,
@@ -278,12 +285,13 @@ export async function runDocumentStagePipeline(
     throwIfRunCancelled(record);
     sections = generatedSections;
   }
-  sections = ensureDocumentDiagramSections(input.documentKind, sections);
+  sections = ensureDocumentDiagramSections(input, sections);
   sections = sanitizeDocumentSections(input, sections);
   // Retain whole-document checks after independently repairing every chapter.
   const issues = [...findForbiddenDocumentPhrases(sections), ...findUnsupportedDocumentClaims(input, sections)];
   if (issues.length) throw new Error(`说明书整篇校验失败：${issues.join("；")}`);
   snapshot.sections = sections;
+  acceptRunOutput(snapshot, { kind: "sections", id: "sections" });
   // Demo observers describe the actual prepared sections; real runs omit this hook.
   await onPreparedStage?.("generate_document_text");
 

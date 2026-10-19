@@ -6,6 +6,7 @@ export const offlineDemoProviderSettings: ProviderSettings = {
   apiBaseUrl: "https://offline-demo.local",
   apiKey: "offline-demo",
   model: "offline-demo-fixed-artifacts",
+  modelCapability: { category: "text_chat", strictJson: true, probeStatus: "strict", id: "offline-demo-fixed-artifacts", supportsJsonSchema: true, supportsJsonObject: true, structuredOutputMode: "strict_json", modeLabel: "离线固定数据" },
 };
 
 export const offlineDemoLlmTransport: LlmTransport = {

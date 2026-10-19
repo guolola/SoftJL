@@ -1,4 +1,4 @@
-// Validates context boundaries, identifiers, endpoints, and requirement references before persistence.
+// Validates context graph structure and preserves declared source IDs without a coverage audit.
 import {
   contextDiagramSpecSchema, validateModelInput, ModelSemanticError,
   type ContextDiagramSpec,
@@ -6,7 +6,7 @@ import {
 
 export function normalizeContextDiagram(
   value: unknown,
-  validRequirementIds: ReadonlySet<string>,
+  _validRequirementIds: ReadonlySet<string>,
 ): ContextDiagramSpec {
   const diagnostics = validateModelInput(value, "feasibility");
   if (diagnostics.length) throw new ModelSemanticError(diagnostics);
@@ -17,11 +17,6 @@ export function normalizeContextDiagram(
       throw new Error(`上下文元素编号重复：${element.id}`);
     }
     elementIds.add(element.id);
-    for (const requirementId of element.sourceRequirementIds) {
-      if (!validRequirementIds.has(requirementId)) {
-        throw new Error(`上下文元素引用了不存在的需求规则：${requirementId}`);
-      }
-    }
   }
   const relationshipIds = new Set<string>();
   for (const relationship of model.relationships) {
@@ -31,11 +26,6 @@ export function normalizeContextDiagram(
     relationshipIds.add(relationship.id);
     if (!elementIds.has(relationship.sourceId) || !elementIds.has(relationship.targetId)) {
       throw new Error(`上下文关系端点无效：${relationship.id}`);
-    }
-    for (const requirementId of relationship.sourceRequirementIds) {
-      if (!validRequirementIds.has(requirementId)) {
-        throw new Error(`上下文关系引用了不存在的需求规则：${requirementId}`);
-      }
     }
   }
   return model;

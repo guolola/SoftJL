@@ -5,17 +5,17 @@ import {
   queuedRunEventSchema,
   runActionResultSchema,
   runActionRunEventSchema,
+  retryInputProblem,
   type RunAction,
   type RunActionResult,
 } from "@uml-platform/contracts";
 import {
-  
+
   createEmptyDesignSnapshot,
   createEmptyDocumentSnapshot,
   createEmptyFeasibilitySnapshot,
   createEmptySnapshot,
 } from "./snapshots.js";
-import { buildEmptyRequirementBaseline } from "../baselines/requirement-baseline.js";
 import {
   emitEvent,
   type RunRecord,
@@ -23,14 +23,23 @@ import {
   type RunRecordStore,
 } from "./run-record-store.js";
 import { createRunError } from "../pipelines/shared/errors.js";
+import { emptyRequirementTokenUsage } from "./requirement-token-usage.js";
 
 function createQueuedSnapshotFromSource(
   source: RunRecord["snapshot"],
   newRunId: string,
   action: Extract<RunAction, "retry" | "rerun">,
 ): RunRecord["snapshot"] {
+  const problem = retryInputProblem({ snapshot: source });
+  if (problem) throw new Error(problem);
+  // Instance errors identify the exact use-case targets for a partial retry.
+  const failedUseCases = (kind: "analysis" | "sequence") => action === "retry" && "selectedDiagrams" in source && "diagramErrors" in source
+    ? Object.entries(source.diagramErrors).filter(([key, failure]) => key.startsWith(`${kind}:`) && failure.error.retryable)
+      .map(([key]) => key.slice(kind.length + 1))
+    : [];
   if ("selectedArtifacts" in source) {
     return createEmptyFeasibilitySnapshot(newRunId, {
+      reasoning: source.reasoning,
       projectId: source.projectId,
       selectedArtifacts: source.selectedArtifacts,
       providerSettings: source.providerSettings,
@@ -49,14 +58,10 @@ function createQueuedSnapshotFromSource(
     });
   }
   if ("documentKind" in source) {
-    return createEmptyDocumentSnapshot(newRunId, {
-      documentKind: source.documentKind,
-      requirementText: source.requirementText,
-      requirementBaseline: source.requirementBaseline,
-    });
+    if (!source.replayInput) throw new Error("原任务未保存完整文档输入，请从文档页面重新生成。");
+    return createEmptyDocumentSnapshot(newRunId, structuredClone(source.replayInput));
   }
 
-  
 
   if ("designModelTraceability" in source) {
     const retryDiagrams = action === "retry"
@@ -76,11 +81,12 @@ function createQueuedSnapshotFromSource(
     const selectedDiagrams =
       retryDiagrams.length > 0 ? retryDiagrams : source.selectedDiagrams;
     return createEmptyDesignSnapshot(newRunId, {
+      sequenceTargetUseCaseIds: failedUseCases("sequence").length ? failedUseCases("sequence") : source.sequenceTargetUseCaseIds,
+      reasoning: source.reasoning,
       selectedDiagrams,
       requestedDiagrams:
         retryDiagrams.length > 0 ? retryDiagrams : source.requestedDiagrams,
-      requirementBaseline:
-        source.requirementBaseline ?? buildEmptyRequirementBaseline({ runId: newRunId }),
+      requirementBaseline: source.requirementBaseline!,
       requirementModels: source.requirementModels,
       requirementModelTraceability: source.requirementModelTraceability,
       existingDesignModels: source.models,
@@ -112,7 +118,12 @@ function createQueuedSnapshotFromSource(
     selectedDiagrams,
     source.rules,
     {
-      analysisTargetUseCaseIds: source.analysisTargetUseCaseIds,
+      requirementBaseline: source.requirementBaseline,
+      analysisTargetUseCaseIds: failedUseCases("analysis").length ? failedUseCases("analysis") : source.analysisTargetUseCaseIds,
+      attachments: source.attachments,
+      reasoning: source.reasoning,
+      submittedRequirementText: source.submittedRequirementText,
+      tokenUsage: source.tokenUsage ? emptyRequirementTokenUsage(source.tokenUsage.model, source.tokenUsage.capacity) : undefined,
       requestedDiagrams:
         retryDiagrams.length > 0 ? retryDiagrams : source.requestedDiagrams,
       dependencyDiagrams: source.dependencyDiagrams,
@@ -123,7 +134,11 @@ function createQueuedSnapshotFromSource(
 }
 
 export function isRetryableRun(record: RunRecord) {
+  // Partial batches may close as completed while individual diagrams still need retrying.
+  const partialFailure = record.terminal && record.snapshot.status === "completed" &&
+    "diagramErrors" in record.snapshot && Object.values(record.snapshot.diagramErrors).some((failure) => failure.error.retryable);
   return (
+    partialFailure ||
     record.snapshot.status === "failed" ||
     record.snapshot.status === "cancelled" ||
     (record.terminal &&

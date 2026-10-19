@@ -139,12 +139,12 @@ export function assertProviderConfig(env: NodeJS.ProcessEnv) {
 function createMockSnapshot(fixture: EvalFixture): RunSnapshot {
   const expectedRules = fixture.expectedFacts.map((fact, index) => ({
     id: `expected-${index + 1}`,
-    category: "业务规则" as const,
+    type: "business-rule" as const,
     text: fact,
-    relatedDiagrams: ["usecase" as const],
+
   }));
   return {
-    runId: `mock-${fixture.id}`,
+    operationType: "requirement_modeling", outputManifest: [], runId: `mock-${fixture.id}`,
     requirementText: fixture.requirementText,
     selectedDiagrams: fixture.selectedDiagrams,
     analysisTargetUseCaseIds: [],
@@ -156,15 +156,15 @@ function createMockSnapshot(fixture: EvalFixture): RunSnapshot {
     rules: expectedRules.length > 0 ? expectedRules : [
       {
         id: "r1",
-        category: "功能需求",
+        type: "functional" as const,
         text: "系统应支持核心业务流程。",
-        relatedDiagrams: ["usecase", "activity"],
+
       },
       {
         id: "r2",
-        category: "数据需求",
+        type: "data" as const,
         text: "系统应维护关键领域数据。",
-        relatedDiagrams: ["class"],
+
       },
     ],
     models: [],
@@ -202,22 +202,7 @@ function semanticCarrier(text: string): Pick<
 }
 
 function summarizeQuality(fixture: EvalFixture, snapshot: RunSnapshot) {
-  const actualText = snapshot.requirementBaseline
-    ? snapshot.requirementBaseline.requirements
-        .map((requirement) =>
-          [
-            requirement.actor,
-            requirement.subject,
-            requirement.action,
-            requirement.object,
-            requirement.condition,
-            requirement.outcome,
-          ]
-            .filter(Boolean)
-            .join("；"),
-        )
-        .join("；")
-    : snapshot.rules.map((rule) => rule.text).join("；");
+  const actualText = (snapshot.requirementBaseline?.rules ?? snapshot.rules).map(rule => rule.text).join("；");
   const expectedFacts = fixture.expectedFacts.flatMap((text) =>
     extractProtectedRequirementFacts(semanticCarrier(text)),
   );

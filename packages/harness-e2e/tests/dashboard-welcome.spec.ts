@@ -325,7 +325,7 @@ for (const theme of ['light', 'dark']) {
     expect(await cards.nth(3).locator('[data-slot="card"]').evaluate((element, original) => element === original, original)).toBe(true);
     await original?.dispose();
     await expect(cards.nth(3).getByText('0', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeVisible();
+    await expect(page.locator('[data-slot="sidebar"]').getByRole('link', { name: '项目', exact: true })).toBeVisible();
     await expect(page.getByText('课程设计项目', { exact: true })).toHaveCount(0);
     await expect(page.getByText('91.3%', { exact: true })).toHaveCount(0);
     await expectNoOverflow(page);

@@ -3,7 +3,7 @@ import { renderSvgResponseSchema, type ModelingStage, type DesignDiagramModelSpe
 import type { LlmTransport } from "../../../llm.js";
 import type { AnyPlantUmlArtifact, RenderClient } from "../../../adapters/render/render-client.js";
 import type { RunRecord } from "../../records/run-record-store.js";
-import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "../../../plantuml.js";
+import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "../../../adapters/plantuml/model-renderer.js";
 import { appendDesignTrace, appendRequirementTrace, designDiagramKindFromArtifact, requirementDiagramKindFromArtifact } from "../shared/trace-events.js";
 import { isRunCancelledError, throwIfRunCancelled } from "../../records/run-cancellation.js";
 

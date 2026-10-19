@@ -1,5 +1,6 @@
 // Requirement, coverage, traceability, and UML diagram kind contract schemas shared across run stages.
 import { z } from "zod";
+import { requirementRuleTypeSchema } from "./requirement-rule-types.js";
 
 export const diagramKindSchema = z.enum([
   "context",
@@ -30,26 +31,18 @@ export const umlDiagramKindSchema = z.union([
 ]);
 export type UmlDiagramKind = z.infer<typeof umlDiagramKindSchema>;
 
-export const ruleCategorySchema = z.enum([
-  "业务规则",
-  "功能需求",
-  "外部接口",
-  "界面需求",
-  "数据需求",
-  "非功能需求",
-  "部署需求",
-  "异常处理",
-]);
-export type RuleCategory = z.infer<typeof ruleCategorySchema>;
-
 export const requirementRuleSchema = z.object({
   id: z.string().min(1),
-  category: ruleCategorySchema,
   text: z.string().min(1),
   sourceFragment: z.string().min(1).optional(),
-  relatedDiagrams: z.array(diagramKindSchema).min(1),
-});
+  type: requirementRuleTypeSchema,
+}).strict();
 export type RequirementRule = z.infer<typeof requirementRuleSchema>;
+
+// Project a validated snapshot back to rule facts without its snapshot-only metadata.
+export function requirementRuleFacts({ id, type, text, sourceFragment }: RequirementRule): RequirementRule {
+  return { id, type, text, ...(sourceFragment === undefined ? {} : { sourceFragment }) };
+}
 
 function addDuplicateRequirementRuleIdIssues(
   rules: RequirementRule[],
@@ -82,8 +75,13 @@ export const requirementRulesSchema = requirementRulesArraySchema();
 
 export const requirementRulesResultSchema = z.object({
   rules: requirementRulesSchema,
-});
+}).strict();
 export type RequirementRulesResult = z.infer<typeof requirementRulesResultSchema>;
+
+// Extracted rules must carry real source evidence; manual rules may omit it.
+export const extractedRequirementsSchema = z.object({
+  rules: z.array(requirementRuleSchema.extend({ sourceFragment: z.string().min(1) })),
+}).strict();
 
 export const atomicRequirementTypeSchema = z.enum([
   "functional",
@@ -260,14 +258,23 @@ export type RequirementQualityReport = z.infer<
 >;
 
 export const requirementBaselineSchema = z.object({
+  // Reject previous classified snapshots rather than silently upgrading their semantics.
+  schemaVersion: z.literal(3),
+  id: z.string().min(1),
+  version: z.number().int().positive(),
+  rules: z.array(requirementRuleSchema.extend({
+    requirementId: z.string().min(1),
+    origin: z.enum(["generated", "manual-added", "manual-edited"]),
+  })),
   runId: z.string().min(1),
+  // Identifies requirement content independently of the task that consumes it.
+  sourceInputFingerprint: z.string().min(1),
   sourceDocumentId: z.string().min(1),
-  requirements: z.array(atomicRequirementSchema),
   assumptions: z.array(requirementAssumptionSchema),
   conflicts: z.array(requirementConflictSchema),
   qualityReport: requirementQualityReportSchema,
   createdAt: z.string().min(1),
-});
+}).strict();
 export type RequirementBaseline = z.infer<typeof requirementBaselineSchema>;
 
 export const coverageStatusSchema = z.enum([
@@ -285,7 +292,7 @@ export const coverageMatrixRowSchema = z.object({
   rationale: z.string().min(1),
   modelElements: z.array(z.string().min(1)),
   designElements: z.array(z.string().min(1)),
-  
+
   tests: z.array(z.string().min(1)),
   reviewItems: z.array(z.string().min(1)),
 });
@@ -301,7 +308,7 @@ export const traceabilityArtifactTypeSchema = z.enum([
   "requirement",
   "requirements-model",
   "design-model",
-  
+
   "test",
   "evidence",
 ]);

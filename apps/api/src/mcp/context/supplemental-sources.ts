@@ -8,6 +8,7 @@ import {
   feasibilityImplementationPlanSchema,
   buildAcceptedRequirementSnapshot,
   buildFeasibilityImplementationFingerprint,
+  buildFeasibilityContextFingerprint,
 } from "@uml-platform/contracts";
 const object = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v)
@@ -55,15 +56,15 @@ export function supplementalSources(state: Record<string, unknown>) {
         current: "",
       });
   }
-  let current = "";
-  try {
-    current = buildAcceptedRequirementSnapshot(
-      state.rules ?? [],
-      state.requirementBaseline ?? null,
-    ).snapshot.fingerprint;
-  } catch {
-    /* Invalid legacy sources keep freshness unknown. */
-  }
+  const current = buildAcceptedRequirementSnapshot(
+    state.rules ?? [],
+    state.requirementBaseline ?? null,
+  ).snapshot.fingerprint;
+  const contextCurrent = buildFeasibilityContextFingerprint({
+    rules: state.rules ?? [], requirementBaseline: state.requirementBaseline ?? null,
+    inputs: state.feasibilityInputs ?? {},
+  });
+
   const context = contextDiagramSpecSchema.safeParse(
     state.feasibilityContextModel,
   );
@@ -86,7 +87,7 @@ export function supplementalSources(state: Record<string, unknown>) {
             : null,
       },
       stored: state.feasibilityContextFingerprint,
-      current,
+      current: contextCurrent,
     });
   const flow = feasibilityBusinessFlowSchema.safeParse(
     state.feasibilityBusinessFlow,
@@ -109,27 +110,17 @@ export function supplementalSources(state: Record<string, unknown>) {
       stored: object(state.feasibilityBusinessFlow).fingerprint,
       current,
     });
-  // Only the current candidate-based shape is read; the legacy migration preprocessor must not repair on read.
-  const implementation = Array.isArray(
-    object(state.feasibilityImplementationPlan).candidates,
-  )
-    ? feasibilityImplementationPlanSchema.safeParse(
-        state.feasibilityImplementationPlan,
-      )
-    : null;
-  if (implementation?.success) {
-    let expected = "";
-    try {
-      expected = buildFeasibilityImplementationFingerprint({
-        rules: state.rules ?? [],
-        requirementBaseline: state.requirementBaseline ?? null,
-        contextModel: state.feasibilityContextModel ?? null,
-        businessFlow: flow.success ? flow.data : null,
-        inputs: state.feasibilityInputs ?? {},
-      });
-    } catch {
-      /* No valid upstream fingerprint can be established. */
-    }
+  // Read the current saved contract directly; source extraction never migrates persisted data.
+  const implementation = feasibilityImplementationPlanSchema.safeParse(state.feasibilityImplementationPlan);
+  if (implementation.success) {
+    const expected = buildFeasibilityImplementationFingerprint({
+      rules: state.rules ?? [],
+      requirementBaseline: state.requirementBaseline ?? null,
+      contextModel: state.feasibilityContextModel ?? null,
+      businessFlow: flow.success ? flow.data : null,
+      inputs: state.feasibilityInputs ?? {},
+    });
+
     outputs.push({
       id: "feasibility:implementation",
       title: "实施建议与候选方案（需确认）",

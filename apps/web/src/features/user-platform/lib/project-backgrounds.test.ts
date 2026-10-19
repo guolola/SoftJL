@@ -1,42 +1,38 @@
-// Verifies deterministic project background matching and fallback behavior.
-import { describe, expect, it } from "vitest";
-import {
-  PROJECT_BACKGROUND_OPTIONS,
-  fallbackProjectBackground,
-  matchProjectBackground,
-  resolveProjectBackground,
-} from "./project-backgrounds";
+// Covers manual background resolution and the absence of implicit selections.
+import { describe, expect, it, vi } from "vitest";
+import type { ProjectBackgroundKey } from "@uml-platform/contracts";
+import { PROJECT_BACKGROUND_OPTIONS, randomProjectBackground, resolveProjectBackground } from "./project-backgrounds";
 
 describe("project backgrounds", () => {
-  it("matches common business system keywords from project titles", () => {
-    expect(matchProjectBackground("ERP 企业资源计划实验")?.key).toBe("erp");
-    expect(matchProjectBackground("CRM 客户关系管理平台")?.key).toBe("crm");
-    expect(matchProjectBackground("座位预约预订系统")?.key).toBe("booking");
-    expect(matchProjectBackground("质量追溯系统 UML 项目")?.key).toBe("quality_traceability");
+  it("leaves unset backgrounds empty instead of selecting a business image", () => {
+    expect(resolveProjectBackground()).toBeNull();
+    expect(resolveProjectBackground(null)).toBeNull();
   });
 
-  it("uses a personal-site-safe PLM label while preserving legacy keyword matching", () => {
-    expect(PROJECT_BACKGROUND_OPTIONS.find((background) => background.key === "plm")?.label).toBe(
-      "PLM 全生命周期管理",
-    );
-    expect(matchProjectBackground("产品生命周期管理平台")?.key).toBe("plm");
+  it("retains stored manual selections using the current keys", () => {
+    expect(resolveProjectBackground("booking")?.imageUrl).toContain("cover-19");
+    expect(resolveProjectBackground("quality_traceability")?.imageUrl).toContain("cover-20");
+    expect(resolveProjectBackground("booking")).toBe(resolveProjectBackground("booking"));
   });
 
-  it("prefers saved manual backgrounds before title matching", () => {
-    expect(
-      resolveProjectBackground({
-        id: "project-a",
-        name: "CRM 客户系统",
-        backgroundKey: "booking",
-      }).key,
-    ).toBe("booking");
+  it("provides twenty-one unnamed WebP options", () => {
+    expect(PROJECT_BACKGROUND_OPTIONS).toHaveLength(21);
+    expect(new Set(PROJECT_BACKGROUND_OPTIONS.map(({ key }) => key)).size).toBe(21);
+    expect(PROJECT_BACKGROUND_OPTIONS.every(({ imageUrl }) => imageUrl.includes(".webp"))).toBe(true);
+    expect(PROJECT_BACKGROUND_OPTIONS.every((background) => !("label" in background) && !("aliases" in background))).toBe(true);
   });
 
-  it("uses stable fallback backgrounds for unmatched titles", () => {
-    expect(fallbackProjectBackground("project-a:课程 UML 实验项目").key).toBe(
-      fallbackProjectBackground("project-a:课程 UML 实验项目").key,
-    );
-    expect(resolveProjectBackground({ id: "project-a", name: "课程 UML 实验项目" }).imageUrl).toBeTruthy();
-    expect(PROJECT_BACKGROUND_OPTIONS.every((background) => typeof background.imageUrl === "string")).toBe(true);
+  it("can sample both ends of the gallery for a new project", () => {
+    const random = vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValueOnce(0.999999);
+    try {
+      expect(randomProjectBackground()).toBe(PROJECT_BACKGROUND_OPTIONS[0]);
+      expect(randomProjectBackground()).toBe(PROJECT_BACKGROUND_OPTIONS[20]);
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it("rejects invalid stored keys instead of fabricating a background", () => {
+    expect(() => resolveProjectBackground("obsolete" as ProjectBackgroundKey)).toThrow("Unknown project background key");
   });
 });

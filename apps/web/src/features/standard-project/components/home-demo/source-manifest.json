@@ -1,0 +1,470 @@
+[
+  {
+    "file": "source/lib/utils.ts",
+    "source": "packages/ui/src/lib/utils.ts",
+    "sha256": "55bbdc94cef3e0c8a8bba386e94f97228dd2c967fe61466fc565378890550c08",
+    "bodySha256": "fd02c96ac12b0e21dcb3ce233031138dfe59777084f5411ef1b074ad5581dd7b",
+    "adaptedBodySha256": "fd02c96ac12b0e21dcb3ce233031138dfe59777084f5411ef1b074ad5581dd7b",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/elements/quote.aui.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/quote.aui.tsx",
+    "sha256": "4fa31736910936811a5fa1244cf2e7c49ea2e0524da2a4156ade5dc8d3cf8ec8",
+    "bodySha256": "c94e59d57ce8b192a5c7be6123b22fb72031e6ddefd76920fa673dc9403b6e04",
+    "adaptedBodySha256": "e78f4e06e341b3839cfc9deb9167705fb1ffeee90c1b00ecde912b7e1e58393f",
+    "structureSha256": "f1c727595c1ef6f82d6929f2513c6c10301a5ecb4dadef282b76eb3311baa5da"
+  },
+  {
+    "file": "source/ui/skeleton.tsx",
+    "source": "packages/ui/src/components/react/ui/base/skeleton.tsx",
+    "sha256": "a61009cda0a56be88eb94bfecad0fdeb7a895611e87049ee1f2617fc25cd6620",
+    "bodySha256": "92f9f5daf9f7081c0c6fbacd62468b68671044eb458c667e230cca1360eaf656",
+    "adaptedBodySha256": "8f162c7439c22052c3de921af4bf4059e803c9504151ef9f1bb978b0e5e6c148",
+    "structureSha256": "ba77156d161ed511313907fda844bfc058cadd28074ac9d5d9270196a49031ad"
+  },
+  {
+    "file": "source/ui/tooltip.tsx",
+    "source": "packages/ui/src/components/react/ui/base/tooltip.tsx",
+    "sha256": "43cf8405ec5856165c2e7543d9e07c7bdf186c0b9f39270141a42de3dc11d0cc",
+    "bodySha256": "5b3df31a78a611876dafc21a2cf6b7a46eb9f0bf9afacce13bd658278f676cba",
+    "adaptedBodySha256": "d63d0b46b7e6389ea04c6df96ce829f19c0d9c0860df20496030e7bc5924df11",
+    "structureSha256": "8375eff1fa16efcec174547f6a427cd3b2db707a4a807625532baaf22e69ddc1"
+  },
+  {
+    "file": "source/ui/button.tsx",
+    "source": "packages/ui/src/components/react/ui/base/button.tsx",
+    "sha256": "de5e06ef482e702cc56abe8fbe0b1dfcfee9c30db4eafad24a38b5360188c42f",
+    "bodySha256": "604e9360fdbb0031478e4b49d028c850c0f1e26faeb334a45fe2c88235bc2268",
+    "adaptedBodySha256": "39e64d27368182a7737b0f62fd91c5296af6c599c5d94a29af40a3c5f8b85c0e",
+    "structureSha256": "45454206a14b069f5495d0ce301625d0d15a853b7c7dd29a80b654d67b00a667"
+  },
+  {
+    "file": "source/ui/dialog.tsx",
+    "source": "packages/ui/src/components/react/ui/base/dialog.tsx",
+    "sha256": "662c25e6d4873ba41c12db62a378a1cb873d6c3846e855fc85039793823cd903",
+    "bodySha256": "8f829a988c8d1a4a26e435ee32afc793dff253bb739d534070bfd4fe5b7943e4",
+    "adaptedBodySha256": "9b9b1daf4fc2a9be3786f2a5ded951992a0de54c5de984f68da3a3716d6d7855",
+    "structureSha256": "2d7e9ea4734879a5d1e36c711b3ad4c43e9424fe19797b4af05a5ce6381ab066"
+  },
+  {
+    "file": "source/ui/avatar.tsx",
+    "source": "packages/ui/src/components/react/ui/base/avatar.tsx",
+    "sha256": "56acc1c16834672164b7d1d920ef939bc4d5330640059bf0ec0f81cbdc7c168e",
+    "bodySha256": "c7f6ac422c53a7ce7189150e86231c99acf529e5a4dd89c61b92be829b6e2d8d",
+    "adaptedBodySha256": "e34384cb4961fdfbc817af63e606ad101fc845b7c6ad60bda497c485c1a910e8",
+    "structureSha256": "c3fbb886aa66dee67b8ba27251b08410d08a773b39e31bada84a56fc231ea1af"
+  },
+  {
+    "file": "source/elements/tooltip-icon-button.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/tooltip-icon-button.tsx",
+    "sha256": "98580531a6f5a213cccd6964c0c75fd097d97b77bcca05f904df562512273363",
+    "bodySha256": "4e6ab4ab442822f892a6a4041155382ff4549699920e5b87b3e15314d59dd6ca",
+    "adaptedBodySha256": "4e6ab4ab442822f892a6a4041155382ff4549699920e5b87b3e15314d59dd6ca",
+    "structureSha256": "4b9dd7a3f128659659f44b9f19d431b978bbccc08ae8968c9f4b0090fcc6830a"
+  },
+  {
+    "file": "source/hooks/use-attachment-src.ts",
+    "source": "packages/ui/src/hooks/use-attachment-src.ts",
+    "sha256": "dfb621f1a18f4013994aa29815beddb436020105164526ab7c86b0b0a32040a1",
+    "bodySha256": "f462a5e1eb64bac05dbcce53d92f769660543e0ed2ef258fda2f9acd39f90955",
+    "adaptedBodySha256": "f462a5e1eb64bac05dbcce53d92f769660543e0ed2ef258fda2f9acd39f90955",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/elements/attachment.aui.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/attachment.aui.tsx",
+    "sha256": "a2ed2525844b0f2f1a07416ac2a2f63de1c7ee23066a06d4af333d391ed5a897",
+    "bodySha256": "3806212c95b786e75aaaba6b17853880a80d62cd7f0f77a7093742f5ee7ebbed",
+    "adaptedBodySha256": "777768de2d639d128f0125ef15cb58caaf9b4090e903f1afea1219344a6607be",
+    "structureSha256": "937dfe5738516aa1526cdd39a4df1525d6a2f92b9a6f8fe792aa6e5daeaf0f9b"
+  },
+  {
+    "file": "source/elements/composer-trigger-popover.aui.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/composer-trigger-popover.aui.tsx",
+    "sha256": "09bf740b6984f22f5118a2b454a201f08bad4389fb4d1aefd5ff81f4355cf129",
+    "bodySha256": "d74b674c7eb8d200ad6fedb9bc54c545a490ac8a67813de7bb2f553cacf69e64",
+    "adaptedBodySha256": "a4002b054bd21e418d7fb62aae2a6d08fd651339a40a1ab97d47fef3bd5c05c7",
+    "structureSha256": "f556f4da8bdc02db2adc67ed9ce88f6eacbac58117dd48f3af8f7ca7ae28b7a1"
+  },
+  {
+    "file": "source/utils/tokens.ts",
+    "source": "packages/ui/src/components/react/assistant-ui/utils/tokens.ts",
+    "sha256": "009b617a40b7bdc6df50b249274d777d09385eb8581a0e72b90fdd96610a14cb",
+    "bodySha256": "1c861449703b80ae23fbfd16c1e0d203bb218f9e78bc25d9404bbb90120e7e58",
+    "adaptedBodySha256": "b6289ec3935a141f6ffb4a3f5965ac6fc41f6924caecfbc26d7a797c69a8951b",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/elements/context-display.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/context-display.tsx",
+    "sha256": "343d1ae2760ff69c4d59138929a59067b82a8cd7e0cefd9957b88a6dac26f9a1",
+    "bodySha256": "4b833622ee2d542d704bededed2f89d19fb391cf40bfbb20ae3d6e877f58cdc4",
+    "adaptedBodySha256": "4f0c50ed535d5fdb1a3403fe5c3697b264b2dddb33f8a65788594560b0d66d03",
+    "structureSha256": "32762f9fb70d58c2f257aaa85906356a465783243d916b169b1855ad6752389d"
+  },
+  {
+    "file": "source/elements/context-display.aui.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/context-display.aui.tsx",
+    "sha256": "3f24f35b9efedf0bd265b8eb3e8a108d31af712a2fb58493b69cd6d1d6f3522b",
+    "bodySha256": "36a1da1cec6982d647c12d6197a770192c2c11b86db2f87a03b9dfae1a395503",
+    "adaptedBodySha256": "3d2af40b0128f36f85136c58559f7b9a3efb4093997256639af9c5bc9a3b4997",
+    "structureSha256": "823fb82eb4d9a0d0cb2fc9d6acf07050f1324e37bcfd70efa460d0a3250adca4"
+  },
+  {
+    "file": "source/elements/model-selector.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/model-selector.tsx",
+    "sha256": "fac25f56bc0920d28c8d4143e9106abb91700f2a48e0b83a426b5d8404e30c82",
+    "bodySha256": "c937be3adde8180be16665e9874ff4fc56f4ff0bd460deabb49f35fc6b997fdd",
+    "adaptedBodySha256": "38bbe539d90ab65a80279ea4c3c1a37afd387eebcbe77df95720b244b744b080",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/elements/model-selector.aui.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/model-selector.aui.tsx",
+    "sha256": "fa58d6cb2392e7d57d58d7d560008953f95025b1bd0a58b7539a61f7283557c1",
+    "bodySha256": "73eecdcd08a5b2c1b1d323beaf159447022e33255786bd02688de95ffaacbd63",
+    "adaptedBodySha256": "2aa9cde1241cc367cc1822d43354cf539bee3c590a22ddcc54086ef646125448",
+    "structureSha256": "0854fdea5e4abd6ee31a726e92a9aa576126f53fb1eb34e6ccfb121aad5c769f"
+  },
+  {
+    "file": "source/apps/docs/components/pages/docs/assistant/docs-model-options.tsx",
+    "source": "apps/docs/components/pages/docs/assistant/docs-model-options.tsx",
+    "sha256": "8bee0fcd8833f127a4e76c48f4f08363796bf4c5b5918518ca3177606b31b909",
+    "bodySha256": "62a1936589992c4b8a1cafc91298ba4502474bdf7d4190569cc0433495d3baf3",
+    "adaptedBodySha256": "62a1936589992c4b8a1cafc91298ba4502474bdf7d4190569cc0433495d3baf3",
+    "structureSha256": "1a0620c7b899cf2c95c35cc1a64c8511d6c4a750f1b1cd44f763e801d50f91c9"
+  },
+  {
+    "file": "source/commands.tsx",
+    "source": "apps/docs/components/pages/home/demo/commands.tsx",
+    "sha256": "10747199bcec7bde7664b84f9fe84185c8bb103be999b9ae22967c1326d4be28",
+    "bodySha256": "3943010d72aa179c59dff13555e0df684461ae945367f96b385c67dcbb7133f3",
+    "adaptedBodySha256": "5bff15338f2ab84301cbdd1a66f378b7e0ff81682f5e84cbfe6ddb0b5d5b4c8a",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/composer.tsx",
+    "source": "apps/docs/components/pages/home/demo/composer.tsx",
+    "sha256": "fec4be2c599eb4c826f3dc60c47f075986d292c95cd849b2cf7b7a569f4b9757",
+    "bodySha256": "efae28f4134bba0e89785a072c47a4d189524a181d7af432433b201f6e217c06",
+    "adaptedBodySha256": "ec9bc45e101f05f165bec0c1f41ac645f2e0d123b3a17e431a7d161c817b499c",
+    "structureSha256": "5c192849736ae6846c11676cba4a6151372e969a14799636461b010fa9a2a0c0"
+  },
+  {
+    "file": "source/conversation-budget.tsx",
+    "source": "apps/docs/components/pages/home/demo/conversation-budget.tsx",
+    "sha256": "d36e3616272e49d6ba0e94920062b823e070338188f9db2e9dd4cbf551c18f72",
+    "bodySha256": "8457fbf7acd4a4adc1c04efdb1ec8392fbd2194c9354ab7e5cabde54f291a3bd",
+    "adaptedBodySha256": "9bf09c811b0faab93138098da1346d320adb30713c4b4a16f1ad6dc1e266aa96",
+    "structureSha256": "d989016684c965bb1ddf9a57c6b9945469c29ace2f9bdbfe492571d86e746e8f"
+  },
+  {
+    "file": "source/type.ts",
+    "source": "apps/docs/components/shared/type.ts",
+    "sha256": "449268725e71fc1557dea752466e46ef635341a0a35574267370694d813ae572",
+    "bodySha256": "78d2d92ce4e6b9801c3cf68dc45e67a845d99ec1bb3ebfbb69c1e719df98eb4e",
+    "adaptedBodySha256": "78d2d92ce4e6b9801c3cf68dc45e67a845d99ec1bb3ebfbb69c1e719df98eb4e",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/greeting.tsx",
+    "source": "apps/docs/components/pages/home/demo/greeting.tsx",
+    "sha256": "af3bb1d1f1ae73186f7007824b5cfc1534cca23367b425e75377dd47332a6bf9",
+    "bodySha256": "dee7314e600b78aaf69216ad68943fc06ebac60c906f12676c14f4e0d434b546",
+    "adaptedBodySha256": "9ca9ec04d19c64acdd7576c35e53d3bd7ceb64ba08c0e1b882668b3d5d71423f",
+    "structureSha256": "d14bed3d1d3ac34ea4f0faf27731102ae9352f80444a62c4850440aca7263909"
+  },
+  {
+    "file": "source/ui/badge.tsx",
+    "source": "packages/ui/src/components/react/ui/base/badge.tsx",
+    "sha256": "610c24620259c690cacbb8a79fe3278aad6eaacb66e78e365de6337cdd73920c",
+    "bodySha256": "b3a9ecb38cccff64fcb20ad44b8ba817052141bf88fefa64f23dfefbf923a709",
+    "adaptedBodySha256": "a714c607bf2abea599b76732b86093a23df65cb947596cab26e2bca49f361bfb",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/elements/directive-text.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/directive-text.tsx",
+    "sha256": "7865b18353476c4963a1f59cd6c0d72a994899ee2acf27eeb849e7942bf0b3d4",
+    "bodySha256": "a028f9585a69026150212fb9bafbcc6fdba2f11b51717c51d4238c5b2ab12c59",
+    "adaptedBodySha256": "0c9ed5ce5a0bb5822ec572829cf6fb850d8c7a9c08db78549f7a8cf448165d99",
+    "structureSha256": "5d870df9bd01b2affbd2171add6965bc61f65a0af27ad69af2523d6987887b7e"
+  },
+  {
+    "file": "source/elements/directive-text.aui.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/directive-text.aui.tsx",
+    "sha256": "3a8a0b8f0de9fd546c6e214c5ff8d833324fda0c3a730a2dcdb506e8d66cfffe",
+    "bodySha256": "2b8e2e46197552f99eec06b9c9a65929c5a0a566fcd5789d4373dfaece02a9f9",
+    "adaptedBodySha256": "2b8e2e46197552f99eec06b9c9a65929c5a0a566fcd5789d4373dfaece02a9f9",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/utils/useIsomorphicLayoutEffect.ts",
+    "source": "packages/ui/src/components/react/assistant-ui/utils/useIsomorphicLayoutEffect.ts",
+    "sha256": "8db117d730e640655e5099e086af4e00d545c283839d9ef5885ca93419d51893",
+    "bodySha256": "8a401cd79c4afbc77d44b545c5a01e9893e31e7183d710fead7f4f6d436fdccd",
+    "adaptedBodySha256": "8a401cd79c4afbc77d44b545c5a01e9893e31e7183d710fead7f4f6d436fdccd",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/elements/surfaces.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/surfaces.tsx",
+    "sha256": "5d81fbb669e67ae20026cd30ed57efc51a5e3ee0f4f5d265e1723de75359b8fa",
+    "bodySha256": "be96dad15bb4b976ec5fde613a02f2f6e5418ae0f2bc56ee5bc9f9fff6dcc98c",
+    "adaptedBodySha256": "614e821b47a3b3024f8460544d001614bab9e12fe4b409417c3f87cd055f37f5",
+    "structureSha256": "555372801ca73806c21b5b8bc53ba3bf3448d794886528b277dacb64c08da0dd"
+  },
+  {
+    "file": "source/elements/media-player.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/media-player.tsx",
+    "sha256": "c1d92c3b7eeb21adac5052ff12ae1ac53b9e036340d58a4a80f84db1414ca538",
+    "bodySha256": "4d4f5c06cff2a7331ab6f29dab8c02eefa95d54c642d2362d92296bd8d44a26d",
+    "adaptedBodySha256": "87f78dab69a6c5869145ee4ff265fa780787c450cdeed5c75b66819883ddcddb",
+    "structureSha256": "eb8911ad07430bca516b7e36e4ece7e5589ff495ee7c3cbccdd348865b7ac994"
+  },
+  {
+    "file": "source/elements/file.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/file.tsx",
+    "sha256": "af6c5c38b0409f168e1bcebacffa9efaf7ff17ecc3cc0b5fab8d4770df0454a0",
+    "bodySha256": "4c092da5c468085e0ffa800952da0fbc5ed69fb15adc9184958b42b989fadd04",
+    "adaptedBodySha256": "cb1155dd0209d57ba075c85d203552654ddcf86e1690fe0bcb913696c2382b42",
+    "structureSha256": "250f757953a16451fb1dad8e01a3975fdd5289c48dae714b08325b2288d42edd"
+  },
+  {
+    "file": "source/utils/href.ts",
+    "source": "packages/ui/src/components/react/assistant-ui/utils/href.ts",
+    "sha256": "3a8038d038b1918ae3f58a61dcd30933633131dda341eb5bea5b6a650b31a912",
+    "bodySha256": "e2fec4c345c53e4ce74234f13472a4c4f50fe66b8ae336aaa8741098ead9faa9",
+    "adaptedBodySha256": "e2fec4c345c53e4ce74234f13472a4c4f50fe66b8ae336aaa8741098ead9faa9",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/elements/image.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/image.tsx",
+    "sha256": "93eaf85070e3a0199ae345b63b80d1ddc13ab37e11a0cda4795e54847a82ebea",
+    "bodySha256": "f4700aadba643051f373c5e46c6668ddd967cd35bbd572e6dc9dfe7c0088f6e8",
+    "adaptedBodySha256": "7d00cf1f41816c73f425c5d74fea6743d684e41349b77cf5cd87990589d96157",
+    "structureSha256": "186eaf5fef77729e62ac42d86057eeed6b5a953c3e3618b39e9551453abba0bf"
+  },
+  {
+    "file": "source/elements/shiki-highlighter.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/shiki-highlighter.tsx",
+    "sha256": "81e7f56a5486967eef1763ea15ba22ad923388f5575f8dac71e588405c547f37",
+    "bodySha256": "1f088e40fc262b505af1e9261148b920fe2a915a815693eabf91ce2de103ec52",
+    "adaptedBodySha256": "2d59c162a5e2259fa3d45a33afd436860b3f805db01a08d9520f576aba6cbadf",
+    "structureSha256": "d7f1bc3d4c6820a5a7d219f7e98c6956787a057917793efeee661d739393da5b"
+  },
+  {
+    "file": "source/elements/shiki-highlighter.aui.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/shiki-highlighter.aui.tsx",
+    "sha256": "f3b0c83d58234376a60fe3296c42da4fc7cad64260789a91a13f4997cc7dbceb",
+    "bodySha256": "03202e94decc81a4744fb92cb8144e952347b91bd58d5cd720cde939720ebb69",
+    "adaptedBodySha256": "62aef24d0d3cdb552c55bbc4aae8b7def2cf4cdce7252befa11a28d58147067d",
+    "structureSha256": "3670fc71469359d574b99f1d3ecf4c105830860105a2c7c5a3e6c568eb9a3e25"
+  },
+  {
+    "file": "source/ui/code-block.tsx",
+    "source": "packages/ui/src/components/react/ui/base/code-block.tsx",
+    "sha256": "62f8e53ec80f21cddeb31cba626ccb7c9735067ca70b357050eeda53a30a222b",
+    "bodySha256": "0b922dd19ad13b4d56aec5e2e4a8eb8d62cd5f28f57c241df8d91a6322229d36",
+    "adaptedBodySha256": "f0aeff134674e38bb5dce4de9cba8645ae561b63fc21dc03fd05932fcd2fe357",
+    "structureSha256": "148e44736b4ec1cc525fad6b98a08dac58332ecbf216c639e6a6dc5cb340acc8"
+  },
+  {
+    "file": "source/hooks/use-copy-to-clipboard.ts",
+    "source": "packages/ui/src/hooks/use-copy-to-clipboard.ts",
+    "sha256": "1f3b8a1bab79cef961f62eb25d6b58a0d16c957d63ba1faf086ad09c99712c0a",
+    "bodySha256": "2a79c41820cac4b6fc556ccbbb2220069f5b273b9f149145e40d441073574a60",
+    "adaptedBodySha256": "2a79c41820cac4b6fc556ccbbb2220069f5b273b9f149145e40d441073574a60",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/utils/markdown-math.ts",
+    "source": "apps/docs/lib/markdown-math.ts",
+    "sha256": "0cddaa46cdf3aa0dc87a46548bf79afb8ab5047e2bc7973a9aa296c228c4cb9f",
+    "bodySha256": "121fe137a4d58f92066d00f3ddb201cce8c532cd7919d282c1ae9d8757b4e96e",
+    "adaptedBodySha256": "121fe137a4d58f92066d00f3ddb201cce8c532cd7919d282c1ae9d8757b4e96e",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/elements/mermaid-diagram.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/mermaid-diagram.tsx",
+    "sha256": "03d6dbb6bb5f2849564ca92f53db8d565088760d06cb3aa8da48ca09a8950d47",
+    "bodySha256": "c9585cc267923b36a2bd7fcc4b9702d6960e1410dd34b1e031778b8e0486b875",
+    "adaptedBodySha256": "786ccdfb7a8d68c87b9a54ade1fb1054b704d32b08b96ff87494d5ca4432fba4",
+    "structureSha256": "f920feb586ca66cd1e391ec9d88447abb5737ea18a544f3f0e1a9b35b0f4fe5e"
+  },
+  {
+    "file": "source/elements/mermaid-diagram.aui.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/mermaid-diagram.aui.tsx",
+    "sha256": "5a67938ae2045c68d04feb5c8e327c06f2ab80b5bdadd0410fdc28bc62b03724",
+    "bodySha256": "e23dec8705ae1d7ad4bfea88bc6d1ab5c6fe0cd1d83ff7c46a5fa054a420b976",
+    "adaptedBodySha256": "5c23129882064709c88cc4034a08765fdb0591b294fd379883bc87311b080384",
+    "structureSha256": "862c3c8c978b6e4c324108b0eb8adfbdfc72d0cad860b6fde06b2bbf8594129d"
+  },
+  {
+    "file": "source/elements/markdown-text.tsx",
+    "source": "apps/docs/components/assistant-ui/elements/markdown-text.tsx",
+    "sha256": "ae4e11375b6dab4b2a4dd24fdd323fd2e3d4fce0e0d61d46616fd34d6912928f",
+    "bodySha256": "964e1ccf99f17ff28d375f0483c239920b4e0f9a57f8ef29896d65451ae52ccb",
+    "adaptedBodySha256": "acdf98d0f4504186b78faad67175247f64a7f64a066eb36dd3f124322b80eab8",
+    "structureSha256": "646d36dc73ec326a72f15801b1f4decc75bde86a419cfd597e043b0e98ed5cce"
+  },
+  {
+    "file": "source/elements/collapsible-root.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/collapsible-root.tsx",
+    "sha256": "6d3e6d9a776ac9db13448606627c2ef51e5605cacb2f805379ada9b58abe4565",
+    "bodySha256": "5606ad421442beb7d1938838bd45ddbbe7bf6f6c5916aee922c8111211f48915",
+    "adaptedBodySha256": "2c21afba65fe02857d423fdaf90645ecd1ec3c488254b03f3c59dff494d01279",
+    "structureSha256": "ad4cd8e2033b2a5312e33327dd5a7decdad5bfd9725c65bfe6ef8702af76bd26"
+  },
+  {
+    "file": "source/elements/reasoning.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/reasoning.tsx",
+    "sha256": "02c42a1cad5fd56f4479fe65c779e9f9934c03a6e935ac92ebf98cbb46ef3cc7",
+    "bodySha256": "f1132048ca2a93197aa852a351743be57c69b42922943da5a40b877496162b81",
+    "adaptedBodySha256": "e86367f77bf99aded49f0f3469958272740a068e7f498d50ac6eb1d66287c009",
+    "structureSha256": "7811f517059aa7c1e65ceb6f5e6ca365070c652a358a110b4baade6d3366dd4c"
+  },
+  {
+    "file": "source/elements/reasoning.aui.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/reasoning.aui.tsx",
+    "sha256": "3ae8bcf0d84fcb9ac37a40c2046abbf46d7b8f3967b482eec84f0a743aefce65",
+    "bodySha256": "138a0a280a35101acf6ebd864974b346d391340e0df8ad00a94895d1d81bf387",
+    "adaptedBodySha256": "12ddf994621222746e5efb0b63b7f5b3edc54cd46c055af6c351417fc81970fa",
+    "structureSha256": "1a7bbd609f880b103ce1b745b3be5e0d184fcfdc97d01646ad39980e88c0572d"
+  },
+  {
+    "file": "source/trace-line.tsx",
+    "source": "apps/docs/components/shared/trace-line.tsx",
+    "sha256": "d68c5946d4f29c6fb22f54c5a1f7d6fa39460925339cc59432acee4813d0c264",
+    "bodySha256": "8e4b254b1ed6dfd050efff8954e98c2665bbba09ab58c149181534a3a3e25257",
+    "adaptedBodySha256": "55e5699b4a759ae93428cb21227390d944a4247f9ca593023d9541bab5e6ba40",
+    "structureSha256": "f865087abdf8ed1ec653230e40781ab06f2714a33647287e97712638b5baaffc"
+  },
+  {
+    "file": "source/utils/public-assistant-errors.ts",
+    "source": "apps/docs/lib/public-assistant-errors.ts",
+    "sha256": "8541ac4eaca1178485cbc863fdd66dae30e85a87f37b6143307d1d87a13f8bff",
+    "bodySha256": "ed4543054f13071ab7dac652f76eae59d188074a702e295371e5a726d101d6a7",
+    "adaptedBodySha256": "ed4543054f13071ab7dac652f76eae59d188074a702e295371e5a726d101d6a7",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/elements/message-timing.aui.tsx",
+    "source": "packages/ui/src/components/react/assistant-ui/elements/message-timing.aui.tsx",
+    "sha256": "92a57b030869faad581b6dedb22bfd6bf50c01d13ea48484d33dda0a3d9f761d",
+    "bodySha256": "f7689e88f1c197a4fa8410543207d188ca5ee76dccd8d0639aa1cbf163a44839",
+    "adaptedBodySha256": "341331ad91b7c832db2601e7744b2b19fea0c1b26ded06637eb2e483c068dbc3",
+    "structureSha256": "a3fe4bb5da7c542ecdb93ee4a1fabb0ba61efbf9887f67576b5be2b84a38d7d5"
+  },
+  {
+    "file": "source/utils/assistant-metrics.ts",
+    "source": "apps/docs/lib/assistant-metrics.ts",
+    "sha256": "e785fcc6db2adaf3ccd356bce94f7728f9a574106bcef46ffbbb873fda2af844",
+    "bodySha256": "919c534444a0d40383c9710962391a513b17168847d9691c3bd570733172d21d",
+    "adaptedBodySha256": "919c534444a0d40383c9710962391a513b17168847d9691c3bd570733172d21d",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/apps/docs/components/pages/docs/assistant/feedback-popover.tsx",
+    "source": "apps/docs/components/pages/docs/assistant/feedback-popover.tsx",
+    "sha256": "04c555bc1903d2fbde1772ce55b6e3ea29371ac53cb0fb07a8c367685819066f",
+    "bodySha256": "0f8e0dcf1a5fca63d85e79555fe8f238f061478cca0350c17bff11a7008cc950",
+    "adaptedBodySha256": "ac5381e527288cd51075e6ee886163b5088430b1f94c0b327d87ab453bec650e",
+    "structureSha256": "b63298cb6fe47edbf4c41e78ab5b41710fbde0100762d89dd50d8d1e9737f407"
+  },
+  {
+    "file": "source/apps/docs/components/pages/docs/assistant/assistant-action-bar.tsx",
+    "source": "apps/docs/components/pages/docs/assistant/assistant-action-bar.tsx",
+    "sha256": "2c5e829acb3dfbd97621ae063046ef9bf72785e9be7d7d739eee0763c5d2265d",
+    "bodySha256": "b8d1d04e025a60cce6a033fe81810019d187aed835db5e7e4045feadc28265f6",
+    "adaptedBodySha256": "32540e43fc1abbe102a703ac74dc05e8898cf61594d29ddd962153a6217bc3f5",
+    "structureSha256": "c4ab054697445ae1c5dac4687d8d7631cb4ec2b9c8d7c26b172146dcc9101cce"
+  },
+  {
+    "file": "source/styles.ts",
+    "source": "apps/docs/components/pages/home/demo/styles.ts",
+    "sha256": "6efca689935d47d218ec0db22b9b701aa168e9cf0d5ee8c9e971cf4710d4d807",
+    "bodySha256": "1ebd5d671df4ba39a7895957d626a11754f88d3a00c7682ae55fc6301e86849e",
+    "adaptedBodySha256": "1ebd5d671df4ba39a7895957d626a11754f88d3a00c7682ae55fc6301e86849e",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/action-bar.tsx",
+    "source": "apps/docs/components/pages/home/demo/action-bar.tsx",
+    "sha256": "d62e05122b8d4548a62b2cfc3b72ec54781a187ceeed461b3ff7f2bd7e06b3d6",
+    "bodySha256": "97e07f8a61e3c0a2a529c127db2132318bb7355e4150795d83f33419d91dca23",
+    "adaptedBodySha256": "1a1e6a83372f9fad8dd22f9dab322b1e2983eabfc3f6047a977961dfa33388ff",
+    "structureSha256": "9db08f433d910ab429c6e534a9ee8edc3cacda27679e85287c9a4f45db31969b"
+  },
+  {
+    "file": "source/sources.tsx",
+    "source": "apps/docs/components/pages/home/demo/sources.tsx",
+    "sha256": "f6cf5e5b0fe8e2cc885aae2ce90cda32c6ff8c2123ef72210618a35910161e3c",
+    "bodySha256": "dfe05919fe0ebf94f267a1bbe254285b625e4f26d9b92324bba0ec74be98115a",
+    "adaptedBodySha256": "cf338ef7d6846dfa5619a62fab029fdd66ca8214023f47f0ce95b1097d621846",
+    "structureSha256": "0e73ff381a4237c29c7380a5d6f787bedbb5063b125f874cb565ee5195c053da"
+  },
+  {
+    "file": "source/ui/collapsible.tsx",
+    "source": "packages/ui/src/components/react/ui/base/collapsible.tsx",
+    "sha256": "cf6333da05adc3d96abf7ce0928c0c9a3fe3c6df46f7771551220a9205c41975",
+    "bodySha256": "4756e5f3f765fcf3bec4b6e80424bb72881515a78d926437e4757ebea7d4c71d",
+    "adaptedBodySha256": "fbf6218518ceafa941780d8155b534f0c99d30c1f8a7a34c3cec874b49b87410",
+    "structureSha256": "93f5171e40a52171563b796928938fd28cbd4019182f28eb5e92ea7654ef6987"
+  },
+  {
+    "file": "source/trace.tsx",
+    "source": "apps/docs/components/pages/home/demo/trace.tsx",
+    "sha256": "229edd9c4ecd8a791601c8447b775580f3c71a71224dc13c834e52575e40095a",
+    "bodySha256": "e75edf0193fe89a29f72e10a4001c39094a887d0ed264df3ccdcc7adbb19166b",
+    "adaptedBodySha256": "cbf2c4272abde3f19fec68b4fd4c25b80f76a9460787f799a8f957df96b0b94a",
+    "structureSha256": "d0239dfd13cfb03a16945a4c3761d7a224990ff18a114f364bfcaa7daeeca2c6"
+  },
+  {
+    "file": "source/messages.tsx",
+    "source": "apps/docs/components/pages/home/demo/messages.tsx",
+    "sha256": "9dcb67616f362336fd7e15b8e4e19f6d237fcccd097894bc3254dd084bdbcd39",
+    "bodySha256": "36f55b597a1902068f87394c98b428a2da451f54a1623a7c7e17df05e6d24ea2",
+    "adaptedBodySha256": "e31f3d4c8d7c1cd8878b771ceea709028888fbee1cea54afa972b7c9e769dedb",
+    "structureSha256": "6ef77e015bfad899d58aafd4d5e3ddd81bbc29f41b3e6f327677f3280a2795b0",
+    "adaptedStructureSha256": "71a7a18f15ca3189c6607a444f2ec245fcac4bb9a6c49579754f54dd904a58ea"
+  },
+  {
+    "file": "source/suggestions.tsx",
+    "source": "apps/docs/components/pages/home/demo/suggestions.tsx",
+    "sha256": "576c18ba5fc2a9c7e6a6e9d3e0194af6a66e1e33dcaecea1141a04709a539398",
+    "bodySha256": "d8e188cbca24c1ea0a8e7f414a54b9c0717b71ef66916e0b32a14ebdeac50841",
+    "adaptedBodySha256": "b088eddc0ebae7c29c28dcf4af75cb128d10130d8268d67c9824c05513496b2e",
+    "structureSha256": "7ad449a4de819dce00053f04bd138e6339baed76ac7435b220a525c0b0479d41"
+  },
+  {
+    "file": "source/thread.tsx",
+    "source": "apps/docs/components/pages/home/demo/thread.tsx",
+    "sha256": "bdd66dafe62eacc6319e4ae92deaf10dcdaa570c93a2faded5d3189537209def",
+    "bodySha256": "d51148b500a607b6f0a88a8189ca37b671ec1ec0e52f5e25226c83d6abdf550b",
+    "adaptedBodySha256": "6fcf3eb743e00c915892345cd1bc2c2d07169f5da47f261adc90c007dd64a1b2",
+    "structureSha256": "025fecdb3a4ef5bc7b0cfe64c41f2e6ef12666d45bb64887ccbcc16853409deb",
+    "adaptedStructureSha256": "f9f2dbcf718f5d704932e356ec0b4fc444bce4068349dee309ca05757dc339b7"
+  },
+  {
+    "file": "source/utils/persisted-preference.ts",
+    "source": "apps/docs/lib/persisted-preference.ts",
+    "sha256": "ea7601fa321f112c814c9389778c8cd6bf8eb899bc096255b782f23e2d3455b9",
+    "bodySha256": "575d866d477b477c1eff0ed7d9ffacf4e8947fa3b8f28a6cb392d9a05a92ccc1",
+    "adaptedBodySha256": "575d866d477b477c1eff0ed7d9ffacf4e8947fa3b8f28a6cb392d9a05a92ccc1",
+    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "file": "source/styles/globals.css",
+    "source": "apps/docs/styles/globals.css",
+    "sha256": "afbd707c348a421fb4f4e2fd397fe9a5d1b796c6d034f24420e143b7bbba8c4f"
+  },
+  {
+    "file": "source/styles/shimmer.css",
+    "source": "packages/tw-shimmer/src/index.css",
+    "sha256": "827e798063a2c03906c83b469ffbb0d5ffc880055176fbd12cdb8f11c24a24c9"
+  }
+]

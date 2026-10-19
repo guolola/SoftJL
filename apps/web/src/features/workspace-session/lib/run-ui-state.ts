@@ -1,9 +1,9 @@
 // Provides run UI status defaults and event-to-UI-state derivation.
 
-import type { RunEvent } from "@uml-platform/contracts";
+import type { RunEventInput } from "@uml-platform/contracts";
 import { localizeRunFailure } from "../../../shared/i18n/api-errors";
 
-function failedEventMessage(event: RunEvent) {
+function failedEventMessage(event: RunEventInput) {
   return event.type === "failed"
     ? localizeRunFailure(event.error, "生成任务失败，请稍后重试。")
     : "生成任务失败，请稍后重试。";
@@ -33,7 +33,7 @@ interface RunEventUiMessages {
 
 export function deriveRunUiStateFromEvent(
   current: RunUiState,
-  event: RunEvent,
+  event: RunEventInput,
   progress: number | null | undefined,
   messages: RunEventUiMessages,
 ) {

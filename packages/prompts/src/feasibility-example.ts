@@ -163,10 +163,6 @@ function candidate(index: number) {
           provenance: AI_PROVENANCE,
         },
       ],
-      oneTimeCosts: ["基础设施与实施投入"],
-      recurringCosts: ["年度运维"],
-      quantitativeBenefits: ["一次性与持续效率收益"],
-      qualitativeBenefits: ["流程透明度提升"],
       risks: [1, 2, 3].map((riskIndex) => ({
         id: `${id}-risk-${riskIndex}`,
         risk: `方案风险 ${riskIndex}`,

@@ -43,6 +43,8 @@ export type LlmRequestTelemetry = {
 export type AnalyticsWindowFilters = {
     from: string;
     to: string;
+    projectId?: string;
+    runIds?: string[];
     taskType?: string;
     providerConfigId?: string;
     model?: string;
@@ -53,8 +55,10 @@ export interface RunTelemetryStore {
     recordTelemetry(entry: LlmRequestTelemetry): Promise<void>;
     listTelemetry(filters: AnalyticsWindowFilters): Promise<LlmRequestTelemetry[]>;
 }
-function matchesFilters(entry: Pick<LlmRequestTelemetry, "queuedAt" | "taskType" | "providerConfigId" | "model" | "requestedModelCount">, filters: AnalyticsWindowFilters) {
+function matchesFilters(entry: LlmRequestTelemetry, filters: AnalyticsWindowFilters) {
     return entry.queuedAt >= filters.from && entry.queuedAt < filters.to &&
+        (!filters.projectId || entry.projectId === filters.projectId) &&
+        (!filters.runIds || filters.runIds.includes(entry.runId)) &&
         (!filters.taskType || entry.taskType === filters.taskType) &&
         (!filters.providerConfigId || entry.providerConfigId === filters.providerConfigId) &&
         (!filters.model || entry.model === filters.model) &&
@@ -140,8 +144,10 @@ export function createPostgresRunTelemetryStore(db: Queryable): RunTelemetryStor
         where queued_at >= $1::timestamptz and queued_at < $2::timestamptz
           and ($3::text is null or task_type = $3) and ($4::text is null or provider_config_id = $4)
           and ($5::text is null or model = $5) and ($6::int is null or requested_model_count = $6)
+          and ($7::text is null or project_id = $7) and ($8::text[] is null or run_id = any($8))
         order by queued_at asc`, [filters.from, filters.to, filters.taskType ?? null,
-                filters.providerConfigId ?? null, filters.model ?? null, filters.requestedModelCount ?? null]);
+                filters.providerConfigId ?? null, filters.model ?? null, filters.requestedModelCount ?? null,
+                filters.projectId ?? null, filters.runIds ?? null]);
             return result.rows.map(mapTelemetryRow);
         },
     };

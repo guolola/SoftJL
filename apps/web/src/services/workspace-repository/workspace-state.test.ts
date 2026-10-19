@@ -1,5 +1,7 @@
 // Verifies workspace snapshot merge rules that are shared by repository implementations.
+import { createRunSnapshot, createDesignRunSnapshot } from "@/test/contract-fixtures";
 import { describe, expect, it } from "vitest";
+import { captureWorkspaceGuard } from "@uml-platform/contracts";
 import type {
   AtomicRequirement,
 
@@ -15,14 +17,66 @@ import { snapshotInputFingerprint } from "../../shared/lib/fingerprint";
 import {
   applySnapshotToWorkspace,
   createEmptyWorkspace,
+  mergeWorkspaceState,
 } from "./workspace-state";
+
+it("loads current rule facts without rewriting associations or versions", () => {
+  const rule = { id: "r1", type: "functional" as const, text: "用户查看信息" };
+  const next = mergeWorkspaceState({ rules: [rule], rulesVersion: 1, requirementText: rule.text });
+  expect(next.rules).toEqual([rule]);
+  expect(next.rulesVersion).toBe(1);
+});
+
+it("rejects obsolete rules on load instead of inferring classifications", () => {
+  const obsolete = { rules: [{ id: "R1", text: "用户预约", category: "功能需求" }] };
+  expect(() => mergeWorkspaceState(obsolete as unknown as Partial<WorkspaceRecord>)).toThrow(/type/);
+  expect(obsolete.rules[0]).not.toHaveProperty("classification");
+});
+
+it("rejects obsolete saved models and incomplete feasibility artifacts without mutating storage", () => {
+  const state = { models: { usecase: { diagramKind: "usecase", title: "obsolete" } }, designInputFingerprints: { class: "old" } };
+  const before = structuredClone(state);
+  expect(() => mergeWorkspaceState(state as unknown as Partial<WorkspaceRecord>)).toThrow();
+  expect(state).toEqual(before);
+  expect(() => mergeWorkspaceState({ feasibilityBusinessFlow: { model: {} } } as unknown as Partial<WorkspaceRecord>)).toThrow();
+});
+
+it("rejects outdated snapshot provenance before restoring any workspace artifacts", () => {
+  const workspace = createEmptyWorkspace();
+  const before = structuredClone(workspace);
+  for (const field of ["operationType", "outputManifest"] as const) {
+    const snapshot = createRunSnapshot();
+    delete (snapshot as unknown as Record<string, unknown>)[field];
+    expect(() => applySnapshotToWorkspace(workspace, snapshot)).toThrow();
+  }
+  expect(workspace).toEqual(before);
+});
+
+it("leaves contextual models untouched when the manifest accepts no model output", () => {
+  const original = createUseCaseModel();
+  const workspace = { ...createEmptyWorkspace(), models: { usecase: original } };
+  const snapshot = createRunSnapshot({ selectedDiagrams: ["usecase"], models: [{ ...original, title: "仅运行上下文" }], outputManifest: [] });
+  expect(applySnapshotToWorkspace(workspace, snapshot).models.usecase).toEqual(original);
+});
+
+it("does not invent a source fingerprint for an existing design when loading a workspace", () => {
+  const design = tableDesignModel();
+  const next = mergeWorkspaceState({
+    models: { usecase: createUseCaseModel() },
+    designModels: { table: design },
+    generatedDesignDiagramTypes: ["table"],
+    designInputFingerprints: {},
+  });
+  expect(next.designInputFingerprints).toEqual({});
+  expect(next.designModels.table).toEqual(design);
+});
 
 function createRule(id: string, text = `${id} 需求规则。`): RequirementRule {
   return {
     id,
-    category: "业务规则",
+    type: "business-rule" as const,
     text,
-    relatedDiagrams: ["usecase"],
+
   };
 }
 
@@ -34,7 +88,7 @@ function createAtomicRequirement(
     sourceRuleId: "r1",
     sourceFragment: "用户通过邮箱注册账号。",
     sourceLocation: { section: "input", startOffset: 0, endOffset: 10 },
-    type: "functional",
+    type: "functional" as const,
     actor: "用户",
     subject: "用户",
     action: "注册",
@@ -56,12 +110,17 @@ function createBaseline(
   overrides: Partial<RequirementBaseline> = {},
 ): RequirementBaseline {
   return {
+      id: "baseline-test",
+      version: 1,
+      sourceInputFingerprint: "test-source-input",
     runId: "run-baseline",
     sourceDocumentId: "inline-requirement",
     createdAt: "2026-06-18T00:00:00.000Z",
     assumptions: [],
     conflicts: [],
-    requirements,
+    schemaVersion: 3 as const,
+
+      rules: (requirements).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, type: "business-rule" as const, origin: "generated" as const })),
     qualityReport: {
       runId: "run-baseline",
       status: "passed",
@@ -73,6 +132,17 @@ function createBaseline(
     ...overrides,
   };
 }
+
+it("retains baseline metadata when an older model result has the same requirement content", () => {
+  const rule = createRule("r1", "用户通过邮箱注册账号。");
+  const baseline = createBaseline([createAtomicRequirement()]);
+  const workspace = { ...createEmptyWorkspace(), requirementText: rule.text, rules: [rule], requirementBaseline: baseline };
+  const incoming = { ...baseline, runId: "model-task", createdAt: "2026-10-17T00:00:00Z", qualityReport: { ...baseline.qualityReport, runId: "model-task" } };
+  const snapshot = createRunSnapshot({ runId: "model-task", requirementText: rule.text, rules: [rule], selectedDiagrams: ["usecase"], requirementBaseline: incoming });
+  const next = applySnapshotToWorkspace(workspace, snapshot);
+  expect(next.requirementBaseline).toEqual(baseline);
+  expect(next.requirementQualityReport).toEqual(baseline.qualityReport);
+});
 
 function createUseCaseModel(): DiagramModelSpec {
   return {
@@ -90,55 +160,13 @@ function createUseCaseModel(): DiagramModelSpec {
 function createSnapshot(
   overrides: Partial<RunSnapshot>,
 ): RunSnapshot {
-  return {
-    runId: "run-snapshot",
-    requirementText: "",
-    selectedDiagrams: ["usecase"],
-    analysisTargetUseCaseIds: [],
-    rules: [],
-    requirementBaseline: null,
-    coverageMatrix: null,
-    traceabilityMatrix: null,
-    models: [createUseCaseModel()],
-    requirementModelTraceability: [],
-    plantUml: [],
-    svgArtifacts: [],
-    visualReviews: {},
-    diagramErrors: {},
-    requirementTrace: [],
-    currentStage: "render_svg",
-    status: "completed",
-    error: null,
-    ...overrides,
-  };
+  return createRunSnapshot({ runId: "run-snapshot", selectedDiagrams: ["usecase"], models: [createUseCaseModel()], ...overrides });
 }
 
 function createDesignSnapshot(
   overrides: Partial<DesignRunSnapshot>,
 ): DesignRunSnapshot {
-  return {
-    runId: "design-run-snapshot",
-    requirementText: "图书馆管理系统",
-    selectedDiagrams: ["table", "component"],
-    requestedDiagrams: ["table", "component"],
-    rules: [],
-    requirementBaseline: null,
-    coverageMatrix: null,
-    traceabilityMatrix: null,
-    requirementModels: [],
-    requirementModelTraceability: [],
-    models: [],
-    designModelTraceability: [],
-    plantUml: [],
-    svgArtifacts: [],
-    visualReviews: {},
-    diagramErrors: {},
-    designTrace: [],
-    currentStage: "render_svg",
-    status: "completed",
-    error: null,
-    ...overrides,
-  };
+  return createDesignRunSnapshot({ runId: "design-run-snapshot", requirementText: "图书馆管理系统", selectedDiagrams: ["table", "component"], requestedDiagrams: ["table", "component"], ...overrides });
 }
 
 
@@ -171,25 +199,25 @@ function tableDesignModel(): DesignDiagramModelSpec {
   };
 }
 
-function createPendingCandidate(
-  requirement: AtomicRequirement,
-): WorkspaceRecord["requirementReviewCandidates"][string] {
-  return {
-    ruleId: requirement.sourceRuleId ?? "r1",
-    beforeRequirement: requirement,
-    afterRequirement: {
-      ...requirement,
-      status: "accepted",
-    },
-    repairRationale: "补齐缺失字段。",
-    blockingReasons: [],
-    status: "pending",
-    errorMessage: null,
-    createdAt: "2026-06-18T00:00:00.000Z",
-  };
-}
-
 describe("applySnapshotToWorkspace", () => {
+  it("preserves a design target edited after the run began", () => {
+    const original = { ...createEmptyWorkspace(), designModels: { table: tableDesignModel() } };
+    const snapshot = createDesignSnapshot({ models: [tableDesignModel()], selectedDiagrams: ["table"] });
+    snapshot.workspaceGuard = captureWorkspaceGuard({ snapshot }, { ...original });
+    const edited = { ...original, designModels: { table: { ...tableDesignModel(), title: "人工修改" } } };
+    expect(applySnapshotToWorkspace(edited, snapshot)).toBe(edited);
+  });
+  it("refuses stale run facts in browser merges while allowing unrelated preferences", () => {
+    const original = { ...createEmptyWorkspace(), requirementText: "原需求", rules: [createRule("r1")] };
+    const snapshot = createSnapshot({ requirementText: original.requirementText, rules: original.rules, models: [createUseCaseModel()] });
+    snapshot.workspaceGuard = captureWorkspaceGuard({ snapshot }, { ...original });
+    const edited = { ...original, requirementText: "刚修改的需求" };
+    expect(applySnapshotToWorkspace(edited, snapshot)).toBe(edited);
+    const fresh = applySnapshotToWorkspace(original, snapshot);
+    expect(Object.values(fresh.models)).toContainEqual(createUseCaseModel());
+    snapshot.publicationSkipped = "输入已变更";
+    expect(applySnapshotToWorkspace(original, snapshot)).toBe(original);
+  });
   it.each(["requirements", "design"])("replaces custom-ID sources with their models during %s snapshot recovery", (stage) => {
     const design = stage === "design";
     const oldModel = { ...(design ? tableDesignModel() : createUseCaseModel()), modelId: "custom-old" };
@@ -353,7 +381,7 @@ describe("applySnapshotToWorkspace", () => {
       actor: null,
       status: "pending-review",
     });
-    const pendingBaseline = createBaseline([pendingRequirement], {
+    const pendingBaseline = createBaseline([createAtomicRequirement(), pendingRequirement], {
       runId: "run-pending-baseline",
       qualityReport: {
         runId: "run-pending-baseline",
@@ -378,16 +406,16 @@ describe("applySnapshotToWorkspace", () => {
       requirementText,
       rules,
       requirementBaseline: createBaseline([
+        createAtomicRequirement(),
         createAtomicRequirement({
           id: "REQ-006",
           sourceRuleId: "r6",
+          sourceFragment: "联系方式在认领通过前隐藏。",
           status: "accepted",
         }),
       ]),
       requirementQualityReport: createBaseline([]).qualityReport,
-      requirementReviewCandidates: {
-        r6: createPendingCandidate(pendingRequirement),
-      },
+
     };
 
     const merged = applySnapshotToWorkspace(
@@ -406,10 +434,9 @@ describe("applySnapshotToWorkspace", () => {
     expect(
       merged.requirementBaseline?.qualityReport.reviewRequiredRequirementIds,
     ).toEqual(["REQ-006"]);
-    expect(merged.requirementReviewCandidates.r6?.status).toBe("pending");
   });
 
-  it("keeps accepted review candidates over older pending snapshot baselines", () => {
+  it("applies the explicit baseline and its quality report", () => {
     const requirementText = "用户通过邮箱注册账号，联系方式在认领通过前隐藏。";
     const rules = [
       createRule("r1", "用户通过邮箱注册账号。"),
@@ -422,14 +449,7 @@ describe("applySnapshotToWorkspace", () => {
       actor: null,
       status: "pending-review",
     });
-    const acceptedRequirement = createAtomicRequirement({
-      id: "REQ-006",
-      sourceRuleId: "r6",
-      sourceFragment: "联系方式在认领通过前隐藏。",
-      actor: "认领用户",
-      status: "accepted",
-    });
-    const pendingBaseline = createBaseline([pendingRequirement], {
+    const pendingBaseline = createBaseline([createAtomicRequirement(), pendingRequirement], {
       runId: "run-pending-baseline",
       qualityReport: {
         runId: "run-pending-baseline",
@@ -455,13 +475,7 @@ describe("applySnapshotToWorkspace", () => {
         ...createEmptyWorkspace(),
         requirementText,
         rules,
-        requirementReviewCandidates: {
-          r6: {
-            ...createPendingCandidate(pendingRequirement),
-            afterRequirement: acceptedRequirement,
-            status: "accepted",
-          },
-        },
+
       },
       createSnapshot({
         runId: "run-pending-baseline",
@@ -471,17 +485,16 @@ describe("applySnapshotToWorkspace", () => {
       }),
     );
 
-    expect(merged.requirementBaseline?.requirements[0]?.status).toBe("accepted");
-    expect(merged.requirementBaseline?.requirements[0]?.actor).toBe("认领用户");
-    expect(merged.requirementBaseline?.qualityReport.status).toBe("passed");
-    expect(merged.requirementBaseline?.qualityReport.issues).toEqual([]);
+    expect(merged.requirementBaseline?.rules[0]?.origin).toBe("generated");
+    expect(merged.requirementBaseline?.rules[0]?.type).toBe("business-rule");
+    expect(merged.requirementBaseline?.rules.map(rule => rule.text)).toEqual(rules.map(rule => rule.text));
+    expect(merged.requirementBaseline?.qualityReport).toEqual(pendingBaseline.qualityReport);
     expect(
       merged.requirementBaseline?.qualityReport.reviewRequiredRequirementIds,
-    ).toEqual([]);
-    expect(merged.requirementReviewCandidates.r6?.status).toBe("accepted");
+    ).toEqual(["REQ-006"]);
   });
 
-  it("drops stale pending candidates when the new baseline has passed", () => {
+  it("replaces the pending baseline with a passed baseline", () => {
     const requirementText = "用户通过邮箱注册账号。";
     const rules = [createRule("r1", "用户通过邮箱注册账号。")];
     const requirement = createAtomicRequirement({
@@ -501,9 +514,7 @@ describe("applySnapshotToWorkspace", () => {
         },
       ]),
       requirementQualityReport: createBaseline([]).qualityReport,
-      requirementReviewCandidates: {
-        r1: createPendingCandidate(requirement),
-      },
+
     };
 
     const merged = applySnapshotToWorkspace(
@@ -516,7 +527,6 @@ describe("applySnapshotToWorkspace", () => {
     );
 
     expect(merged.requirementBaseline?.qualityReport.status).toBe("passed");
-    expect(merged.requirementReviewCandidates.r1).toBeUndefined();
   });
 
   it("restores missing requirement text without replacing existing rules", () => {

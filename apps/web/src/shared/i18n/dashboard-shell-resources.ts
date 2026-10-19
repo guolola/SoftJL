@@ -8,7 +8,7 @@ export const dashboardShellZh = {
   artifactTypes: {
     requirements_usecase: "需求·用例模型", requirements_function: "需求·功能结构模型", requirements_class: "需求·领域类模型", requirements_activity: "需求·活动模型", requirements_analysis: "需求·用例分析模型", requirements_context: "需求·系统环境图", requirements_deployment: "需求·部署模型", requirements_prototype: "需求·界面原型",
     design_sequence: "设计·用例实现模型", design_class: "设计·类模型", design_activity: "设计·活动模型", design_component: "设计·组件模型", design_deployment: "设计·部署模型", design_table: "设计·数据库模型", design_prototype: "设计·界面原型", design_navigation: "设计·导航模型", design_architecture: "设计·架构模型",
-    feasibility_context: "系统环境图", 'feasibility_business-flow': "业务与系统流程图", feasibility_implementation: "实现方案",
+    feasibility_context: "系统环境图", 'feasibility_business-flow': "业务流程图", feasibility_implementation: "实现方案",
     document_requirementsSpec: "需求规格说明书", document_softwareDesignSpec: "软件设计说明书", document_feasibilityStudy: "可行性研究报告",
   },
   completed: "已完成任务", failed: "失败", cancelled: "取消", active: "排队／运行中",
@@ -26,7 +26,7 @@ export const dashboardShellZh = {
   noData: "暂无", unknownOwner: "未知负责人", refresh: "刷新数据", menu: "更多操作", details: "查看详情",
   status: { queued: "排队中", running: "运行中", completed: "已完成", failed: "失败", cancelled: "已取消" },
   count: "{{count}} 次任务", last12: "最近 12 个月", last5: "最近 5 个月", cumulative: "累计任务",
-  error: "无法加载仪表盘", retry: "重试", empty: "还没有项目，创建后即可在这里查看统计。", create: "新建项目",
+  error: "无法加载仪表盘", retry: "重试",
   completedFailed: "已完成／失败", average: "日均任务", modelScope: "去重模型数", memberStat: "成员数", runStat: "任务数", documentStat: "文档数",
 };
 export const dashboardShellEn = {
@@ -56,6 +56,6 @@ export const dashboardShellEn = {
   noData: "No data", unknownOwner: "Unknown owner", refresh: "Refresh data", menu: "More actions", details: "View details",
   status: { queued: "Queued", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled" },
   count: "{{count}} tasks", last12: "Last 12 months", last5: "Last 5 months", cumulative: "All-time tasks",
-  error: "Could not load the dashboard", retry: "Retry", empty: "Create your first project to see its statistics here.", create: "New project",
+  error: "Could not load the dashboard", retry: "Retry",
   completedFailed: "Completed / failed", average: "Daily average", modelScope: "Distinct models", memberStat: "Members", runStat: "Tasks", documentStat: "Documents",
 };

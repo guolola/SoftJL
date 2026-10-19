@@ -1,6 +1,6 @@
 // Verifies diagram detail editing, rerendering, trace highlighting, and export interactions.
-import { createRenderMeta } from "../../../test/artifact-fixtures";
-import { tableDiagramSpecSchema } from "@uml-platform/contracts";
+import { createRenderMeta } from "@/test/contract-fixtures";
+import { snapshotInputFingerprint, tableDiagramSpecSchema } from "@uml-platform/contracts";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,17 @@ import {
   withWorkspaceProviders,
 } from "../../../test/workspace-test-utils";
 import { BusinessFlowDiagramView, ContextDiagramView, DesignDiagramView, DiagramView } from "./diagram-detail-page";
+
+// Problem categories are collapsed by default; inspect their content after expanding them.
+function expandCheckRecord(scope: HTMLElement) {
+  scope.querySelectorAll('[data-slot="collapsible-trigger"][aria-expanded="false"]').forEach((trigger) => {
+    fireEvent.click(trigger);
+  });
+  scope.querySelectorAll("details").forEach((details) => {
+    (details as HTMLDetailsElement).open = true;
+  });
+}
+
 
 const { toastMessage, toastError } = vi.hoisted(() => ({
   toastMessage: vi.fn(),
@@ -80,7 +91,6 @@ describe("DiagramView", () => {
       testProviderSettings: vi.fn(),
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
-      restoreRunHistory: vi.fn(async () => null),
       deleteRunHistory: vi.fn(async () => []),
       clearRunHistory: vi.fn(async () => {}),
     };
@@ -169,7 +179,7 @@ describe("DiagramView", () => {
         svg: "<svg><text>ok</text></svg>",
         renderMeta: { engine: "plantuml", generatedAt: new Date().toISOString(), sourceLength: 1, durationMs: 1 },
       } },
-      visualReviews: { "requirements:usecase": {
+      visualReviews: { "requirements:usecase": { findings: [{ id: "unreadable", modelId: "usecase", layer: "image", category: "check_execution", code: "unreadable", observation: "标签不可读", evidence: [], verification: "inconclusive", repairable: false }],
         status: "pending_review", issues: ["标签不可读", "连线交叉"], reason: "视觉检查仍有问题，请人工确认", attempts: 3, structureAttempts: 1, repairAttempts: 0, checkedAt: new Date().toISOString(), confirmedAt: confirmed ? new Date().toISOString() : undefined,
       } },
     });
@@ -186,10 +196,11 @@ describe("DiagramView", () => {
     expect(screen.queryByText("标签不可读")).not.toBeInTheDocument();
     await userEvent.click(noticeButton);
     const notice = await screen.findByRole("dialog", { name: "模型提示" });
+    expandCheckRecord(notice);
     expect(within(notice).getByText("标签不可读")).toBeVisible();
     expect(within(notice).queryByText("连线交叉")).not.toBeInTheDocument();
     expect(within(notice).queryByRole("heading", { name: "检查未完成或异常（1）" })).not.toBeInTheDocument();
-    expect(within(notice).getByText("结构核对 1 次 · 图片检查 3 次 · 纠错尝试 0 次")).toBeInTheDocument();
+    expect(within(notice).queryByText(/结构核对.*次|图片检查.*次|纠错尝试.*次/)).not.toBeInTheDocument();
     expect(within(notice).queryByRole("button", { name: "确认当前图" })).not.toBeInTheDocument();
     expect(within(notice).getByText("视觉检查仍有问题，请人工确认")).toBeVisible();
     if (confirmed) expect(within(notice).getByText("内容已人工确认，原检查结论与结构问题仍保留。")).toBeVisible();
@@ -200,19 +211,24 @@ describe("DiagramView", () => {
     unmount();
     render(withWorkspaceProviders(<DiagramView type="usecase" />, repository));
     await userEvent.click(await screen.findByRole("button", { name: /提示（\d+）/ }));
-    expect(within(await screen.findByRole("dialog", { name: "模型提示" })).getByText("视觉检查仍有问题，请人工确认")).toBeVisible();
+    const reopened = await screen.findByRole("dialog", { name: "模型提示" });
+    expandCheckRecord(reopened);
+    expect(within(reopened).getByText("视觉检查仍有问题，请人工确认")).toBeVisible();
   });
 
-  it("shows the successful visual review reason in the notice dialog", async () => {
+  it("hides the model notice button when the visual review has no problems", async () => {
     const repository = createRepository(createWorkspaceRecord({
+      requirementText: "用户可以登录系统。",
+      diagramInputFingerprints: { usecase: snapshotInputFingerprint({ requirementText: "用户可以登录系统。", rules: [] }) },
       generatedDiagramTypes: ["usecase"],
       models: { usecase: { diagramKind: "usecase", title: "用例模型", summary: "用例模型", notes: [], actors: [], useCases: [], systemBoundaries: [], relationships: [] } },
       svgArtifacts: { usecase: { diagramKind: "usecase", svg: "<svg />", renderMeta: { engine: "test", generatedAt: "now", sourceLength: 1, durationMs: 1 } } },
-      visualReviews: { "requirements:usecase": { status: "passed", issues: [], reason: "结构核对通过", attempts: 1, checkedAt: "check-passed" } },
+      visualReviews: { "requirements:usecase": { findings: [], status: "passed", issues: [], reason: "结构核对通过", attempts: 1, checkedAt: "check-passed" } },
     }));
     render(withWorkspaceProviders(<DiagramView type="usecase" />, repository));
-    await userEvent.click(await screen.findByRole("button", { name: /提示（\d+）/ }));
-    expect(within(await screen.findByRole("dialog", { name: "模型提示" })).getByText("结构核对通过")).toBeVisible();
+    await screen.findByRole("button", { name: "编辑" });
+    expect(screen.queryByRole("button", { name: /提示（\d+）/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "模型提示" })).not.toBeInTheDocument();
   });
 
   it("uses the same notice dialog in the compact model layout", async () => {
@@ -222,7 +238,7 @@ describe("DiagramView", () => {
         generatedDiagramTypes: ["usecase"],
         models: { usecase: { diagramKind: "usecase", title: "用例模型", summary: "用例模型", notes: [], actors: [], useCases: [], systemBoundaries: [], relationships: [] } },
         svgArtifacts: { usecase: { diagramKind: "usecase", svg: "<svg />", renderMeta: { engine: "test", generatedAt: "now", sourceLength: 1, durationMs: 1 } } },
-        visualReviews: { "requirements:usecase": { status: "pending_review", issues: ["标签不可读"], reason: "请人工确认", attempts: 3, checkedAt: "check-mobile" } },
+        visualReviews: { "requirements:usecase": { findings: [{ id: "unreadable", modelId: "usecase", layer: "image", category: "check_execution", code: "unreadable", observation: "标签不可读", evidence: [], verification: "inconclusive", repairable: false }], status: "pending_review", issues: ["标签不可读"], reason: "请人工确认", attempts: 3, checkedAt: "check-mobile" } },
       }));
       render(withWorkspaceProviders(<DiagramView type="usecase" />, repository));
       const button = await screen.findByRole("button", { name: /提示（\d+）/ });
@@ -234,6 +250,7 @@ describe("DiagramView", () => {
       expect(screen.queryByText("标签不可读")).not.toBeInTheDocument();
       await userEvent.click(button);
       const notice = await screen.findByRole("dialog", { name: "模型提示" });
+      expandCheckRecord(notice);
       expect(within(notice).getByText("请人工确认")).toBeVisible();
       expect(within(notice).getByText("标签不可读")).toBeVisible();
       expect(within(notice).queryByRole("button", { name: "确认当前图" })).not.toBeInTheDocument();
@@ -251,7 +268,7 @@ describe("DiagramView", () => {
           createRule({
             id: "r1",
             text: "用户可以查看公开活动。",
-            relatedDiagrams: ["usecase"],
+
           }),
         ],
         plantUml: {
@@ -306,8 +323,7 @@ describe("DiagramView", () => {
             title: "用例模型",
             summary: "公开活动日历用例",
             notes: [],
-            actors: [{
-            responsibilities: [], id: "visitor", name: "未注册用户", actorType: "human" }],
+            actors: [{ responsibilities: [], id: "visitor", name: "未注册用户", actorType: "human" }],
             useCases: [
               {
                 id: "uc_view_events",
@@ -364,8 +380,7 @@ describe("DiagramView", () => {
             title: "用例模型",
             summary: "注册用户维护公开活动",
             notes: [],
-            actors: [{
-            responsibilities: [], id: "registered_user", name: "注册用户", actorType: "human" }],
+            actors: [{ responsibilities: [], id: "registered_user", name: "注册用户", actorType: "human" }],
             useCases: [
               {
                 id: "uc_edit_event",
@@ -572,17 +587,17 @@ describe("DiagramView", () => {
           createRule({
             id: "r1",
             text: "系统应管理图书信息。",
-            relatedDiagrams: ["class"],
+
           }),
           createRule({
             id: "r2",
             text: "系统应维护读者借阅记录。",
-            relatedDiagrams: ["class"],
+
           }),
           createRule({
             id: "r3",
             text: "系统应支持借出图书。",
-            relatedDiagrams: ["usecase"],
+
           }),
         ],
         plantUml: {

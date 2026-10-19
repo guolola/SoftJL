@@ -1,7 +1,8 @@
 // Hosts Onborda tours and coordinates step readiness, dismissal, and account persistence.
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Onborda, OnbordaProvider, useOnborda, type CardComponentProps, type Step } from "onborda";
 import confetti from "canvas-confetti";
@@ -10,6 +11,7 @@ import { Button } from "../../../shared/ui/button";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
 import { platformApi } from "../../user-platform/services/platform-api";
 import { TOUR_ITEMS, type TourId } from "../model/tour-catalog";
+import { tourCardPosition } from "../lib/tour-card-position";
 
 type TourSession = {
   id: TourId;
@@ -55,18 +57,40 @@ function TourCard({ step, currentStep, totalSteps }: CardComponentProps) {
   const { t } = useTranslation();
   const controls = useOnboardingTours();
   const cardRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: 16, top: 16 });
+
+  useLayoutEffect(() => {
+    const update = () => {
+      const card = cardRef.current;
+      const target = document.querySelector(step.selector);
+      if (!card || !target) return;
+      setPosition(tourCardPosition(target.getBoundingClientRect(), card.getBoundingClientRect(), {
+        width: window.innerWidth, height: window.innerHeight,
+      }, step.side));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    if (cardRef.current) observer.observe(cardRef.current);
+    const target = document.querySelector(step.selector);
+    if (target) observer.observe(target);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => { observer.disconnect(); window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); };
+  }, [step.selector, step.side, currentStep]);
 
   useEffect(() => {
     cardRef.current?.focus();
   }, [currentStep]);
 
-  return (
+  // Portal out of Onborda's positioned wrapper so its transforms cannot push controls off-screen.
+  return createPortal(
     <div
       ref={cardRef}
       role="dialog"
       aria-modal="true"
       aria-label={t("onboarding.dialogLabel")}
       tabIndex={-1}
+      style={{ position: "fixed", ...position, zIndex: 10000, maxHeight: "calc(100dvh - 2rem)", overflowY: "auto" }}
       onKeyDown={(event) => {
         if (event.key === "Escape") controls?.finishTour("skipped");
         if (event.key === "ArrowLeft" && currentStep > 0) void controls?.advanceTo(currentStep - 1);
@@ -93,7 +117,7 @@ function TourCard({ step, currentStep, totalSteps }: CardComponentProps) {
       <h2 className="mt-2 text-base font-semibold">{step.title}</h2>
       <div className="mt-2 text-sm leading-6 text-muted-foreground">{step.content}</div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <Button type="button" variant="ghost" size="sm" disabled={controls?.busy}
+        <Button type="button" variant="ghost" size="sm"
           onClick={() => controls?.finishTour("skipped")}>
           {t("onboarding.skip")}
         </Button>
@@ -112,7 +136,7 @@ function TourCard({ step, currentStep, totalSteps }: CardComponentProps) {
           </Button>
         </div>
       </div>
-    </div>
+    </div>, document.body
   );
 }
 
@@ -199,9 +223,17 @@ function TourRuntime({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const skipOnRouteChange = () => finishTour("skipped");
+    const skipOnOverlay = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest('[data-name="onborda-overlay"]')) finishTour("skipped");
+    };
+    const skipOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") finishTour("skipped"); };
+    document.addEventListener("click", skipOnOverlay);
+    document.addEventListener("keydown", skipOnEscape);
     window.addEventListener("uml-route-change", skipOnRouteChange);
     window.addEventListener("popstate", skipOnRouteChange);
     return () => {
+      document.removeEventListener("click", skipOnOverlay);
+      document.removeEventListener("keydown", skipOnEscape);
       window.removeEventListener("uml-route-change", skipOnRouteChange);
       window.removeEventListener("popstate", skipOnRouteChange);
     };

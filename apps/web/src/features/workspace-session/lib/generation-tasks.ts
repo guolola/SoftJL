@@ -1,5 +1,5 @@
 // Maintains per-run task state so concurrent generation jobs keep separate progress and logs.
-import type { DiagramVisualReview, RunEvent, RunStage } from "@uml-platform/contracts";
+import type { DesignDiagramModelSpec, DiagramModelSpec, DiagramVisualReview, RunEventInput, RunStage } from "@uml-platform/contracts";
 import type {
   GenerationTask,
   GenerationTaskKind,
@@ -18,8 +18,10 @@ import {
 import { appendTranscriptEvent } from "./run-transcript";
 import { isConfirmedVisualReview, visualReviewDetail } from "./visual-review-message";
 import { localizeRunFailure } from "../../../shared/i18n/api-errors";
+import { i18n } from "../../../shared/i18n/i18n";
+import { getModelTaskLabel } from "../../../entities/diagram/model";
 
-function runFailureMessage(event: RunEvent) {
+function runFailureMessage(event: RunEventInput) {
   return event.type === "failed"
     ? localizeRunFailure(event.error, "生成任务失败，请稍后重试。")
     : "生成任务失败，请稍后重试。";
@@ -29,8 +31,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function phaseSummaryFromEvent(event: RunEvent, fallback: string | null) {
-  
+function phaseSummaryFromEvent(event: RunEventInput, fallback: string | null) {
+
   if (event.type === "stage_progress" && event.message) {
     return event.message;
   }
@@ -43,7 +45,7 @@ function phaseSummaryFromEvent(event: RunEvent, fallback: string | null) {
   return fallback;
 }
 
-function eventFailureMessage(event: RunEvent) {
+function eventFailureMessage(event: RunEventInput) {
   return event.type === "failed" ? runFailureMessage(event) : null;
 }
 
@@ -64,6 +66,7 @@ export function createGenerationTask(input: {
   documentKind?: GenerationTask["documentKind"];
   message: string;
   subtasks?: GenerationSubtask[];
+  silentCompletion?: boolean;
 }): GenerationTask {
   return {
     clientTaskId: input.clientTaskId,
@@ -77,7 +80,7 @@ export function createGenerationTask(input: {
     message: input.message,
     messageCode: "RUN_QUEUED",
     errorMessage: null,
-    
+
     phaseSummary: input.message,
     technicalDetailsCollapsed: true,
     diagnostics: {
@@ -89,10 +92,11 @@ export function createGenerationTask(input: {
     subtasks: input.subtasks ?? [],
     startedAt: input.startedAt,
     finishedAt: null,
+    ...(input.silentCompletion ? { silentCompletion: true } : {}),
   };
 }
 
-function subtaskStatusFromEvent(event: RunEvent): GenerationSubtask["status"] {
+function subtaskStatusFromEvent(event: RunEventInput): GenerationSubtask["status"] {
   if (event.type === "artifact_ready") {
     if (
       event.artifactKind === "model" ||
@@ -145,7 +149,7 @@ function splitScopedSubtaskId(id: string) {
   };
 }
 
-function rawSubtaskIdFromEvent(event: RunEvent) {
+function rawSubtaskIdFromEvent(event: RunEventInput) {
   if ("subtaskId" in event && event.subtaskId) return event.subtaskId;
   if ("modelId" in event && event.modelId) return event.modelId;
   if ("diagramKind" in event && event.diagramKind) return event.diagramKind;
@@ -154,7 +158,7 @@ function rawSubtaskIdFromEvent(event: RunEvent) {
   return match?.[1] ?? null;
 }
 
-function subtaskIdFromEvent(event: RunEvent) {
+function subtaskIdFromEvent(event: RunEventInput) {
   const rawId = rawSubtaskIdFromEvent(event);
   if (!rawId) return null;
   if (!("stage" in event) || !isStageScopedSubtaskStage(event.stage)) {
@@ -168,8 +172,15 @@ function subtaskMatchesEvent(
   subtask: GenerationSubtask,
   scopedSubtaskId: string,
   rawSubtaskId: string,
+  event: RunEventInput,
 ) {
   if (subtask.id === scopedSubtaskId) return true;
+  const planned = splitScopedSubtaskId(subtask.id);
+  const incoming = splitScopedSubtaskId(scopedSubtaskId);
+  // Single-diagram placeholders use the kind before the server assigns a model ID.
+  // Keep per-use-case analysis/sequence tasks separate when their placeholders expand.
+  if (planned && incoming && planned.stage === incoming.stage && "diagramKind" in event &&
+      planned.rawId === event.diagramKind && !isExpandableAggregateSubtaskId(planned.rawId)) return true;
   return !splitScopedSubtaskId(subtask.id) && subtask.id === rawSubtaskId;
 }
 
@@ -276,7 +287,7 @@ function removeExpandedAggregatePlaceholders(
 }
 
 function isAggregateCompletionForExpandedSubtasks(
-  event: RunEvent,
+  event: RunEventInput,
   rawSubtaskId: string | null,
   subtasks: GenerationSubtask[],
 ) {
@@ -305,7 +316,7 @@ function expandableAggregatePrefix(rawSubtaskId: string) {
 }
 
 function shouldInsertUnmatchedSubtask(
-  event: RunEvent,
+  event: RunEventInput,
   subtaskId: string,
   rawSubtaskId: string | null,
   subtasks: GenerationSubtask[],
@@ -335,7 +346,7 @@ function shouldInsertUnmatchedSubtask(
 
 function updateSubtasksFromEvent(
   subtasks: GenerationSubtask[],
-  event: RunEvent,
+  event: RunEventInput,
 ): GenerationSubtask[] {
   // Call telemetry never changes the pipeline's authoritative artifact/subtask status.
   if (event.type === "run_activity") return subtasks;
@@ -362,7 +373,7 @@ function updateSubtasksFromEvent(
   };
   let matched = false;
   const next = subtasks.map((subtask) => {
-    if (!rawSubtaskId || !subtaskMatchesEvent(subtask, subtaskId, rawSubtaskId)) {
+    if (!rawSubtaskId || !subtaskMatchesEvent(subtask, subtaskId, rawSubtaskId, event)) {
       return subtask;
     }
     matched = true;
@@ -422,7 +433,7 @@ function updateSubtasksFromEvent(
 
 function failDownstreamRenderSubtasksForModelFailure(
   subtasks: GenerationSubtask[],
-  event: RunEvent,
+  event: RunEventInput,
   rawSubtaskId: string | null,
 ) {
   if (
@@ -442,7 +453,8 @@ function failDownstreamRenderSubtasksForModelFailure(
       (event.stage === "render_svg"
         ? scoped?.stage !== "verify_diagram_visual"
         : scoped?.stage !== "generate_plantuml" && scoped?.stage !== "render_svg" && scoped?.stage !== "verify_diagram_visual") ||
-      scoped.rawId !== rawSubtaskId ||
+      (scoped.rawId !== rawSubtaskId &&
+        !(scoped.rawId === event.diagramKind && !isExpandableAggregateSubtaskId(scoped.rawId))) ||
       subtask.status === "completed"
     ) {
       return subtask;
@@ -450,7 +462,7 @@ function failDownstreamRenderSubtasksForModelFailure(
     return {
       ...subtask,
       status: "failed" as const,
-      message: event.stage === "render_svg" ? "图像渲染失败，未执行视觉检查" : "前置模型生成失败，未执行",
+      message: event.stage === "render_svg" ? "图像渲染失败" : "前置模型生成失败，未执行",
       errorMessage: event.error
         ? localizeRunFailure(event.error, "前置模型生成失败")
         : event.message ?? "前置模型生成失败",
@@ -531,7 +543,7 @@ function pendingReviewStageForSource(source?: { diagramKind?: string; modelId?: 
 
 function updateSubtasksFromCompletedSnapshot(
   subtasks: GenerationSubtask[],
-  event: RunEvent,
+  event: RunEventInput,
 ): GenerationSubtask[] {
   if (event.type !== "completed") return subtasks;
   const snapshot: unknown = event.snapshot;
@@ -591,7 +603,7 @@ function updateSubtasksFromCompletedSnapshot(
     if (visual) return {
         ...subtask,
         status: visual.status === "failed" ? "failed" as const : visual.status === "pending_review" || visual.status === "not_completed" ? "pending_review" as const : "completed" as const,
-        message: visualReviewDetail(visual) ?? "视觉检查已完成",
+        message: visualReviewDetail(visual) ?? "模型结构检查已完成",
       };
     if (completedIds.has(subtask.id) && subtask.status !== "failed") {
       const pendingReviewCount = pendingReviewByDiagram.get(subtask.id) ?? 0;
@@ -617,9 +629,13 @@ function updateSubtasksFromCompletedSnapshot(
     }
     next.push({
       id,
-      label: id,
+      label: getModelTaskLabel(id, {
+        design: Array.isArray(snapshot.requirementModels), t: i18n.t,
+        models: Array.isArray(snapshot.models) ? snapshot.models as (DiagramModelSpec | DesignDiagramModelSpec)[] : undefined,
+        requirementModels: Array.isArray(snapshot.requirementModels) ? snapshot.requirementModels as DiagramModelSpec[] : undefined,
+      }),
       status: "failed",
-      message: error.stage ? `阶段失败：${error.stage}` : null,
+      message: null,
       errorMessage: error.error
         ? localizeRunFailure(error.error, "模型生成失败，请重试。")
         : null,
@@ -677,7 +693,7 @@ function titleWithSubtaskSummary(task: GenerationTask, subtasks: GenerationSubta
   return baseTitle;
 }
 
-export function taskStatusFromEvent(event: RunEvent): RunStatus {
+export function taskStatusFromEvent(event: RunEventInput): RunStatus {
   if (event.type === "queued") return "queued";
   if (event.type === "failed") return "failed";
   if (event.type === "cancelled") return "cancelled";
@@ -705,7 +721,7 @@ function failedSubtaskCount(subtasks: GenerationSubtask[]) {
 }
 
 function taskStatusFromEventAndSubtasks(
-  event: RunEvent,
+  event: RunEventInput,
   subtasks: GenerationSubtask[],
 ): RunStatus {
   const status = taskStatusFromEvent(event);
@@ -717,15 +733,15 @@ function taskStatusFromEventAndSubtasks(
 
 function taskMessageFromEvent(
   task: GenerationTask,
-  event: RunEvent,
+  event: RunEventInput,
   messages: {
     queued: string;
     completed: string;
-    
+
   },
   subtasks: GenerationSubtask[],
 ) {
-  
+
   if (event.type === "stage_progress") {
     return event.message ?? task.message;
   }
@@ -746,7 +762,7 @@ function taskMessageFromEvent(
 }
 
 function taskPhaseSummaryFromEvent(
-  event: RunEvent,
+  event: RunEventInput,
   subtasks: GenerationSubtask[],
   fallback: string | null,
 ) {
@@ -761,7 +777,7 @@ function taskPhaseSummaryFromEvent(
 
 export function updateDiagnosticsFromEvent(
   current: RunDiagnostics,
-  event: RunEvent,
+  event: RunEventInput,
 ): RunDiagnostics {
   const diagnosticEvent = summarizeEvent(event);
   const shouldDisplayEvent = shouldDisplayDiagnosticEvent(event);
@@ -787,14 +803,8 @@ export function updateDiagnosticsFromEvent(
       event.type === "stage_progress" && event.message
         ? { ...current.stageMessages, [event.stage]: event.message }
         : current.stageMessages,
-    
-    
-    
-    
-    
-    
-    
-    
+
+
     requirementTrace:
       event.type === "completed" && "requirementTrace" in event.snapshot
         ? event.snapshot.requirementTrace ?? []
@@ -803,7 +813,7 @@ export function updateDiagnosticsFromEvent(
       event.type === "completed" && "designTrace" in event.snapshot
         ? event.snapshot.designTrace ?? []
         : current.designTrace,
-    
+
     events: shouldDisplayEvent
       ? [...current.events, diagnosticEvent].slice(-80)
       : current.events,
@@ -812,11 +822,11 @@ export function updateDiagnosticsFromEvent(
 
 export function updateTaskFromEvent(
   task: GenerationTask,
-  event: RunEvent,
+  event: RunEventInput,
   messages: {
     queued: string;
     completed: string;
-    
+
   },
 ): GenerationTask {
   const progress = getProgressFromEvent(event);
@@ -824,30 +834,21 @@ export function updateTaskFromEvent(
     updateSubtasksFromEvent(task.subtasks, event),
     event,
   );
-  // Rule repair is a client-owned continuation after the extraction run completes.
-  const repairContinues = event.type === "completed" && Boolean(event.snapshot.requirementBaseline) && subtasks.some(
-    (subtask) => subtask.id === "repair_rules" &&
-      ["queued", "running", "repairing"].includes(subtask.status),
-  );
-  const nextStatus = repairContinues ? "running" : taskStatusFromEventAndSubtasks(event, subtasks);
-  const nextMessage = repairContinues
-    ? "正在修复需求规则"
-    : taskMessageFromEvent(task, event, messages, subtasks);
+  const nextStatus = taskStatusFromEventAndSubtasks(event, subtasks);
+  const nextMessage = taskMessageFromEvent(task, event, messages, subtasks);
   return {
     ...task,
     title: titleWithSubtaskSummary(task, subtasks),
     status: nextStatus,
-    progress: repairContinues ? 85 : progress ?? task.progress,
-    
-    phaseSummary: repairContinues
-      ? "正在修复需求规则"
-      : taskPhaseSummaryFromEvent(event, subtasks, task.phaseSummary),
+    progress: progress ?? task.progress,
+
+    phaseSummary: taskPhaseSummaryFromEvent(event, subtasks, task.phaseSummary),
     message: nextMessage,
     messageCode:
       event.type === "failed"
         ? event.error.code
         : event.type === "completed"
-          ? repairContinues ? "RUN_RUNNING" : nextStatus === "failed" ? "RUN_PARTIAL_FAILURE" : "RUN_COMPLETED"
+          ? nextStatus === "failed" ? "RUN_PARTIAL_FAILURE" : "RUN_COMPLETED"
           : event.type === "cancelled"
             ? "RUN_CANCELLED"
             : event.type === "queued"
@@ -861,7 +862,7 @@ export function updateTaskFromEvent(
           ? nextMessage
           : task.errorMessage,
     finishedAt:
-      (event.type === "completed" && !repairContinues) || event.type === "failed" || event.type === "cancelled"
+      event.type === "completed" || event.type === "failed" || event.type === "cancelled"
         ? new Date().toISOString()
         : task.finishedAt,
     diagnostics: updateDiagnosticsFromEvent(task.diagnostics, event),

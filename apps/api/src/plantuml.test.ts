@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { modelFixture } from "../../../packages/contracts/src/testing/model-fixtures.js";
-import { generatePlantUmlArtifacts, generateDesignPlantUmlArtifacts } from "./plantuml.js";
+import { generatePlantUmlArtifacts, generateDesignPlantUmlArtifacts } from "./adapters/plantuml/model-renderer.js";
 test("public facade deterministically preserves original model IDs", () => {
   const model = modelFixture("requirements", "analysis") as any; model.modelId = "analysis:submit";
   const [first] = generatePlantUmlArtifacts([model]), [second] = generatePlantUmlArtifacts([model]);

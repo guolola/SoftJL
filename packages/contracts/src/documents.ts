@@ -1,4 +1,4 @@
-// Defines document library, OnlyOffice editor config, document style, and generated content section schemas.
+// Defines document library, document style, and generated content section schemas.
 import { z } from "zod";
 
 export const documentKindSchema = z.enum([
@@ -22,7 +22,7 @@ export const documentLibraryItemSchema = z.object({
   mimeType: z.string().min(1),
   byteLength: z.number().int().min(0),
   version: z.number().int().min(1),
-  status: documentStatusSchema.default("active"),
+  status: documentStatusSchema,
   sourceRunId: z.string().min(1).nullable(),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
@@ -58,21 +58,6 @@ export const documentLibraryVersionsResponseSchema = z.object({
 export type DocumentLibraryVersionsResponse = z.infer<
   typeof documentLibraryVersionsResponseSchema
 >;
-
-export const onlyOfficeEditorConfigResponseSchema = z.object({
-  document: documentLibraryItemSchema,
-  documentServerUrl: z.string().min(1),
-  config: z.record(z.string(), z.unknown()),
-});
-export type OnlyOfficeEditorConfigResponse = z.infer<
-  typeof onlyOfficeEditorConfigResponseSchema
->;
-
-export const onlyOfficeUiThemeSchema = z.enum([
-  "theme-classic-light",
-  "theme-dark",
-]);
-export type OnlyOfficeUiTheme = z.infer<typeof onlyOfficeUiThemeSchema>;
 
 export const documentStylePresetNameSchema = z.enum(["courseDesign"]);
 export type DocumentStylePresetName = z.infer<typeof documentStylePresetNameSchema>;

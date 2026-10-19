@@ -47,6 +47,19 @@ const createdRow = {
   breaker_probe_started_at: null,
 };
 
+test("postgres provider reads reject text catalogs and missing current scope metadata", async () => {
+  for (const patch of [
+    { allowed_models: JSON.stringify(createdRow.allowed_models) },
+    { model_capabilities: JSON.stringify(createdRow.model_capabilities) },
+    { scope_type: undefined },
+    { scope_id: undefined },
+  ]) {
+    const client = new ScriptedClient(); client.queueRows([{ ...createdRow, ...patch }]);
+    const repository = createPostgresProviderConfigRepository({ db: client, secret: "test-secret" });
+    await assert.rejects(repository.get(createdRow.id));
+  }
+});
+
 test("postgres provider repository creates managed configs without storing plaintext keys", async () => {
   const client = new ScriptedClient();
   client.queueRows([createdRow]);
@@ -183,10 +196,7 @@ test("postgres provider repository updates editable metadata without touching se
     "openai",
     "https://api.openai.com",
     "gpt-4.1-mini",
-    normalizeProviderAllowedModels("gpt-4.1-mini", ["gpt-4.1", "gpt-4.1-mini"], {
-      baseUrl: "https://api.openai.com",
-      provider: "openai",
-    }),
+    normalizeProviderAllowedModels(["gpt-4.1", "gpt-4.1-mini"]),
     {},
     "production generation",
     "contract label",
@@ -284,7 +294,7 @@ test("postgres provider repository maps views and never includes secret cipherte
       lastUsedAt: "2026-05-22T00:01:00.000Z",
       riskState: "medium",
       defaultModel: "gpt-4.1",
-      allowedModels: normalizeProviderAllowedModels("gpt-4.1", ["gpt-4.1"]),
+      allowedModels: normalizeProviderAllowedModels(["gpt-4.1"]),
       modelCapabilities: {},
       quota: "unlimited",
       status: "active",
@@ -344,4 +354,18 @@ test("postgres provider recovery lease is acquired with one atomic conditional u
   assert.match(client.calls[0]?.sql ?? "", /update provider_configs/i);
   assert.match(client.calls[0]?.sql ?? "", /breaker_probe_started_at is null/i);
   assert.match(client.calls[0]?.sql ?? "", /breaker_state = 'open'/i);
+  assert.doesNotMatch(client.calls[0]?.sql ?? "", /coalesce\(breaker_opened_at/i);
+});
+
+test("open provider circuits require their own opening timestamp without using failure or update dates", async () => {
+  const client = new ScriptedClient();
+  const open = { ...createdRow, breaker_state: "open", breaker_failure_count: 3,
+    breaker_opened_at: null, breaker_last_failure_at: createdRow.updated_at };
+  client.queueRows([open]);
+  client.queueRows([]);
+  client.queueRows([open]);
+  const repository = createPostgresProviderConfigRepository({ db: client, secret: "test" });
+  await assert.rejects(repository.get(open.id), /recorded opening timestamp/);
+  await assert.rejects(repository.tryAcquireBreakerProbe({ id: open.id,
+    now: new Date(createdRow.updated_at), cooldownMs: 300_000, leaseMs: 60_000 }), /recorded opening timestamp/);
 });

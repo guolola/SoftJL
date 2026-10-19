@@ -3,14 +3,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { apiErrorResponseSchema } from "@uml-platform/contracts";
 import { createConfiguredFastifyApp } from "./fastify-app.js";
+import { createHttpErrorResponse } from "./http-error-response.js";
 
-test("normalizes legacy route errors without exposing their message", async () => {
+test("routes construct current structured errors directly", async () => {
   const app = await createConfiguredFastifyApp();
-  app.get("/legacy-error", (_request, reply) => reply.code(409).send({
-    message: "数据库外键 project_workspace_states_source_run_id_fkey 失败",
-  }));
+  app.get("/conflict", (_request, reply) => reply.code(409).send(createHttpErrorResponse(reply)));
 
-  const response = await app.inject({ method: "GET", url: "/legacy-error" });
+  const response = await app.inject({ method: "GET", url: "/conflict" });
   const body = apiErrorResponseSchema.parse(response.json());
   assert.equal(response.statusCode, 409);
   assert.equal(body.error.code, "RESOURCE_CONFLICT");

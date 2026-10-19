@@ -8,9 +8,9 @@ import {
   Archive,
   ArrowRight,
   Clock3,
-  CircleHelp,
-  FileText,
+  GitBranch,
   Lock,
+  MessagesSquare,
   Plus,
   Search,
   UserRound,
@@ -19,6 +19,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { Badge } from "../../../shared/ui/badge";
 import { Button } from "../../../shared/ui/button";
+import { RainbowButton } from "../../../shared/ui/rainbow-button";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../../shared/ui/input-group";
 import { Label } from "../../../shared/ui/label";
 import { SelectControl } from "../../../shared/ui/select";
-import { EmptyState, PageContainer, PageHeader } from "../../../shared/template/layout/page";
+import { PageContainer, PageHeader, TablePagination } from "../../../shared/template/layout/page";
 import { cn } from "../../../shared/ui/utils";
 import { i18n as appI18n } from "../../../shared/i18n";
 import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
@@ -44,7 +45,7 @@ import {
 } from "../services/platform-api";
 import { useAuthenticatedRouteSession } from "./authenticated-route-session";
 import { ProjectCreateForm } from "./project-create-form";
-import { useOnboardingTours } from "../../onboarding/components/onboarding-tour-provider";
+import ProjectsEmptyBento from "./bento-grid-25/projects-empty-bento";
 
 type Navigate = (path: string) => void;
 
@@ -67,9 +68,6 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
   const [projectRecords, setProjectRecords] = useState<PlatformProject[]>([]);
   const [loading, setLoading] = useState(true);
   const authSession = useAuthenticatedRouteSession();
-  const tours = useOnboardingTours();
-  const tourStartAttemptedRef = useRef(false);
-  const startTourRef = useRef<() => void>(() => {});
   const [statusKind, setStatusKind] = useState<"empty" | "loaded" | "authRequired" | "forbidden" | "loadFailed" | null>(null);
   const [statusErrorMessage, setStatusErrorMessage] = useState("");
   const [authRequired, setAuthRequired] = useState(false);
@@ -78,6 +76,8 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState("all");
   const [sort, setSort] = useState("generated");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const createDialogLocationRef = useRef<string | null>(null);
 
@@ -93,6 +93,7 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
         if (!active) return;
         setListError(false);
         setProjectRecords(response.projects);
+        setPage(1);
         setStatusKind(response.projects.length === 0 ? "empty" : "loaded");
         setStatusErrorMessage("");
       })
@@ -122,23 +123,6 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
     };
   }, [authSession?.user]);
 
-  const startEmptyTour = () => {
-    tourStartAttemptedRef.current = true;
-    void tours?.startTour("empty-workspace");
-  };
-  startTourRef.current = startEmptyTour;
-
-  useEffect(() => {
-    if (!tours || loading || statusKind !== "empty" || !authSession?.user?.id || tourStartAttemptedRef.current) return;
-    let active = true;
-    // Only a successful server read may trigger the tour automatically.
-    void platformApi.getOnboardingState().then((onboarding) => {
-      if (!active || onboarding.emptyWorkspace !== null || tourStartAttemptedRef.current) return;
-      startTourRef.current();
-    }).catch(() => {});
-    return () => { active = false; };
-  }, [authSession?.user?.id, loading, statusKind, tours]);
-
   const projects = useMemo(
     () =>
       projectRecords.map((project) =>
@@ -166,7 +150,7 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
       .filter((project) => {
         if (query && !project.searchableText.includes(query)) return false;
         if (scope === "archived") return project.status === "archived";
-        if (scope === "team") return project.visibilityKind === "team";
+        if (scope === "shared") return project.memberCount > 1;
         if (scope === "mine") return project.isOwnedByCurrentUser || project.memberCount <= 1;
         return true;
       })
@@ -178,6 +162,11 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
         return right.updatedAt.localeCompare(left.updatedAt);
       });
   }, [locale, projects, scope, search, sort]);
+
+  // Paginate only after filtering and sorting so every project remains searchable.
+  const pageCount = Math.max(1, Math.ceil(visibleProjects.length / pageSize));
+  const currentPage = Math.min(Math.max(1, page), pageCount);
+  const pagedProjects = visibleProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const openCreateProject = () => {
     if (authRequired || listError) {
@@ -236,16 +225,14 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
           description={t("projects.indexDescription")}
           actions={
             <>
-              {!authRequired && !forbidden && !listError && projects.length === 0 && (
-                <Button type="button" variant="outline" size="lg" onClick={startEmptyTour}>
-                  <CircleHelp className="size-4" />
-                  {t("onboarding.replay")}
-                </Button>
-              )}
-              <Button type="button" size="lg" onClick={openCreateProject}>
+              <RainbowButton
+                type="button"
+                className="h-10 w-auto gap-1.5 px-6 text-base whitespace-nowrap"
+                onClick={openCreateProject}
+              >
                 <Plus className="size-4" />
                 {authRequired || listError ? t("projects.newProjectAfterLogin") : t("projects.newProject")}
-              </Button>
+              </RainbowButton>
             </>
           }
         />
@@ -296,7 +283,7 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
                       aria-label={t(option.labelKey)}
                       aria-pressed={selected}
                       className="h-8 min-w-0 px-2 text-sm md:shrink-0 md:px-3"
-                      onClick={() => setScope(option.value)}
+                      onClick={() => { setScope(option.value); setPage(1); }}
                     >
                       <span className="md:hidden">{t(option.shortLabelKey)}</span>
                       <span className="hidden md:inline">{t(option.labelKey)}</span>
@@ -316,13 +303,13 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
                     id="projects-search"
                     placeholder={t("projects.searchPlaceholder")}
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => { setSearch(event.target.value); setPage(1); }}
                   />
                 </InputGroup>
                 <SelectControl
                   aria-label={t("projects.sortAria")}
                   value={sort}
-                  onValueChange={setSort}
+                  onValueChange={(value) => { setSort(value); setPage(1); }}
                   className="w-28 shrink-0 md:w-fit"
                   options={[
                     { value: "recent", label: t("projects.sort.recent") },
@@ -335,25 +322,16 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
           </Card>
         )}
 
-        {!authRequired && !forbidden && !listError && projects.length > 0 && visibleProjects.length === 0 && (
-          <EmptyState
-            icon={Search}
-            title={t("projects.noMatchesTitle")}
-            description={t("projects.noMatchesDescription")}
-            className="mx-auto"
-          />
-        )}
-
         {!authRequired && !forbidden && !listError && projects.length > 0 && visibleProjects.length > 0 && (
           <div
             data-testid="projects-card-grid"
             data-mobile-card-density="two-column"
             className="grid grid-cols-2 gap-3 md:gap-5 xl:grid-cols-3 xl:gap-6"
           >
-            {visibleProjects.map((project) => (
+            {pagedProjects.map((project) => (
               <PerspectiveCard
                 key={project.id}
-                data-background-key={project.background.key}
+                data-background-key={project.background?.key}
                 className={
                   project.status === "archived"
                     ? "group flex min-h-[174px] flex-col opacity-75 md:min-h-[287px]"
@@ -361,34 +339,29 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
                 }
               >
                 <div className="relative aspect-video w-full overflow-hidden border-b border-border/60 bg-muted">
-                  <img
+                  {project.background && <img
                     src={project.background.imageUrl}
                     alt=""
                     className="size-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.02] motion-reduce:transform-none motion-reduce:transition-none"
                     loading="lazy"
-                  />
+                  />}
                   <div className="absolute inset-0 bg-gradient-to-t from-background/35 to-transparent" />
                 </div>
                 <div className="relative z-10 flex flex-1 flex-col gap-2 p-4 md:p-5">
-                  <div className="flex min-w-0 items-start justify-between gap-2 md:gap-3">
-                    <h2 className="line-clamp-2 min-w-0 text-[15px] font-semibold leading-5 text-foreground md:text-xl md:leading-7">
+                  <div className="flex min-w-0 flex-col items-start justify-between gap-2 sm:flex-row md:gap-3">
+                    <h2 className="line-clamp-2 min-w-0 w-full flex-1 text-[15px] font-semibold leading-5 text-foreground sm:w-auto md:text-xl md:leading-7">
                       {project.name}
                     </h2>
-                    <Badge
-                      variant={project.status === "archived" ? "outline" : "secondary"}
-                      className={
-                        project.status === "archived"
-                          ? "shrink-0 px-1.5 py-0.5 text-[10px] leading-4 md:px-2 md:py-1 md:text-xs"
-                          : "shrink-0 px-1.5 py-0.5 text-[10px] leading-4 md:px-2 md:py-1 md:text-xs"
-                      }
-                    >
-                      {project.statusLabel}
+                    <Badge className="ml-auto h-auto gap-1.5 rounded-sm border-transparent bg-linear-to-r from-indigo-500 to-pink-500 bg-size-[105%] bg-center px-2 py-1 text-xs text-white md:px-2.5 md:text-sm">
+                      {project.projectMode === "standard" ? <MessagesSquare className="size-4" aria-hidden="true" /> : <GitBranch className="size-4" aria-hidden="true" />}
+                      {t(`projects.createForm.mode.${project.projectMode === "standard" ? "standard" : "professional"}`)}
                     </Badge>
                   </div>
-                  <p className="line-clamp-1 min-h-5 min-w-0 max-w-full overflow-hidden text-[12px] leading-5 text-muted-foreground md:line-clamp-2 md:min-h-10 md:text-sm md:leading-5">
+                  <p title={project.description} className="min-h-5 min-w-0 max-w-full truncate text-xs leading-5 text-muted-foreground md:text-sm">
                     {project.description}
                   </p>
                   <div className="grid gap-1 pt-0.5 text-[12px] leading-4 text-muted-foreground md:gap-2 md:pt-2 md:text-sm md:leading-5">
+                    {project.status === "archived" && <Badge variant="outline" className="w-fit">{project.statusLabel}</Badge>}
                     <span className="flex min-w-0 items-center gap-1.5 md:gap-2">
                       <UserRound className="size-3.5 shrink-0" />
                       <span className="min-w-0 truncate">
@@ -462,21 +435,22 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
           </div>
         )}
 
-        {!authRequired && !forbidden && !listError && projects.length === 0 && (
-          <div id="onboarding-empty-state" className="mx-auto w-full max-w-lg">
-          <EmptyState
-            icon={FileText}
-            title={t("projects.emptyTitle")}
-            description={t("projects.emptyDescription")}
-            className="mx-auto"
-            action={
-              <Button id="onboarding-create-first" type="button" size="lg" onClick={openCreateProject}>
-                <Plus className="size-4" />
-                {t("projects.createFirstProject")}
-              </Button>
-            }
+        {!authRequired && !forbidden && !listError && visibleProjects.length > 0 && (
+          <TablePagination
+            total={visibleProjects.length}
+            page={currentPage}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            pageSizeOptions={[12, 24, 48]}
+            onPageChange={(value) => setPage(Math.min(Math.max(1, value), pageCount))}
+            onPageSizeChange={(value) => { setPageSize(value); setPage(1); }}
+            itemLabel={t("projects.pagination.itemLabel")}
+            className="px-0"
           />
-          </div>
+        )}
+
+        {!authRequired && !forbidden && !listError && projects.length === 0 && (
+          <ProjectsEmptyBento />
         )}
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-3xl">

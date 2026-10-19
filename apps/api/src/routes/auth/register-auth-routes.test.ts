@@ -156,7 +156,7 @@ test("auth reset password token revokes old sessions and accepts the new passwor
     method: "POST",
     url: "/api/auth/login",
     payload: {
-      email: "reset@example.com",
+      identifier: "reset@example.com",
       password: "password-123",
     },
   });
@@ -166,7 +166,7 @@ test("auth reset password token revokes old sessions and accepts the new passwor
     method: "POST",
     url: "/api/auth/login",
     payload: {
-      email: "reset@example.com",
+      identifier: "reset@example.com",
       password: "password-456",
     },
   });
@@ -193,7 +193,7 @@ test("auth login requires email verification", async () => {
     method: "POST",
     url: "/api/auth/login",
     payload: {
-      email: "unverified@example.com",
+      identifier: "unverified@example.com",
       password: "password-123",
     },
   });
@@ -215,7 +215,7 @@ test("auth login requires email verification", async () => {
     method: "POST",
     url: "/api/auth/login",
     payload: {
-      email: "unverified@example.com",
+      identifier: "unverified@example.com",
       password: "password-123",
     },
   });

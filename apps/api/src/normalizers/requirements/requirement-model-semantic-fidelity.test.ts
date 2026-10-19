@@ -10,9 +10,9 @@ import {
 const rules: RequirementRule[] = [
   {
     id: "r3",
-    category: "业务规则",
+    type: "business-rule" as const,
     text: "报销总额达到5000元（包含正好5000元）时必须由直属经理审批。",
-    relatedDiagrams: ["activity"],
+
   },
 ];
 

@@ -1,5 +1,6 @@
 // Resolves project settings authorization for project route handlers.
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { createHttpErrorResponse } from "../server/http-error-response.js";
 import { isAuthError, requireAuth } from "../auth/guards.js";
 import {
   hasProjectPermission,
@@ -18,12 +19,12 @@ export async function requireProjectSettingsContext(
   const project = await authStore.getProject(projectId);
   if (!project || (!options.allowDeleted && project.status === "deleted")) {
     reply.code(404);
-    return { message: "Project not found" } as const;
+    return createHttpErrorResponse(reply);
   }
   const member = await authStore.findProjectMember(projectId, auth.user.id);
   if (!member || !hasProjectPermission(member.role, "manage_project_settings")) {
     reply.code(403);
-    return { message: "Project permission required" } as const;
+    return createHttpErrorResponse(reply);
   }
   return { ...auth, project, member };
 }

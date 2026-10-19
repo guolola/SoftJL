@@ -1,7 +1,8 @@
 // Defines editable feasibility facts, context traceability, implementation plans, and run snapshots.
 import { z } from "zod";
+import { runOutputFields } from "./run-outputs.js";
 import { feasibilityActivityDiagramSpecSchema, contextDiagramSpecSchema, plantUmlArtifactSchema, svgArtifactSchema } from "./models.js";
-import { requirementBaselineSchema, requirementRulesSchema } from "./requirements.js";
+import { requirementBaselineSchema, requirementRulesSchema, requirementRuleFacts } from "./requirements.js";
 import { providerSettingsSchema } from "./provider-configs.js";
 import { snapshotInputFingerprint } from "./fingerprints.js";
 import { diagramVisualReviewSchema } from "./visual-review.js";
@@ -59,27 +60,23 @@ export function buildAcceptedRequirementSnapshot(
   rawBaseline: unknown,
 ) {
   const rules = requirementRulesSchema.parse(rawRules);
-  const baselineResult = requirementBaselineSchema.nullable().safeParse(rawBaseline);
-  // Historical workspaces may contain an older baseline quality-status enum.
-  // They remain readable and fall back to the current rule list until reconfirmed.
-  const baseline = baselineResult.success ? baselineResult.data : null;
-  const acceptedIds = baseline
-    ? new Set(
-        baseline.requirements
-          .filter((requirement) => requirement.status === "accepted")
-          .map((requirement) => requirement.sourceRuleId)
-          .filter((id): id is string => Boolean(id)),
-      )
-    : null;
-  const acceptedRules = acceptedIds
-    ? rules.filter((rule) => acceptedIds.has(rule.id))
-    : rules;
+  const baseline = requirementBaselineSchema.nullable().parse(rawBaseline ?? null);
+  if (baseline) {
+    const matchingRules = snapshotInputFingerprint(requirementRulesSchema.parse(baseline.rules.map(requirementRuleFacts))) === snapshotInputFingerprint(rules);
+    if (!matchingRules) {
+      // Only an explicit requirement edit may create a new baseline and its provenance.
+      throw new Error("Requirement baseline does not match the current rules");
+    }
+  }
+  // Every successfully extracted (or user-added) rule counts as generated, so all rules
+  // flow downstream; quality hints in the baseline no longer filter rules out.
+  const acceptedRules = rules;
   return {
     rules: acceptedRules,
     baseline,
     snapshot: acceptedRequirementSnapshotSchema.parse({
       ruleIds: acceptedRules.map((rule) => rule.id),
-      baselineVersion: baseline?.runId ?? null,
+      baselineVersion: baseline?.id ?? baseline?.runId ?? null,
       fingerprint: snapshotInputFingerprint({
         rules: acceptedRules,
         requirementBaseline: baseline,
@@ -92,7 +89,6 @@ export const feasibilityContentProvenanceSchema = z.enum([
   "ai-estimate",
   "user-edited",
   "user-confirmed",
-  "legacy",
 ]);
 export type FeasibilityContentProvenance = z.infer<typeof feasibilityContentProvenanceSchema>;
 
@@ -148,6 +144,20 @@ export const feasibilityInputsSchema = z.object({
 });
 export type FeasibilityInputs = z.infer<typeof feasibilityInputsSchema>;
 
+// Context prompts consume supplementary facts too; every consumer must use the same source basis.
+export function buildFeasibilityContextFingerprint(input: {
+  rules: unknown;
+  requirementBaseline: unknown;
+  inputs: unknown;
+}) {
+  const source = buildAcceptedRequirementSnapshot(input.rules, input.requirementBaseline);
+  return snapshotInputFingerprint({
+    rules: source.rules,
+    requirementBaseline: source.baseline,
+    inputs: feasibilityInputsSchema.parse(input.inputs ?? {}),
+  });
+}
+
 // Share the exact semantic inputs across generation, editing, samples and report preflight.
 // Render timestamps, SVG markup and PlantUML repairs do not change the implementation basis.
 export function buildFeasibilityImplementationFingerprint(input: {
@@ -172,7 +182,7 @@ export function buildFeasibilityImplementationFingerprint(input: {
 export const feasibilitySourceRefSchema = z.object({
   sourceRequirementIds: z.array(z.string().min(1)).default([]),
   assumption: optionalText,
-  provenance: feasibilityContentProvenanceSchema.default("legacy"),
+  provenance: feasibilityContentProvenanceSchema,
 });
 
 export const feasibilityModuleSchema = feasibilitySourceRefSchema.extend({
@@ -181,13 +191,12 @@ export const feasibilityModuleSchema = feasibilitySourceRefSchema.extend({
   responsibility: z.string().min(1),
 });
 
-// Integrations are tied to the feasibility context boundary. Historical
-// workspaces did not persist that link, so null remains readable as legacy data.
+// Integrations explicitly identify their context boundary or declare that it is not applicable.
 export const feasibilityIntegrationSchema = feasibilitySourceRefSchema.extend({
   id: z.string().min(1),
   name: z.string().min(1),
   responsibility: z.string().min(1),
-  contextExternalSystemId: z.string().min(1).nullable().default(null),
+  contextExternalSystemId: z.string().min(1).nullable(),
 });
 export type FeasibilityIntegration = z.infer<typeof feasibilityIntegrationSchema>;
 
@@ -209,14 +218,14 @@ export const feasibilityRiskSchema = feasibilitySourceRefSchema.extend({
   impact: z.enum(["low", "medium", "high"]),
   mitigation: z.string().min(1),
   owner: z.string().min(1).default("待确认"),
-  provenance: feasibilityContentProvenanceSchema.default("legacy"),
+  provenance: feasibilityContentProvenanceSchema,
 });
 
 export const feasibilityVerdictSchema = z.object({
   category: z.enum(["technical", "operational", "schedule", "economic", "legal"]),
   verdict: z.enum(["feasible", "conditional", "not-feasible", "unknown"]),
   rationale: z.string().min(1),
-  provenance: feasibilityContentProvenanceSchema.default("legacy"),
+  provenance: feasibilityContentProvenanceSchema,
 });
 
 export const feasibilityCostEstimateSchema = feasibilitySourceRefSchema.extend({
@@ -226,7 +235,7 @@ export const feasibilityCostEstimateSchema = feasibilitySourceRefSchema.extend({
   frequency: z.enum(["one-time", "monthly", "annual"]),
   range: feasibilityEstimateRangeSchema,
   note: optionalText,
-  provenance: feasibilityContentProvenanceSchema.default("ai-estimate"),
+  provenance: feasibilityContentProvenanceSchema,
 });
 export type FeasibilityCostEstimate = z.infer<typeof feasibilityCostEstimateSchema>;
 
@@ -237,7 +246,7 @@ export const feasibilityBenefitEstimateSchema = feasibilitySourceRefSchema.exten
   frequency: z.enum(["one-time", "monthly", "annual"]),
   range: feasibilityEstimateRangeSchema.nullable(),
   outcome: z.string().min(1),
-  provenance: feasibilityContentProvenanceSchema.default("ai-estimate"),
+  provenance: feasibilityContentProvenanceSchema,
 }).superRefine((benefit, context) => {
   if (benefit.category !== "intangible" && !benefit.range) {
     context.addIssue({
@@ -268,12 +277,12 @@ export const feasibilityAbsenceDeclarationSchema = z.object({
     "intangible-benefits",
   ]),
   reason: z.string().min(1),
-  provenance: feasibilityContentProvenanceSchema.default("ai-estimate"),
+  provenance: feasibilityContentProvenanceSchema,
 });
 export type FeasibilityAbsenceDeclaration = z.infer<typeof feasibilityAbsenceDeclarationSchema>;
 
 export const feasibilityCandidateImplementationSchema = z.object({
-  provenance: feasibilityContentProvenanceSchema.default("legacy"),
+  provenance: feasibilityContentProvenanceSchema,
   architecture: z.object({
     summary: z.string().min(1),
     modules: z.array(feasibilityModuleSchema).min(1),
@@ -287,15 +296,11 @@ export const feasibilityCandidateImplementationSchema = z.object({
   analysisPeriodAssumption: z.object({
     years: z.number().positive(),
     basis: z.string().min(1),
-    provenance: feasibilityContentProvenanceSchema.default("ai-estimate"),
+    provenance: feasibilityContentProvenanceSchema,
   }).nullable().default(null),
   costEstimates: z.array(feasibilityCostEstimateSchema).default([]),
   benefitEstimates: z.array(feasibilityBenefitEstimateSchema).default([]),
   absenceDeclarations: z.array(feasibilityAbsenceDeclarationSchema).default([]),
-  oneTimeCosts: z.array(z.string().min(1)).default([]),
-  recurringCosts: z.array(z.string().min(1)).default([]),
-  quantitativeBenefits: z.array(z.string().min(1)).default([]),
-  qualitativeBenefits: z.array(z.string().min(1)).default([]),
   risks: z.array(feasibilityRiskSchema).default([]),
   verdicts: z.array(feasibilityVerdictSchema).length(5),
   decision: z.enum(["go", "conditional-go", "no-go"]),
@@ -312,58 +317,8 @@ export const feasibilityCandidateSchema = feasibilitySourceRefSchema.extend({
   estimatedCost: z.string().min(1),
   estimatedSchedule: z.string().min(1),
   implementation: feasibilityCandidateImplementationSchema.nullable(),
-  provenance: feasibilityContentProvenanceSchema.default("legacy"),
+  provenance: feasibilityContentProvenanceSchema,
 });
-
-type UnknownRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as UnknownRecord
-    : null;
-}
-
-function migrateLegacyImplementationPlan(value: unknown) {
-  const plan = asRecord(value);
-  if (!plan || !Array.isArray(plan.candidates)) return value;
-  const recommendedCandidateId = typeof plan.recommendedCandidateId === "string"
-    ? plan.recommendedCandidateId
-    : "";
-  const legacyImplementation = feasibilityCandidateImplementationSchema.safeParse({
-    architecture: plan.architecture,
-    dataStrategy: plan.dataStrategy,
-    integrations: plan.integrations,
-    deploymentAndOperations: plan.deploymentAndOperations,
-    securityAndCompliance: plan.securityAndCompliance,
-    milestones: plan.milestones,
-    oneTimeCosts: plan.oneTimeCosts,
-    recurringCosts: plan.recurringCosts,
-    quantitativeBenefits: plan.quantitativeBenefits,
-    qualitativeBenefits: plan.qualitativeBenefits,
-    risks: plan.risks,
-    verdicts: plan.verdicts,
-    decision: plan.decision,
-    preconditions: plan.preconditions,
-  });
-  return {
-    overview: plan.overview,
-    candidates: plan.candidates.map((candidate) => {
-      const record = asRecord(candidate);
-      if (!record) return candidate;
-      if ("implementation" in record) return record;
-      return {
-        ...record,
-        implementation:
-          record.id === recommendedCandidateId && legacyImplementation.success
-            ? legacyImplementation.data
-            : null,
-      };
-    }),
-    reducedCandidateReason: plan.reducedCandidateReason,
-    recommendedCandidateId: plan.recommendedCandidateId,
-    recommendationRationale: plan.recommendationRationale,
-  };
-}
 
 const currentFeasibilityImplementationPlanSchema = z.object({
   overview: z.string().min(1),
@@ -481,12 +436,7 @@ export const completeFeasibilityImplementationPlanSchema = currentFeasibilityImp
   },
 );
 
-// Old workspaces stored one global implementation. Normalize it onto the old
-// recommendation only, so alternative candidates are never presented as fake copies.
-export const feasibilityImplementationPlanSchema = z.preprocess(
-  migrateLegacyImplementationPlan,
-  currentFeasibilityImplementationPlanSchema,
-);
+export const feasibilityImplementationPlanSchema = currentFeasibilityImplementationPlanSchema;
 export type FeasibilityImplementationPlan = z.infer<typeof feasibilityImplementationPlanSchema>;
 
 export const contextTraceRowSchema = z.object({
@@ -498,6 +448,7 @@ export const contextTraceRowSchema = z.object({
 export type ContextTraceRow = z.infer<typeof contextTraceRowSchema>;
 
 export const startFeasibilityRunRequestSchema = z.object({
+  reasoning: z.boolean().optional(),
   projectId: z.string().min(1),
   selectedArtifacts: z.array(feasibilityArtifactKindSchema).min(1).superRefine((artifacts, context) => {
     if (new Set(artifacts).size !== artifacts.length) {
@@ -571,10 +522,10 @@ export const feasibilityRunErrorSchema = z.object({
     "RUN_MODEL_OUTPUT_EMPTY",
     "RUN_STRUCTURED_OUTPUT_INVALID",
     "RUN_DEPENDENCY_MISSING",
+    "RUN_CONTEXT_LIMIT_EXCEEDED",
     "RUN_RENDER_FAILED",
     "RUN_CANCELLED",
     "RUN_INTERNAL_ERROR",
-    "RUN_LEGACY_FAILURE",
   ]),
   message: z.string().min(1),
   category: z.enum(["user_entitlement", "platform_provider", "generation", "render", "access", "internal"]),
@@ -587,6 +538,8 @@ export const feasibilityRunErrorSchema = z.object({
 });
 
 export const feasibilityRunSnapshotSchema = z.object({
+  ...runOutputFields,
+  reasoning: z.boolean().optional(),
   runId: z.string().min(1),
   projectId: z.string().min(1),
   selectedArtifacts: z.array(feasibilityArtifactKindSchema),

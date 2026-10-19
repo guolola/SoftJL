@@ -15,12 +15,14 @@ import type {
   RequirementBaseline,
   RequirementModelTraceabilityEntry,
   SvgArtifact,
+  StandardAttachment,
   TraceabilityMatrix,
 } from "@uml-platform/contracts";
 import type { DesignDiagramType, DiagramType } from "../../entities/diagram/model";
 import type { RequirementRule } from "../../entities/requirement-rule/model";
 import { loadUserSettings } from "../../shared/lib/user-settings";
 import { generationModelBlockedReason } from "../../shared/lib/generation-model";
+import { loadModelingReasoning } from "../../shared/lib/modeling-reasoning";
 
 export interface ProviderSettingsInput {
   providerConfigId: string;
@@ -29,6 +31,8 @@ export interface ProviderSettingsInput {
 
 export interface StartRunInput {
   requirementText: string;
+  attachments?: StandardAttachment[];
+  reasoning?: boolean;
   selectedDiagrams: DiagramType[];
   requestedDiagrams?: DiagramType[];
   dependencyDiagrams?: DiagramType[];
@@ -40,6 +44,7 @@ export interface StartRunInput {
 }
 
 export interface StartDesignRunInput {
+  reasoning?: boolean;
   requirementBaseline: RequirementBaseline;
   requirementModels: DiagramModelSpec[];
   requirementModelTraceability: RequirementModelTraceabilityEntry[];
@@ -55,6 +60,7 @@ export interface StartDesignRunInput {
 
 
 export interface StartDocumentRunInput {
+  reasoning?: boolean;
   documentKind: DocumentKind;
   requirementText: string;
   coverageMatrix?: CoverageMatrix | null;
@@ -73,6 +79,7 @@ export interface StartDocumentRunInput {
 }
 
 export interface StartFeasibilityRunInput {
+  reasoning?: boolean;
   selectedArtifacts: FeasibilityArtifactKind[];
   providerSettings: ProviderSettingsInput;
 }
@@ -89,6 +96,7 @@ export function createStartRunInput(
   const providerSettings = createProviderSettingsInput(executionMode);
   return {
     requirementText,
+    reasoning: executionMode === "provider" ? loadModelingReasoning() : undefined,
     selectedDiagrams,
     requestedDiagrams: selectedDiagrams,
     dependencyDiagrams: [],
@@ -122,6 +130,7 @@ export function createStartFeasibilityRunInput(
   executionMode: GenerationExecutionMode = "provider",
 ): StartFeasibilityRunInput {
   return {
+    reasoning: executionMode === "provider" ? loadModelingReasoning() : undefined,
     selectedArtifacts: (["context", "business-flow", "implementation"] as const).filter((artifact) =>
       selectedArtifacts.includes(artifact),
     ),
@@ -143,6 +152,7 @@ export function createStartDesignRunInput(
 ): StartDesignRunInput {
   return {
     requirementBaseline,
+    reasoning: executionMode === "provider" ? loadModelingReasoning() : undefined,
     requirementModels,
     requirementModelTraceability,
     selectedDiagrams,
@@ -175,6 +185,7 @@ export function createStartDocumentRunInput(
 ): StartDocumentRunInput {
   return {
     documentKind,
+    reasoning: executionMode === "provider" ? loadModelingReasoning() : undefined,
     requirementText,
     coverageMatrix,
     traceabilityMatrix,

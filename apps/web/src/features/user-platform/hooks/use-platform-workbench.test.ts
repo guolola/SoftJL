@@ -15,7 +15,7 @@ const t = ((key: string, options?: { total?: number }) =>
 const NOW = new Date("2026-09-21T12:00:00.000Z");
 
 function makeProject(overrides: Partial<PlatformProject> = {}): PlatformProject {
-  return {
+  return { projectMode: "professional",
     id: "p1",
     name: "Library System",
     description: null,
@@ -34,7 +34,7 @@ function makeProject(overrides: Partial<PlatformProject> = {}): PlatformProject 
 }
 
 function makeRun(overrides: Partial<PlatformRunSummary> = {}): PlatformRunSummary {
-  return {
+  return { operationType: "design_modeling",
     runId: "r1",
     status: "completed",
     runKind: "design",
@@ -50,15 +50,15 @@ describe("buildWorkbenchData", () => {
   it("aggregates KPIs, timeline, weekly, funnel and table rows from real runs", () => {
     const projects = [
       makeProject(),
-      makeProject({ id: "p2", name: "Campus Wallet", visibility: "team", memberCount: 2 }),
+      makeProject({ id: "p2", name: "Campus Wallet", visibility: "private", memberCount: 2 }),
     ];
     const runsByProject: ProjectRuns[] = [
       {
         project: projects[0],
         runs: [
           makeRun({ runKind: "requirements" }),
-          makeRun({ runId: "r2", runKind: "design", status: "completed", model: "gpt-a" }),
-          makeRun({ runId: "r3", runKind: "code", status: "failed", model: "gpt-b" }),
+          makeRun({ operationType: "design_modeling", runId: "r2", runKind: "design", status: "completed", model: "gpt-a" }),
+          makeRun({ operationType: "unknown", runId: "r3", runKind: "code", status: "failed", model: "gpt-b" }),
         ],
       },
       { project: projects[1], runs: [makeRun({ runId: "r4", runKind: "document" })] },
@@ -95,8 +95,8 @@ describe("buildWorkbenchData", () => {
 
 describe("projectToItem", () => {
   it("maps visibility/status onto the datatable enums", () => {
-    const item = projectToItem(makeProject({ visibility: "team", status: "archived" }), NOW);
-    expect(item.role).toBe("editor");
+    const item = projectToItem(makeProject({ visibility: "private", status: "archived" }), NOW);
+    expect(item.role).toBe("admin");
     expect(item.plan).toBe("basic");
     expect(item.fallback).toBe("AL");
   });

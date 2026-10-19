@@ -47,12 +47,12 @@ export function getModelCapability(input: ModelCapabilitySource): ModelCapabilit
     return capabilityFromPersisted(input);
   }
 
-  if (typeof input === "object" && input.modelCapability) {
-    return capabilityFromPersisted(input.modelCapability);
+  if (typeof input === "object") {
+    if (input.modelCapability) return capabilityFromPersisted(input.modelCapability);
+    throw new Error("Provider settings require explicit persisted model capabilities");
   }
 
-  const modelId = typeof input === "string" ? input : input.model;
-  const normalizedModelId = normalizeModelId(modelId);
+  const normalizedModelId = normalizeModelId(input);
   if (MODELS_WITHOUT_JSON_SCHEMA.has(normalizedModelId)) {
     return {
       supportsJsonSchema: false,
@@ -73,23 +73,11 @@ export function getModelCapability(input: ModelCapabilitySource): ModelCapabilit
   }
 
   // Bare model ids are used by schema unit tests and internal static selectors.
-  // Real runs pass ProviderSettings; an object without persisted capability data
-  // is the legacy/unknown case that must use compatible extraction.
-  if (typeof input === "string") {
-    return {
-      supportsJsonSchema: true,
-      supportsJsonObject: true,
-      structuredOutputMode: "strict_json",
-      modeLabel: "严格 JSON",
-    };
-  }
-
   return {
-    supportsJsonSchema: false,
-    supportsJsonObject: false,
-    structuredOutputMode: "compatible",
-    modeLabel: "兼容模式",
-    warning: "未发现已持久化的结构化输出能力信息，将使用容错 JSON 提取。",
+    supportsJsonSchema: true,
+    supportsJsonObject: true,
+    structuredOutputMode: "strict_json",
+    modeLabel: "严格 JSON",
   };
 }
 

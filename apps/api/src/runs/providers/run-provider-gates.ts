@@ -18,6 +18,7 @@ import type {
   ProviderUsageTracker,
 } from "../../provider-configs/provider-usage-tracker.js";
 import type { RunRecord, RunRecordMetadata } from "../records/run-record-store.js";
+import { createHttpErrorResponse } from "../../server/http-error-response.js";
 
 type RunAccessResolver = {
   resolveRunAccess(request: FastifyRequest): Promise<{
@@ -29,10 +30,6 @@ type RunAccessResolver = {
 function stringHeader(request: FastifyRequest, name: string) {
   const value = request.headers[name];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function organizationIdFromRequest(request: FastifyRequest) {
-  return stringHeader(request, "x-uml-organization-id") ?? null;
 }
 
 function ipAddressFromRequest(request: FastifyRequest) {
@@ -118,6 +115,9 @@ export async function resolveProviderSettingsForRun({
     if (!providerConfig.allowedModels.includes(providerSettings.model)) {
       return failure(400, "PROVIDER_MODEL_NOT_ALLOWED", "validation");
     }
+    if (!providerConfig.modelCapabilities[providerSettings.model]) {
+      return failure(400, "PROVIDER_MODEL_CAPABILITY_MISSING", "validation");
+    }
     const circuit = await resolveProviderCircuitAccess({
       providerConfigs,
       providerConfig,
@@ -189,7 +189,7 @@ export function taskTypeForRun(record: RunRecord): ProviderTaskType {
   const snapshot = record.snapshot;
   if ("selectedArtifacts" in snapshot) return "feasibility_analysis";
   if ("documentKind" in snapshot) return "document_generation";
-  
+
   if ("designModelTraceability" in snapshot) return "design_modeling";
   return "requirements_to_uml";
 }
@@ -211,7 +211,6 @@ export async function recordProviderUsage({
   await usageTracker.recordUsage({
     userId: metadata?.userId ?? null,
     projectId: metadata?.projectId ?? null,
-    organizationId: organizationIdFromRequest(request),
     ipAddress: ipAddressFromRequest(request),
     providerConfigId,
     taskType,
@@ -241,7 +240,6 @@ export async function checkProviderUsageLimit({
   const decision = await usageTracker.checkLimit({
     userId: metadata?.userId ?? null,
     projectId: metadata?.projectId ?? null,
-    organizationId: organizationIdFromRequest(request),
     ipAddress: ipAddressFromRequest(request),
     providerConfigId,
     taskType,
@@ -251,10 +249,7 @@ export async function checkProviderUsageLimit({
   if (decision.allowed) return true;
 
   reply.code(429);
-  return {
-    message: "Provider rate limit exceeded",
-    rateLimit: decision,
-  };
+  return createHttpErrorResponse(reply, { rateLimit: decision });
 }
 
 export async function checkGenerationUsageLimit({
@@ -279,10 +274,7 @@ export async function checkGenerationUsageLimit({
   if (decision.allowed) return true;
 
   reply.code(429);
-  return {
-    message: "Guest generation limit exceeded",
-    generationUsage: decision.usage,
-  };
+  return createHttpErrorResponse(reply, { generationUsage: decision.usage });
 }
 
 export async function recordGenerationUsage({

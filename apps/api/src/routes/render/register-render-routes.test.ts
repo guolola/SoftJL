@@ -18,7 +18,7 @@ test("manual render reports model, field and element diagnostics before any exte
     model.relationships[0].type = "dependency";
     const invalid = await app.inject({ method: "POST", url: "/api/render/model", headers: { "x-uml-project-id": "project" }, payload: { stage: "requirements", model } });
     assert.equal(invalid.statusCode, 400);
-    assert.ok(invalid.json().diagnostics.some((issue: { modelId: string; path: string; elementId: string; code: string }) => issue.modelId === "class:domain" && issue.path === "relationships.0.type" && issue.elementId === "r" && issue.code === "contract"));
+    assert.ok(invalid.json().error.details.diagnostics.some((issue: { modelId: string; path: string; elementId: string; code: string }) => issue.modelId === "class:domain" && issue.path === "relationships.0.type" && issue.elementId === "r" && issue.code === "contract"));
     assert.equal(rendered, 0);
     const valid = await app.inject({ method: "POST", url: "/api/render/model", headers: { "x-uml-project-id": "project" }, payload: { stage: "design", model: modelFixture("design", "navigation") } });
     assert.equal(valid.statusCode, 200);
@@ -61,7 +61,8 @@ for (const format of ["png", "pdf"] as const) {
       fail = true;
       const failed = await request();
       assert.equal(failed.statusCode, 400);
-      assert.equal(failed.json().message, "conversion unavailable");
+      assert.equal(failed.json().error.code, "VALIDATION_FAILED");
+      assert.doesNotMatch(failed.body, /conversion unavailable/);
     } finally { await app.close(); }
   });
 }

@@ -1,7 +1,7 @@
 // Verifies recovered subscriptions stop on navigation and reject late partial snapshots.
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { RunEvent, RunSnapshot } from "@uml-platform/contracts";
+import type { RunEventInput, RunSnapshot } from "@uml-platform/contracts";
 import type { WorkspaceRepository } from "../../../services/workspace-repository";
 import type { RunSubscriptionOptions } from "../../../services/workspace-repository/types";
 import { createRunSnapshot } from "../../../test/workspace-test-utils";
@@ -17,7 +17,7 @@ function deferred<T>() {
 function recoveryInput(repository: WorkspaceRepository) {
   return {
     initialized: true, repository,
-    runs: [{ runId: "recovered-run", status: "running", runKind: "requirements" }],
+    runs: [{ operationType: "requirement_modeling", runId: "recovered-run", status: "running", runKind: "requirements" }],
     getTasks: () => [], recoverTask: vi.fn(() => "recovered:recovered-run"),
     onEvent: vi.fn(), onSnapshot: vi.fn(),
   };
@@ -44,13 +44,13 @@ describe("recovered generation runs", () => {
   });
 
   it("does not let an in-flight partial read replace the completed snapshot", async () => {
-    const initial = createRunSnapshot({ runId: "recovered-run", status: "running" });
+    const initial = createRunSnapshot({  runId: "recovered-run", status: "running" });
     const pending = deferred<RunSnapshot>();
     const completed = { ...initial, status: "completed" as const };
     const getRunSnapshot = vi.fn().mockResolvedValueOnce(initial).mockReturnValueOnce(pending.promise);
-    let onEvent!: (event: RunEvent) => void;
+    let onEvent!: (event: RunEventInput) => void;
     let signal: AbortSignal | undefined;
-    const subscribeToRun = vi.fn(async (_runId: string, listener: (event: RunEvent) => void, options?: RunSubscriptionOptions<RunSnapshot>) => {
+    const subscribeToRun = vi.fn(async (_runId: string, listener: (event: RunEventInput) => void, options?: RunSubscriptionOptions<RunSnapshot>) => {
       onEvent = listener;
       signal = options?.signal;
       await new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve(), { once: true }));
@@ -79,14 +79,14 @@ describe("recovered generation runs", () => {
   });
 
   it("applies a polling snapshot immediately even while an older event refresh is pending", async () => {
-    const initial = createRunSnapshot({ runId: "recovered-run", status: "running" });
+    const initial = createRunSnapshot({  runId: "recovered-run", status: "running" });
     const pending = deferred<RunSnapshot>();
     const newer = { ...initial, currentStage: "render_svg" as const };
-    let listener!: (event: RunEvent) => void;
+    let listener!: (event: RunEventInput) => void;
     let options!: RunSubscriptionOptions<RunSnapshot>;
     const repository = {
       getRunSnapshot: vi.fn().mockResolvedValueOnce(initial).mockReturnValueOnce(pending.promise),
-      subscribeToRun: vi.fn(async (_runId: string, onEvent: (event: RunEvent) => void, subscriptionOptions: RunSubscriptionOptions<RunSnapshot>) => {
+      subscribeToRun: vi.fn(async (_runId: string, onEvent: (event: RunEventInput) => void, subscriptionOptions: RunSubscriptionOptions<RunSnapshot>) => {
         listener = onEvent;
         options = subscriptionOptions;
         await new Promise<void>((resolve) => options.signal?.addEventListener("abort", () => resolve(), { once: true }));

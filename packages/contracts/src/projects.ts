@@ -19,8 +19,15 @@ const optionalDescriptionSchema = z.preprocess(
   z.string().min(1).max(2000).nullable(),
 );
 
-export const projectVisibilitySchema = z.enum(["private", "team", "public"]);
+export const projectVisibilitySchema = z.enum(["private", "public"]);
 export type ProjectVisibility = z.infer<typeof projectVisibilitySchema>;
+
+// The project mode is immutable and must be explicit in persisted records and responses.
+export const projectModeSchema = z.enum(["standard", "professional"]);
+export type ProjectMode = z.infer<typeof projectModeSchema>;
+export function resolveProjectMode(value: unknown): ProjectMode {
+  return projectModeSchema.parse(value);
+}
 
 export const projectStatusSchema = z.enum(["active", "archived", "deleted"]);
 export type ProjectStatus = z.infer<typeof projectStatusSchema>;
@@ -36,63 +43,24 @@ export const projectBackgroundKeySchema = z.enum([
   "erp",
   "crm",
   "oa",
-  "hrm",
   "finance",
-  "procurement",
-  "sales",
   "inventory",
-  "wms",
-  "mes",
   "scm",
   "bi",
   "project_management",
-  "cms",
-  "plm",
-  "eam",
-  "itsm",
-  "ticket",
-  "contract",
-  "legal",
-  "risk_control",
-  "security",
-  "permission",
-  "approval",
-  "reports",
   "orders",
-  "after_sales",
   "knowledge_base",
   "equipment",
   "iot",
-  "mrp",
-  "qms",
-  "lims",
   "his",
   "lms",
   "energy",
-  "marketing_automation",
   "ecommerce",
-  "call_center",
-  "tms",
-  "fleet",
-  "dms",
-  "archive",
-  "collaboration_portal",
-  "low_code",
-  "devops",
-  "apm",
-  "data_governance",
-  "mdm",
-  "rpa",
-  "emr",
   "campus",
-  "hotel_pms",
-  "property_management",
   "parking",
-  "retail_pos",
   "booking",
-  "asset_tracking",
-  "training",
   "quality_traceability",
+  "security",
 ]);
 export type ProjectBackgroundKey = z.infer<typeof projectBackgroundKeySchema>;
 
@@ -102,13 +70,6 @@ export type ProjectMemberRole = z.infer<typeof projectMemberRoleSchema>;
 export const projectMemberStatusSchema = z.enum(["invited", "active"]);
 export type ProjectMemberStatus = z.infer<typeof projectMemberStatusSchema>;
 
-const nullableProjectBindingIdSchema = z.string().trim().min(1).nullable();
-const optionalProjectBindingIdSchema = z
-  .preprocess(
-    (value) => (typeof value === "string" && value.trim() === "" ? null : value),
-    nullableProjectBindingIdSchema,
-  )
-  .optional();
 const optionalProjectBackgroundKeySchema = z
   .preprocess(
     (value) => (typeof value === "string" && value.trim() === "" ? null : value),
@@ -118,6 +79,7 @@ const optionalProjectBackgroundKeySchema = z
 
 export const projectDtoSchema = z
   .object({
+    projectMode: projectModeSchema,
     id: z.string().min(1),
     name: publicNameSchema,
     description: optionalDescriptionSchema,
@@ -141,11 +103,6 @@ export const projectDtoSchema = z
           .strict(),
       )
       .optional(),
-    organizationId: nullableProjectBindingIdSchema.default(null),
-    courseId: nullableProjectBindingIdSchema.default(null),
-    classId: nullableProjectBindingIdSchema.default(null),
-    teamId: nullableProjectBindingIdSchema.default(null),
-    defaultProviderConfigId: nullableProjectBindingIdSchema.default(null),
     retentionPolicy: projectRetentionPolicySchema.default("manual"),
     backgroundKey: projectBackgroundKeySchema.nullable().default(null),
     createdAt: isoTimestampSchema,
@@ -155,17 +112,13 @@ export const projectDtoSchema = z
 export type ProjectDto = z.infer<typeof projectDtoSchema>;
 
 export const projectCreateRequestSchema = z.object({
+  projectMode: projectModeSchema.default("standard"),
   name: publicNameSchema,
   description: optionalDescriptionSchema.default(null),
   visibility: projectVisibilitySchema.default("private"),
-  organizationId: optionalProjectBindingIdSchema,
-  courseId: optionalProjectBindingIdSchema,
-  classId: optionalProjectBindingIdSchema,
-  teamId: optionalProjectBindingIdSchema,
-  defaultProviderConfigId: optionalProjectBindingIdSchema,
   retentionPolicy: projectRetentionPolicySchema.default("manual").optional(),
   backgroundKey: optionalProjectBackgroundKeySchema,
-});
+}).strict();
 export type ProjectCreateRequest = z.infer<typeof projectCreateRequestSchema>;
 
 export const projectUpdateRequestSchema = z
@@ -174,14 +127,10 @@ export const projectUpdateRequestSchema = z
     description: optionalDescriptionSchema.optional(),
     visibility: projectVisibilitySchema.optional(),
     status: z.enum(["active", "archived"]).optional(),
-    organizationId: optionalProjectBindingIdSchema,
-    courseId: optionalProjectBindingIdSchema,
-    classId: optionalProjectBindingIdSchema,
-    teamId: optionalProjectBindingIdSchema,
-    defaultProviderConfigId: optionalProjectBindingIdSchema,
     retentionPolicy: projectRetentionPolicySchema.optional(),
     backgroundKey: optionalProjectBackgroundKeySchema,
   })
+  .strict()
   .refine((input) => Object.keys(input).length > 0, {
     message: "At least one project field must be provided",
   });
@@ -281,7 +230,7 @@ export type GenerationExecutionMode = z.infer<typeof generationExecutionModeSche
 
 export const projectResponseSchema = z.object({
   project: projectDtoSchema,
-  generationExecutionMode: generationExecutionModeSchema.default("provider"),
+  generationExecutionMode: generationExecutionModeSchema,
   membership: projectMemberDtoSchema.optional(),
   currentUserRole: projectMemberRoleSchema.optional(),
   capabilities: z.array(projectPermissionSchema).optional(),

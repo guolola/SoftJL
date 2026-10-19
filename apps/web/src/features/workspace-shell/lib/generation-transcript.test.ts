@@ -1,6 +1,6 @@
 // Exercises user-visible ordering, replay and parallel output independently of presentation.
 import { describe, expect, it } from "vitest";
-import type { RunActivityEvent, RunEvent } from "@uml-platform/contracts";
+import type { RunActivityEvent, RunEventInput } from "@uml-platform/contracts";
 import { createRunSnapshot } from "../../../test/workspace-test-utils";
 import { mergeTranscriptEvents } from "../../workspace-session/lib/run-transcript";
 import { projectGenerationTranscript, readableTaskText, readableOutput } from "./generation-transcript";
@@ -11,6 +11,103 @@ const activity = (id: string, callId: string, phase: RunActivityEvent["phase"], 
 });
 
 describe("generation transcript", () => {
+  it("names failed sequence branches even when independent design models finish last", () => {
+    const error = { code: "RUN_STRUCTURED_OUTPUT_INVALID" as const, category: "generation" as const, retryable: true, message: "private diagnostics" };
+    const events: RunEventInput[] = [
+      ...["查看个人选课结果", "查看所授课程与教学安排"].map((name, index): RunEventInput => ({ type: "stage_progress", stage: "generate_design_sequence",
+        progress: 35, diagramKind: "sequence", subtaskId: `sequence:UC_${index}`, subtaskLabel: `用例实现设计：${name}`, subtaskStatus: "failed", error })),
+      { type: "stage_finished", stage: "generate_design_sequence", status: "failed" },
+      { type: "artifact_ready", stage: "generate_design_models", artifactKind: "model", diagramKind: "class", subtaskId: "class" },
+      { type: "stage_finished", stage: "generate_design_models", status: "completed" },
+      { type: "failed", stage: "generate_design_models", error },
+    ];
+    const result = projectGenerationTranscript(events, "failed", [], {}, { includeContent: false });
+    expect(result.finalMessage).toBe("用例实现设计：查看个人选课结果、用例实现设计：查看所授课程与教学安排：生成结果格式错误，请重试。");
+    expect(result.finalMessage).not.toMatch(/生成设计模型：|generate_design|RUN_STRUCTURED|UC_/);
+  });
+
+  it("does not include a recovered model in a later parallel branch failure", () => {
+    const error = { code: "RUN_STRUCTURED_OUTPUT_INVALID" as const, category: "generation" as const, retryable: true, message: "private diagnostics" };
+    const result = projectGenerationTranscript([
+      { type: "stage_progress", stage: "generate_design_sequence", progress: 35, diagramKind: "sequence", subtaskId: "sequence:recovered", subtaskLabel: "用例实现设计：已恢复用例", subtaskStatus: "failed", error },
+      { type: "artifact_ready", stage: "generate_design_sequence", artifactKind: "model", diagramKind: "sequence", modelId: "sequence:recovered" },
+      { type: "stage_progress", stage: "generate_design_models", progress: 65, diagramKind: "class", subtaskId: "class", subtaskLabel: "设计类图", subtaskStatus: "failed", error },
+      { type: "failed", stage: "generate_design_models", error },
+    ]);
+    expect(result.finalMessage).toBe("设计类图：生成结果格式错误，请重试。");
+    expect(result.finalMessage).not.toContain("已恢复用例");
+  });
+  it("keeps coverage progress on its explicit model receipt", () => {
+    const model = (id: string, phase: RunActivityEvent["phase"]): RunActivityEvent => ({
+      ...activity(`${id}:${phase}`, id, phase), subtaskId: `analysis:${id}`, modelId: `analysis:${id}`, subtaskLabel: `需求分析模型：${id}`,
+    });
+    const message = "正在补跑缺失的需求分析模型：teacher";
+    const events: RunEventInput[] = [model("teacher", "failed"), model("course", "completed"),
+      { type: "stage_progress", stage: "generate_models", progress: 65, message, diagramKind: "analysis", subtaskId: "analysis:teacher", modelId: "analysis:teacher", subtaskStatus: "running" },
+      { ...model("teacher", "started"), eventId: "retry-start", callId: "retry-teacher" },
+    ];
+    const before = JSON.stringify(events);
+    const calls = projectGenerationTranscript(events).steps[0].calls;
+    expect(calls.find(call => call.id === "retry-teacher")?.message).toBe(message);
+    expect(calls.find(call => call.subtaskId === "analysis:course")?.message).toBeUndefined();
+    expect(JSON.stringify(events)).toBe(before);
+  });
+
+  it("shows the actual repair scope and explicit expansion reason", () => {
+    const result = projectGenerationTranscript([{ ...activity("repair-start", "class", "started"), operation: "model_repair", round: 1,
+      inputMetrics: { unit: "utf16-characters", messages: 100, responseFormat: 0, sections: { repair: 100 },
+        repair: { targetId: "class", mode: "scoped-regeneration", baseFingerprint: "fp:v3:abc", paths: ["models"], round: 1, reason: "诊断无法定位到字段" } } }]);
+    expect(result.steps[0].calls[0].summary).toContain("扩大到当前产物范围修复：诊断无法定位到字段");
+  });
+  it("shows the remaining structure check without an image call or skipped overall verdict", () => {
+    const check = { ...activity("structure-start", "structure", "started"), stage: "verify_diagram_visual" as const,
+      modelId: "usecase", subtaskId: "usecase", operation: "structure_check" as const };
+    const review = { findings: [], status: "passed" as const, issues: [], reason: "本次模型结构检查未发现问题", attempts: 0,
+      structureAttempts: 1, checkedAt: "check-1", checkOutcome: "verified" as const,
+      structureStatus: "passed" as const, renderStatus: "skipped" as const, imageStatus: "skipped" as const };
+    const result = projectGenerationTranscript([check, { ...check, eventId: "structure-end", phase: "completed" },
+      { type: "completed", snapshot: createRunSnapshot({ status: "completed", visualReviews: { usecase: review } }) }]);
+    expect(result.steps[0].title).toBe("模型结构检查");
+    expect(result.steps[0].calls).toHaveLength(1);
+    expect(result.steps[0].calls[0]).toMatchObject({ operation: "structure_check", status: "completed", review });
+    expect(result.steps[0].calls[0].inputImages).toBeUndefined();
+  });
+
+  it("keeps unscoped notices at the stage instead of guessing a neighboring call", () => {
+    const message = "模型 JSON 结构不合法，正在尝试修复（1/2）";
+    const events: RunEventInput[] = [activity("other-start", "usecase", "started"),
+      { type: "stage_progress", stage: "generate_models", progress: 65, message },
+      { ...activity("repair-start", "activity", "started"), operation: "model_repair", round: 1 }];
+    const before = JSON.stringify(events);
+    const { steps } = projectGenerationTranscript(events);
+    expect(steps[0].messages).toContain(message);
+    expect(steps[0].calls.every(call => !call.message)).toBe(true);
+    expect(JSON.stringify(events)).toBe(before);
+  });
+  it.each(["generate_design_sequence", "generate_design_models"] as const)("uses explicit repair ownership in %s", stage => {
+    const subtaskId = stage === "generate_design_sequence" ? "sequence:alarm" : "architecture";
+    const message = "设计模型 JSON 结构不合法，正在尝试修复（1/2）";
+    const repair: RunActivityEvent = { ...activity("design-repair", "repair", "started"), stage, subtaskId, modelId: subtaskId,
+      subtaskLabel: "处理报警用例实现设计", operation: "model_repair", round: 1 };
+    const { steps } = projectGenerationTranscript([
+      { type: "stage_progress", stage, progress: 65, message, subtaskId, modelId: subtaskId }, repair]);
+    expect(steps[0].messages).toEqual([]);
+    expect(steps[0].calls).toContainEqual(expect.objectContaining({ subtaskId, message }));
+  });
+
+  it("names one failed activity model across generation and render repair records", () => {
+    const title = "课程注册管理系统总体业务流程";
+    const error = { code: "RUN_RENDER_FAILED" as const, category: "render" as const, retryable: true, message: "绘图器故障：" + "SVG 关系 cf04 的标签与模型不一致；".repeat(100) };
+    const events: RunEventInput[] = [
+      { type: "stage_progress", stage: "generate_models", progress: 35, subtaskId: "activity", subtaskLabel: "活动图", subtaskStatus: "failed", message: error.message },
+      { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, diagramKind: "activity", modelId: "act_course_registration_overall", subtaskId: "act_course_registration_overall", subtaskLabel: title, subtaskStatus: "failed", message: error.message },
+      { type: "failed", stage: "generate_models", error },
+    ];
+    expect(projectGenerationTranscript(events, "failed", [], {}, { includeContent: false }).finalMessage).toBe(`${title}：绘图器故障，请重试。`);
+    const completed = createRunSnapshot({ status: "completed", diagramErrors: { activity: { stage: "render_svg", error } } });
+    expect(projectGenerationTranscript([...events.slice(0, -1), { type: "completed", snapshot: completed }]).finalMessage).toBe(`${title}：绘图器故障，请重试。`);
+  });
+
   it("preserves the real preview count from a progress-only completion snapshot", () => {
     const result = projectGenerationTranscript([{ type: "completed", previewCount: 17, snapshot: createRunSnapshot({ status: "completed", svgArtifacts: [] }) }], "completed", [], {}, { includeContent: false });
     expect(result.finalMessage).toBe("已生成 17 个图形预览。");
@@ -18,19 +115,19 @@ describe("generation transcript", () => {
   it("keeps visual diagnostics out of progress-only projection during streaming and replay", () => {
     const detail = "追踪关系错配、字段归属待核对。".repeat(10_000);
     const check = { ...activity("visual-start", "visual", "started"), stage: "verify_diagram_visual" as const, subtaskId: "usecase", operation: "visual_check" as const };
-    const events: RunEvent[] = [
+    const events: RunEventInput[] = [
       check,
       { ...check, eventId: "visual-output", phase: "output", text: detail },
       { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, subtaskId: "usecase", subtaskStatus: "pending_review", message: detail },
     ];
     const live = projectGenerationTranscript(events, "running", [], {}, { includeContent: false });
-    expect(live.steps[0].calls[0]).toMatchObject({ status: "pending_review", message: "视觉检查已结束", output: "" });
+    expect(live.steps[0].calls[0]).toMatchObject({ status: "pending_review", message: "模型结构检查已结束", output: "" });
     expect(JSON.stringify(live.steps)).not.toContain(detail);
-    const review = { status: "pending_review" as const, issues: [detail], reason: detail, stopReason: detail, attempts: 1, checkedAt: "check-1" };
+    const review = { findings: [], status: "pending_review" as const, issues: [detail], reason: detail, stopReason: detail, attempts: 1, checkedAt: "check-1" };
     events.push({ type: "completed", snapshot: createRunSnapshot({ status: "completed", visualReviews: { usecase: review } }) });
     const before = JSON.stringify(events);
     const restored = projectGenerationTranscript(events, "completed", [{ id: "verify_diagram_visual:usecase", label: "用例图", status: "pending_review", message: detail, errorMessage: null }], {}, { includeContent: false });
-    expect(restored.steps[0].calls[0]).toMatchObject({ status: "pending_review", message: "视觉检查已结束" });
+    expect(restored.steps[0].calls[0]).toMatchObject({ status: "pending_review", message: "模型结构检查已结束" });
     expect(restored.steps[0].calls[0].review).toBeUndefined();
     expect(JSON.stringify(restored.steps)).not.toContain(detail);
     expect(restored.finalMessage).not.toContain("待确认");
@@ -41,19 +138,20 @@ describe("generation transcript", () => {
   it("keeps visual failures and skips concise in progress-only projection", () => {
     const detail = "结构核对未完成：" + "超时诊断".repeat(10_000);
     const failed = projectGenerationTranscript([{ type: "stage_progress", stage: "verify_diagram_visual", progress: 98, subtaskId: "class", subtaskStatus: "failed", message: detail }], "running", [], {}, { includeContent: false });
-    expect(failed.steps[0].calls[0]).toMatchObject({ status: "failed", message: "视觉检查未完成，可重试。" });
+    expect(failed.steps[0].calls[0]).toMatchObject({ status: "failed", message: "模型结构检查未完成，可重试。" });
     const skipped = projectGenerationTranscript([{ type: "stage_progress", stage: "verify_diagram_visual", progress: 98, subtaskId: "class", subtaskStatus: "completed", message: "已跳过视觉检查：" + detail }], "running", [], {}, { includeContent: false });
-    expect(skipped.steps[0].calls[0]).toMatchObject({ status: "completed", message: "视觉检查已跳过" });
+    expect(skipped.steps[0].calls[0]).toMatchObject({ status: "completed", message: "模型结构检查已跳过" });
   });
 
-  it("projects progress without accumulating content while preserving attempts, legacy calls and failures", () => {
+  it("projects progress without accumulating content while preserving attempts and failures", () => {
     const body = "批量正文".repeat(10_000);
-    const events: RunEvent[] = [
+    const events: RunEventInput[] = [
       activity("start", "a", "started"), activity("reasoning", "a", "reasoning", body),
       activity("summary", "a", "summary", body), activity("output", "a", "output", body),
       activity("failed", "a", "failed"),
       { type: "stage_started", stage: "generate_document_text" },
-      { type: "llm_chunk", stage: "generate_document_text", chunk: body },
+      { ...activity("doc-start", "doc", "started"), stage: "generate_document_text" },
+      { ...activity("doc-output", "doc", "output", body), stage: "generate_document_text" },
       { type: "stage_finished", stage: "generate_document_text", status: "completed" },
       { type: "failed", error: { code: "RUN_INTERNAL_ERROR", category: "internal", retryable: false, message: "模型服务暂不可用" } },
     ];
@@ -69,8 +167,8 @@ describe("generation transcript", () => {
   });
   it("retains manual confirmation only for the same fingerprint in new review replay", () => {
     const check = { ...activity("check", "image", "completed"), stage: "verify_diagram_visual" as const, subtaskId: "usecase", operation: "visual_check" as const, round: 1 };
-    const review = { status: "pending_review" as const, issues: ["待确认标签"], reason: "待确认", attempts: 1, checkedAt: "check-1", checkOutcome: "differences" as const, inputFingerprint: "new" };
-    const events: RunEvent[] = [check, { type: "completed", snapshot: createRunSnapshot({ status: "completed", visualReviews: { usecase: review } }) }];
+    const review = { findings: [], status: "pending_review" as const, issues: ["待确认标签"], reason: "待确认", attempts: 1, checkedAt: "check-1", checkOutcome: "differences" as const, inputFingerprint: "new" };
+    const events: RunEventInput[] = [check, { type: "completed", snapshot: createRunSnapshot({ status: "completed", visualReviews: { usecase: review } }) }];
     const accepted = projectGenerationTranscript(events, "completed", [], { usecase: { ...review, confirmedAt: "confirmed" } });
     expect(accepted.steps[0].calls[0]).toMatchObject({ status: "completed", message: "已人工确认当前图", review });
     const changed = projectGenerationTranscript(events, "completed", [], { usecase: { ...review, inputFingerprint: "old", confirmedAt: "confirmed" } });
@@ -80,8 +178,8 @@ describe("generation transcript", () => {
     const started = { ...activity("check", "structure", "started"), stage: "verify_diagram_visual" as const, modelId: "usecase", subtaskId: "usecase", operation: "structure_check" as const, round: 0 };
     const repair = { ...started, eventId: "repair", callId: "repair", operation: "model_repair" as const, round: 1 };
     const image = { ...started, eventId: "image", callId: "image", operation: "visual_check" as const, round: 1, inputImages: [{ url: "data:image/png;base64,YQ==" }] };
-    const review = { status: "passed" as const, issues: [], reason: "通过", attempts: 1, repairAttempts: 1, structureAttempts: 2, checkedAt: "check-1", checkOutcome: "verified" as const, inputFingerprint: "new", repairHistory: [{ round: 1, target: "model" as const, issueIds: ["comparator"], beforeFingerprint: "old", afterFingerprint: "new", callId: "repair", status: "accepted" as const, changes: ["比较符 > 改为 >="], reason: "已确认条件" }] };
-    const events: RunEvent[] = [started, repair, image, { type: "completed", snapshot: createRunSnapshot({ status: "completed", visualReviews: { usecase: review } }) }];
+    const review = { findings: [], status: "passed" as const, issues: [], reason: "通过", attempts: 1, repairAttempts: 1, structureAttempts: 2, checkedAt: "check-1", checkOutcome: "verified" as const, inputFingerprint: "new", repairHistory: [{ round: 1, target: "model" as const, issueIds: ["comparator"], beforeFingerprint: "old", afterFingerprint: "new", callId: "repair", status: "accepted" as const, changes: ["比较符 > 改为 >="], reason: "已确认条件" }] };
+    const events: RunEventInput[] = [started, repair, image, { type: "completed", snapshot: createRunSnapshot({ status: "completed", visualReviews: { usecase: review } }) }];
     const calls = projectGenerationTranscript(JSON.parse(JSON.stringify(events))).steps[0].calls;
     expect(calls.map((call) => call.operation)).toEqual(["structure_check", "model_repair", "visual_check"]);
     expect(calls[0].title).toContain("结构核对"); expect(calls[1].title).toContain("第 1 轮");
@@ -90,12 +188,12 @@ describe("generation transcript", () => {
   });
   it("keeps a handled image-input skip from becoming a task failure, including persisted replay", () => {
     const started = { ...activity("start", "visual", "started"), stage: "verify_diagram_visual" as const, subtaskId: "usecase", inputImages: [{ url: "data:image/png;base64,YQ==" }] };
-    const events: RunEvent[] = [started, { ...started, eventId: "failed", phase: "failed" },
+    const events: RunEventInput[] = [started, { ...started, eventId: "failed", phase: "failed" },
       { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, subtaskId: "usecase", subtaskStatus: "completed", message: "已跳过视觉检查：不支持图片输入" }];
     const live = projectGenerationTranscript(events).steps[0].calls[0];
     expect(live).toMatchObject({ id: "visual", status: "completed", message: "已跳过视觉检查：不支持图片输入", inputImages: started.inputImages });
     const restored = projectGenerationTranscript([events[0], events[1], { type: "completed", snapshot: createRunSnapshot({ status: "completed", visualReviews: {
-      usecase: { status: "skipped", issues: [], reason: "不支持图片输入", attempts: 1, checkedAt: "2026-09-30T08:00:00.000Z" },
+      usecase: { findings: [], status: "skipped", issues: [], reason: "不支持图片输入", attempts: 1, checkedAt: "2026-09-30T08:00:00.000Z" },
     } }) }]);
     expect(restored.steps[0].calls[0]).toMatchObject({ status: "completed", message: "已跳过视觉检查：不支持图片输入" });
   });
@@ -108,36 +206,36 @@ describe("generation transcript", () => {
     expect(transcript.steps[0].calls.map((call) => call.inputImages)).toEqual([[first], [second]]);
     expect(projectGenerationTranscript([activity("legacy", "a", "started")]).steps[0].calls[0].inputImages).toBeUndefined();
   });
-  it("shows client rule repair after extraction without exposing the empty model phase", () => {
-    const events: RunEvent[] = [
-      { type: "stage_started", stage: "extract_rules", tracksCompletion: true },
+  it("replays extraction from its explicit lifecycle events", () => {
+    const events: RunEventInput[] = [
+      { type: "stage_started", stage: "extract_rules" },
       { type: "stage_finished", stage: "extract_rules", status: "completed" },
       { type: "stage_started", stage: "generate_models" },
       { type: "stage_finished", stage: "generate_models", status: "completed" },
       { type: "completed", snapshot: createRunSnapshot({ selectedDiagrams: [], status: "completed" }) },
     ];
     const extraction = { id: "extract_rules", label: "抽取需求规则", status: "completed" as const, message: null, errorMessage: null };
-    const repair = { id: "repair_rules", label: "修复需求规则", status: "repairing" as const, message: "正在修复 r2", errorMessage: null };
-    const active = projectGenerationTranscript(events, "completed", [extraction, repair]);
-    expect(active.visibleSteps.map((step) => step.title)).toEqual(["抽取需求规则", "修复需求规则"]);
-    expect(active.status).toBe("running");
-    const done = projectGenerationTranscript(events, "completed", [extraction, { ...repair, status: "pending_review", pendingReviewCount: 1 }]);
+    const active = projectGenerationTranscript(events, "completed", [extraction]);
+    expect(active.visibleSteps.map((step) => step.title)).toEqual(["抽取需求规则"]);
+    expect(active.status).toBe("completed");
+    const done = projectGenerationTranscript(events, "completed", [extraction]);
     expect(done.status).toBe("completed");
-    expect(done.visibleSteps[1].calls[0].message).toContain("1 条需求规则修复结果待确认");
+    expect(done.visibleSteps).toHaveLength(1);
   });
 
-  it("reveals each sequential feasibility stage as soon as its successor starts", () => {
+  it("reveals sequential feasibility stages with their explicit lifecycle receipts", () => {
     const stages = ["generate_context", "render_context", "generate_business_flow", "render_business_flow", "generate_implementation"] as const;
-    const events: RunEvent[] = [];
-    for (const stage of stages) {
+    const events: RunEventInput[] = [];
+    for (const [index, stage] of stages.entries()) {
+      if (index) events.push({ type: "stage_finished", stage: stages[index - 1], status: "completed" });
       events.push({ type: "stage_started", stage });
       const result = projectGenerationTranscript(events);
-      expect(result.visibleSteps.map((step) => step.stage)).toEqual(stages.slice(0, events.length));
+      expect(result.visibleSteps.map((step) => step.stage)).toEqual(stages.slice(0, index + 1));
       expect(result.visibleSteps.slice(0, -1).every((step) => step.finished)).toBe(true);
     }
   });
   it("keeps the two feasibility image reviews in separate chronological steps", () => {
-    const events: RunEvent[] = [
+    const events: RunEventInput[] = [
       { type: "stage_started", stage: "render_context" },
       { type: "stage_started", stage: "verify_diagram_visual" },
       { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, subtaskId: "context", subtaskStatus: "completed", message: "系统环境图已通过" },
@@ -171,7 +269,7 @@ describe("generation transcript", () => {
     expect(summaryOnly.summary).toBe("模型返回的摘要");
     expect(summaryOnly.thinking).toBe(true);
   });
-  it("hides platform-authored summaries when restoring older offline demo events", () => {
+  it("preserves received summaries without classifying their text", () => {
     const events = [
       { ...activity("start", "demo", "started"), format: "text" as const },
       { ...activity("summary-a", "demo", "summary", "演示思考摘要：固定演示产物"), format: "text" as const },
@@ -179,7 +277,7 @@ describe("generation transcript", () => {
       { ...activity("output", "demo", "output", "已读取演示模型"), format: "text" as const },
     ];
     const call = projectGenerationTranscript(events).steps[0].calls[0];
-    expect(call.summary).toBe("");
+    expect(call.summary).toBe("演示思考摘要：固定演示产物继续整理模型");
     expect(call.reasoning).toBe("");
     expect(call.output).toBe("已读取演示模型");
   });
@@ -187,15 +285,15 @@ describe("generation transcript", () => {
     const result = projectGenerationTranscript([
       { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, subtaskId: "usecase", subtaskStatus: "pending_review", message: "视觉检查仍有问题，请人工确认" },
       { type: "completed", snapshot: createRunSnapshot({ status: "completed", visualReviews: {
-        usecase: { status: "pending_review", issues: ["标签不可读", "连线交叉"], reason: "视觉检查仍有问题，请人工确认", attempts: 3, checkedAt: "2026-09-23T00:00:00.000Z" },
+        usecase: { findings: [], status: "pending_review", issues: ["标签不可读", "连线交叉"], reason: "视觉检查仍有问题，请人工确认", attempts: 3, checkedAt: "2026-09-23T00:00:00.000Z" },
       } }) },
     ], "completed", [{ id: "verify_diagram_visual:usecase", label: "用例模型", status: "pending_review", message: "视觉检查仍有问题，请人工确认", errorMessage: null }]);
     expect(result.visibleSteps[0].calls[0].message).toBe("标签不可读");
     expect(result.visibleSteps[0].calls[0].review?.issues).toEqual(["标签不可读", "连线交叉"]);
   });
   it("shows human acceptance for the matching historical visual check", () => {
-    const review = { status: "pending_review" as const, issues: ["业务条件是否合适需要确认"], reason: "请人工确认", attempts: 3, checkedAt: "check-1" };
-    const events: RunEvent[] = [
+    const review = { findings: [], status: "pending_review" as const, issues: ["业务条件是否合适需要确认"], reason: "请人工确认", attempts: 3, checkedAt: "check-1" };
+    const events: RunEventInput[] = [
       { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, subtaskId: "usecase", subtaskStatus: "pending_review", message: review.reason },
       { type: "completed", snapshot: createRunSnapshot({ status: "completed", visualReviews: { usecase: review } }) },
     ];
@@ -206,8 +304,8 @@ describe("generation transcript", () => {
     expect(regenerated.visibleSteps[0].calls[0].status).toBe("pending_review");
   });
   it.each(["failed", "not_completed"] as const)("replay keeps a %s review actionable after stage completion", (status) => {
-    const review = { status, issues: ["结构错误或检查未完成"], reason: "需要处理", attempts: 1, checkedAt: "check-1" };
-    const events: RunEvent[] = [
+    const review = { findings: [], status, issues: ["结构错误或检查未完成"], reason: "需要处理", attempts: 1, checkedAt: "check-1" };
+    const events: RunEventInput[] = [
       { ...activity("check", "image", "completed"), stage: "verify_diagram_visual", subtaskId: "usecase", operation: "visual_check" },
       { type: "stage_finished", stage: "verify_diagram_visual", status: "completed" },
       { type: "completed", snapshot: createRunSnapshot({ status: "completed", visualReviews: { usecase: review } }) },
@@ -268,7 +366,7 @@ describe("generation transcript", () => {
   });
 
   it("flushes to a stable terminal transcript and never adds later updates", () => {
-    const original: RunEvent[] = [activity("a", "usecase", "started"), { type: "cancelled", eventId: "end", message: "停止" }];
+    const original: RunEventInput[] = [activity("a", "usecase", "started"), { type: "cancelled", eventId: "end", message: "停止" }];
     const events = mergeTranscriptEvents(original, [activity("late", "usecase", "output", "不可追加")]);
     expect(events).toBe(original);
     expect(projectGenerationTranscript(events).steps[0].calls[0].status).toBe("cancelled");
@@ -283,11 +381,11 @@ describe("generation transcript", () => {
 });
 
 describe("business stage presentation queue", () => {
-  const started = (stage: "generate_models" | "generate_plantuml" | "render_svg"): RunEvent => ({ type: "stage_started", stage, tracksCompletion: true });
-  const finished = (stage: "generate_models" | "generate_plantuml" | "render_svg"): RunEvent => ({ type: "stage_finished", stage, status: "completed" });
+  const started = (stage: "generate_models" | "generate_plantuml" | "render_svg"): RunEventInput => ({ type: "stage_started", stage });
+  const finished = (stage: "generate_models" | "generate_plantuml" | "render_svg"): RunEventInput => ({ type: "stage_finished", stage, status: "completed" });
 
   it("shows downstream output while parallel models and repairs are still running", () => {
-    const events: RunEvent[] = [started("generate_models"), activity("a", "usecase", "started"), activity("b", "activity", "started"),
+    const events: RunEventInput[] = [started("generate_models"), activity("a", "usecase", "started"), activity("b", "activity", "started"),
       { ...activity("early", "render", "output", "提前返回的预览"), stage: "render_svg" },
       activity("c", "usecase", "completed"),
       { type: "artifact_ready", stage: "generate_models", artifactKind: "model" },
@@ -303,7 +401,7 @@ describe("business stage presentation queue", () => {
   });
 
   it("shows each started diagram stage without adding unstarted placeholders", () => {
-    const events: RunEvent[] = [started("generate_models")];
+    const events: RunEventInput[] = [started("generate_models")];
     expect(projectGenerationTranscript(events).visibleSteps.map((step) => step.stage)).toEqual(["generate_models"]);
     for (const stage of ["generate_plantuml", "render_svg", "verify_diagram_visual"] as const) {
       events.push({ type: "stage_progress", stage, progress: 75, subtaskId: "usecase", subtaskStatus: "running" });
@@ -315,19 +413,19 @@ describe("business stage presentation queue", () => {
 
   it("does not let stale failure mirrors mark a new retry failed and deduplicates successful artifacts", () => {
     const first = { ...activity("a", "first", "failed"), subtaskId: "usecase" };
-    const events: RunEvent[] = [first, { type: "stage_progress", stage: "generate_models", progress: 50, subtaskId: "usecase", subtaskStatus: "failed" },
+    const events: RunEventInput[] = [first, { type: "stage_progress", stage: "generate_models", progress: 50, subtaskId: "usecase", subtaskStatus: "failed" },
       { ...activity("retry", "retry", "started"), subtaskId: "usecase" }];
     expect(projectGenerationTranscript(events).steps[0].calls.map((call) => call.status)).toEqual(["failed", "running"]);
-    const finishedRetry: RunEvent[] = [...events, { ...activity("finish-retry", "retry", "completed"), subtaskId: "usecase" }, finished("generate_models")];
+    const finishedRetry: RunEventInput[] = [...events, { ...activity("finish-retry", "retry", "completed"), subtaskId: "usecase" }, finished("generate_models")];
     expect(projectGenerationTranscript(finishedRetry, "completed").steps[0].calls.map((call) => call.status)).toEqual(["failed", "completed"]);
     events.push({ ...activity("done", "retry", "completed"), subtaskId: "usecase" }, { type: "artifact_ready", stage: "generate_models", artifactKind: "model", subtaskId: "usecase" });
     expect(projectGenerationTranscript(events).steps[0].calls).toHaveLength(2);
   });
 
   it("retains modeling, source generation and rendering as three stable steps", () => {
-    const events: RunEvent[] = [];
+    const events: RunEventInput[] = [];
     for (const stage of ["generate_models", "generate_plantuml", "render_svg"] as const) {
-      events.push({ type: "stage_started", stage, tracksCompletion: true }, { type: "stage_finished", stage, status: "completed" });
+      events.push({ type: "stage_started", stage }, { type: "stage_finished", stage, status: "completed" });
     }
     const steps = projectGenerationTranscript(events).visibleSteps;
     expect(steps.map((step) => step.stage)).toEqual(["generate_models", "generate_plantuml", "render_svg"]);
@@ -335,8 +433,8 @@ describe("business stage presentation queue", () => {
   });
 
   it("reveals buffered content immediately on cancellation or failure", () => {
-    const events: RunEvent[] = [started("generate_models"), { ...activity("later", "render", "output", "已收到"), stage: "render_svg" }];
-    for (const terminal of [{ type: "cancelled", message: "停止" }, { type: "failed", error: { code: "RUN_LEGACY_FAILURE", message: "失败", retryable: false } }] as RunEvent[]) {
+    const events: RunEventInput[] = [started("generate_models"), { ...activity("later", "render", "output", "已收到"), stage: "render_svg" }];
+    for (const terminal of [{ type: "cancelled", message: "停止" }, { type: "failed", error: { code: "RUN_INTERNAL_ERROR", message: "失败", retryable: false } }] as RunEventInput[]) {
       const result = projectGenerationTranscript([...events, terminal]);
       expect(result.visibleSteps).toHaveLength(2);
       expect(result.visibleSteps[1].calls[0].output).toBe("已收到");
@@ -345,7 +443,7 @@ describe("business stage presentation queue", () => {
   });
 
   it("restores old history and shows only stages with received events", () => {
-    const events: RunEvent[] = [{ type: "stage_started", stage: "generate_models" }, { type: "stage_started", stage: "render_svg" }];
+    const events: RunEventInput[] = [{ type: "stage_started", stage: "generate_models" }, { type: "stage_started", stage: "render_svg" }];
     expect(projectGenerationTranscript(events, "completed").visibleSteps).toHaveLength(2);
     expect(projectGenerationTranscript(events).visibleSteps).toHaveLength(2);
     events.push({ type: "artifact_ready", stage: "generate_models", artifactKind: "model", subtaskId: "usecase" });
@@ -353,4 +451,12 @@ describe("business stage presentation queue", () => {
     events.push({ type: "artifact_ready", stage: "generate_models", artifactKind: "model" });
     expect(projectGenerationTranscript(events).visibleSteps).toHaveLength(2);
   });
+});
+
+
+it("feasibility activity calls use the business-flow name without changing requirement activity names", () => {
+  const activity = (stage: "generate_business_flow" | "generate_models", id: string, round?: number): RunEventInput => ({ type: "run_activity", eventId: id, callId: id, runId: "flow", createdAt: "2026-10-18T09:00:00Z", stage, phase: "started", format: "technical", subtaskId: "activity", operation: round ? "model_repair" : undefined, round });
+  const result = projectGenerationTranscript([activity("generate_business_flow", "initial"), activity("generate_business_flow", "repair", 1), activity("generate_models", "requirement")]);
+  expect(result.steps.find(step => step.stage === "generate_business_flow")!.calls.map(call => call.title)).toEqual(["业务流程图", "业务流程图 · 结构纠错 · 第 1 轮"]);
+  expect(result.steps.find(step => step.stage === "generate_models")!.calls[0]!.title).toBe("总体业务流程");
 });

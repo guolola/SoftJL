@@ -12,7 +12,7 @@ export const DEFAULT_DOCUMENT_STORAGE_DIR =
 
 export const RELEASE_STARTED_AT =
   process.env.UML_RELEASE_STARTED_AT ?? new Date().toISOString();
-export const DEFAULT_SSE_ALLOW_ORIGIN = "http://localhost:5173";
+export const DEFAULT_SSE_ALLOW_ORIGIN = "http://localhost:3000";
 export function readPositiveInteger(value: unknown, fallback: number) {
   const numeric = Number(value);
   return Number.isInteger(numeric) && numeric > 0 ? numeric : fallback;

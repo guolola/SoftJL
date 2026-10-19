@@ -28,3 +28,5 @@ export {
 export { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "./feasibility-example.js";
 export { buildGenerateFeasibilityBusinessFlowPrompt } from "./feasibility-business-flow-prompt.js";
 export * from "./diagram-review-prompts.js";
+export { modelTaskSourcePrompt, scopeUseCaseModelForPrompt } from "./prompt-context.js";
+export { buildFocusedRepairPrompt, buildMissingMappingsPrompt } from "./generation-repair-prompts.js";

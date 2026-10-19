@@ -11,8 +11,146 @@ import {
   resolveOpenAiBaseUrl,
 } from "./llm.js";
 import type { OpenAiCompatibleClientFactory } from "./llm.js";
+import type { ProviderRequestRetryEvent } from "./adapters/llm/request-retry.js";
 
 const resolvePublicHostname = async () => ["8.8.8.8"];
+
+const retryTestInput = {
+  providerSettings: { apiBaseUrl: "https://provider.test", apiKey: "sk-test", model: "test-model" },
+  messages: [{ role: "user" as const, content: "generate model" }],
+};
+const flushRetries = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+async function drain(stream: AsyncIterable<string>) {
+  const chunks: string[] = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return chunks;
+}
+
+test("real transport retries a gateway 503 with the same prompt and records recovery", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(Math, "random", () => 0);
+  const warnings = t.mock.method(console, "warn", () => {});
+  const bodies: string[] = [];
+  let resolveCalls = 0;
+  t.mock.method(globalThis, "fetch", async (_input: unknown, init?: RequestInit) => {
+    bodies.push(String(init?.body));
+    if (bodies.length === 1) return new Response("<h1>503 Service Temporarily Unavailable</h1><hr>nginx", { status: 503 });
+    return createResponseFromSse([
+      'data: {"choices":[{"delta":{"content":"model"}}]}\n\n',
+      'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":20}}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+  });
+  const events: ProviderRequestRetryEvent[] = [];
+  const usages: unknown[] = [];
+  const transport = createRealLlmTransport({ resolveHostname: async () => { resolveCalls++; return ["8.8.8.8"]; } });
+  const result = drain(transport.streamChatCompletion({ ...retryTestInput,
+    onRequestRetry: (event) => events.push(event), onTokenUsage: (usage) => usages.push(usage),
+  }));
+  await flushRetries();
+  assert.equal(bodies.length, 1);
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(await result, ["model"]);
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0], bodies[1]);
+  assert.equal(resolveCalls, 2);
+  assert.equal(usages.length, 1);
+  assert.deepEqual(events, [{ retry: 1, delayMs: 1_000, statusCode: 503, reason: "http" }]);
+  assert.doesNotMatch(JSON.stringify(warnings.mock.calls), /sk-test|generate model/);
+});
+
+test("transient retry budget is shared across JSON and stream-usage compatibility fallbacks", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(Math, "random", () => 0);
+  t.mock.method(console, "warn", () => {});
+  const bodies: Array<Record<string, unknown>> = [];
+  const clientFactory: OpenAiCompatibleClientFactory = () => ({
+    chat: { completions: { create: async (body) => {
+      bodies.push(body as unknown as Record<string, unknown>);
+      if (bodies.length === 2) throw { status: 400, message: "response_format json_schema unsupported" };
+      if (bodies.length === 4) throw { status: 400, message: "stream_options include_usage unsupported" };
+      throw { status: 503, message: "gateway unavailable" };
+    } } }, models: { list: async () => ({ data: [] }) },
+  });
+  const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+  const retries: ProviderRequestRetryEvent[] = [];
+  const formats: unknown[] = [];
+  const unavailable: string[] = [];
+  const rejected = assert.rejects(drain(transport.streamChatCompletion({ ...retryTestInput,
+    responseFormat: { type: "json_schema", json_schema: { name: "model", strict: true, schema: { type: "object" } } },
+    onRequestRetry: (event) => retries.push(event), onResponseFormatFallback: (event) => formats.push(event),
+    onUsageUnavailable: (reason) => unavailable.push(reason),
+  })), (error) => error instanceof ProviderHttpError && error.status === 503);
+  for (const delay of [1_000, 2_000, 4_000]) { await flushRetries(); t.mock.timers.tick(delay); }
+  await rejected;
+  assert.equal(bodies.length, 6);
+  assert.deepEqual(retries.map((event) => event.retry), [1, 2, 3]);
+  assert.equal(formats.length, 1);
+  assert.deepEqual(unavailable, ["provider_rejected_stream_usage"]);
+  assert.equal((bodies[2].response_format as { type: string }).type, "json_object");
+  assert.equal(bodies[4].stream_options, undefined);
+});
+
+test("transport never replays an established stream, including reasoning-only and partial output failures", async () => {
+  for (const delta of [null, { reasoning_content: "thinking" }, { content: "partial model" }]) {
+    let calls = 0;
+    const clientFactory: OpenAiCompatibleClientFactory = () => ({
+      chat: { completions: { create: async () => {
+        calls++;
+        return (async function* () {
+          if (delta) yield { choices: [{ delta }] };
+          throw Object.assign(new Error("stream interrupted"), { status: 503 });
+        })() as never;
+      } } }, models: { list: async () => ({ data: [] }) },
+    });
+    const retries: ProviderRequestRetryEvent[] = [];
+    const output: string[] = [], reasoning: string[] = [];
+    const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+    await assert.rejects(async () => {
+      for await (const chunk of transport.streamChatCompletion({ ...retryTestInput,
+        onRequestRetry: (event) => retries.push(event), onReasoningChunk: (chunk) => reasoning.push(chunk),
+      })) output.push(chunk);
+    }, /stream interrupted/);
+    assert.equal(calls, 1);
+    assert.deepEqual(retries, []);
+    assert.deepEqual(output, delta && "content" in delta ? ["partial model"] : []);
+    assert.deepEqual(reasoning, delta && "reasoning_content" in delta ? ["thinking"] : []);
+  }
+});
+
+test("cancelling transport during backoff prevents another provider request", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(console, "warn", () => {});
+  const controller = new AbortController();
+  let calls = 0;
+  const clientFactory: OpenAiCompatibleClientFactory = () => ({
+    chat: { completions: { create: async () => { calls++; throw { status: 503 }; } } },
+    models: { list: async () => ({ data: [] }) },
+  });
+  const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+  const rejected = assert.rejects(drain(transport.streamChatCompletion({ ...retryTestInput, abortSignal: controller.signal })), /cancelled/);
+  await flushRetries();
+  controller.abort(new Error("cancelled"));
+  await rejected;
+  t.mock.timers.tick(60_000);
+  assert.equal(calls, 1);
+});
+
+test("engineering output reservations reach compatible and reasoning provider requests", async () => {
+  for (const model of ["gpt-4o", "gpt-5.5", "deepseek-chat"]) {
+    let body: Record<string, unknown> = {};
+    const clientFactory: OpenAiCompatibleClientFactory = () => ({
+      chat: { completions: { create: async (input) => {
+        body = input as unknown as Record<string, unknown>;
+        return (async function* () { yield { choices: [{ delta: { content: "{}" } }] }; })() as never;
+      } } }, models: { list: async () => ({ data: [] }) },
+    });
+    const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+    for await (const _ of transport.streamChatCompletion({ providerSettings: { apiBaseUrl: "https://provider.test", apiKey: "test", model }, messages: [{ role: "user", content: "模型" }], maxOutputTokens: 4096 })) {}
+    assert.equal(body[model === "gpt-5.5" ? "max_completion_tokens" : "max_tokens"], 4096);
+  }
+});
 
 test("normalizeStreamTokenUsage supports OpenAI and Responses-compatible fields", () => {
   assert.deepEqual(normalizeStreamTokenUsage({

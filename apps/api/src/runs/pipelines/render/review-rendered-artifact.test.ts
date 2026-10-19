@@ -1,4 +1,5 @@
-// Verifies visual review decisions, image input, and advisory review without source mutation.
+// Verifies pre-render structure repairs and rendering without SVG mapping or PNG image review.
+import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getStageModelSchemas, validateModelInput, type ModelingStage, type DiagramModelSpec, type ProviderSettings } from "@uml-platform/contracts";
@@ -11,7 +12,7 @@ import { reviewRenderedArtifact } from "./review-rendered-artifact.js";
 import { DiagramReviewRenderError } from "./review-rendered-artifact.js";
 import { deriveTableModel, type DesignDiagramModelSpec } from "@uml-platform/contracts";
 import { modelFixture } from "../../../../../../packages/contracts/src/testing/model-fixtures.js";
-import { generateDesignPlantUmlArtifacts } from "../../../plantuml.js";
+import { generateDesignPlantUmlArtifacts } from "../../../adapters/plantuml/model-renderer.js";
 import { RunCancelledError } from "../../records/run-cancellation.js";
 import { createCallActivity } from "../shared/call-activity.js";
 
@@ -19,43 +20,42 @@ function repairTransport(candidate?: DesignDiagramModelSpec): LlmTransport {
   return { async *streamChatCompletion(input) {
     const prompt = input.messages.at(-1)?.content;
     input.onReasoningChunk?.("核对本模型的已确认约束"); input.onReasoningSummary?.("已完成依据核实");
-    yield typeof prompt === "string" && prompt.includes('只返回 {"model"') ? JSON.stringify({ model: candidate }) : '{"passed":true,"issues":[],"findings":[]}';
+    yield typeof prompt === "string" && prompt.includes('修复上下文：') ? JSON.stringify(candidate) : '{"passed":true,"issues":[],"findings":[]}';
   } };
 }
 
-const settings: ProviderSettings = { apiBaseUrl: "https://example.test", apiKey: "test", model: "vision-test" };
+const settings: ProviderSettings = { modelCapability: strictTestModelCapability("vision-test"), apiBaseUrl: "https://example.test", apiKey: "test", model: "vision-test" };
 const model: DiagramModelSpec = { diagramKind: "usecase", title: "用例", summary: "用例", notes: [], actors: [], useCases: [], systemBoundaries: [], relationships: [] };
 const escapeXml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-// Unit cases supply explicit mapping evidence; real renderer capability is checked by the SVG matrix suite.
+// Render fixtures remain recognizable, while review completion no longer depends on SVG mapping evidence.
 const renderClient: RenderClient = async (artifact) => {
   const aliases = new Map(artifact.renderMapping?.elements.map((element) => [element.elementId, element.alias]));
   const nodes = artifact.renderMapping?.elements.map((element) => `<g id="elem_${element.alias}"><text>${escapeXml(element.label ?? "")}</text></g>`).join("") ?? "";
   const links = artifact.renderMapping?.relationships.filter((edge) => edge.statement && !edge.statement.trimStart().startsWith("'")).map((edge) => `<g class="link" data-entity-1="${aliases.get(edge.sourceId)}" data-entity-2="${aliases.get(edge.targetId)}"><text>${escapeXml(edge.label ?? "")}</text></g>`).join("") ?? "";
   return { svg: `<svg>${nodes || '<g id="elem_empty"/>'}${links}</svg>`, renderMeta: { engine: "test", generatedAt: new Date().toISOString(), sourceLength: artifact.source.length, durationMs: 1 } };
 };
-const pngRenderClient = async () => ({ png: Buffer.from("png"), renderMeta: { engine: "test", generatedAt: new Date().toISOString(), sourceLength: 1, durationMs: 1 } });
 
 function record(): RunRecord {
   return { snapshot: createEmptySnapshot("visual-test", "需求", ["usecase"]), events: [], listeners: new Set(), terminal: false };
 }
 
-test("only passed identical checks are reused within a run; changed input or another run is checked again", async () => {
+test("valid models never spend an LLM call on repeated validation or another run", async () => {
   let calls = 0;
   const run = record();
   const llmTransport: LlmTransport = { async *streamChatCompletion() { calls++; yield '{"passed":true,"issues":[],"findings":[]}'; } };
-  const input = { record: run, providerSettings: settings, model, basis: { stage: "requirements" as const }, mutable: true, renderClient, pngRenderClient, llmTransport };
-  await reviewRenderedArtifact(input); assert.equal(calls, 2);
-  await reviewRenderedArtifact(input); assert.equal(calls, 2);
-  await reviewRenderedArtifact({ ...input, model: { ...model, summary: "不同输入" } }); assert.equal(calls, 4);
-  await reviewRenderedArtifact({ ...input, record: record() }); assert.equal(calls, 6);
+  const input = { record: run, providerSettings: settings, model, basis: { stage: "requirements" as const }, mutable: true, renderClient, llmTransport };
+  await reviewRenderedArtifact(input);
+  await reviewRenderedArtifact(input);
+  await reviewRenderedArtifact({ ...input, model: { ...model, summary: "不同输入" } });
+  await reviewRenderedArtifact({ ...input, record: record() }); assert.equal(calls, 0);
 });
 
 for (const stage of ["feasibility", "requirements", "design"] as ModelingStage[]) for (const schema of getStageModelSchemas(stage)) {
   const kind = schema.shape.diagramKind.value;
-  test(`production review dispatches ${stage}/${kind} to its structural and image instructions`, async () => {
+  test(`program validation renders ${stage}/${kind} without semantic or image requests`, async () => {
     const candidate = modelFixture(stage, kind);
     const prompts: Array<{ image: boolean; text: string }> = [];
-    const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, model: candidate, basis: { stage }, mutable: true, renderClient, pngRenderClient,
+    const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, model: candidate, basis: { stage }, mutable: true, renderClient,
       llmTransport: { async *streamChatCompletion(input) {
         const content = input.messages.at(-1)!.content;
         prompts.push({ image: Array.isArray(content), text: typeof content === "string" ? content : content.filter((part) => part.type === "text").map((part) => part.text).join("\n") });
@@ -63,16 +63,19 @@ for (const stage of ["feasibility", "requirements", "design"] as ModelingStage[]
       } },
     });
     assert.equal(checked.review.status, "passed");
-    assert.ok(prompts.some((item) => !item.image && item.text.startsWith(`核对 ${stage}.${kind} 的结构与业务内容。`)));
-    assert.ok(prompts.some((item) => item.image && item.text.startsWith(`核对 ${stage}.${kind} 的图片与模型。`)));
+    assert.deepEqual(prompts, []);
+    assert.equal(checked.review.structureAttempts, 0);
+    assert.match(checked.review.reason, /程序结构校验与绘制通过/);
+    assert.equal(checked.review.attempts, 0); assert.equal(checked.review.imageStatus, "skipped");
+    assert.equal(checked.review.renderStatus, "passed");
   });
 }
 
-test("missing declared actor links are repaired by rules and published with reconciled trace and latest image", async () => {
+test("missing declared actor links are repaired by rules and published with reconciled trace and rendered output", async () => {
   const candidate = modelFixture("requirements", "usecase"); if (candidate.diagramKind !== "usecase") throw new Error("fixture");
   candidate.useCases[0].primaryActorId = "actor"; candidate.relationships = [];
   let reconciliationCount = 0;
-  const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, model: candidate, basis: { stage: "requirements" }, mutable: true, renderClient, pngRenderClient,
+  const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, model: candidate, basis: { stage: "requirements" }, mutable: true, renderClient,
     reconcileTraceability: (corrected) => { reconciliationCount++; assert.deepEqual(validateModelInput(corrected, "requirements"), []); return [{ corrected: true }]; },
     llmTransport: { async *streamChatCompletion(input) {
       assert.doesNotMatch(JSON.stringify(input.messages), /只返回 \{\\?"model/);
@@ -84,29 +87,30 @@ test("missing declared actor links are repaired by rules and published with reco
   assert.deepEqual(checked.traceability, [{ corrected: true }]); assert.deepEqual(candidate.relationships, []);
 });
 
-test("generation repairs exhaust the same two-round budget in requirements, design and feasibility", async () => {
+test("generation repairs exhaust the same five-round budget in requirements, design and feasibility", async () => {
   for (const [stage, kind, generationStage] of [["requirements", "usecase", "generate_models"], ["design", "table", "generate_design_models"], ["feasibility", "context", "generate_context"]] as const) {
     const run = record(), candidate = modelFixture(stage, kind);
     if (candidate.diagramKind === "usecase") { candidate.useCases[0].primaryActorId = "actor"; candidate.relationships = []; }
     if (candidate.diagramKind === "context") candidate.relationships[0].targetId = "unknown";
-    for (let round = 1; round <= 2; round++) {
+    for (let round = 1; round <= 5; round++) {
       const activity = createCallActivity({ record: run, stage: generationStage, subtaskId: kind, operation: "model_repair", round });
       activity.onStart(); activity.onComplete();
     }
-    await assert.rejects(reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(), renderClient, pngRenderClient,
+    await assert.rejects(reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(), renderClient,
       model: candidate, basis: { stage }, mutable: true }), (error) => {
-      assert.ok(error instanceof DiagramReviewRenderError); assert.equal(error.review.repairAttempts, 2); assert.equal(error.review.status, "failed"); return true;
+      assert.ok(error instanceof DiagramReviewRenderError); assert.equal(error.review.repairAttempts, 5); assert.equal(error.review.status, "failed"); return true;
     });
-    assert.equal(run.events.filter((event) => event.type === "run_activity" && event.phase === "started" && event.operation === "model_repair").length, 2);
+    assert.equal(run.events.filter((event) => event.type === "run_activity" && event.phase === "started" && event.operation === "model_repair").length, 5);
   }
 });
 
-test("business content questions remain visible and never launch a model repair", async () => {
-  const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, model, basis: { stage: "requirements" }, mutable: true, renderClient, pngRenderClient,
-    llmTransport: { async *streamChatCompletion() { yield JSON.stringify({ passed: false, issues: [], findings: [{ id: "role", modelId: "usecase", layer: "model", code: "actor-choice", category: "business_content", observation: "传感器是否为合适参与者需要业务核实", evidence: [], verification: "unverified", repairable: false }] }); } },
+test("a valid generated model does not request a separate business verdict", async () => {
+  let calls = 0;
+  const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, model, basis: { stage: "requirements" }, mutable: true, renderClient,
+    llmTransport: { async *streamChatCompletion() { calls++; throw new Error("unexpected business reviewer"); } },
   });
-  assert.equal(checked.review.status, "pending_review"); assert.equal(checked.review.structureStatus, "passed"); assert.equal(checked.review.repairAttempts, 0);
-  assert.ok(checked.review.findings?.every((item) => item.category === "business_content"));
+  assert.equal(checked.review.status, "passed"); assert.equal(checked.review.structureStatus, "passed"); assert.equal(checked.review.repairAttempts, 0);
+  assert.deepEqual(checked.review.findings, []); assert.equal(calls, 0);
 });
 
 test("diagram-specific LLM repairs can correct multiplicity notation, component direction and activation order without changing content", async () => {
@@ -121,10 +125,52 @@ test("diagram-specific LLM repairs can correct multiplicity notation, component 
   sequence.activations = [{ id: "activation", participantId: "b", startMessageId: "m2", endMessageId: "m" }];
   const sequenceCandidate = structuredClone(sequence); sequenceCandidate.activations![0].startMessageId = "m"; sequenceCandidate.activations![0].endMessageId = "m2";
   for (const [before, candidate] of [[classModel, classCandidate], [component, componentCandidate], [sequence, sequenceCandidate]]) {
-    const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, model: before, basis: { stage: "design" }, mutable: true, renderClient, pngRenderClient, llmTransport: repairTransport(candidate) });
+    const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, model: before, basis: { stage: "design" }, mutable: true, renderClient, llmTransport: repairTransport(candidate) });
     assert.equal(checked.review.status, "passed"); assert.equal(checked.review.repairAttempts, 1); assert.equal(checked.review.repairHistory?.[0].method, "llm");
     assert.deepEqual(validateModelInput(checked.model, "design"), []); assert.equal(checked.model.title, before.title);
   }
+});
+
+test("two correction rounds keep one artifact scope and never trigger an independent review", async () => {
+  const before = modelFixture("design", "class"); if (before.diagramKind !== "class") throw new Error("fixture");
+  before.relationships[0].targetMultiplicity = "0...*";
+  before.notes = ["UNCHANGED_GENERATED_CONTENT"];
+  const corrected = structuredClone(before); corrected.relationships[0].targetMultiplicity = "0..*";
+  const run = record(); const prompts: string[] = [];
+  const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, model: before, mutable: true,
+    basis: { stage: "design", upstreamModels: [{ ...before, title: "UNRELATED_UPSTREAM_CONTENT" }] }, renderClient,
+    llmTransport: { async *streamChatCompletion(input) {
+      prompts.push(String(input.messages.at(-1)?.content));
+      assert.deepEqual(input.messages.map(message => message.role), ["system", "user"]);
+      yield JSON.stringify(prompts.length === 1 ? before : corrected);
+    } },
+  });
+  assert.equal(prompts.length, 2);
+  assert.ok(prompts.every(prompt => !/UNRELATED_UPSTREAM_CONTENT|UNCHANGED_GENERATED_CONTENT/.test(prompt)));
+  assert.equal(result.review.structureAttempts, 0); assert.equal(result.review.status, "passed");
+  assert.deepEqual(result.review.repairHistory?.map(item => item.status), ["rejected", "accepted"]);
+  assert.deepEqual(result.model, corrected);
+  assert.deepEqual(run.events.filter(event => event.type === "run_activity" && event.phase === "started").map(event => event.type === "run_activity" && [event.operation, event.round]), [["model_repair", 1], ["model_repair", 2]]);
+});
+
+test("structural review rejects the retired complete-model envelope instead of unwrapping it", async () => {
+  const before = modelFixture("design", "class");
+  if (before.diagramKind !== "class") throw new Error("fixture");
+  before.relationships[0].targetMultiplicity = "0...*";
+  const corrected = structuredClone(before);
+  corrected.relationships[0].targetMultiplicity = "0..*";
+  let rendered = false;
+  await assert.rejects(reviewRenderedArtifact({
+    record: record(), providerSettings: settings, model: before, basis: { stage: "design" }, mutable: true,
+    renderClient: async () => { rendered = true; throw new Error("unexpected render"); },
+    llmTransport: { async *streamChatCompletion() { yield JSON.stringify({ model: corrected }); } },
+  }), (error) => {
+    assert.ok(error instanceof DiagramReviewRenderError);
+    assert.equal(error.review.repairAttempts, 5);
+    return true;
+  });
+  assert.equal(rendered, false);
+  assert.equal(before.relationships[0].targetMultiplicity, "0...*");
 });
 
 async function rendered(input: RunRecord) {
@@ -135,65 +181,76 @@ async function rendered(input: RunRecord) {
   return value;
 }
 
-test("passes latest PNG with model and source to the selected chat model", async () => {
+test("prepared renders finish without PNG generation, image input or additional model calls", async () => {
   const run = record();
-  let sawImage = false;
-  const transport: LlmTransport = { async *streamChatCompletion(input) {
-    const content = input.messages.at(-1)?.content;
-    sawImage = Array.isArray(content) && content.some((part) => part.type === "image_url" && part.image_url.url.startsWith("data:image/png;base64,"));
-    input.onReasoningChunk?.("核对环境图节点与连线。");
-    yield '{"passed":true,"issues":[]}';
-  } };
-  const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: transport, renderClient, pngRenderClient, model, rendered: await rendered(run) });
+  const prepared = await rendered(run);
+  const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, model, rendered: prepared,
+    llmTransport: { async *streamChatCompletion() { throw new Error("unexpected post-render check"); } },
+    renderClient: async () => { throw new Error("unexpected redraw"); },
+  });
+  assert.equal(result.rendered, prepared);
   assert.equal(result.review.status, "passed");
-  assert.equal(sawImage, true);
-  assert.equal(run.events.some((event) => event.type === "stage_progress" && event.stage === "verify_diagram_visual" && event.subtaskStatus === "completed"), true);
-  const activity = run.events.filter((event) => event.type === "run_activity");
-  assert.equal(activity[0].inputImages?.[0].url, "data:image/png;base64,cG5n");
-  assert.equal(activity.find((event) => event.phase === "reasoning")?.text, "核对环境图节点与连线。");
-  assert.equal(activity.find((event) => event.phase === "output")?.text, '{"passed":true,"issues":[]}');
-  assert.equal(new Set(activity.map((event) => event.callId)).size, 1);
-});
-
-test("unverified image differences remain incomplete without rebuilding or failing the valid model", async () => {
-  const run = record();
-  let calls = 0;
-  const transport: LlmTransport = { async *streamChatCompletion() {
-    calls += 1;
-    yield calls === 1 ? '{"passed":false,"issues":["连线缺失"]}' : calls === 2 ? '{"source":"@startuml\\nA --> B\\n@enduml"}' : '{"passed":true,"issues":[]}';
-  } };
-  const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: transport, renderClient, pngRenderClient, model, rendered: await rendered(run), mutable: true });
-  assert.equal(result.review.status, "not_completed");
-  assert.equal(calls, 1);
+  assert.equal(result.review.checkOutcome, "verified");
+  assert.equal(result.review.renderStatus, "passed");
+  assert.equal(result.review.imageStatus, "skipped");
+  assert.equal(result.review.attempts, 0);
   assert.equal(result.review.repairAttempts, 0);
-  assert.equal(result.review.findings?.[0].category, "check_execution");
-  assert.equal(result.review.findings?.[0].verification, "inconclusive");
-  assert.doesNotMatch(result.rendered.artifact.source, /A --> B/);
-  assert.deepEqual(model.relationships, []);
+  assert.equal(run.events.some((event) => event.type === "run_activity"), false);
 });
 
-test("skips image review when the provider rejects image input", async () => {
-  const run = record();
-  const transport: LlmTransport = { async *streamChatCompletion() { throw new Error("image input not supported"); } };
-  const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: transport, renderClient, pngRenderClient, model, rendered: await rendered(run) });
-  assert.equal(result.review.status, "skipped");
-  assert.equal(result.review.attempts, 1);
+test("SVG identities and element coverage no longer trigger post-render checks or rebuilds", async () => {
+  const candidate = modelFixture("requirements", "usecase");
+  for (const svg of ['<svg/>', '<svg><g id="elem_unrelated"/></svg>', '<svg><g class="entity" id="ent0001"/></svg>']) {
+    const run = record(); let renders = 0, checks = 0;
+    const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, model: candidate,
+      basis: { stage: "requirements" }, mutable: true,
+      llmTransport: { async *streamChatCompletion(input) {
+        checks++; assert.equal(typeof input.messages.at(-1)?.content, "string");
+        yield '{"passed":true,"issues":[],"findings":[]}';
+      } },
+      renderClient: async (artifact) => { renders++; return { ...await renderClient(artifact), svg }; },
+    });
+    assert.equal(result.rendered.svgArtifact.svg, svg);
+    assert.equal(result.review.status, "passed");
+    assert.equal(result.review.renderStatus, "passed");
+    assert.equal(result.review.imageStatus, "skipped");
+    assert.deepEqual(result.review.findings, []);
+    assert.equal(result.review.repairAttempts, 0);
+    assert.equal(result.review.attempts, 0);
+    assert.equal(renders, 1); assert.equal(checks, 0);
+    assert.equal(run.events.some((event) => event.type === "run_activity" && ["visual_check", "render_repair"].includes(event.operation ?? "")), false);
+  }
+});
+
+test("text-only providers incur no requests during successful program validation", async () => {
+  const run = record(); let calls = 0;
+  const result = await reviewRenderedArtifact({ record: run, providerSettings: { ...settings, modelCapability: { category: "text_chat" } as ProviderSettings["modelCapability"] },
+    model, basis: { stage: "requirements" }, renderClient,
+    llmTransport: { async *streamChatCompletion(input) {
+      calls++; assert.equal(typeof input.messages.at(-1)?.content, "string");
+      yield '{"passed":true,"issues":[]}';
+    } },
+  });
+  assert.equal(calls, 0); assert.equal(result.review.structureAttempts, 0);
+  assert.equal(result.review.attempts, 0); assert.equal(result.review.status, "passed");
+  assert.ok(run.events.every((event) => event.type !== "run_activity" || !event.inputImages?.length));
+  assert.equal(run.events.some(event => event.type === "run_activity"), false);
 });
 
 test("accepted repair is validated, rendered, rechecked and returned for downstream generation", async () => {
   const run = record(); const table = modelFixture("design", "table"); if (table.diagramKind !== "table") throw new Error("fixture");
-  const accepted = deriveTableModel(table); let latestSource = "";
-  const checked = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(accepted), renderClient: async (artifact) => { latestSource = artifact.source; return renderClient(artifact); }, pngRenderClient: async (artifact) => { assert.equal(artifact.source, latestSource); return pngRenderClient(); }, model: table, basis: { stage: "design" }, mutable: true });
+  const accepted = deriveTableModel(table);
+  const checked = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(accepted), renderClient, model: table, basis: { stage: "design" }, mutable: true });
   assert.deepEqual(checked.model, JSON.parse(JSON.stringify(accepted)));
   assert.deepEqual(table.relationships, []);
-  assert.equal(checked.review.repairAttempts, 1); assert.equal(checked.review.structureAttempts, 2); assert.equal(checked.review.attempts, 1);
+  assert.equal(checked.review.repairAttempts, 1); assert.equal(checked.review.structureAttempts, 0); assert.equal(checked.review.attempts, 0);
   assert.equal(checked.review.status, "passed"); assert.equal(checked.review.repairHistory?.[0]?.status, "accepted");
   assert.ok(checked.rendered.artifact.source.includes("FK"));
   const calls = run.events.filter((event) => event.type === "run_activity" && event.phase === "started");
-  assert.deepEqual(calls.map((event) => event.operation), ["structure_check", "model_repair", "structure_check", "visual_check"]);
-  assert.equal(new Set(calls.map((event) => event.callId)).size, 4);
+  assert.deepEqual(calls.map((event) => event.operation), ["model_repair"]);
+  assert.equal(new Set(calls.map((event) => event.callId)).size, 1);
   assert.ok(calls.every((event) => event.modelId === "table"));
-  assert.ok(calls.at(-1)?.inputImages?.length);
+  assert.ok(calls.every((event) => !event.inputImages?.length));
 });
 
 test("out-of-scope and no-op candidates never overwrite a valid tuple; failed attempt counts", async () => {
@@ -202,10 +259,10 @@ test("out-of-scope and no-op candidates never overwrite a valid tuple; failed at
   for (const candidate of [invalid, { ...valid, title: "未经授权的改写" }]) {
     const run = record(); const artifact = generateDesignPlantUmlArtifacts([valid])[0]!;
     const old = await renderClient(artifact);
-    await assert.rejects(reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(candidate), renderClient, pngRenderClient, model: invalid, rendered: { status: "success", artifact, svgArtifact: { ...old, diagramKind: "class", modelId: "class" } }, basis: { stage: "design" }, mutable: true }), (error) => {
+    await assert.rejects(reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(candidate), renderClient, model: invalid, rendered: { status: "success", artifact, svgArtifact: { ...old, diagramKind: "class", modelId: "class" } }, basis: { stage: "design" }, mutable: true }), (error) => {
       assert.ok(error instanceof DiagramReviewRenderError); assert.equal(error.review.status, "failed");
-      assert.equal(error.review.repairAttempts, 2); assert.ok(error.review.repairHistory?.every((item) => item.status === "rejected"));
-      assert.match(error.review.stopReason!, /结构规则|越过结构修复范围|没有唯一结构依据/); return true;
+      assert.equal(error.review.repairAttempts, 5); assert.ok(error.review.repairHistory?.every((item) => item.status === "rejected"));
+      assert.match(error.review.stopReason!, /结构规则|越过结构修复范围|没有唯一结构依据|越过允许范围/); return true;
     });
     assert.equal(valid.relationships[0].sourceId, "order"); assert.equal(old.svg, (await renderClient(artifact)).svg);
   }
@@ -213,7 +270,7 @@ test("out-of-scope and no-op candidates never overwrite a valid tuple; failed at
 
 test("manual structural defects fail without changing the model or launching a repair", async () => {
   const table = modelFixture("design", "table");
-  await assert.rejects(reviewRenderedArtifact({ record: record(), providerSettings: settings, llmTransport: repairTransport(), renderClient, pngRenderClient, model: table as DesignDiagramModelSpec, basis: { stage: "design" } }), (error) => {
+  await assert.rejects(reviewRenderedArtifact({ record: record(), providerSettings: settings, llmTransport: repairTransport(), renderClient, model: table as DesignDiagramModelSpec, basis: { stage: "design" } }), (error) => {
     assert.ok(error instanceof DiagramReviewRenderError); assert.equal(error.review.repairAttempts, 0); assert.equal(error.review.status, "failed"); return true;
   });
   assert.deepEqual(table.relationships, []);
@@ -221,47 +278,45 @@ test("manual structural defects fail without changing the model or launching a r
 
 test("the same model cannot reset its shared repair budget when the run is replayed", async () => {
   const run = record(); const table = modelFixture("design", "table");
-  const common = { providerSettings: settings, llmTransport: repairTransport(table), renderClient, pngRenderClient, model: table, basis: { stage: "design" as const }, mutable: true };
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const common = { providerSettings: settings, llmTransport: repairTransport(table), renderClient, model: table, basis: { stage: "design" as const }, mutable: true };
+  for (let attempt = 0; attempt < 5; attempt++) {
     const checked = await reviewRenderedArtifact({ ...common, record: run });
     assert.equal(checked.review.repairAttempts, attempt + 1);
     if ("visualReviews" in run.snapshot) run.snapshot.visualReviews[table.modelId!] = checked.review;
   }
   const restored = { ...run, snapshot: JSON.parse(JSON.stringify(run.snapshot)), events: JSON.parse(JSON.stringify(run.events)), listeners: new Set<RunRecord["listeners"] extends Set<infer T> ? T : never>() };
   await assert.rejects(reviewRenderedArtifact({ ...common, record: restored }), (error) => {
-    assert.ok(error instanceof DiagramReviewRenderError); assert.equal(error.review.repairAttempts, 2);
-    assert.equal(error.review.repairHistory?.length, 2); assert.match(error.review.stopReason!, /两轮修复上限/); return true;
+    assert.ok(error instanceof DiagramReviewRenderError); assert.equal(error.review.repairAttempts, 5);
+    assert.equal(error.review.repairHistory?.length, 5); assert.match(error.review.stopReason!, /5 次修复上限/); return true;
   });
 });
 
-test("missing PNG capability skips and failed checks retry once without a repair", async () => {
-  const common = { providerSettings: settings, llmTransport: repairTransport(), renderClient, model };
-  const skipped = await reviewRenderedArtifact({ ...common, record: record() });
-  assert.equal(skipped.review.checkOutcome, "skipped"); assert.equal(skipped.review.attempts, 0);
-  const noPng = await reviewRenderedArtifact({ ...common, record: record(), pngRenderClient: async () => { throw new Error("PNG unavailable"); } });
-  assert.equal(noPng.review.checkOutcome, "not_completed"); assert.equal(noPng.review.attempts, 0);
-  const bad = await reviewRenderedArtifact({ ...common, record: record(), pngRenderClient, llmTransport: { async *streamChatCompletion() { yield "invalid-json"; } } });
-  assert.equal(bad.review.checkOutcome, "not_completed"); assert.equal(bad.review.attempts, 2); assert.equal(bad.review.repairAttempts, 0);
-});
-
-test("new structure check failure preserves its reason when image verification succeeds", async () => {
+test("program checks do not depend on an LLM returning valid review JSON", async () => {
   let calls = 0;
-  const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, llmTransport: { async *streamChatCompletion() { yield ++calls <= 2 ? "invalid-json" : '{"passed":true,"issues":[]}'; } }, renderClient, pngRenderClient, model, basis: { stage: "requirements" }, mutable: true });
-  assert.equal(checked.review.checkOutcome, "not_completed"); assert.match(checked.review.issues.join(), /结构核对未完成/);
+  const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, renderClient, model,
+    basis: { stage: "requirements" }, mutable: true,
+    llmTransport: { async *streamChatCompletion() { calls++; yield "invalid-json"; } },
+  });
+  assert.equal(calls, 0); assert.equal(checked.review.structureAttempts, 0);
+  assert.equal(checked.review.checkOutcome, "verified");
+  assert.equal(checked.review.imageStatus, "skipped"); assert.equal(checked.review.renderStatus, "passed");
+  assert.equal(checked.review.attempts, 0); assert.equal(checked.review.repairAttempts, 0);
+  assert.deepEqual(checked.review.issues, []);
 });
 
-test("structure failure stays incomplete when the image provider is unsupported", async () => {
-  const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, llmTransport: { async *streamChatCompletion(input) {
-    if (Array.isArray(input.messages.at(-1)?.content)) throw new Error("image input not supported");
-    yield "invalid-json";
-  } }, renderClient, pngRenderClient, model, basis: { stage: "requirements" }, mutable: true });
-  assert.equal(checked.review.checkOutcome, "not_completed");
-  assert.equal(checked.review.attempts, 1);
-  assert.match(checked.review.stopReason!, /拒绝图片/);
+test("provider unavailability cannot block local validation and rendering of a valid model", async () => {
+  const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, renderClient, model,
+    basis: { stage: "requirements" }, mutable: true,
+    llmTransport: { async *streamChatCompletion() { throw new Error("structure provider unavailable"); } },
+  });
+  assert.equal(checked.review.status, "passed");
+  assert.deepEqual(checked.review.issues, []);
+  assert.ok(checked.rendered.svgArtifact.svg);
 });
+
 
 test("initial render failure records an incomplete review with zero image calls", async () => {
-  await assert.rejects(reviewRenderedArtifact({ record: record(), providerSettings: settings, llmTransport: repairTransport(), renderClient: async () => { throw new Error("renderer offline"); }, pngRenderClient, model }), (error) => {
+  await assert.rejects(reviewRenderedArtifact({ record: record(), providerSettings: settings, llmTransport: repairTransport(), renderClient: async () => { throw new Error("renderer offline"); }, model }), (error) => {
     assert.ok(error instanceof DiagramReviewRenderError);
     assert.equal(error.review.status, "failed"); assert.equal(error.review.renderStatus, "failed");
     assert.equal(error.review.attempts, 0); assert.match(error.review.issues.join(), /renderer offline/);
@@ -269,90 +324,82 @@ test("initial render failure records an incomplete review with zero image calls"
   });
 });
 
-test("model and render fixes share two attempts and repeated proven rendering defects fail", async () => {
+test("model repairs and render-failure retries retain the shared five-attempt budget", async () => {
   const table = modelFixture("design", "table"); if (table.diagramKind !== "table") throw new Error("fixture");
-  let renders = 0; const run = record();
-  await assert.rejects(reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(deriveTableModel(table)), renderClient: async (artifact) => { renders += 1; return { ...await renderClient(artifact), svg: '<svg><g id="elem_unrelated"/></svg>' }; }, pngRenderClient, model: table, basis: { stage: "design" }, mutable: true }), (error) => {
-    assert.ok(error instanceof DiagramReviewRenderError); assert.equal(error.review.repairAttempts, 2); assert.match(error.message, /绘图器故障/); assert.equal(error.review.attempts, 0);
-    assert.equal(error.review.repairHistory?.[1]?.status, "failed"); return true;
+  const run = record(); let renders = 0;
+  const corrected = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(),
+    renderClient: async (artifact) => { renders++; return renderClient(artifact); },
+    model: table, basis: { stage: "design" }, mutable: true });
+  if ("visualReviews" in run.snapshot) run.snapshot.visualReviews.table = corrected.review;
+  await assert.rejects(reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(),
+    renderClient: async () => { renders++; throw new Error("renderer offline"); },
+    model: corrected.model, basis: { stage: "design" }, mutable: true }), (error) => {
+    assert.ok(error instanceof DiagramReviewRenderError); assert.equal(error.review.repairAttempts, 5);
+    assert.equal(error.review.attempts, 0); assert.match(error.message, /renderer offline/);
+    assert.deepEqual(error.review.repairHistory?.map((item) => item.status), ["accepted", "failed", "failed", "failed", "failed"]); return true;
   });
-  assert.equal(renders, 2);
+  assert.equal(renders, 6);
 });
 
-test("timeout and cancellation propagate abort and never become a completed image verdict", async () => {
+test("a transient render failure still rebuilds from the valid model", async () => {
+  let renders = 0; const run = record();
+  const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(),
+    model, basis: { stage: "requirements" }, mutable: true,
+    renderClient: async (artifact) => { if (++renders === 1) throw new Error("renderer offline"); return renderClient(artifact); },
+  });
+  assert.equal(renders, 2); assert.equal(result.review.status, "passed");
+  assert.equal(result.review.repairAttempts, 1); assert.equal(result.review.repairHistory?.[0].target, "render");
+  assert.deepEqual(result.model, model); assert.equal(result.review.renderStatus, "passed");
+});
+
+test("conditional correction timeout and render cancellation propagate abort without image calls", async () => {
   const run = record(); let aborted = false;
   const waiting: LlmTransport = { async *streamChatCompletion(input) { await new Promise<void>((_resolve, reject) => input.abortSignal?.addEventListener("abort", () => { aborted = true; reject(new Error("aborted")); }, { once: true })); yield ""; } };
-  const timedOut = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: waiting, renderClient, pngRenderClient, model, timeoutMs: 20 });
-  assert.equal(aborted, true); assert.equal(timedOut.review.checkOutcome, "not_completed"); assert.equal(timedOut.review.attempts, 2);
+  const invalid = modelFixture("design", "class"); if (invalid.diagramKind !== "class") throw new Error("fixture");
+  invalid.relationships[0].targetMultiplicity = "0...*";
+  await assert.rejects(reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: waiting,
+    renderClient, model: invalid, mutable: true, basis: { stage: "design" }, timeoutMs: 20 }), (error) => {
+      assert.ok(error instanceof DiagramReviewRenderError); assert.equal(error.review.repairAttempts, 5); return true;
+    });
+  assert.equal(aborted, true);
   const cancelled = record();
-  await assert.rejects(reviewRenderedArtifact({ record: cancelled, providerSettings: settings, llmTransport: waiting, renderClient, pngRenderClient: async () => { cancelled.snapshot.status = "cancelled"; return pngRenderClient(); }, model }), RunCancelledError);
+  await assert.rejects(reviewRenderedArtifact({ record: cancelled, providerSettings: settings, llmTransport: repairTransport(),
+    renderClient: async (artifact) => { cancelled.snapshot.status = "cancelled"; return renderClient(artifact); }, model }), RunCancelledError);
 });
 
-test("parallel models retain independent input images, reasoning, operation and round on replay", async () => {
+test("parallel valid models render independently without review calls on replay", async () => {
   const run = record(); const models = ["one", "two"].map((id) => ({ ...model, modelId: id }));
-  await Promise.all(models.map((candidate) => reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(), renderClient, pngRenderClient: async () => ({ ...await pngRenderClient(), png: Buffer.from(candidate.modelId) }), model: candidate, basis: { stage: "requirements" }, mutable: true })));
+  await Promise.all(models.map((candidate) => reviewRenderedArtifact({ record: run, providerSettings: settings,
+    llmTransport: repairTransport(), renderClient, model: candidate, basis: { stage: "requirements" }, mutable: true })));
   const replay = JSON.parse(JSON.stringify(run.events)) as typeof run.events;
   for (const id of ["one", "two"]) {
     const starts = replay.filter((event) => event.type === "run_activity" && event.modelId === id && event.phase === "started");
-    assert.equal(starts.length, 2); assert.equal(starts[1]!.inputImages?.[0]?.url, `data:image/png;base64,${Buffer.from(id).toString("base64")}`);
-    assert.ok(replay.filter((event) => event.type === "run_activity" && event.callId === starts[1]!.callId).every((event) => event.type !== "run_activity" || event.modelId === id));
+    assert.equal(starts.length, 0);
+    assert.ok(replay.some(event => event.type === "stage_progress" && event.modelId === id && event.subtaskStatus === "completed"));
   }
+  assert.ok(replay.every((event) => event.type !== "run_activity" || (!event.inputImages?.length && event.operation !== "visual_check")));
 });
 
-test("checks an image even when catalog capability is text chat", async () => {
-  const run = record();
-  let calls = 0;
-  const transport: LlmTransport = { async *streamChatCompletion() { calls += 1; yield '{"passed":true,"issues":[]}'; } };
-  const result = await reviewRenderedArtifact({ record: run, providerSettings: { ...settings, modelCapability: { category: "text_chat" } as ProviderSettings["modelCapability"] }, llmTransport: transport, renderClient, pngRenderClient, model, rendered: await rendered(run) });
-  assert.equal(result.review.status, "passed");
-  assert.equal(calls, 1);
-});
 
-test("keeps deterministic source and full issues after one advisory review", async () => {
-  const run = record();
-  let calls = 0;
-  const transport: LlmTransport = { async *streamChatCompletion() {
-    calls += 1;
-    yield calls % 2 === 0
-      ? `{"source":"@startuml\\nA --> B : ${calls}\\n@enduml"}`
-      : '{"passed":false,"issues":["标签不可读"]}';
-  } };
-  const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: transport, renderClient, pngRenderClient, model, rendered: await rendered(run) });
-  assert.equal(result.review.status, "not_completed");
-  assert.equal(result.review.attempts, 1);
-  assert.equal(result.review.repairAttempts, 0);
-  assert.deepEqual(result.review.issues, ["标签不可读"]);
-  assert.doesNotMatch(result.rendered.artifact.source, /A --> B/);
-});
-
-test("layout-only negative verdicts do not create pending problems or repair attempts", async () => {
+test("does not solicit advisory business issues after the generated model is valid", async () => {
   const run = record(); let calls = 0;
-  const transport: LlmTransport = { async *streamChatCompletion(input) {
-    calls++;
-    assert.match(JSON.stringify(input.messages), /不检查或报告位置、间距、交叉/);
-    yield JSON.stringify({ passed: false, issues: ["连线交叉；字号太小", "节点位置需要调整"], findings: [{ id: "spacing", layer: "image", code: "layout", category: "other", modelId: "usecase", observation: "节点间距太大", evidence: [], verification: "verified", repairable: true }] });
+  const transport: LlmTransport = { async *streamChatCompletion() {
+    calls++; yield JSON.stringify({ passed: false, issues: ["缺少审批业务用例", "多出通知业务用例", "模型说明与需求描述需要核实"] });
   } };
-  const checked = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: transport, renderClient, pngRenderClient, model, basis: { stage: "requirements" }, mutable: true });
-  assert.equal(calls, 2); assert.equal(checked.review.status, "passed"); assert.equal(checked.review.repairAttempts, 0);
-  assert.deepEqual(checked.review.issues, []); assert.deepEqual(checked.review.findings, []);
+  const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: transport,
+    renderClient, model, basis: { stage: "requirements" } });
+  assert.equal(result.review.status, "passed");
+  assert.equal(calls, 0); assert.equal(result.review.issues.length, 0);
+  assert.equal(result.review.repairAttempts, 0); assert.deepEqual(result.model, model);
+  assert.doesNotMatch(result.rendered.artifact.source, /审批|通知/);
 });
 
-test("uncertain image evidence is categorized and cannot authorize removal", async () => {
-  const run = record();
-  const checked = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: { async *streamChatCompletion() {
-    yield JSON.stringify({ passed: false, issues: ["图中关系端点无法核实"], findings: [{ id: "missing", layer: "image", code: "missing-node", category: "model_structure", modelId: "usecase", observation: "标签无法辨认，节点是否缺失无法核实", evidence: [], verification: "verified", repairable: true }] });
-  } }, renderClient, pngRenderClient, model, mutable: true });
-  assert.equal(checked.review.checkOutcome, "inconclusive"); assert.equal(checked.review.repairAttempts, 0);
-  assert.equal(checked.review.findings?.[0].category, "check_execution");
-  assert.equal(checked.review.findings?.[0].verification, "inconclusive"); assert.equal(checked.review.findings?.[0].repairable, false);
-  assert.deepEqual(checked.model, model);
-});
-
-test("successful image review cannot promote absent SVG identity evidence to a passed mapping check", async () => {
-  const candidate = modelFixture("requirements", "usecase");
-  const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, llmTransport: repairTransport(), model: candidate, basis: { stage: "requirements" }, mutable: true,
-    renderClient: async (artifact) => ({ ...await renderClient(artifact), svg: '<svg><g class="entity" id="ent0001"><ellipse cx="0" cy="0" rx="1" ry="1"/></g></svg>' }), pngRenderClient });
-  assert.equal(checked.review.structureStatus, "passed"); assert.equal(checked.review.imageStatus, "passed");
-  assert.equal(checked.review.renderStatus, "not_completed"); assert.equal(checked.review.status, "not_completed");
-  assert.equal(checked.review.repairAttempts, 0); assert.ok(checked.review.findings?.some((item) => item.code === "svg-mapping-unverifiable" && item.verification === "inconclusive"));
+test("layout-only structure suggestions do not create pending problems or repair attempts", async () => {
+  let calls = 0;
+  const checked = await reviewRenderedArtifact({ record: record(), providerSettings: settings, model, basis: { stage: "requirements" }, mutable: true, renderClient,
+    llmTransport: { async *streamChatCompletion() {
+      calls++; yield JSON.stringify({ passed: false, issues: ["连线交叉；字号太小", "节点位置需要调整"] });
+    } },
+  });
+  assert.equal(calls, 0); assert.equal(checked.review.status, "passed"); assert.equal(checked.review.repairAttempts, 0);
 });

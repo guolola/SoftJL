@@ -41,7 +41,7 @@ function reportFixture() {
       actualRefs: [{ path: "src/loan.ts", symbol: "LoanService", contentHash: hash }],
       inputRefs: [{ path: "package-lock.json", contentHash: hash }],
       testRefs: [{ path: "tests/loan.test.ts", testName: "reject sixth loan", criterionIds: ["borrow:max-five"], contentHash: hash }],
-      checks: [{ id: "behavior", kind: "behavior" as const, command: "node", args: ["--test", "tests/loan.test.ts"], criterionIds: ["borrow:max-five"] }],
+      checks: [{ id: "behavior", kind: "behavior" as const, command: "node", args: ["--test", "tests/loan.test.ts"], timeoutMs: 30000, maxOutputBytes: 65536, criterionIds: ["borrow:max-five"] }],
     }],
   };
 }
@@ -116,12 +116,12 @@ test("planned entries cannot claim evidence and implemented entries need actual 
   assert.equal(mcpImplementationReportSchema.safeParse({ ...report, entries: [{ ...entry, actualRefs: [] }] }).success, false);
 });
 
-test("report allows incomplete source and acceptance coverage for the independent verifier to assess", () => {
+test("report allows incomplete coverage but requires an explicit input file list", () => {
   const report = reportFixture();
   const entry = { ...report.entries[0], sourceVersions: [], checks: [], testRefs: [] };
   const { inputRefs: _inputRefs, ...withoutInputs } = entry;
-  const parsed = mcpImplementationReportSchema.parse({ ...report, entries: [withoutInputs] });
-  assert.deepEqual(parsed.entries[0].inputRefs, []);
+  assert.equal(mcpImplementationReportSchema.safeParse({ ...report, entries: [withoutInputs] }).success, false);
+  assert.ok(mcpImplementationReportSchema.safeParse({ ...report, entries: [{ ...entry, inputRefs: [] }] }).success);
 });
 
 test("relative paths reject traversal, platform-specific absolute paths, ADS and control characters", () => {
@@ -164,11 +164,16 @@ test("strict nested schemas reject unexpected data rather than silently trusting
   assert.equal(mcpImplementationReportSchema.safeParse({ ...report, entries: [{ ...report.entries[0], inputRefs: [{ path: "package.json", contentHash: hash, verified: true }] }] }).success, false);
 });
 
-test("check execution limits remain optional and accept bounded integer overrides", () => {
+test("check execution limits are required and accept bounded integers", () => {
   const report = reportFixture();
   const parsed = mcpImplementationReportSchema.parse(report);
-  assert.equal(Object.hasOwn(parsed.entries[0].checks[0], "timeoutMs"), false);
-  assert.equal(Object.hasOwn(parsed.entries[0].checks[0], "maxOutputBytes"), false);
+  assert.equal(parsed.entries[0].checks[0].timeoutMs, 30000);
+  assert.equal(parsed.entries[0].checks[0].maxOutputBytes, 65536);
+  for (const field of ["timeoutMs", "maxOutputBytes"] as const) {
+    const check = { ...report.entries[0].checks[0] };
+    delete (check as Record<string, unknown>)[field];
+    assert.equal(mcpImplementationReportSchema.safeParse({ ...report, entries: [{ ...report.entries[0], checks: [check] }] }).success, false);
+  }
   for (const limits of [
     { timeoutMs: 1000, maxOutputBytes: 1024 },
     { timeoutMs: 600000, maxOutputBytes: 4194304 },

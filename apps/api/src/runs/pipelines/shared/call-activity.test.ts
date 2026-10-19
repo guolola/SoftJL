@@ -1,4 +1,5 @@
 // Verifies durable stream batching, parallel attribution, cancellation flush and public reasoning summaries.
+import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runEventSchema, type RunActivityEvent } from "@uml-platform/contracts";
@@ -49,7 +50,7 @@ test("transport reasoning, summaries, and answer text remain distinct and ordere
     input.onReasoningChunk?.("先核对"); input.onReasoningChunk?.("来源。");
     input.onReasoningSummary?.("正在核对来源。");
     yield "正文";
-  } }, { baseUrl: "https://example.com", apiKey: "test", model: "test" }, [], sink);
+  } }, { modelCapability: strictTestModelCapability("test"), apiBaseUrl: "https://example.com", apiKey: "test", model: "test" }, [], sink);
   assert.equal(content, "正文");
   assert.equal(activity(run).filter((event) => event.phase === "thinking").length, 1);
   assert.equal(activity(run).find((event) => event.phase === "reasoning")?.text, "先核对来源。");
@@ -62,7 +63,7 @@ test("records input images once with the consuming call and restores the same im
   const run = record();
   const url = "data:image/png;base64,cG5n";
   await collectTextResult({ async *streamChatCompletion() { yield "图面检查结果"; } },
-    { apiBaseUrl: "https://example.com", apiKey: "test", model: "test" }, [
+    { modelCapability: strictTestModelCapability("test"), apiBaseUrl: "https://example.com", apiKey: "test", model: "test" }, [
       { role: "user", content: [{ type: "text", text: "核对环境图" }, { type: "image_url", image_url: { url } }, { type: "image_url", image_url: { url } }] },
     ], createRunLlmChunkHandlers({ record: run, stage: "verify_diagram_visual", subtaskId: "context", subtaskLabel: "系统环境图" }));
   const events = activity(run);
@@ -108,7 +109,7 @@ test("cancellation flushes reasoning before terminal and replay retains it", () 
 test("failed calls flush text and a retry uses a different identity", async () => {
   const run = record();
   await assert.rejects(() => collectTextResult({ async *streamChatCompletion(input) { input.onReasoningChunk?.("未完成的分析"); yield "部分结果"; throw new Error("offline"); } },
-    { baseUrl: "https://example.com", apiKey: "test", model: "test" }, [], createRunLlmChunkHandlers({ record: run, stage: "generate_models" })));
+    { modelCapability: strictTestModelCapability("test"), apiBaseUrl: "https://example.com", apiKey: "test", model: "test" }, [], createRunLlmChunkHandlers({ record: run, stage: "generate_models" })));
   const retry = createRunLlmChunkHandlers({ record: run, stage: "generate_models" });
   retry.onStart?.(); retry.onComplete?.();
   assert.equal(new Set(activity(run).map((event) => event.callId)).size, 2);

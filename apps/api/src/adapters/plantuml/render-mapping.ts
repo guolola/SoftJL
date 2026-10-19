@@ -24,7 +24,7 @@ export function completeRenderMapping(model: AnyDiagramModel, source: string, ma
     elements: mapping.elements.map((entry) => {
       const item = items.get(entry.elementId), data = item ? valueAt(item.path) : {};
       // Source statements are captured from actual output, rather than reconstructed expectations.
-      const statement = entry.statement ?? lines.find((line) => line.includes(`as ${entry.alias}`) || line.trim() === `<> ${entry.alias}`);
+      const statement = entry.statement ?? lines.find((line) => line.includes(`as ${entry.alias}`));
       const ownerId = item?.ownerId ?? data.actorOrLane ?? data.systemBoundaryId ?? data.packageId ?? data.parentId;
       return { ...entry, label: item?.name, kind: item?.kind, statement, ...(typeof ownerId === "string" ? { ownerId } : {}) };
     }),

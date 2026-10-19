@@ -6,6 +6,7 @@ import {
 } from "react";
 import type { DiagramType } from "../../../entities/diagram/model";
 import type { RequirementInputScreening } from "@uml-platform/contracts";
+import { candidateRulesForDiagram, snapshotInputFingerprint } from "@uml-platform/contracts";
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type {
   RequirementRulesUpdateMetadata,
@@ -18,8 +19,10 @@ type RequirementRuleCommitMetadata = Pick<
   | "requirementBaseline"
   | "requirementModelTraceability"
   | "requirementQualityReport"
-  | "requirementReviewCandidates"
 >;
+
+export type RequirementRuleCommitInput = Partial<RequirementRuleCommitMetadata> |
+  ((rules: RequirementRule[]) => Partial<RequirementRuleCommitMetadata>);
 
 export function ensureUniqueRequirementRuleIds(
   rules: RequirementRule[],
@@ -78,17 +81,18 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
   );
 
   // The textarea is a draft; a successful rules run commits it with the rules.
-  const flushRequirementTextSave = useCallback(async () => {}, []);
 
   const commitRequirementRules = useCallback(
     (
       nextRules: RequirementRule[],
-      metadata: Partial<RequirementRuleCommitMetadata> = {},
+      metadata: RequirementRuleCommitInput = {},
     ) => {
       const uniqueRules = ensureUniqueRequirementRuleIds(nextRules);
+      if (snapshotInputFingerprint(uniqueRules) === snapshotInputFingerprint(rules)) return;
+      const resolvedMetadata = typeof metadata === "function" ? metadata(uniqueRules) : metadata;
       const nextRulesVersion = rulesVersion + 1;
       const nextRequirementInputFingerprint = requirementInputFingerprintFor(
-        requirementText,
+        committedRequirementText,
         uniqueRules,
       );
       setRules(uniqueRules);
@@ -97,12 +101,12 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
       setRequirementInputFingerprint(nextRequirementInputFingerprint);
       void repository.updateRequirementRules?.(uniqueRules, {
         requirementInputFingerprint: nextRequirementInputFingerprint,
-        ...metadata,
+        ...resolvedMetadata,
         rulesBasedOnTextVersion: textVersion,
         rulesVersion: nextRulesVersion,
       });
     },
-    [repository, requirementText, rulesVersion, setRules, textVersion],
+    [rules, rulesVersion, committedRequirementText, setRules, textVersion, repository],
   );
 
   const getNextRequirementRuleId = useCallback(() => {
@@ -120,33 +124,27 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
 
   const createRequirementRule = useCallback(
     (input: {
-      category: RequirementRule["category"];
       text: string;
-      relatedDiagrams: DiagramType[];
+      type: RequirementRule["type"];
     },
-    metadata?: Partial<RequirementRuleCommitMetadata>) => {
-      const relatedDiagrams =
-        input.relatedDiagrams.length > 0
-          ? input.relatedDiagrams
-          : (["usecase"] as DiagramType[]);
+    metadata?: RequirementRuleCommitInput) => {
       commitRequirementRules([
         ...rules,
         {
           id: getNextRequirementRuleId(),
-          category: input.category,
+          type: input.type,
           text: input.text.trim() || "待填写需求项",
-          relatedDiagrams,
         },
       ], metadata);
     },
     [commitRequirementRules, getNextRequirementRuleId, rules],
   );
 
-  const addRequirementRule = useCallback((metadata?: Partial<RequirementRuleCommitMetadata>) => {
+  const addRequirementRule = useCallback((metadata?: RequirementRuleCommitInput) => {
     createRequirementRule({
-      category: "功能需求",
+      type: "functional",
       text: "待填写需求项",
-      relatedDiagrams: ["usecase", "activity"],
+
     }, metadata);
   }, [createRequirementRule]);
 
@@ -154,7 +152,7 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
     (
       id: string,
       patch: Partial<RequirementRule>,
-      metadata?: Partial<RequirementRuleCommitMetadata>,
+      metadata?: RequirementRuleCommitInput,
     ) => {
       commitRequirementRules(
         rules.map((rule) =>
@@ -162,10 +160,6 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
             ? {
                 ...rule,
                 ...patch,
-                relatedDiagrams:
-                  patch.relatedDiagrams && patch.relatedDiagrams.length > 0
-                    ? patch.relatedDiagrams
-                    : (patch.relatedDiagrams ?? rule.relatedDiagrams),
               }
             : rule,
         ),
@@ -176,7 +170,7 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
   );
 
   const deleteRequirementRule = useCallback(
-    (id: string, metadata?: Partial<RequirementRuleCommitMetadata>) => {
+    (id: string, metadata?: RequirementRuleCommitInput) => {
       commitRequirementRules(
         rules.filter((rule) => rule.id !== id),
         metadata,
@@ -185,13 +179,13 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
     [commitRequirementRules, rules],
   );
 
-  const clearRequirementRules = useCallback((metadata?: Partial<RequirementRuleCommitMetadata>) => {
+  const clearRequirementRules = useCallback((metadata?: RequirementRuleCommitInput) => {
     commitRequirementRules([], metadata);
   }, [commitRequirementRules]);
 
   const rulesForDiagram = useCallback(
     (diagram: DiagramType) =>
-      rules.filter((rule) => rule.relatedDiagrams.includes(diagram)),
+      candidateRulesForDiagram(rules, diagram),
     [rules],
   );
 
@@ -216,7 +210,6 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
     setRulesBasedOnTextVersion,
     requirementInputFingerprint,
     setRequirementInputFingerprint,
-    flushRequirementTextSave,
     commitRequirementRules,
     addRequirementRule,
     createRequirementRule,

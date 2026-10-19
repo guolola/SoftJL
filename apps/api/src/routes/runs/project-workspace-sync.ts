@@ -1,6 +1,6 @@
-// Keeps project workspace state in step with terminal run snapshots when clients disconnect.
+// Persists terminal results and accepted feasibility branches even when clients disconnect.
 import type {
-  
+
   DesignRunSnapshot,
   DocumentRunSnapshot,
   FeasibilityRunSnapshot,
@@ -8,6 +8,7 @@ import type {
   RunSnapshot,
 } from "@uml-platform/contracts";
 import type { AuthStore } from "../../auth/in-memory-auth-store.js";
+import { captureWorkspaceGuard, workspaceGuardConflicts } from "../../runs/records/workspace-run-guard.js";
 import { designGenerationBaseFingerprints, protectedDesignGenerationKinds, designRecordBelongsToDiagramKinds } from "@uml-platform/contracts";
 import { refreshRunRecordIfAvailable, type RunRecord, type RunRecordStore } from "../../runs/records/run-record-store.js";
 import {
@@ -91,7 +92,7 @@ function mergeVisualReviews(state: Record<string, unknown>, snapshot: RunSnapsho
 }
 
 function inferRestorableRunKind(snapshot: RestorableSnapshot): RestorableRunKind {
-  
+
   if ("designModelTraceability" in snapshot) return "design";
   return "requirements";
 }
@@ -154,6 +155,10 @@ export function createProjectWorkspaceSync(
 
     let current = await authStore.getProjectWorkspace(projectId);
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (record.snapshot.workspaceGuard && workspaceGuardConflicts(record, current.state, false).length) {
+        record.snapshot.publicationSkipped = "相关输入或目标产物已变更；结果保留在运行历史，未覆盖当前工作区。";
+        return;
+      }
       if (
         await shouldSkipOlderSameKindSnapshot({
           currentSourceRunId: current.sourceRunId,
@@ -172,6 +177,10 @@ export function createProjectWorkspaceSync(
         return;
       }
       const snapshot = record.snapshot;
+      if (!("designTrace" in snapshot) && snapshot.workspaceGuard && workspaceGuardConflicts(record, current.state).length) {
+        record.snapshot.publicationSkipped = "目标产物已变更；结果保留在运行历史，未覆盖当前工作区。";
+        return;
+      }
       // A later manual edit or another run's accepted branch wins. Apply other
       // branches normally and retain the complete result in run history.
       const protectedKinds = "designTrace" in snapshot && snapshot.generationBaseDesignFingerprints
@@ -179,6 +188,12 @@ export function createProjectWorkspaceSync(
           currentSources: (current.state?.designPlantUml ?? {}) as Record<string, unknown>, currentSvgs: (current.state?.designSvgArtifacts ?? {}) as Record<string, unknown>,
           generatedSources: Object.fromEntries(snapshot.plantUml.map((artifact) => [artifact.modelId ?? artifact.diagramKind, artifact.source])), generatedSvgs: Object.fromEntries(snapshot.svgArtifacts.map((artifact) => [artifact.modelId ?? artifact.diagramKind, artifact])),
         }) : [];
+      if ("designTrace" in snapshot && snapshot.workspaceGuard) {
+        for (const key of workspaceGuardConflicts(record, current.state)) {
+          const kind = key.split(":")[1] as (typeof snapshot.selectedDiagrams)[number];
+          if (kind && snapshot.selectedDiagrams.includes(kind) && !protectedKinds.includes(kind)) protectedKinds.push(kind);
+        }
+      }
       const safeSnapshot = "designTrace" in snapshot && protectedKinds.length ? {
         ...snapshot,
         models: snapshot.models.filter((model) => !protectedKinds.includes(model.diagramKind)),
@@ -194,11 +209,10 @@ export function createProjectWorkspaceSync(
         : snapshotIsRestorable(safeSnapshot) ? restoreRunSnapshotToWorkspaceState({
             currentState: current.state,
             snapshot: safeSnapshot,
-            mode: "merge",
             replaceRequirementInput:
-              inferRestorableRunKind(safeSnapshot) === "requirements" &&
-              "rules" in record.snapshot &&
-              (record.snapshot.rules?.length ?? 0) > 0,
+              isRulesOnlyRequirementSnapshot(safeSnapshot) &&
+              safeSnapshot.status === "completed" &&
+              safeSnapshot.rules.length > 0,
           }) : current.state;
       const state = mergeVisualReviews(restoredState, safeSnapshot);
       const result = await authStore.saveProjectWorkspace({
@@ -232,8 +246,10 @@ export function createProjectWorkspaceSync(
     });
   };
   sync.prepare = async (record) => {
-    if (!("designTrace" in record.snapshot) || record.snapshot.generationBaseDesignFingerprints || !record.metadata?.projectId) return;
+    if (!record.metadata?.projectId) return;
     const workspace = await authStore.getProjectWorkspace(record.metadata.projectId);
+    record.snapshot.workspaceGuard ??= captureWorkspaceGuard(record, workspace.state);
+    if (!("designTrace" in record.snapshot) || record.snapshot.generationBaseDesignFingerprints) return;
     record.snapshot.generationBaseDesignFingerprints = designGenerationBaseFingerprints((workspace.state?.designModels ?? {}) as Record<string, unknown>, (workspace.state?.designPlantUml ?? {}) as Record<string, unknown>, (workspace.state?.designSvgArtifacts ?? {}) as Record<string, unknown>);
   };
   return sync;
@@ -246,15 +262,36 @@ export function attachProjectWorkspaceSync(
   if (!syncProjectWorkspace) return;
   const persist = record.persist;
   let synced = false;
+  let pendingSync = Promise.resolve();
   record.persist = async (nextRecord, event) => {
-    await persist?.(nextRecord, event);
-    if (!isTerminalEvent(event) || synced) return;
-    synced = true;
-    try {
-      await syncProjectWorkspace(nextRecord);
-    } catch (error) {
-      console.error("Failed to auto-sync project workspace from run snapshot", error);
+    const terminal = isTerminalEvent(event);
+    const acceptedFeasibility = snapshotIsFeasibility(nextRecord.snapshot) && event?.type === "artifact_ready" &&
+      ["feasibilityContext", "feasibilityBusinessFlow", "feasibilityImplementation"].includes(event.artifactKind);
+    const persistence = persist?.(nextRecord, event);
+    if ((!terminal && !acceptedFeasibility) || synced) { await persistence; return; }
+    if (terminal) synced = true;
+    // Capture each publication and serialize writes so parallel branches cannot
+    // overwrite a newer accepted result with an older snapshot.
+    const captured = { ...nextRecord, snapshot: structuredClone(nextRecord.snapshot) };
+    if (!terminal && snapshotIsFeasibility(captured.snapshot)) {
+      const outputs = captured.snapshot.outputManifest;
+      if (!outputs.some((item) => item.kind === "context") && event?.type === "artifact_ready" && event.artifactKind !== "feasibilityContext") {
+        captured.snapshot.contextModel = null;
+      }
+      if (!outputs.some((item) => item.kind === "businessFlow") && event?.type === "artifact_ready" && event.artifactKind !== "feasibilityBusinessFlow") captured.snapshot.businessFlow = null;
+      if (!outputs.some((item) => item.kind === "implementationPlan") && event?.type === "artifact_ready" && event.artifactKind !== "feasibilityImplementation") captured.snapshot.implementationPlan = null;
     }
+    pendingSync = pendingSync.then(async () => {
+      await persistence;
+      await syncProjectWorkspace(captured);
+      if (captured.snapshot.publicationSkipped) {
+        nextRecord.snapshot.publicationSkipped = captured.snapshot.publicationSkipped;
+        await persist?.(nextRecord);
+      }
+    }).catch((error) => {
+      console.error("Failed to auto-sync project workspace from run snapshot", error);
+    });
+    await pendingSync;
   };
 }
 

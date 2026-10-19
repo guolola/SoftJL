@@ -9,7 +9,7 @@ import {
 
 export function createRunSnapshot(overrides: Partial<RunSnapshot> = {}): RunSnapshot {
   return {
-    runId: "run-test", requirementText: "", selectedDiagrams: [], analysisTargetUseCaseIds: [],
+    outputManifest: [], operationType: "requirement_modeling", runId: "run-test", requirementText: "", selectedDiagrams: [], analysisTargetUseCaseIds: [],
     rules: [], requirementBaseline: null, coverageMatrix: null, traceabilityMatrix: null,
     models: [], requirementModelTraceability: [], plantUml: [], svgArtifacts: [],
     diagramErrors: {}, requirementTrace: [], visualReviews: {},
@@ -19,7 +19,7 @@ export function createRunSnapshot(overrides: Partial<RunSnapshot> = {}): RunSnap
 
 export function createDesignRunSnapshot(overrides: Partial<DesignRunSnapshot> = {}): DesignRunSnapshot {
   return {
-    runId: "design-test", requirementText: "", selectedDiagrams: [], rules: [],
+    outputManifest: [], operationType: "design_modeling", runId: "design-test", requirementText: "", selectedDiagrams: [], rules: [],
     requirementBaseline: null, coverageMatrix: null, traceabilityMatrix: null,
     requirementModels: [], requirementModelTraceability: [], models: [], designModelTraceability: [],
     plantUml: [], svgArtifacts: [], visualReviews: {}, diagramErrors: {}, designTrace: [],
@@ -29,7 +29,7 @@ export function createDesignRunSnapshot(overrides: Partial<DesignRunSnapshot> = 
 
 export function createDocumentRunSnapshot(overrides: Partial<DocumentRunSnapshot> = {}): DocumentRunSnapshot {
   return {
-    runId: "document-test", documentKind: "requirementsSpec", requirementText: "",
+    outputManifest: [], operationType: "document_generation", runId: "document-test", documentKind: "requirementsSpec", requirementText: "",
     requirementBaseline: null, coverageMatrix: null, traceabilityMatrix: null,
     feasibilityImplementationPlan: null, feasibilityInputs: feasibilityInputsSchema.parse({}),
     documentId: null, sections: [], fileName: null, mimeType: null, byteLength: 0, missingArtifacts: [],

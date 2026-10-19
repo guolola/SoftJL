@@ -2,3 +2,6 @@
 @import './tailwind.css';
 @import './theme.css';
 @import './business.css';
+@import '../../features/standard-project/components/home-demo/home-demo.css';
+@import '../../features/standard-project/components/conversation.css';
+@import '../../features/standard-project/components/agent-intro.css';

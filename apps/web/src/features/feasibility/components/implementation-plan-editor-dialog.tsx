@@ -35,13 +35,13 @@ import {
 } from "../../../shared/ui/field";
 import { cn } from "../../../shared/ui/utils";
 import {
-  FEASIBILITY_INPUT_FIELDS,
   filterApplicableAbsenceDeclarations,
   joinLines,
   splitLines,
   validateImplementationDraft,
   type PlanValidationCode,
 } from "../lib/implementation-plan-view-model";
+import { FeasibilityInputFields } from "./feasibility-input-fields";
 
 export type ImplementationSectionId =
   | "overview"
@@ -248,11 +248,8 @@ export function ImplementationPlanEditorDialog({ section, selectedCandidateId, p
       };
     });
     const validation = validateImplementationDraft(nextPlan, rules.map((rule) => rule.id));
-    const pendingLegacyCandidate = draftPlan.candidates.some((candidate) => !candidate.implementation);
-    const blocking = validation.filter((code) =>
-      code !== "incompleteCandidateImplementations"
-      && !(code === "invalidVerdicts" && pendingLegacyCandidate)
-      && !(!planContentChanged && ["missingEstimates", "invalidRiskCount", "missingAbsenceReason", "missingSources"].includes(code)),
+    const blocking = validation.filter(code =>
+      !(!planContentChanged && ["missingEstimates", "invalidRiskCount", "missingAbsenceReason", "missingSources"].includes(code)),
     );
     if (blocking.length) {
       setErrors(blocking);
@@ -337,7 +334,7 @@ export function ImplementationPlanEditorDialog({ section, selectedCandidateId, p
 
           {section === "verdicts" && implementation && <FieldGroup className="gap-4"><div className="grid gap-4 md:grid-cols-2"><Field className="gap-1.5"><FieldLabel htmlFor={`${uid}-verdict-decision`}>{t("feasibility.overview.decision")}</FieldLabel><SelectControl id={`${uid}-verdict-decision`} value={implementation.decision} onValueChange={(decision) => updateImplementation({ ...implementation, decision: decision as FeasibilityCandidateImplementation["decision"] })} options={["go", "conditional-go", "no-go"].map((decision) => ({ value: decision, label: t(`feasibility.decision.${decision}`) }))} /></Field><LinesField label={t("feasibility.overview.preconditions")} value={implementation.preconditions} onChange={(preconditions) => updateImplementation({ ...implementation, preconditions })} /></div><div className="grid gap-4 md:grid-cols-2">{implementation.verdicts.map((verdict) => <EditCard key={verdict.category}><h4>{t(`feasibility.category.${verdict.category}`)}</h4><SelectControl value={verdict.verdict} onValueChange={(value) => updateImplementation({ ...implementation, verdicts: implementation.verdicts.map((item) => item.category === verdict.category ? { ...item, verdict: value as typeof verdict.verdict } : item) })} options={["feasible", "conditional", "not-feasible", "unknown"].map((value) => ({ value, label: t(`feasibility.verdict.${value}`) }))} /><TextareaField label={t("feasibility.verdicts.rationale")} value={verdict.rationale} onChange={(rationale) => updateImplementation({ ...implementation, verdicts: implementation.verdicts.map((item) => item.category === verdict.category ? { ...item, rationale } : item) })} /><ProvenanceField value={verdict.provenance} onChange={(provenance) => updateImplementation({ ...implementation, verdicts: implementation.verdicts.map((item) => item.category === verdict.category ? { ...item, provenance } : item) })} /></EditCard>)}</div></FieldGroup>}
 
-          {section === "supplements" && <FieldGroup className="gap-6">{(["cover", "facts"] as const).map((group) => <section key={group}><h4 className="mb-3">{t(`feasibility.supplements.${group}`)}</h4><div className="grid gap-3 md:grid-cols-2">{FEASIBILITY_INPUT_FIELDS.filter((field) => field.group === group).map((field) => { const value = draftInputs[field.key]; return <Field key={field.key} className="gap-1.5"><FieldLabel htmlFor={`${uid}-input-${field.key}`}>{t(`feasibility.fields.${field.key}`)}</FieldLabel><Input id={`${uid}-input-${field.key}`} type={field.type ?? "text"} value={typeof value === "number" ? value : typeof value === "string" ? value : ""} placeholder={t("feasibility.notProvided")} onChange={(event) => { const raw = event.target.value; setDraftInputs({ ...draftInputs, [field.key]: field.type === "number" ? (raw === "" ? null : Number(raw)) : raw }); }} /></Field>; })}</div></section>)}</FieldGroup>}
+          {section === "supplements" && <FeasibilityInputFields inputs={draftInputs} onChange={setDraftInputs} />}
 
           {errors.length > 0 && <Alert variant="destructive" role="alert" className="mt-5 border p-3 text-sm"><ul className="list-disc space-y-1 pl-5">{errors.map((error) => <li key={error}>{t(`feasibility.editor.${error}`)}</li>)}</ul></Alert>}
         </div>

@@ -1,3 +1,5 @@
+import { requirementModelSources, type RequirementRuleType } from "@uml-platform/contracts";
+import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
 // Derives the project generation lineage graph from the workspace session state.
 import {
   designDiagramKindFromRecordKey,
@@ -15,7 +17,7 @@ import {
   type DesignDiagramType,
   type DiagramType,
 } from "../../../entities/diagram/model";
-import type { RequirementRule, RuleCategory } from "../../../entities/requirement-rule/model";
+import type { RequirementRule } from "../../../entities/requirement-rule/model";
 
 import type { PlatformRunSummary } from "../../user-platform/services/platform-api";
 import {
@@ -75,7 +77,7 @@ export type LineageNode = {
   recentEvents: LineageRecentEvent[];
   payload?: {
     ruleId?: string;
-    ruleCategory?: RuleCategory;
+    ruleKind?: RequirementRuleType;
     diagramKind?: DiagramKind;
     designDiagramKind?: DesignDiagramKind;
     documentKind?: DocumentKind;
@@ -117,8 +119,8 @@ export type LineageGraphInput = Pick<
   WorkspaceSessionState,
   | "requirementText"
   | "rules"
+  | "requirementModelTraceability"
   | "isRulesStale"
-  | "requirementReviewCandidates"
   | "models"
   | "generatedDiagrams"
   | "svgArtifacts"
@@ -318,7 +320,7 @@ function interruptedRunSummary(
   const detail = item?.errorMessage ?? item?.summary ?? null;
   return detail
     ? `服务中断，可重试。${detail}`
-    : "服务中断，可从运行历史重试或重新运行。";
+    : "服务中断，请在生成任务中查看错误或重试。";
 }
 
 
@@ -348,7 +350,7 @@ function failedRulesSummary(item: LineageGraphInput["historyItems"][number] | un
       : item?.errorMessage ?? item?.summary ?? null;
   return detail
     ? `需求规则抽取失败，旧规则仍可查看。${detail}`
-    : "需求规则抽取失败，旧规则仍可查看，可从运行历史重试。";
+    : "需求规则抽取失败，旧规则仍可查看，请在生成任务中查看错误或重试。";
 }
 
 
@@ -376,7 +378,6 @@ function documentHistoryIsDeleted(
 ) {
   return item?.documentStatus === "deleted" || item?.documentDownloadAvailable === false;
 }
-
 
 function subtaskActiveFor(
   input: LineageGraphInput,
@@ -475,7 +476,6 @@ function requirementDiagramsFor(input: LineageGraphInput) {
     ...input.generatedDiagrams,
     ...input.staleDiagrams,
     ...(Object.keys(input.diagramErrors) as DiagramType[]),
-    ...input.rules.flatMap((rule) => rule.relatedDiagrams),
     ...activeRequirementProjectDiagramStatuses(input.projectRuns).keys(),
   ]);
   Object.values(input.models).forEach((model) => {
@@ -625,13 +625,10 @@ function rulesStatus(input: LineageGraphInput): LineageNodeStatus {
   if (input.rules.length === 0) return "not-generated";
   if (requirementSourceMissing(input)) return "stale";
   if (input.isRulesStale) return "stale";
-  const failedRuleReviews = Object.values(input.requirementReviewCandidates).some(
-    (candidate) => candidate.status === "failed",
-  );
-  return failedRuleReviews ? "error" : "current";
+  return "current";
 }
 
-function ruleReason(input: LineageGraphInput, rule: RequirementRule) {
+function ruleReason(input: LineageGraphInput, _rule: RequirementRule) {
   const failedRules = failedRulesHistory(input);
   if (failedRules) return failedRulesSummary(failedRules);
   if (input.rules.length === 0) return "尚未抽取需求规则。";
@@ -639,10 +636,6 @@ function ruleReason(input: LineageGraphInput, rule: RequirementRule) {
     return "需求源头已删除，旧规则仍可查看，但需重新输入需求并重新抽取。";
   }
   if (input.isRulesStale) return "需求文本、规则或复核结果已变化，需求规则需更新。";
-  const failedReview = input.requirementReviewCandidates[rule.id];
-  if (failedReview?.status === "failed") {
-    return failedReview.errorMessage ?? "规则修复失败，上一版规则仍可查看。";
-  }
   const interrupted = interruptedHistoryForKind(input, "requirements", (item) =>
     (historyStage(item) ?? "").includes("rules") ||
     (historyStage(item) ?? "").includes("extract"),
@@ -840,7 +833,7 @@ function documentReason(
     }
     const history = documentHistoryFor(input, documentKind);
     if (documentHistoryIsDeleted(history)) {
-      return `${label}已在文档中心删除，恢复文档后可重新下载或查看。`;
+      return `${label}已在说明书删除，恢复文档后可重新下载或查看。`;
     }
     const missingArtifacts = history ? historyDocumentMissingArtifacts(history) : [];
     const firstMissing = missingArtifacts[0];
@@ -848,7 +841,7 @@ function documentReason(
       ? `${label}已生成但缺图，需复核：${firstMissing}`
       : `${label}已生成但存在缺失图，需复核后再交付。`;
   }
-  if (status === "current") return `${label}已生成，可在文档中心查看。`;
+  if (status === "current") return `${label}已生成，可在说明书查看。`;
   return `${label}尚未生成。`;
 }
 
@@ -931,9 +924,9 @@ function buildRuleNodes(input: LineageGraphInput): LineageNode[] {
       kind: "rule" as const,
       stage: "requirement-rules" as const,
       stageLabel: STAGE_LABELS["requirement-rules"],
-      label: rule.id,
-      eyebrow: rule.category,
-      payload: { ruleId: rule.id, ruleCategory: rule.category },
+      label: rule.id.toUpperCase(),
+      eyebrow: getRuleDisplayLabel(rule),
+      payload: { ruleId: rule.id, ruleKind: rule.type },
       description: rule.text,
       status,
       reason: ruleReason(input, rule),
@@ -1066,17 +1059,14 @@ function buildEdges(nodes: LineageNode[], input: LineageGraphInput) {
   const requirementDiagrams = requirementDiagramsFor(input);
 
   for (const { id, rule } of ruleNodes) {
-    const related =
-      rule?.relatedDiagrams && rule.relatedDiagrams.length > 0
-        ? rule.relatedDiagrams
-        : requirementDiagrams;
+    const related = requirementDiagrams.filter(diagram => !rule || requirementModelSources({ diagram, rules: input.rules, models: input.models, traceability: input.requirementModelTraceability, stale: input.staleDiagrams.includes(diagram) }).rules.some(source => source.id === rule.id));
     for (const diagram of related) {
       addEdge(
         edges,
         nodesById,
         id,
         requirementNodeId(diagram),
-        rule ? "规则映射" : "生成前置",
+        rule ? "规则输入" : "生成前置",
       );
     }
   }

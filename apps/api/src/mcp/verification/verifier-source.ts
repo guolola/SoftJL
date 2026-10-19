@@ -50,19 +50,19 @@ function validRef(value, kind) {
   return fields(value, required, optional) && text(value.path) && /^sha256:[a-fA-F0-9]{64}$/.test(value.contentHash) &&
     optional.every((key) => value[key] === undefined || text(value[key])) && (kind !== 'test' || strings(value.criterionIds));
 }
-const boundedOptional = (value, minimum, maximum) => value === undefined || (Number.isInteger(value) && value >= minimum && value <= maximum);
+const boundedInteger = (value, minimum, maximum) => Number.isInteger(value) && value >= minimum && value <= maximum;
 function validEntry(value) {
-  return fields(value, ['taskId', 'requirementIds', 'designRefs', 'sourceVersions', 'status', 'plannedTargets', 'actualRefs', 'testRefs', 'checks'], ['inputRefs']) &&
+  return fields(value, ['taskId', 'requirementIds', 'designRefs', 'sourceVersions', 'status', 'plannedTargets', 'actualRefs', 'inputRefs', 'testRefs', 'checks']) &&
     text(value.taskId) && strings(value.requirementIds) && validList(value.designRefs, validDesign, designKey) &&
     validList(value.sourceVersions, validVersion, (version) => version.artifactId) && ['planned', 'implemented'].includes(value.status) &&
     validList(value.plannedTargets, (target) => fields(target, ['path', 'responsibility']) && text(target.path) && text(target.responsibility), (target) => target.path) &&
     validList(value.actualRefs, (ref) => validRef(ref, 'code'), (ref) => stable([ref.path, ref.symbol])) &&
-    (value.inputRefs === undefined || validList(value.inputRefs, (ref) => validRef(ref, 'input'), (ref) => ref.path)) &&
+    validList(value.inputRefs, (ref) => validRef(ref, 'input'), (ref) => ref.path) &&
     validList(value.testRefs, (ref) => validRef(ref, 'test'), (ref) => stable([ref.path, ref.testName])) &&
-    validList(value.checks, (check) => fields(check, ['id', 'kind', 'command', 'args', 'criterionIds'], ['timeoutMs', 'maxOutputBytes']) &&
+    validList(value.checks, (check) => fields(check, ['id', 'kind', 'command', 'args', 'criterionIds', 'timeoutMs', 'maxOutputBytes']) &&
       text(check.id) && ['engineering', 'behavior'].includes(check.kind) && text(check.command) && !/[\r\n\0]/.test(check.command) &&
       Array.isArray(check.args) && check.args.every((arg) => typeof arg === 'string' && !arg.includes('\0')) && strings(check.criterionIds) &&
-      boundedOptional(check.timeoutMs, 1000, 600000) && boundedOptional(check.maxOutputBytes, 1024, 4194304), (check) => check.id);
+      boundedInteger(check.timeoutMs, 1000, 600000) && boundedInteger(check.maxOutputBytes, 1024, 4194304), (check) => check.id);
 }
 
 // Resolve wire references before the existing semantic checks. Missing/duplicate indices fail closed.
@@ -95,7 +95,7 @@ function expandInput(value, kind) {
       !Array.isArray(value.sourceVersions) || !value.sourceVersions.every(validVersion)) throw new Error('Invalid report pools');
   const { sourceVersions, entries, ...report } = value;
   return { ...report, entries: entries.map((entry) => {
-    if (!fields(entry, ['taskId', 'requirementIds', 'designRefs', 'sourceVersionRefs', 'status', 'plannedTargets', 'actualRefs', 'testRefs', 'checks'], ['inputRefs']))
+    if (!fields(entry, ['taskId', 'requirementIds', 'designRefs', 'sourceVersionRefs', 'status', 'plannedTargets', 'actualRefs', 'inputRefs', 'testRefs', 'checks']))
       throw new Error('Invalid compact entry');
     const { sourceVersionRefs, ...rest } = entry;
     return { ...rest, sourceVersions: resolve(sourceVersionRefs, sourceVersions) };
@@ -187,13 +187,13 @@ function runCheck(root, check) {
   // Node's internal test-runner context otherwise makes nested node --test silently skip all tests.
   delete env.NODE_TEST_CONTEXT;
   const result = spawnSync(check.command, check.args, {
-    env, cwd: root, shell: false, timeout: check.timeoutMs ?? 30000, maxBuffer: check.maxOutputBytes ?? 65536, encoding: 'utf8', windowsHide: true,
+    env, cwd: root, shell: false, timeout: check.timeoutMs, maxBuffer: check.maxOutputBytes, encoding: 'utf8', windowsHide: true,
   });
   const emptyTap = check.kind === 'behavior' && /^TAP version [0-9]+/m.test(result.stdout || '') &&
     (/(?:^|\n)# (?:tests|pass) 0(?:\r?\n|$)/.test(result.stdout || '') ||
       /^[ \t]*1\.\.0(?:[ \t]*#.*)?\r?$/m.test(result.stdout || ''));
   return { id: check.id, kind: check.kind, status: result.status === 0 && !result.error && !result.signal && !emptyTap ? 'passed' : 'failed',
-    exitCode: result.status, signal: result.signal, timeoutMs: check.timeoutMs ?? 30000, maxOutputBytes: check.maxOutputBytes ?? 65536,
+    exitCode: result.status, signal: result.signal, timeoutMs: check.timeoutMs, maxOutputBytes: check.maxOutputBytes,
     stdout: outputSummary(result.stdout), stderr: outputSummary(result.stderr), error: result.error?.message ?? (emptyTap ? 'TAP reports no passing tests; acceptance checks did not execute.' : null) };
 }
 
@@ -246,7 +246,7 @@ export async function verifyImplementation({ root, snapshot, report, runChecks =
     for (const target of entry.plannedTargets)
       if (!relativePath(target.path)) add('invalid_path', 'Planned target is not a safe relative path: ' + target.path);
     if (entry.status === 'planned') {
-      if (entry.actualRefs.length || (entry.inputRefs || []).length || entry.testRefs.length || entry.checks.length)
+      if (entry.actualRefs.length || entry.inputRefs.length || entry.testRefs.length || entry.checks.length)
         add('planned_evidence', 'A planned entry cannot contain implementation evidence.');
     } else {
       if (!entry.actualRefs.length) add('missing_code', 'Implemented task must reference actual code.');
@@ -260,7 +260,7 @@ export async function verifyImplementation({ root, snapshot, report, runChecks =
       if (entry.checks.some((check) => check.criterionIds.some((id) => !criterionIds.includes(id)))) add('unknown_criterion', 'A check references an unknown criterion.');
       if (!entry.checks.some((check) => check.kind === 'engineering')) add('missing_engineering', 'An engineering check is required.');
       if (!entry.checks.some((check) => check.kind === 'behavior')) add('missing_behavior', 'A behavior check is required.');
-      for (const ref of [...entry.actualRefs, ...(entry.inputRefs || []), ...entry.testRefs]) {
+      for (const ref of [...entry.actualRefs, ...entry.inputRefs, ...entry.testRefs]) {
         try {
           const observed = await readEvidence(repository, ref);
           if (observed.contentHash !== ref.contentHash.toLowerCase()) add('stale_file', 'File changed since evidence was recorded: ' + ref.path);

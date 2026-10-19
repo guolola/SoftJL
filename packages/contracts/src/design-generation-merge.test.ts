@@ -16,3 +16,15 @@ test("accepted partial sequences remain mergeable while edits and deletions stay
   const artifactBase = designGenerationBaseFingerprints(initial, { "sequence:a": "original" }, { "sequence:a": { svg: "original-svg" } });
   assert.deepEqual(protectedDesignGenerationKinds(initial, generated, artifactBase, {}, { currentSources: { "sequence:a": "manual source" }, currentSvgs: { "sequence:a": { svg: "original-svg" } }, generatedSources: { "sequence:a": "generated" }, generatedSvgs: {} }), ["sequence"]);
 });
+
+test("manual edits to newly previewed artifact IDs remain protected", () => {
+  const original = { "class:old": { diagramKind: "class", modelId: "class:old" } };
+  const generated = { "generated-class": { diagramKind: "class", modelId: "generated-class" } };
+  const preview = { ...original, ...generated };
+  const base = designGenerationBaseFingerprints(original);
+  const applied = designGenerationBaseFingerprints(preview, { "generated-class": "accepted" }, { "generated-class": { svg: "accepted-svg" } });
+  const artifacts = { currentSources: { "generated-class": "accepted" }, currentSvgs: { "generated-class": { svg: "accepted-svg" } }, generatedSources: { "generated-class": "accepted" }, generatedSvgs: { "generated-class": { svg: "accepted-svg" } } };
+  assert.deepEqual(protectedDesignGenerationKinds(preview, generated, base, applied, artifacts), []);
+  assert.deepEqual(protectedDesignGenerationKinds(preview, generated, base, applied, { ...artifacts, currentSources: { "generated-class": "manual" } }), ["class"]);
+  assert.deepEqual(protectedDesignGenerationKinds(preview, generated, base, applied, { ...artifacts, currentSvgs: { "generated-class": { svg: "manual-svg" } } }), ["class"]);
+});

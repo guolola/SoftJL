@@ -274,10 +274,10 @@ function DiagramDetailView({
     : visualSubtask?.status === "pending_review"
       ? "检查已结束，原检查结论保留。"
     : visualSubtask?.status === "completed"
-      ? `视觉检查：${visualSubtask.message ?? "已完成"}`
+      ? `模型结构检查：${visualSubtask.message ?? "已完成"}`
       : visualSubtask && visualSubtask.status !== "failed"
-        ? "视觉检查中"
-        : svgMarkup ? "视觉检查：未复核" : null;
+        ? "模型结构检查中"
+        : svgMarkup ? "模型结构检查：未复核" : null;
   const diagramError = isFeasibility
     ? null
     : isDesign
@@ -534,9 +534,7 @@ function DiagramDetailView({
   if (visualStatus) notices.push({
     id: "visual", kind: "visual",
     tone: currentVisualReview?.status === "failed" ? "destructive" : currentVisualReview?.status === "passed" ? "success" : currentVisualReview?.status === "pending_review" || currentVisualReview?.status === "not_completed" ? "warning" : "info",
-    title: "视觉检查", detail: visualStatus,
-    checks: currentVisualReview?.attempts,
-    repairs: currentVisualReview?.repairAttempts,
+    title: "模型结构检查", detail: visualStatus,
     review: currentVisualReview,
     confirmed: visualConfirmed,
   });
@@ -738,7 +736,7 @@ function DiagramDetailView({
                 <div className="pt-4">
                   {isBusinessFlow && Array.isArray(model?.notes) && model.notes.length > 0 && (
                     <ul className="mb-4 list-disc pl-5 text-sm text-muted-foreground">
-                      {model.notes.map((note, index) => <li key={index}>{note}</li>)}
+                      {model.notes.map((note, index) => <li key={index}>{note.replace(/\bRequirementBaseline\b/g, t("uxReview.baseline"))}</li>)}
                     </ul>
                   )}
                   <ModelEditPanel

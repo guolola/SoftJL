@@ -1,205 +1,291 @@
 // Defines the public workspace session context shape and local run diagnostics types.
-import type { DesignTraceEntry, RequirementTraceEntry, RequirementBaseline, RequirementInputScreening, AtomicRequirementField, RequirementQualityReport, DocumentKind, DocumentRunSnapshot, DocumentStyleSettings, DesignDiagramModelSpec, DiagramModelSpec, RunEvent, RunStage, } from "@uml-platform/contracts";
+import type { useFeasibilityGeneration } from "../lib/feasibility-generation";
+
+import type {
+
+
+  DesignTraceEntry,
+  FeasibilityRunSnapshot,
+  RequirementTraceEntry,
+  RequirementBaseline,
+  RequirementInputScreening,
+  RequirementQualityReport,
+  DocumentKind,
+  DocumentRunSnapshot,
+  DocumentStyleSettings,
+  DesignDiagramModelSpec,
+  DiagramModelSpec,
+  RunEventInput,
+  RunStage,
+  StandardAttachment,
+} from "@uml-platform/contracts";
 import type { DesignDiagramType, DiagramType } from "../../../entities/diagram/model";
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type { RunStatus, WorkspaceRecord } from "../../../entities/workspace/model";
 import type { RunHistoryItem } from "../../../entities/run-history";
+
 export interface DiagnosticEvent {
-    id: string;
-    at: string;
-    label: string;
-    detail: string | null;
+  id: string;
+  at: string;
+  label: string;
+  detail: string | null;
 }
+
 export interface RunDiagnostics {
-    /** Durable conversation records, independent of the capped diagnostic log. */
-    transcript?: RunEvent[];
-    runKind: "requirements" | "design" | "document" | "feasibility" | null;
-    runId: string | null;
-    providerModel: string | null;
-    startedAt: string | null;
-    finishedAt: string | null;
-    activeStage: RunStage | null;
-    streamText: string;
-    chunkCount: number;
-    stageStartedAt: Partial<Record<RunStage, string>>;
-    stageMessages: Partial<Record<string, string>>;
-    events: DiagnosticEvent[];
-    requirementTrace: RequirementTraceEntry[];
-    designTrace: DesignTraceEntry[];
+  /** Local task notifications and recorded events, independent of the capped diagnostic log. */
+  transcript?: RunEventInput[];
+  runKind: "requirements" | "design" | "document" | "feasibility" | null;
+  runId: string | null;
+  providerModel: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  activeStage: RunStage | null;
+  streamText: string;
+  chunkCount: number;
+  stageStartedAt: Partial<Record<RunStage, string>>;
+  stageMessages: Partial<Record<string, string>>;
+  events: DiagnosticEvent[];
+
+
+  requirementTrace: RequirementTraceEntry[];
+  designTrace: DesignTraceEntry[];
+
 }
-export type GenerationTaskKind = "requirements" | "design" | "document" | "feasibility";
+
+export type GenerationTaskKind =
+  | "requirements"
+  | "design"
+  | "document"
+  | "feasibility";
+
 export interface GenerationSubtask {
-    id: string;
-    label: string;
-    status: "queued" | "running" | "repairing" | "rendering" | "completed" | "failed" | "pending_review";
-    message: string | null;
-    messageCode?: string | null;
-    messageParams?: Record<string, string | number | boolean | null>;
-    errorMessage: string | null;
-    queuePosition?: number;
-    queueAhead?: number;
-    waitMs?: number;
-    estimatedWaitMs?: number;
-    queueReason?: "global" | "provider" | "project" | "user" | "run";
-    pendingReviewCount?: number;
+  id: string;
+  label: string;
+  status:
+    | "queued"
+    | "running"
+    | "repairing"
+    | "rendering"
+    | "completed"
+    | "failed"
+    | "pending_review";
+  message: string | null;
+  messageCode?: string | null;
+  messageParams?: Record<string, string | number | boolean | null>;
+  errorMessage: string | null;
+  queuePosition?: number;
+  queueAhead?: number;
+  waitMs?: number;
+  estimatedWaitMs?: number;
+  queueReason?: "global" | "provider" | "project" | "user" | "run";
+  pendingReviewCount?: number;
 }
+
 export interface GenerationTask {
-    clientTaskId: string;
-    runId: string | null;
-    kind: GenerationTaskKind;
-    documentKind?: DocumentKind;
-    title: string;
-    titleKey?: GenerationTaskKind;
-    status: RunStatus;
-    progress: number;
-    message: string | null;
-    messageCode?: string | null;
-    messageParams?: Record<string, string | number | boolean | null>;
-    errorMessage: string | null;
-    phaseSummary: string | null;
-    technicalDetailsCollapsed: boolean;
-    diagnostics: RunDiagnostics;
-    subtasks: GenerationSubtask[];
-    startedAt: string;
-    finishedAt: string | null;
+  clientTaskId: string;
+  runId: string | null;
+  kind: GenerationTaskKind;
+  documentKind?: DocumentKind;
+  title: string;
+  titleKey?: GenerationTaskKind;
+  status: RunStatus;
+  progress: number;
+  message: string | null;
+  messageCode?: string | null;
+  messageParams?: Record<string, string | number | boolean | null>;
+  errorMessage: string | null;
+
+  phaseSummary: string | null;
+  technicalDetailsCollapsed: boolean;
+  diagnostics: RunDiagnostics;
+  subtasks: GenerationSubtask[];
+  startedAt: string;
+  finishedAt: string | null;
+  /** Upstream steps chained into a larger generation action; only the final task chimes. */
+  silentCompletion?: boolean;
 }
+
 export interface GenerationTaskRunSummary {
-    runId?: string | null;
-    runKind?: string | null;
-    model?: string | null;
-    createdAt?: string | null;
-    startedAt?: string | null;
-    selectedDiagrams?: string[] | null;
-    requestedDiagrams?: string[] | null;
-    status?: string | null;
-    completedAt?: string | null;
-    updatedAt?: string | null;
-    errorMessage?: string | null;
+  runId?: string | null;
+  runKind?: string | null;
+  model?: string | null;
+  createdAt?: string | null;
+  startedAt?: string | null;
+  selectedDiagrams?: string[] | null;
+  requestedDiagrams?: string[] | null;
+  status?: string | null;
+  completedAt?: string | null;
+  updatedAt?: string | null;
+  errorMessage?: string | null;
 }
+
 export interface WorkspaceSessionState {
-    workspaceInitialized: boolean;
-    requirementText: string;
-    hasUncommittedRequirementDraft: boolean;
-    inputScreening: RequirementInputScreening | null;
-    inputScreeningError: string | null;
-    setRequirementText: (value: string) => void;
-    rules: RequirementRule[];
-    requirementBaseline: RequirementBaseline | null;
-    requirementQualityReport: RequirementQualityReport | null;
-    requirementReviewCandidates: WorkspaceRecord["requirementReviewCandidates"];
-    autoGeneratedUpstreamReviews: WorkspaceRecord["autoGeneratedUpstreamReviews"];
-    decideAutoGeneratedUpstreamReview: (reviewId: string, decision: "accepted" | "dismissed") => Promise<void>;
-    acceptRequirementAiSuggestions: (ruleId: string, mode?: "ai-accepted" | "manual-edited", fieldValues?: Partial<Record<AtomicRequirementField, string>>) => Promise<void>;
-    rejectRequirementAiSuggestions: (ruleId: string) => Promise<void>;
-    confirmRequirementQualityHint: (ruleId: string) => Promise<void>;
-    addRequirementRule: () => void;
-    createRequirementRule: (input: {
-        category: RequirementRule["category"];
-        text: string;
-        relatedDiagrams: DiagramType[];
-    }) => void;
-    updateRequirementRule: (id: string, patch: Partial<RequirementRule>) => void;
-    deleteRequirementRule: (id: string) => void;
-    clearRequirementRules: () => void;
-    models: WorkspaceRecord["models"];
-    requirementModelTraceability: WorkspaceRecord["requirementModelTraceability"];
-    manualModelEditStatus: WorkspaceRecord["manualModelEditStatus"];
-    selectedDiagrams: DiagramType[];
-    setSelectedDiagrams: (value: DiagramType[]) => void;
-    plantUml: Partial<Record<DiagramType, string>>;
-    svgArtifacts: WorkspaceRecord["svgArtifacts"];
-    diagramErrors: WorkspaceRecord["diagramErrors"];
-    selectedDesignDiagrams: DesignDiagramType[];
-    setSelectedDesignDiagrams: (value: DesignDiagramType[]) => void;
-    designModels: WorkspaceRecord["designModels"];
-    designModelTraceability: WorkspaceRecord["designModelTraceability"];
-    designPlantUml: WorkspaceRecord["designPlantUml"];
-    designSvgArtifacts: WorkspaceRecord["designSvgArtifacts"];
-    designDiagramErrors: WorkspaceRecord["designDiagramErrors"];
-    feasibilityContextArtifact: Pick<WorkspaceRecord, "feasibilityContextModel" | "feasibilityContextTraceability" | "feasibilityContextPlantUml" | "feasibilityContextSvg" | "feasibilityContextFingerprint"> | null;
-    feasibilityContextSaveStatus: "idle" | "saving" | "saved" | "error";
-    setFeasibilityContextSaveStatus: (status: "idle" | "saving" | "saved" | "error") => void;
-    hasFeasibilityContextArtifact: boolean;
-    feasibilityBusinessFlow: WorkspaceRecord["feasibilityBusinessFlow"];
-    hasFeasibilityImplementationArtifact: boolean;
-    feasibilityImplementationPlan: WorkspaceRecord["feasibilityImplementationPlan"];
-    syncFeasibilityArtifacts: (workspace: WorkspaceRecord) => void;
-    testGenerationResult: WorkspaceRecord["testGenerationResult"];
-    updateTestGenerationResult: (result: WorkspaceRecord["testGenerationResult"]) => Promise<void>;
-    canUpdateWorkspace: boolean;
-    canStartRuns: boolean;
-    generationExecutionMode: import("@uml-platform/contracts").GenerationExecutionMode;
-    generationModelBlockedReason: string | null;
-    workspacePermissionReason: string | null;
-    generatedDesignDiagrams: DesignDiagramType[];
-    generatedDiagrams: DiagramType[];
-    generating: boolean;
-    runStatus: RunStatus;
-    runProgress: number;
-    runMessage: string | null;
-    errorMessage: string | null;
-    generationTasks: GenerationTask[];
-    visualReviews: NonNullable<WorkspaceRecord["visualReviews"]>;
-    confirmVisualReview: (key: string, checkedAt: string) => Promise<void>;
-    visibleGenerationTask: GenerationTask | null;
-    selectedGenerationTaskId: string | null;
-    selectGenerationTask: (id: string) => void;
-    clearCompletedGenerationTasks: () => void;
-    reconcileGenerationTasksWithProjectRuns: (runs: GenerationTaskRunSummary[]) => void;
-    beginFeasibilityGenerationTask: (input: {
-        providerModel: string;
-        startedAtMs: number;
-    }) => string;
-    attachFeasibilityGenerationRun: (clientTaskId: string, runId: string, providerModel: string) => void;
-    updateFeasibilityGenerationTask: (clientTaskId: string, event: RunEvent) => void;
-    failFeasibilityGenerationTask: (clientTaskId: string, message: string) => void;
-    generateRules: () => Promise<void>;
-    repairRequirementRule: (ruleId: string) => Promise<void>;
-    decideRequirementReviewCandidate: (ruleId: string, decision: "accepted" | "rejected") => Promise<void>;
-    saveRequirementModelEdit: (diagramKind: DiagramType, model: DiagramModelSpec) => Promise<void>;
-    saveDesignModelEdit: (modelId: string, model: DesignDiagramModelSpec) => Promise<void>;
-    rerenderRequirementModel: (diagramKind: DiagramType, modelOverride?: DiagramModelSpec, options?: {
-        toastMessage?: string | null;
-    }) => Promise<void>;
-    rerenderDesignModel: (modelId: string, modelOverride?: DesignDiagramModelSpec, options?: {
-        toastMessage?: string | null;
-    }) => Promise<void>;
-    generateDiagrams: (only?: DiagramType[]) => Promise<void>;
-    generateDesignDiagrams: (only?: DesignDiagramType[]) => Promise<void>;
-    generateRequirementsSpec: (documentStyle?: DocumentStyleSettings) => Promise<DocumentRunSnapshot | null>;
-    generateSoftwareDesignSpec: (documentStyle?: DocumentStyleSettings) => Promise<DocumentRunSnapshot | null>;
-    generateFeasibilityStudy: (documentStyle?: DocumentStyleSettings) => Promise<DocumentRunSnapshot | null>;
-    rulesForDiagram: (diagram: DiagramType) => RequirementRule[];
-    textVersion: number;
-    rulesVersion: number;
-    rulesBasedOnTextVersion: number | null;
-    requirementInputFingerprint: string | null;
-    diagramVersions: Partial<Record<DiagramType, number>>;
-    diagramInputFingerprints: Partial<Record<DiagramType, string>>;
-    designInputFingerprints: Record<string, string>;
-    isRulesStale: boolean;
-    rulesStaleReason: "source-missing" | "text" | "rules" | null;
-    staleDiagrams: DiagramType[];
-    requirementReviewBlockedReason: string | null;
-    requirementTraceabilityStale: boolean;
-    designTraceabilityStale: boolean;
-    staleDesignModelIds: string[];
-    staleDesignDiagrams: DesignDiagramType[];
-    designStaleReasons: Record<string, string>;
-    designGenerationBlockedReason: string | null;
-    historyItems: RunHistoryItem[];
-    refreshHistory: () => Promise<void>;
-    restoreRunHistory: (id: string) => Promise<void>;
-    deleteRunHistory: (id: string) => Promise<void>;
-    clearRunHistory: () => Promise<void>;
-    renderPlantUml: (diagram: DiagramType, source: string) => Promise<void>;
-    currentRunDiagnostics: RunDiagnostics;
+  workspaceInitialized: boolean;
+  requirementText: string;
+  hasUncommittedRequirementDraft: boolean;
+  inputScreening: RequirementInputScreening | null;
+  inputScreeningError: string | null;
+  setRequirementText: (value: string) => void;
+  rules: RequirementRule[];
+  requirementBaseline: RequirementBaseline | null;
+  requirementQualityReport: RequirementQualityReport | null;
+
+  autoGeneratedUpstreamReviews: WorkspaceRecord["autoGeneratedUpstreamReviews"];
+  decideAutoGeneratedUpstreamReview: (
+    reviewId: string,
+    decision: "accepted" | "dismissed",
+  ) => Promise<void>;
+  addRequirementRule: () => void;
+  createRequirementRule: (input: {
+    type: RequirementRule["type"];
+    text: string;
+  }) => void;
+  updateRequirementRule: (
+    id: string,
+    patch: Partial<RequirementRule>,
+  ) => void;
+  deleteRequirementRule: (id: string) => void;
+  clearRequirementRules: () => void;
+  models: WorkspaceRecord["models"];
+  requirementModelTraceability: WorkspaceRecord["requirementModelTraceability"];
+  manualModelEditStatus: WorkspaceRecord["manualModelEditStatus"];
+  selectedDiagrams: DiagramType[];
+  setSelectedDiagrams: (value: DiagramType[]) => void;
+  plantUml: Partial<Record<DiagramType, string>>;
+  svgArtifacts: WorkspaceRecord["svgArtifacts"];
+  diagramErrors: WorkspaceRecord["diagramErrors"];
+  selectedDesignDiagrams: DesignDiagramType[];
+  setSelectedDesignDiagrams: (value: DesignDiagramType[]) => void;
+  designModels: WorkspaceRecord["designModels"];
+  designModelTraceability: WorkspaceRecord["designModelTraceability"];
+  designPlantUml: WorkspaceRecord["designPlantUml"];
+  designSvgArtifacts: WorkspaceRecord["designSvgArtifacts"];
+  designDiagramErrors: WorkspaceRecord["designDiagramErrors"];
+  feasibilityContextArtifact: Pick<
+    WorkspaceRecord,
+    | "feasibilityContextModel"
+    | "feasibilityContextTraceability"
+    | "feasibilityContextPlantUml"
+    | "feasibilityContextSvg"
+    | "feasibilityContextFingerprint"
+  > | null;
+  feasibilityContextSaveStatus: "idle" | "saving" | "saved" | "error";
+  setFeasibilityContextSaveStatus: (status: "idle" | "saving" | "saved" | "error") => void;
+  hasFeasibilityContextArtifact: boolean;
+  feasibilityBusinessFlow: WorkspaceRecord["feasibilityBusinessFlow"];
+  hasFeasibilityImplementationArtifact: boolean;
+  feasibilityImplementationPlan: WorkspaceRecord["feasibilityImplementationPlan"];
+  feasibilityArtifactStatuses?: Record<"context" | "business-flow" | "implementation", "ready" | "missing" | "stale">;
+  syncFeasibilityArtifacts: (workspace: WorkspaceRecord, snapshot?: FeasibilityRunSnapshot) => void;
+  feasibilityGeneration: ReturnType<typeof useFeasibilityGeneration>;
+
+
+  testGenerationResult: WorkspaceRecord["testGenerationResult"];
+  updateTestGenerationResult: (
+    result: WorkspaceRecord["testGenerationResult"],
+  ) => Promise<void>;
+
+
+  canUpdateWorkspace: boolean;
+  canStartRuns: boolean;
+  generationExecutionMode: import("@uml-platform/contracts").GenerationExecutionMode;
+  generationModelBlockedReason: string | null;
+  workspacePermissionReason: string | null;
+  generatedDesignDiagrams: DesignDiagramType[];
+  generatedDiagrams: DiagramType[];
+  generating: boolean;
+  runStatus: RunStatus;
+  runProgress: number;
+  runMessage: string | null;
+  errorMessage: string | null;
+  generationTasks: GenerationTask[];
+  visualReviews: NonNullable<WorkspaceRecord["visualReviews"]>;
+  confirmVisualReview: (key: string, checkedAt: string) => Promise<void>;
+  visibleGenerationTask: GenerationTask | null;
+  selectedGenerationTaskId: string | null;
+  selectGenerationTask: (id: string) => void;
+  clearCompletedGenerationTasks: () => void;
+  reconcileGenerationTasksWithProjectRuns: (
+    runs: GenerationTaskRunSummary[],
+  ) => void;
+  beginFeasibilityGenerationTask: (input: {
+    selectedArtifacts?: import("@uml-platform/contracts").FeasibilityArtifactKind[];
+    providerModel: string;
+    startedAtMs: number;
+  }) => string;
+  attachFeasibilityGenerationRun: (
+    clientTaskId: string,
+    runId: string,
+    providerModel: string,
+  ) => void;
+  updateFeasibilityGenerationTask: (
+    clientTaskId: string,
+    event: RunEventInput,
+  ) => void;
+  failFeasibilityGenerationTask: (
+    clientTaskId: string,
+    message: string,
+  ) => void;
+  requirementGenerationRunId?: string | null;
+  generateRules: (options?: { attachments?: StandardAttachment[]; reasoning?: boolean }) => Promise<boolean>;
+  cancelRequirementGeneration: () => Promise<void>;
+  saveRequirementModelEdit: (
+    diagramKind: DiagramType,
+    model: DiagramModelSpec,
+  ) => Promise<void>;
+  saveDesignModelEdit: (
+    modelId: string,
+    model: DesignDiagramModelSpec,
+  ) => Promise<void>;
+  rerenderRequirementModel: (
+    diagramKind: DiagramType,
+    modelOverride?: DiagramModelSpec,
+    options?: { toastMessage?: string | null },
+  ) => Promise<void>;
+  rerenderDesignModel: (
+    modelId: string,
+    modelOverride?: DesignDiagramModelSpec,
+    options?: { toastMessage?: string | null },
+  ) => Promise<void>;
+  generateDiagrams: (only?: DiagramType[]) => Promise<void>;
+  generateDesignDiagrams: (only?: DesignDiagramType[]) => Promise<void>;
+
+  generateRequirementsSpec: (
+    documentStyle?: DocumentStyleSettings,
+  ) => Promise<DocumentRunSnapshot | null>;
+  generateSoftwareDesignSpec: (
+    documentStyle?: DocumentStyleSettings,
+  ) => Promise<DocumentRunSnapshot | null>;
+  generateFeasibilityStudy: (
+    documentStyle?: DocumentStyleSettings,
+  ) => Promise<DocumentRunSnapshot | null>;
+  rulesForDiagram: (diagram: DiagramType) => RequirementRule[];
+  textVersion: number;
+  rulesVersion: number;
+  rulesBasedOnTextVersion: number | null;
+  requirementInputFingerprint: string | null;
+  diagramVersions: Partial<Record<DiagramType, number>>;
+  diagramInputFingerprints: WorkspaceRecord["diagramInputFingerprints"];
+  designInputFingerprints: Record<string, string>;
+  isRulesStale: boolean;
+  rulesStaleReason: "source-missing" | "text" | "rules" | null;
+  staleDiagrams: DiagramType[];
+  staleRequirementModelIds: string[];
+  requirementTraceabilityStale: boolean;
+  designTraceabilityStale: boolean;
+  staleDesignModelIds: string[];
+  staleDesignDiagrams: DesignDiagramType[];
+  designStaleReasons: Record<string, string>;
+  designGenerationBlockedReason: string | null;
+  historyItems: RunHistoryItem[];
+  refreshHistory: () => Promise<void>;
+  deleteRunHistory: (id: string) => Promise<void>;
+  clearRunHistory: () => Promise<void>;
+  renderPlantUml: (diagram: DiagramType, source: string) => Promise<void>;
+  currentRunDiagnostics: RunDiagnostics;
 }
-export type RunMode = {
-    kind: "rules-only";
-} | {
-    kind: "full-diagrams";
-} | {
-    kind: "partial-diagrams";
-    diagrams: DiagramType[];
-};
+
+export type RunMode =
+  | { kind: "rules-only" }
+  | { kind: "full-diagrams" }
+  | { kind: "partial-diagrams"; diagrams: DiagramType[] };

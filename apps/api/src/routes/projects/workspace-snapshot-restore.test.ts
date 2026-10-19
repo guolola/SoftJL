@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   AtomicRequirement,
-  
+
   DesignDiagramModelSpec,
   DesignRunSnapshot,
   DesignSvgArtifact,
@@ -12,8 +12,53 @@ import type {
   RunSnapshot,
 } from "@uml-platform/contracts";
 import { snapshotInputFingerprint } from "@uml-platform/contracts";
-import { createEmptySnapshot } from "../../runs/records/snapshots.js";
+import { createEmptySnapshot, createEmptyDesignSnapshot } from "../../runs/records/snapshots.js";
+import { buildRequirementBaseline } from "../../runs/baselines/requirement-baseline.js";
 import { restoreRunSnapshotToWorkspaceState } from "./workspace-snapshot-restore.js";
+import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
+
+test("snapshot restoration rejects obsolete provenance and model payloads without changing current state", () => {
+  const currentState = { models: {}, designInputFingerprints: { class: "existing-source" } };
+  const before = structuredClone(currentState);
+  const snapshot = createEmptySnapshot("obsolete", "需求", ["usecase"]);
+  for (const field of ["operationType", "outputManifest"] as const) {
+    const obsolete = structuredClone(snapshot);
+    delete (obsolete as Record<string, unknown>)[field];
+    assert.throws(() => restoreRunSnapshotToWorkspaceState({ currentState, snapshot: obsolete }));
+  }
+  assert.throws(() => restoreRunSnapshotToWorkspaceState({ currentState, snapshot: {
+    ...snapshot, models: [{ diagramKind: "usecase", title: "obsolete" }] as unknown as RunSnapshot["models"],
+  } }));
+  assert.deepEqual(currentState, before);
+});
+
+for (const design of [false, true]) test(`${design ? "sequence" : "analysis"} retry publication preserves sibling models, previews, fingerprints and outstanding errors`, () => {
+  const kind = design ? "sequence" : "analysis";
+  const original = modelFixture(design ? "design" : "requirements", kind);
+  if (original.diagramKind !== kind) throw new Error("fixture");
+  const first = { ...original, modelId: `${kind}:first`, sourceUseCaseId: "first" };
+  const inherited = { ...original, modelId: `${kind}:second`, sourceUseCaseId: "second", title: "旧快照" };
+  const currentSibling = { ...inherited, title: "当前已成功的模型" };
+  const modelField = design ? "designModels" : "models", sourceField = design ? "designPlantUml" : "plantUml";
+  const svgField = design ? "designSvgArtifacts" : "svgArtifacts", errorField = design ? "designDiagramErrors" : "diagramErrors";
+  const fingerprintField = design ? "designInputFingerprints" : "diagramInputFingerprints";
+  const siblingSvg = { ...designSvgArtifact("sequence", currentSibling.modelId), diagramKind: kind, svg: "<svg>保留预览</svg>" };
+  const before = { requirementText: "用户查看课程", rules: [], [modelField]: { [currentSibling.modelId]: currentSibling },
+    [sourceField]: { [currentSibling.modelId]: "保留源码" }, [svgField]: { [currentSibling.modelId]: siblingSvg },
+    [fingerprintField]: { [currentSibling.modelId]: "保留指纹" },
+    [errorField]: { [`${kind}:blocked`]: { stage: "generate_models", error: { code: "RUN_DEPENDENCY_MISSING", message: "保留未重试问题" } } } };
+  const snapshot = design ? createEmptyDesignSnapshot("retry", { selectedDiagrams: ["sequence"], sequenceTargetUseCaseIds: ["first"],
+    requirementBaseline: buildRequirementBaseline({ runId: "baseline", requirementText: "用户查看课程", rules: [] }),
+    requirementModels: [], requirementModelTraceability: [], existingDesignModels: [first, inherited] as DesignRunSnapshot["models"] })
+    : createEmptySnapshot("retry", "用户查看课程", ["analysis"], [], { analysisTargetUseCaseIds: ["first"], models: [first, inherited] as RunSnapshot["models"] });
+  snapshot.outputManifest = [{ kind: "model", id: first.modelId, diagramKind: kind, sourceUseCaseId: "first" }];
+  const restored = restoreRunSnapshotToWorkspaceState({ currentState: before, snapshot });
+  assert.deepEqual((restored[modelField] as Record<string, unknown>)[currentSibling.modelId], currentSibling);
+  assert.equal((restored[sourceField] as Record<string, unknown>)[currentSibling.modelId], "保留源码");
+  assert.deepEqual((restored[svgField] as Record<string, unknown>)[currentSibling.modelId], siblingSvg);
+  assert.equal((restored[fingerprintField] as Record<string, unknown>)[currentSibling.modelId], "保留指纹");
+  assert.deepEqual((restored[errorField] as Record<string, unknown>)[`${kind}:blocked`], before[errorField][`${kind}:blocked`]);
+});
 
 function analysisModel(useCaseId: string, title: string): DiagramModelSpec {
   return {
@@ -118,6 +163,7 @@ function tableDesignModel(): DesignDiagramModelSpec {
       {
         id: "users",
         name: "users",
+        relationalConstraints: [{ id: "pk_users", type: "primary-key", columnIds: ["id"] }],
         columns: [
           {
             id: "id",
@@ -136,16 +182,15 @@ function tableDesignModel(): DesignDiagramModelSpec {
 }
 
 
-
 function requirementRule(
   id: string,
   text = `${id} 需求规则。`,
 ): RunSnapshot["rules"][number] {
   return {
     id,
-    category: "业务规则",
+    type: "business-rule" as const,
     text,
-    relatedDiagrams: ["usecase"],
+
   };
 }
 
@@ -157,7 +202,7 @@ function atomicRequirement(
     sourceRuleId: "r1",
     sourceFragment: "用户通过邮箱注册账号。",
     sourceLocation: { section: "input", startOffset: 0, endOffset: 10 },
-    type: "functional",
+    type: "functional" as const,
     actor: "用户",
     subject: "用户",
     action: "注册",
@@ -179,12 +224,17 @@ function requirementBaseline(
   overrides: Partial<RequirementBaseline> = {},
 ): RequirementBaseline {
   return {
+      id: "baseline-test",
+      version: 1,
+      sourceInputFingerprint: "test-source-input",
     runId: "run-baseline",
     sourceDocumentId: "inline-requirement",
     createdAt: "2026-06-18T00:00:00.000Z",
     assumptions: [],
     conflicts: [],
-    requirements,
+    schemaVersion: 3 as const,
+
+      rules: (requirements).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
     qualityReport: {
       runId: "run-baseline",
       status: "passed",
@@ -197,26 +247,13 @@ function requirementBaseline(
   };
 }
 
-function pendingReviewCandidate(requirement: AtomicRequirement) {
-  return {
-    ruleId: requirement.sourceRuleId ?? "r1",
-    beforeRequirement: requirement,
-    afterRequirement: {
-      ...requirement,
-      status: "accepted",
-    },
-    repairRationale: "补齐缺失字段。",
-    blockingReasons: [],
-    status: "pending",
-    errorMessage: null,
-    createdAt: "2026-06-18T00:00:00.000Z",
-  };
-}
 
 function designSnapshot(
   overrides: Partial<DesignRunSnapshot> = {},
 ): DesignRunSnapshot {
   return {
+    operationType: "design_modeling",
+    outputManifest: [],
     runId: "design-run-restore",
     requirementText: "",
     selectedDiagrams: ["sequence"],
@@ -239,9 +276,6 @@ function designSnapshot(
     ...overrides,
   };
 }
-
-
-
 
 
 for (const stage of ["requirements", "design"] as const) {
@@ -301,7 +335,6 @@ test("restore stores snapshot input fingerprints for requirement diagrams after 
       rulesVersion: 2,
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.equal(restored.requirementText, "座位预约系统 v2");
@@ -354,7 +387,6 @@ test("restore does not rewrite requirement fingerprints from design snapshots wi
         },
       ],
     }),
-    mode: "merge",
   });
 
   assert.equal(restored.requirementInputFingerprint, currentFingerprint);
@@ -395,7 +427,6 @@ test("restore writes requirement rules from model snapshots when text still matc
       rulesVersion: 1,
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(restored.rules, rules);
@@ -436,7 +467,6 @@ test("restore replaces requirement input when terminal auto-sync requests it", (
       rulesVersion: 2,
     },
     snapshot,
-    mode: "merge",
     replaceRequirementInput: true,
   });
 
@@ -452,211 +482,6 @@ test("restore replaces requirement input when terminal auto-sync requests it", (
   assert.deepEqual(restored.generatedDiagramTypes, ["usecase"]);
 });
 
-test("restore applies requirement baseline from model snapshots when input matches", () => {
-  const requirementText = "用户通过邮箱注册账号，联系方式在认领通过前隐藏。";
-  const rules = [
-    requirementRule("r1", "用户通过邮箱注册账号。"),
-    requirementRule("r6", "联系方式在认领通过前隐藏。"),
-  ];
-  const pendingRequirement = atomicRequirement({
-    id: "REQ-006",
-    sourceRuleId: "r6",
-    sourceFragment: "联系方式在认领通过前隐藏。",
-    actor: null,
-    status: "pending-review",
-  });
-  const pendingBaseline = requirementBaseline([pendingRequirement], {
-    runId: "run-pending-baseline",
-    qualityReport: {
-      runId: "run-pending-baseline",
-      status: "pending-review",
-      summary: "发现 1 个需求质量提示。",
-      issues: [
-        {
-          id: "ISS-006",
-          code: "missing-actor",
-          message: "REQ-006 缺少明确角色/执行者。",
-          severity: "warning",
-          requirementId: "REQ-006",
-          blocksDownstream: false,
-        },
-      ],
-      blockingIssueIds: [],
-      reviewRequiredRequirementIds: ["REQ-006"],
-    },
-  });
-  const snapshot = createEmptySnapshot(
-    "run-pending-baseline",
-    requirementText,
-    ["usecase"],
-    rules,
-    { models: [requirementUseCaseModel()] },
-  ) as RunSnapshot;
-  snapshot.status = "completed";
-  snapshot.currentStage = "render_svg";
-  snapshot.requirementBaseline = pendingBaseline;
-
-  const restored = restoreRunSnapshotToWorkspaceState({
-    currentState: {
-      requirementText,
-      rules,
-      requirementBaseline: requirementBaseline([
-        atomicRequirement({
-          id: "REQ-006",
-          sourceRuleId: "r6",
-          status: "accepted",
-        }),
-      ]),
-      requirementQualityReport: requirementBaseline([]).qualityReport,
-      requirementReviewCandidates: {
-        r6: pendingReviewCandidate(pendingRequirement),
-      },
-    },
-    snapshot,
-    mode: "merge",
-  });
-
-  const restoredBaseline = restored.requirementBaseline as RequirementBaseline;
-  assert.equal(restoredBaseline.qualityReport.status, "pending-review");
-  assert.deepEqual(
-    restoredBaseline.qualityReport.reviewRequiredRequirementIds,
-    ["REQ-006"],
-  );
-  assert.equal(
-    (
-      (restored.requirementReviewCandidates as Record<string, { status: string }>)
-        .r6
-    ).status,
-    "pending",
-  );
-});
-
-test("restore keeps accepted candidates over older pending snapshot baselines", () => {
-  const requirementText = "用户通过邮箱注册账号，联系方式在认领通过前隐藏。";
-  const rules = [
-    requirementRule("r1", "用户通过邮箱注册账号。"),
-    requirementRule("r6", "联系方式在认领通过前隐藏。"),
-  ];
-  const pendingRequirement = atomicRequirement({
-    id: "REQ-006",
-    sourceRuleId: "r6",
-    sourceFragment: "联系方式在认领通过前隐藏。",
-    actor: null,
-    status: "pending-review",
-  });
-  const acceptedRequirement = atomicRequirement({
-    id: "REQ-006",
-    sourceRuleId: "r6",
-    sourceFragment: "联系方式在认领通过前隐藏。",
-    actor: "认领用户",
-    status: "accepted",
-  });
-  const snapshot = createEmptySnapshot(
-    "run-pending-baseline",
-    requirementText,
-    ["usecase"],
-    rules,
-    { models: [requirementUseCaseModel()] },
-  ) as RunSnapshot;
-  snapshot.status = "completed";
-  snapshot.currentStage = "render_svg";
-  snapshot.requirementBaseline = requirementBaseline([pendingRequirement], {
-    runId: "run-pending-baseline",
-    qualityReport: {
-      runId: "run-pending-baseline",
-      status: "pending-review",
-      summary: "发现 1 个需求质量提示。",
-      issues: [
-        {
-          id: "ISS-006",
-          code: "missing-actor",
-          message: "REQ-006 缺少明确角色/执行者。",
-          severity: "warning",
-          requirementId: "REQ-006",
-          blocksDownstream: false,
-        },
-      ],
-      blockingIssueIds: [],
-      reviewRequiredRequirementIds: ["REQ-006"],
-    },
-  });
-
-  const restored = restoreRunSnapshotToWorkspaceState({
-    currentState: {
-      requirementText,
-      rules,
-      requirementReviewCandidates: {
-        r6: {
-          ...pendingReviewCandidate(pendingRequirement),
-          afterRequirement: acceptedRequirement,
-          status: "accepted",
-        },
-      },
-    },
-    snapshot,
-    mode: "merge",
-  });
-
-  const restoredBaseline = restored.requirementBaseline as RequirementBaseline;
-  assert.equal(restoredBaseline.requirements[0]?.status, "accepted");
-  assert.equal(restoredBaseline.requirements[0]?.actor, "认领用户");
-  assert.equal(restoredBaseline.qualityReport.status, "passed");
-  assert.deepEqual(restoredBaseline.qualityReport.issues, []);
-  assert.deepEqual(restoredBaseline.qualityReport.reviewRequiredRequirementIds, []);
-  assert.equal(
-    (
-      (restored.requirementReviewCandidates as Record<string, { status: string }>)
-        .r6
-    ).status,
-    "accepted",
-  );
-});
-
-test("restore drops stale pending candidates when the new baseline has passed", () => {
-  const requirementText = "用户通过邮箱注册账号。";
-  const rules = [requirementRule("r1", "用户通过邮箱注册账号。")];
-  const requirement = atomicRequirement({
-    id: "REQ-001",
-    sourceRuleId: "r1",
-    status: "accepted",
-  });
-  const snapshot = createEmptySnapshot(
-    "run-passed-baseline",
-    requirementText,
-    ["usecase"],
-    rules,
-    { models: [requirementUseCaseModel()] },
-  ) as RunSnapshot;
-  snapshot.status = "completed";
-  snapshot.currentStage = "render_svg";
-  snapshot.requirementBaseline = requirementBaseline([requirement]);
-
-  const restored = restoreRunSnapshotToWorkspaceState({
-    currentState: {
-      requirementText,
-      rules,
-      requirementBaseline: requirementBaseline([
-        {
-          ...requirement,
-          status: "pending-review",
-        },
-      ]),
-      requirementQualityReport: requirementBaseline([]).qualityReport,
-      requirementReviewCandidates: {
-        r1: pendingReviewCandidate(requirement),
-      },
-    },
-    snapshot,
-    mode: "merge",
-  });
-
-  const restoredBaseline = restored.requirementBaseline as RequirementBaseline;
-  assert.equal(restoredBaseline.qualityReport.status, "passed");
-  assert.equal(
-    (restored.requirementReviewCandidates as Record<string, unknown>).r1,
-    undefined,
-  );
-});
 
 test("restore replaces old design records by successful selected design kind", () => {
   const oldSequence = sequenceDesignModel("sequence:uc_old", "uc_old");
@@ -748,7 +573,6 @@ test("restore replaces old design records by successful selected design kind", (
       ],
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(
@@ -809,7 +633,6 @@ test("restore preserves old design records when selected design kind failed", ()
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(Object.keys(restored.designModels as Record<string, unknown>), [
@@ -861,7 +684,6 @@ test("restore applies successful design artifacts from failed partial snapshots"
       generatedDesignDiagramTypes: ["class"],
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(restored.generatedDesignDiagramTypes, []);
@@ -876,15 +698,12 @@ test("restore applies successful design artifacts from failed partial snapshots"
 });
 
 
-
-
-
 test("restore fills missing requirement text without replacing existing rules", () => {
   const existingRule = {
     id: "existing",
-    category: "业务规则",
+    type: "business-rule" as const,
     text: "已有规则。",
-    relatedDiagrams: ["usecase"],
+
   };
   const snapshot = createEmptySnapshot(
     "run-requirement-text",
@@ -893,9 +712,9 @@ test("restore fills missing requirement text without replacing existing rules", 
     [
       {
         id: "snapshot",
-        category: "业务规则",
+        type: "business-rule" as const,
         text: "快照规则。",
-        relatedDiagrams: ["usecase"],
+
       },
     ],
   );
@@ -906,7 +725,6 @@ test("restore fills missing requirement text without replacing existing rules", 
       rules: [existingRule],
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.equal(restored.requirementText, "用户可以发布动态并关注其他用户。");
@@ -965,7 +783,6 @@ test("restore keeps requirement analysis model instances keyed by modelId", () =
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   const models = restored.models as Record<string, DiagramModelSpec>;
@@ -989,7 +806,7 @@ test("restore keeps requirement analysis model instances keyed by modelId", () =
   ]);
 });
 
-test("restore does not mark context requirement models generated without artifacts", () => {
+test("new workspace does not mark context requirement models generated without artifacts", () => {
   const snapshot = createEmptySnapshot(
     "run-class-restore",
     "用户可以浏览活动并报名。",
@@ -1007,6 +824,7 @@ test("restore does not mark context requirement models generated without artifac
       notes: [],
       actors: [],
       useCases: [],
+      systemBoundaries: [],
       relationships: [],
     } as DiagramModelSpec,
     {
@@ -1041,39 +859,8 @@ test("restore does not mark context requirement models generated without artifac
   ];
 
   const restored = restoreRunSnapshotToWorkspaceState({
-    currentState: {
-      models: {
-        usecase: {
-          diagramKind: "usecase",
-          modelId: "usecase",
-          title: "旧用例模型",
-          summary: "旧状态。",
-          notes: [],
-          actors: [],
-          useCases: [],
-          relationships: [],
-        },
-      },
-      plantUml: {
-        usecase: "@startuml\nusecase Old\n@enduml",
-      },
-      svgArtifacts: {
-        usecase: {
-          diagramKind: "usecase",
-          svg: "<svg><text>Old</text></svg>",
-          renderMeta: {
-            engine: "plantuml",
-            generatedAt: "2026-06-08T00:00:00.000Z",
-            sourceLength: 24,
-            durationMs: 1,
-          },
-        },
-      },
-      generatedDiagramTypes: ["usecase"],
-      diagramVersions: { usecase: 1 },
-    },
+    currentState: {},
     snapshot,
-    mode: "restore",
   });
 
   const models = restored.models as Record<string, DiagramModelSpec>;
@@ -1107,6 +894,7 @@ test("restore preserves existing artifacts when selected diagram only has an err
       notes: [],
       actors: [],
       useCases: [],
+      systemBoundaries: [],
       relationships: [],
     } as DiagramModelSpec,
     {
@@ -1158,13 +946,12 @@ test("restore preserves existing artifacts when selected diagram only has an err
         deployment: "@startuml\nnode Existing\n@enduml",
       },
       svgArtifacts: {
-        usecase: { diagramKind: "usecase", svg: "<svg>usecase</svg>" },
-        class: { diagramKind: "class", svg: "<svg>class</svg>" },
-        deployment: { diagramKind: "deployment", svg: "<svg>deployment</svg>" },
+        usecase: { diagramKind: "usecase", svg: "<svg>usecase</svg>", renderMeta: designSvgArtifact("class", "class").renderMeta },
+        class: { diagramKind: "class", svg: "<svg>class</svg>", renderMeta: designSvgArtifact("class", "class").renderMeta },
+        deployment: { diagramKind: "deployment", svg: "<svg>deployment</svg>", renderMeta: designSvgArtifact("class", "class").renderMeta },
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(restored.generatedDiagramTypes, [
@@ -1253,7 +1040,6 @@ test("restore applies successful requirement artifacts from cancelled partial sn
       },
     },
     snapshot,
-    mode: "merge",
   });
 
   assert.deepEqual(

@@ -1,13 +1,46 @@
 // Verifies traceability row builders surface pending review metadata for the matrix UI.
 import { describe, expect, it } from "vitest";
 import { buildContextRows, buildDesignRows, buildRequirementRows } from "./traceability-rows";
+import type { RequirementModelTraceabilityEntry } from "@uml-platform/contracts";
 
 describe("traceability row builders", () => {
+  it("uses analysis element sources in the overview exactly as in the single-model matrix", () => {
+    const usecase = { diagramKind: "usecase" as const, modelId: "usecase", title: "用例", summary: "下单", notes: [], actors: [], systemBoundaries: [], relationships: [],
+      useCases: [{ id: "case", name: "下单", goal: "完成订单", preconditions: [], postconditions: [], supportingActorIds: [], eventFlows: [] }] };
+    const analysis = { diagramKind: "analysis" as const, modelId: "analysis:case", sourceUseCaseId: "case", title: "下单分析", summary: "下单", notes: [], fragments: [],
+      participants: [{ id: "a", name: "用户", participantType: "actor" as const, sourceElementIds: ["case"] }, { id: "b", name: "系统", participantType: "control" as const, sourceElementIds: ["case"] }],
+      messages: [{ id: "m", type: "sync" as const, sourceId: "a", targetId: "b", name: "下单", parameters: [], sourceElementIds: ["case"] }] };
+    const models = { usecase, [analysis.modelId]: analysis };
+    const scoped = buildRequirementRows([], models, [], { diagramKind: "analysis", modelId: analysis.modelId });
+    const overview = buildRequirementRows([], models, []).filter(row => row.scopeKey === analysis.modelId);
+    expect(overview).toEqual(scoped);
+    expect(overview).toHaveLength(3);
+    expect(overview.every(row => row.status === "mapped")).toBe(true);
+  });
+  it("counts only existing targets of allowed types and keeps pending duplicates from hiding confirmed mappings", () => {
+    const model = {
+      diagramKind: "function" as const, modelId: "config", title: "系统配置", summary: "配置", notes: [],
+      nodes: [{ id: "configure", name: "系统配置", description: "安装时进行配置", sourceRequirementIds: ["r1"] }], relationships: [],
+    };
+    const rules = [
+      { id: "r1", type: "functional" as const, text: "家庭保安系统的软件允许用户在安装时进行系统配置。" },
+      { id: "r2", type: "data" as const, text: "记录配置信息" },
+    ];
+    const entry: RequirementModelTraceabilityEntry = { ruleId: "r1", target: { diagramKind: "function", elementId: "configure", elementKind: "function", label: "系统配置" } };
+    for (const trace of [
+      { ...entry, ruleId: "missing" }, { ...entry, ruleId: "r2" },
+      { ...entry, target: { ...entry.target, elementId: "missing" } },
+      { ...entry, target: { ...entry.target, modelId: "other-model" } },
+      { ...entry, reviewStatus: "pending" as const }, { ...entry, confidence: "low" as const },
+    ]) expect(buildRequirementRows(rules, { config: model }, [trace])[0]?.status).toBe("unmapped");
+    expect(buildRequirementRows(rules, { config: model }, [{ ...entry, reviewStatus: "pending" }, entry])[0]?.status).toBe("mapped");
+    expect(buildRequirementRows(rules, { a: { ...model, modelId: "a" }, b: { ...model, modelId: "b" } }, [entry]).every(row => row.status === "unmapped")).toBe(true);
+  });
   it("builds context coverage from people, external systems, and relationships only", () => {
     const rows = buildContextRows(
       [
-        { id: "R1", category: "功能需求", text: "客户发起预约。", relatedDiagrams: ["context"] },
-        { id: "R2", category: "外部接口", text: "系统检查库存。", relatedDiagrams: ["context"] },
+        { id: "R1", type: "functional" as const, text: "客户发起预约。",  },
+        { id: "R2", type: "interface" as const, text: "系统检查库存。",  },
       ],
       {
         diagramKind: "context",
@@ -31,7 +64,7 @@ describe("traceability row builders", () => {
 
   it("marks context rows with invalid rule references as unmapped", () => {
     const rows = buildContextRows(
-      [{ id: "R1", category: "功能需求", text: "客户发起预约。", relatedDiagrams: ["context"] }],
+      [{ id: "R1", type: "functional" as const, text: "客户发起预约。",  }],
       {
         diagramKind: "context",
         modelId: "context",
@@ -54,9 +87,9 @@ describe("traceability row builders", () => {
       [
         {
           id: "r1",
-          category: "数据需求",
+          type: "data" as const,
           text: "系统应维护图书信息。",
-          relatedDiagrams: ["class"],
+
         },
       ],
       {
@@ -99,7 +132,7 @@ describe("traceability row builders", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      status: "mapped",
+      status: "unmapped",
       mappingNote: "系统按相关图类型兜底补齐，需人工复核。",
     });
     expect(rows[0]?.detailLines).toContain(
@@ -108,20 +141,20 @@ describe("traceability row builders", () => {
     expect(rows[0]?.detailLines).toContain("置信度：low");
   });
 
-  it("does not count raw mappings that are absent from the trusted coverage matrix", () => {
+  it("counts explicit mappings without historical semantic coverage filters", () => {
     const rows = buildRequirementRows(
       [
         {
           id: "r1",
-          category: "功能需求",
+          type: "functional" as const,
           text: "用户登录系统。",
-          relatedDiagrams: ["usecase"],
+
         },
         {
           id: "r2",
-          category: "功能需求",
+          type: "functional" as const,
           text: "用户搜索课程。",
-          relatedDiagrams: ["usecase"],
+
         },
       ],
       {
@@ -175,26 +208,10 @@ describe("traceability row builders", () => {
           },
         },
       ],
-      undefined,
-      undefined,
-      {
-        runId: "run-trusted",
-        rows: [
-          {
-            requirementId: "REQ-002",
-            status: "covered",
-            rationale: "搜索课程由搜索用例说明。",
-            modelElements: ["usecase:search"],
-            designElements: [],
-            tests: [],
-            reviewItems: [],
-          },
-        ],
-      },
     );
 
     expect(rows.map((row) => [row.label, row.status])).toEqual([
-      ["登录", "unmapped"],
+      ["登录", "mapped"],
       ["搜索课程", "mapped"],
     ]);
   });
@@ -204,9 +221,9 @@ describe("traceability row builders", () => {
       [
         {
           id: "r1",
-          category: "功能需求",
+          type: "functional" as const,
           text: "系统应支持借书。",
-          relatedDiagrams: ["usecase"],
+
         },
       ],
       {

@@ -4,7 +4,7 @@ import { buildAcceptedRequirementSnapshot, feasibilityBusinessFlowArtifactSchema
 export function createBusinessFlowArtifact(rules: unknown, baseline: unknown = null) {
   const source = buildAcceptedRequirementSnapshot(rules, baseline);
   return feasibilityBusinessFlowArtifactSchema.parse({
-    model: { diagramKind: "activity", modelId: "feasibility-business-flow", title: "业务与系统流程图", summary: "处理业务规则", notes: [],
+    model: { diagramKind: "activity", modelId: "feasibility-business-flow", title: "业务流程图", summary: "处理业务规则", notes: [],
       swimlanes: [{ id: "system", name: "系统" }],
       nodes: [{ id: "start", type: "start" }, { id: "process", type: "activity", name: "处理业务", actorOrLane: "system", input: [], output: [] }, { id: "end", type: "end" }],
       relationships: [{ id: "e1", type: "control_flow", sourceId: "start", targetId: "process" }, { id: "e2", type: "control_flow", sourceId: "process", targetId: "end" }] },

@@ -2,10 +2,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProviderSettings } from "@uml-platform/contracts";
+import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
 import type { LlmTransport } from "../../../llm.js";
 import { screenRequirementInput, splitRequirementInput } from "./input-screening.js";
 
-const providerSettings = { provider: "openai", model: "test-model" } as ProviderSettings;
+const providerSettings: ProviderSettings = { apiBaseUrl: "https://example.test", apiKey: "test", model: "test-model",
+  modelCapability: strictTestModelCapability("test-model") };
 
 function transportFor(categories: string[]): LlmTransport {
   return {

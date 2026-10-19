@@ -1,6 +1,11 @@
 // Provides LLM transport helpers, provider request shaping, and response parsing boundaries for API pipelines.
-import type { ImageProviderSettings, ProviderSettings } from "@uml-platform/contracts";
+import type { ProviderSettings } from "@uml-platform/contracts";
 import OpenAI, { APIError } from "openai";
+import { reasoningRequestOptions } from "./adapters/llm/reasoning-options.js";
+import {
+  createProviderRequestRetrier,
+  type ProviderRequestRetryEvent,
+} from "./adapters/llm/request-retry.js";
 import {
   assertManagedProviderBaseUrlResolvesPublicly,
   normalizeManagedProviderBaseUrl,
@@ -49,12 +54,16 @@ export interface ResponseFormatFallbackEvent {
 }
 
 export interface StreamChatCompletionInput {
+  // Explicit output reservation used by engineering context admission checks.
+  maxOutputTokens?: number;
   // Internal per-call attribution survives concurrent pipeline stage changes.
-  runContext?: { stage?: import("@uml-platform/contracts").RunStage; diagramKind?: string; subtaskId?: string; subtaskLabel?: string };
+  runContext?: { stage?: import("@uml-platform/contracts").RunStage; diagramKind?: string; subtaskId?: string; subtaskLabel?: string; operation?: "structure_check" | "visual_check" | "model_repair" | "render_repair"; round?: number };
   providerSettings: ProviderSettings;
+  reasoning?: boolean;
   messages: ChatMessage[];
   responseFormat?: ChatCompletionResponseFormat | null;
   abortSignal?: AbortSignal;
+  onRequestRetry?: (event: ProviderRequestRetryEvent) => void;
   onResponseFormatFallback?: (event: ResponseFormatFallbackEvent) => void;
   onTokenUsage?: (usage: StreamTokenUsage) => void;
   onReasoningChunk?: (chunk: string) => void;
@@ -75,19 +84,6 @@ export interface LlmTransport {
   streamChatCompletion(
     input: StreamChatCompletionInput,
   ): AsyncIterable<string>;
-}
-
-export interface GenerateImageInput {
-  providerSettings: ImageProviderSettings;
-  prompt: string;
-}
-
-export interface GeneratedImageResult {
-  content: string;
-}
-
-export interface ImageGenerationClient {
-  generateImage(input: GenerateImageInput): Promise<GeneratedImageResult>;
 }
 
 export interface ProviderDiscoveredModel {
@@ -132,8 +128,6 @@ export interface RealProviderClientOptions {
   clientFactory?: OpenAiCompatibleClientFactory;
   resolveHostname?: ProviderHostnameResolver;
 }
-
-const IMAGE_PROMPT_CHAR_LIMIT = 24000;
 const DEFAULT_LLM_RESPONSE_TIMEOUT_MS = 300_000;
 
 function resolveChatCompletionsUrl(baseUrl: string) {
@@ -269,11 +263,6 @@ async function assertProviderBaseUrlSafe(
   return assertManagedProviderBaseUrlResolvesPublicly(baseUrl, resolveHostname);
 }
 
-function clampImagePrompt(prompt: string) {
-  if (prompt.length <= IMAGE_PROMPT_CHAR_LIMIT) return prompt;
-  return `${prompt.slice(0, IMAGE_PROMPT_CHAR_LIMIT - 32)}\n...（内容已截断）`;
-}
-
 function summarizeErrorText(text: string) {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) return null;
@@ -392,7 +381,6 @@ function shouldRetryWithoutStreamUsage(status: number, detail: string | null) {
     normalized.includes("not allowed") || normalized.includes("unexpected");
   return mentionsUsage && looksUnsupported;
 }
-
 
 function formatHttpProviderError(
   prefix: string,
@@ -607,18 +595,25 @@ function createStreamingChatCompletionBody({
   messages,
   responseFormat,
   includeUsage = true,
+  reasoning,
+  maxOutputTokens,
 }: {
   providerSettings: ProviderSettings;
   messages: ChatMessage[];
   responseFormat: ChatCompletionResponseFormat | null;
   includeUsage?: boolean;
+  reasoning?: boolean;
+  maxOutputTokens?: number;
 }): ChatCompletionCreateParamsStreaming {
   return {
     model: providerSettings.model,
     messages: asChatMessages(messages),
     stream: true,
+    ...reasoningRequestOptions(providerSettings.model, reasoning),
     ...(includeUsage ? { stream_options: { include_usage: true } } : {}),
     temperature: 0.2,
+    ...(maxOutputTokens === undefined ? {} : /^(?:o[134]|gpt-5)(?:[-.]|$)/i.test(providerSettings.model)
+      ? { max_completion_tokens: maxOutputTokens } : { max_tokens: maxOutputTokens }),
     ...(responseFormat === null ? {} : { response_format: responseFormat }),
     tools: [],
     tool_choice: "none",
@@ -853,9 +848,12 @@ export function createRealLlmTransport(
   return {
     async *streamChatCompletion({
       providerSettings,
+      maxOutputTokens,
+      reasoning,
       messages,
       responseFormat,
       abortSignal,
+      onRequestRetry,
       onResponseFormatFallback,
       onTokenUsage,
       onReasoningChunk,
@@ -891,11 +889,20 @@ export function createRealLlmTransport(
           abortSignal.removeEventListener("abort", abortHandler);
       };
       replaceActiveAbortController();
+      const requestWithRetries = createProviderRequestRetrier({
+        signal: abortSignal,
+        onRetry(event) {
+          console.warn(`[llm-request-retry] model=${providerSettings.model} retry=${event.retry} delayMs=${event.delayMs} status=${event.statusCode ?? "connection"}`);
+          onRequestRetry?.(event);
+        },
+      });
       const requestCompletionStream = async (
         nextResponseFormat: ChatCompletionResponseFormat | null,
         includeUsage = true,
-      ) => {
+      ) => requestWithRetries(async () => {
+        replaceActiveAbortController();
         await assertProviderBaseUrlSafe(safeBaseUrl, options.resolveHostname);
+        activeAbortController.signal.throwIfAborted();
         const response = await withTimeout(
           client.chat.completions.create(
             createStreamingChatCompletionBody({
@@ -903,6 +910,8 @@ export function createRealLlmTransport(
               messages,
               responseFormat: nextResponseFormat,
               includeUsage,
+              reasoning,
+              maxOutputTokens,
             }),
             { signal: activeAbortController.signal },
           ),
@@ -913,7 +922,7 @@ export function createRealLlmTransport(
           throw new Error("LLM response stream is not iterable");
         }
         return response;
-      };
+      });
       try {
         let stream: AsyncIterable<ChatCompletionChunk>;
         const requestWithUsageFallback = async (
@@ -974,60 +983,6 @@ export function createRealLlmTransport(
       } finally {
         cleanupExternalAbort?.();
       }
-    },
-  };
-}
-
-export function createRealImageGenerationClient(
-  options: RealProviderClientOptions = {},
-): ImageGenerationClient {
-  return {
-    async generateImage({ providerSettings, prompt }: GenerateImageInput) {
-      const safeBaseUrl = await assertProviderBaseUrlSafe(
-        providerSettings.apiBaseUrl,
-        options.resolveHostname,
-      );
-      const safePrompt = clampImagePrompt(prompt);
-      const responseTimeoutMs =
-        options.responseTimeoutMs ?? DEFAULT_LLM_RESPONSE_TIMEOUT_MS;
-      const abortController = new AbortController();
-      const clientFactory = options.clientFactory ?? createOpenAiCompatibleClient;
-      const client = clientFactory({
-        apiKey: providerSettings.apiKey,
-        baseURL: resolveOpenAiBaseUrl(safeBaseUrl),
-        timeoutMs: responseTimeoutMs,
-      });
-      let payload: ChatCompletion;
-      try {
-        const response = await withTimeout(
-          client.chat.completions.create(
-            createNonStreamingChatCompletionBody({
-              model: providerSettings.model,
-              messages: [{ role: "user", content: safePrompt }],
-              responseFormat: null,
-            }),
-            { signal: abortController.signal },
-          ),
-          responseTimeoutMs,
-          () => abortController.abort(),
-        );
-        if (isAsyncIterable<ChatCompletionChunk>(response)) {
-          throw new Error("Image response unexpectedly returned a stream");
-        }
-        payload = response;
-      } catch (error) {
-        const httpError = toProviderHttpError(error, "Image request failed");
-        throw httpError ?? (error instanceof Error ? error : new Error(String(error)));
-      }
-
-      const content = payload.choices?.[0]?.message?.content;
-      if (typeof content === "string" && content.trim()) {
-        return { content };
-      }
-      if (content !== undefined && content !== null) {
-        return { content: JSON.stringify(content) };
-      }
-      throw new Error("Image response did not include message content");
     },
   };
 }

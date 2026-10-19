@@ -41,6 +41,33 @@ test("run record store serializes metadata, snapshots, and events without listen
   assert.equal(restored.get("run-1")?.listeners.size, 0);
 });
 
+test("serialized stores reject obsolete snapshot contracts and unsupported formats", () => {
+  const snapshot = createEmptySnapshot("obsolete", "需求", []);
+  for (const field of ["operationType", "outputManifest"]) {
+    const obsolete = structuredClone(snapshot) as unknown as Record<string, unknown>;
+    delete obsolete[field];
+    assert.throws(() => createRunRecordStore({ version: 1, records: [{
+      snapshot: obsolete as unknown as typeof snapshot, events: [], terminal: true,
+    }] }));
+  }
+  assert.throws(() => createRunRecordStore({ version: 0, records: [] } as never), /Unsupported run record format/);
+});
+
+test("serialized stores reject obsolete event envelopes without filling missing metadata", () => {
+  const snapshot = createEmptySnapshot("obsolete-events", "需求", []);
+  for (const event of [
+    { type: "queued" },
+    { type: "queued", eventId: "queued" },
+    { type: "queued", createdAt: "2026-10-18T00:00:00.000Z" },
+  ]) {
+    const before = structuredClone(event);
+    assert.throws(() => createRunRecordStore({ version: 1, records: [{
+      snapshot, events: [event] as never, terminal: false,
+    }] }));
+    assert.deepEqual(event, before);
+  }
+});
+
 test("llm chunk events notify live listeners without entering run history by default", () => {
   const previousPersistChunks = process.env.UML_PERSIST_LLM_CHUNKS;
   delete process.env.UML_PERSIST_LLM_CHUNKS;
@@ -228,5 +255,28 @@ test("run summaries use terminal metadata timestamps for completedAt", () => {
   assert.equal(summary.startedAt, "2026-06-18T13:49:59.000Z");
   assert.equal(summary.completedAt, "2026-06-18T14:48:23.000Z");
   assert.equal(summary.updatedAt, "2026-06-18T14:48:23.000Z");
+  assert.equal(summary.operationType, "requirement_modeling");
+});
+
+test("history operation remains stable after extraction and visual verification", () => {
+  for (const selectedDiagrams of [[], ["usecase"]] as const) {
+    const snapshot = createEmptySnapshot("history-operation", "项目需求", [...selectedDiagrams]);
+    const record = { snapshot, events: [], listeners: new Set<() => void>(), terminal: true };
+    snapshot.status = "failed";
+    snapshot.currentStage = "extract_rules";
+    const expected = selectedDiagrams.length ? "requirement_modeling" : "requirement_extraction";
+    assert.equal(summarizeRunRecord(record).operationType, expected);
+    snapshot.currentStage = "verify_diagram_visual";
+    assert.equal(summarizeRunRecord(record).operationType, expected);
+    assert.deepEqual(snapshot.outputManifest, []);
+  }
+});
+
+test("history never infers an omitted operation from requested diagrams or current stage", () => {
+  const snapshot = createEmptySnapshot("missing-history-operation", "项目需求", ["usecase"]);
+  delete (snapshot as Partial<typeof snapshot>).operationType;
+  snapshot.currentStage = "verify_diagram_visual";
+  const record = { snapshot, events: [], listeners: new Set<() => void>(), terminal: true };
+  assert.throws(() => summarizeRunRecord(record));
 });
 

@@ -1,5 +1,9 @@
 // Owns run request, snapshot, event, and action contracts shared by API pipelines and web clients.
+import { MAX_GENERATION_REPAIR_ATTEMPTS } from "./generation-policy.js";
 import { z } from "zod";
+import { modelingAttachmentSchema } from "./modeling-attachments.js";
+import { modelTokenUsageSchema } from "./model-catalog.js";
+import { runOutputFields } from "./run-outputs.js";
 import { diagramVisualReviewSchema } from "./visual-review.js";
 import {
   designDiagramModelSpecSchema,
@@ -12,16 +16,10 @@ import {
   svgArtifactSchema,
 } from "./models.js";
 import {
-  atomicRequirementSchema,
-  atomicRequirementStatusSchema,
   coverageMatrixSchema,
   designDiagramKindSchema,
   diagramKindSchema,
   requirementBaselineSchema,
-  requirementFieldProvenanceEntrySchema,
-  requirementQualityReportSchema,
-  requirementRuleSchema,
-  requirementRulesArraySchema,
   requirementRulesSchema,
   traceabilityMatrixSchema,
   umlDiagramKindSchema,
@@ -43,24 +41,29 @@ import {
 
 export const startRunRequestSchema = z.object({
   projectId: z.string().min(1).optional(),
-  requirementText: z.string().min(1),
+  requirementText: z.string(),
+  attachments: z.array(modelingAttachmentSchema).max(4).optional(),
+  reasoning: z.boolean().optional(),
   selectedDiagrams: z.array(diagramKindSchema),
   requestedDiagrams: z.array(diagramKindSchema).optional(),
   dependencyDiagrams: z.array(diagramKindSchema).optional(),
   rules: requirementRulesSchema.default([]),
+  requirementBaseline: requirementBaselineSchema.nullable().optional(),
   contextModels: z.array(diagramModelSpecSchema).default([]),
   contextRequirementModelTraceability: z
     .array(requirementModelTraceabilityEntrySchema)
     .default([]),
   analysisTargetUseCaseIds: z.array(z.string().min(1)).default([]),
   providerSettings: providerSettingsSchema.optional(),
-});
+}).refine(input => Boolean(input.requirementText.trim() || input.attachments?.length), { message: "请填写需求或添加附件", path: ["requirementText"] });
 export type StartRunRequest = z.infer<typeof startRunRequestSchema>;
 
 export const startRunCommandSchema = z
   .object({
     projectId: z.string().min(1).optional(),
-    requirementText: z.string().min(1).optional(),
+    requirementText: z.string().optional(),
+    attachments: z.array(modelingAttachmentSchema).max(4).optional(),
+    reasoning: z.boolean().optional(),
     selectedDiagrams: z.array(diagramKindSchema),
     requestedDiagrams: z.array(diagramKindSchema).optional(),
     dependencyDiagrams: z.array(diagramKindSchema).optional(),
@@ -70,91 +73,22 @@ export const startRunCommandSchema = z
   .strict();
 export type StartRunCommand = z.infer<typeof startRunCommandSchema>;
 
-export const requirementRuleRepairSuggestionSchema = z.object({
-  fields: z
-    .object({
-      actor: requirementFieldProvenanceEntrySchema.optional(),
-      subject: requirementFieldProvenanceEntrySchema.optional(),
-      action: requirementFieldProvenanceEntrySchema.optional(),
-      object: requirementFieldProvenanceEntrySchema.optional(),
-      condition: requirementFieldProvenanceEntrySchema.optional(),
-      outcome: requirementFieldProvenanceEntrySchema.optional(),
-      acceptanceCriteria: requirementFieldProvenanceEntrySchema.optional(),
-    })
-    .default({}),
-  confidence: z.number().min(0).max(1).optional(),
-  status: atomicRequirementStatusSchema.optional(),
-  rationale: z.string().min(1).optional(),
+// Whole-run consumption sums provider-reported calls across every stage, including repairs and failures.
+export const runTokenConsumptionSchema = z.object({
+  totalTokens: z.number().finite().nonnegative().nullable(),
+  inputTokens: z.number().finite().nonnegative().nullable(),
+  outputTokens: z.number().finite().nonnegative().nullable(),
+  cachedInputTokens: z.number().finite().nonnegative().nullable(),
+  reasoningTokens: z.number().finite().nonnegative().nullable(),
+  calls: z.number().int().nonnegative(),
+  unreportedCalls: z.number().int().nonnegative(),
 });
-export type RequirementRuleRepairSuggestion = z.infer<
-  typeof requirementRuleRepairSuggestionSchema
->;
-
-export const requirementRuleBatchRepairSuggestionSchema = z.object({
-  repairs: z.array(
-    z
-      .object({
-        ruleId: z.string().min(1),
-      })
-      .passthrough(),
-  ),
-});
-export type RequirementRuleBatchRepairSuggestion = z.infer<
-  typeof requirementRuleBatchRepairSuggestionSchema
->;
-
-export const repairRequirementRuleRequestSchema = z.object({
-  projectId: z.string().min(1).optional(),
-  requirementText: z.string().min(1),
-  rule: requirementRuleSchema,
-  baseline: requirementBaselineSchema,
-  providerSettings: providerSettingsSchema.optional(),
-});
-export type RepairRequirementRuleRequest = z.infer<
-  typeof repairRequirementRuleRequestSchema
->;
-
-export const repairRequirementRuleResponseSchema = z.object({
-  requirement: atomicRequirementSchema,
-  qualityReport: requirementQualityReportSchema,
-  repairRationale: z.string().min(1),
-  blockingReasons: z.array(z.string().min(1)),
-});
-export type RepairRequirementRuleResponse = z.infer<
-  typeof repairRequirementRuleResponseSchema
->;
-
-export const repairRequirementRulesRequestSchema = z.object({
-  projectId: z.string().min(1).optional(),
-  requirementText: z.string().min(1),
-  rules: requirementRulesArraySchema(1),
-  targetRuleIds: z.array(z.string().min(1)).min(1),
-  baseline: requirementBaselineSchema,
-  providerSettings: providerSettingsSchema.optional(),
-});
-export type RepairRequirementRulesRequest = z.infer<
-  typeof repairRequirementRulesRequestSchema
->;
-
-export const repairRequirementRulesResponseSchema = z.object({
-  candidates: z.array(
-    repairRequirementRuleResponseSchema.extend({
-      ruleId: z.string().min(1),
-    }),
-  ),
-  failures: z.array(
-    z.object({
-      ruleId: z.string().min(1),
-      errorMessage: z.string().min(1),
-    }),
-  ),
-});
-export type RepairRequirementRulesResponse = z.infer<
-  typeof repairRequirementRulesResponseSchema
->;
+export type RunTokenConsumption = z.infer<typeof runTokenConsumptionSchema>;
 
 export const startDesignRunRequestSchema = z
   .object({
+    sequenceTargetUseCaseIds: z.array(z.string().min(1)).optional(),
+    reasoning: z.boolean().optional(),
     projectId: z.string().min(1).optional(),
     requirementBaseline: requirementBaselineSchema,
     requirementModels: z.array(diagramModelSpecSchema),
@@ -172,6 +106,7 @@ export type StartDesignRunRequest = z.infer<typeof startDesignRunRequestSchema>;
 
 export const startDesignRunCommandSchema = z
   .object({
+    reasoning: z.boolean().optional(),
     projectId: z.string().min(1).optional(),
     selectedDiagrams: z.array(designDiagramKindSchema).min(1),
     requestedDiagrams: z.array(designDiagramKindSchema).optional(),
@@ -182,6 +117,7 @@ export type StartDesignRunCommand = z.infer<typeof startDesignRunCommandSchema>;
 
 
 export const startDocumentRunRequestSchema = z.object({
+  reasoning: z.boolean().optional(),
   projectId: z.string().min(1).optional(),
   documentKind: documentKindSchema,
   requirementText: z.string().min(1),
@@ -209,6 +145,7 @@ export type StartDocumentRunRequest = z.infer<typeof startDocumentRunRequestSche
 
 export const startDocumentRunCommandSchema = z
   .object({
+    reasoning: z.boolean().optional(),
     projectId: z.string().min(1).optional(),
     documentKind: documentKindSchema,
     providerSettings: providerSettingsSchema.optional(),
@@ -263,10 +200,10 @@ export const runErrorCodeSchema = z.enum([
   "RUN_REQUIREMENT_RULES_EMPTY",
   "RUN_STRUCTURED_OUTPUT_INVALID",
   "RUN_DEPENDENCY_MISSING",
+  "RUN_CONTEXT_LIMIT_EXCEEDED",
   "RUN_RENDER_FAILED",
   "RUN_CANCELLED",
   "RUN_INTERNAL_ERROR",
-  "RUN_LEGACY_FAILURE",
 ]);
 export type RunErrorCode = z.infer<typeof runErrorCodeSchema>;
 
@@ -365,8 +302,14 @@ export const requirementInputScreeningSchema = z.object({
 export type RequirementInputScreening = z.infer<typeof requirementInputScreeningSchema>;
 
 export const runSnapshotSchema = z.object({
+  ...runOutputFields,
   runId: z.string().min(1),
   requirementText: z.string(),
+  // Preserve submitted sources for inspection and replay; requirementText becomes the accepted combined source.
+  submittedRequirementText: z.string().optional(),
+  attachments: z.array(modelingAttachmentSchema).max(4).optional(),
+  reasoning: z.boolean().optional(),
+  tokenUsage: modelTokenUsageSchema.optional(),
   inputScreening: requirementInputScreeningSchema.optional(),
   selectedDiagrams: z.array(diagramKindSchema),
   requestedDiagrams: z.array(diagramKindSchema).optional(),
@@ -381,7 +324,8 @@ export const runSnapshotSchema = z.object({
   plantUml: z.array(plantUmlArtifactSchema),
   svgArtifacts: z.array(svgArtifactSchema),
   visualReviews: z.record(z.string().min(1), diagramVisualReviewSchema).default({}),
-  diagramErrors: z.record(diagramKindSchema, diagramErrorSchema).default({}),
+  // Analysis generation records failures by current model ID, including analysis:<use-case-id>.
+  diagramErrors: z.record(z.string().min(1), diagramErrorSchema).default({}),
   requirementTrace: z.array(requirementTraceEntrySchema).default([]),
   currentStage: runStageSchema.nullable(),
   status: runStatusSchema,
@@ -390,6 +334,9 @@ export const runSnapshotSchema = z.object({
 export type RunSnapshot = z.infer<typeof runSnapshotSchema>;
 
 export const designRunSnapshotSchema = z.object({
+  sequenceTargetUseCaseIds: z.array(z.string().min(1)).optional(),
+  ...runOutputFields,
+  reasoning: z.boolean().optional(),
   generationBaseDesignFingerprints: z.record(z.string()).optional(),
   runId: z.string().min(1),
   requirementText: z.string(),
@@ -416,6 +363,10 @@ export type DesignRunSnapshot = z.infer<typeof designRunSnapshotSchema>;
 
 
 export const documentRunSnapshotSchema = z.object({
+  ...runOutputFields,
+  // Immutable original request for replay; credentials stay in provider storage.
+  replayInput: startDocumentRunRequestSchema.omit({ providerSettings: true }).optional(),
+  reasoning: z.boolean().optional(),
   runId: z.string().min(1),
   documentKind: documentKindSchema,
   requirementText: z.string(),
@@ -448,7 +399,6 @@ export const queuedRunEventSchema = z.object({
 export const stageStartedRunEventSchema = z.object({
   type: z.literal("stage_started"),
   stage: runStageSchema,
-  tracksCompletion: z.boolean().optional(),
 });
 
 // A pipeline boundary, not the end of an individual parallel model call.
@@ -589,6 +539,16 @@ export const runInputImageSchema = z.object({
 });
 export type RunInputImage = z.infer<typeof runInputImageSchema>;
 
+// Size diagnostics contain counts only; provider token usage remains the billing source of truth.
+export const runInputMetricsSchema = z.object({
+  unit: z.literal("utf16-characters"),
+  messages: z.number().int().nonnegative(),
+  responseFormat: z.number().int().nonnegative(),
+  sections: z.record(z.number().int().nonnegative()),
+  repair: z.object({ targetId: z.string(), mode: z.string(), baseFingerprint: z.string(), paths: z.array(z.string()), round: z.number().int().min(1).max(MAX_GENERATION_REPAIR_ATTEMPTS), reason: z.string().optional() }).optional(),
+});
+export type RunInputMetrics = z.infer<typeof runInputMetricsSchema>;
+
 // User-visible execution records are separate from bounded technical diagnostics.
 export const runActivityEventSchema = z.object({
   type: z.literal("run_activity"),
@@ -599,17 +559,19 @@ export const runActivityEventSchema = z.object({
   callId: z.string().min(1),
   modelId: z.string().optional(),
   operation: z.enum(["structure_check", "visual_check", "model_repair", "render_repair"]).optional(),
-  round: z.number().int().min(0).max(2).optional(),
+  round: z.number().int().min(0).max(MAX_GENERATION_REPAIR_ATTEMPTS).optional(),
   subtaskId: z.string().optional(),
   subtaskLabel: z.string().optional(),
   phase: z.enum(["started", "output", "thinking", "reasoning", "summary", "completed", "failed"]),
   format: z.enum(["text", "technical"]).default("technical"),
   text: z.string().optional(),
   inputImages: z.array(runInputImageSchema).optional(),
+  inputMetrics: runInputMetricsSchema.optional(),
 });
 export type RunActivityEvent = z.infer<typeof runActivityEventSchema>;
 
-export type RunEvent = { eventId?: string; createdAt?: string; sequence?: number } & (
+// Pipelines supply new event inputs; publication assigns the required replay identity once.
+export type RunEventInput = { eventId?: string; createdAt?: string; sequence?: number } & (
   | RunActivityEvent
   | z.infer<typeof queuedRunEventSchema>
   | z.infer<typeof stageStartedRunEventSchema>
@@ -621,6 +583,13 @@ export type RunEvent = { eventId?: string; createdAt?: string; sequence?: number
   | z.infer<typeof failedRunEventSchema>
   | z.infer<typeof cancelledRunEventSchema>
   | z.infer<typeof runActionRunEventSchema>);
+
+export const runEventMetadataSchema = z.object({
+  eventId: z.string().min(1),
+  createdAt: z.string().datetime(),
+  sequence: z.number().int().positive().optional(),
+});
+export type RunEvent = RunEventInput & z.infer<typeof runEventMetadataSchema>;
 
 export const runEventSchema: z.ZodType<RunEvent, z.ZodTypeDef, unknown> = z.discriminatedUnion("type", [
   runActivityEventSchema,
@@ -635,7 +604,7 @@ export const runEventSchema: z.ZodType<RunEvent, z.ZodTypeDef, unknown> = z.disc
   failedRunEventSchema,
   cancelledRunEventSchema,
   runActionRunEventSchema,
-]).and(z.object({ eventId: z.string().optional(), createdAt: z.string().optional(), sequence: z.number().int().positive().optional() }));
+]).and(runEventMetadataSchema);
 
 export const runActionResultSchema = z.object({
   action: runActionSchema,

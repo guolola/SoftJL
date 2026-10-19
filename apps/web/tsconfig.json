@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "useDefineForClassFields": true,
     "lib": [
-      "ES2020",
+      "ES2022",
       "DOM",
       "DOM.Iterable"
     ],
@@ -22,6 +22,12 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@/components/ui/*": [
+        "./src/shared/ui/*"
+      ],
+      "@/lib/utils": [
+        "./src/shared/ui/utils"
       ]
     },
     "allowJs": true,

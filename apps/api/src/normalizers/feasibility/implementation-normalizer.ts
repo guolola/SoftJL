@@ -253,41 +253,6 @@ function normalizeStructuralOutput(
   };
 }
 
-function normalizeRequirementReferenceAliases(
-  value: unknown,
-  validRequirementIds: ReadonlySet<string>,
-  actions: string[],
-): unknown {
-  const validByLower = new Map(
-    Array.from(validRequirementIds, (id) => [id.toLowerCase(), id]),
-  );
-  const normalizeId = (rawId: string) => {
-    const direct = validByLower.get(rawId.trim().toLowerCase());
-    if (direct) return direct;
-    const numericAlias = rawId
-      .trim()
-      .match(/^(?:REQ|R)[-_]?0*(\d+)$/iu);
-    if (!numericAlias) return rawId;
-    const normalized = validByLower.get(`r${Number(numericAlias[1])}`);
-    if (!normalized) return rawId;
-    actions.push("normalized-requirement-id-alias");
-    return normalized;
-  };
-  const visit = (current: unknown): unknown => {
-    if (Array.isArray(current)) return current.map(visit);
-    if (!isRecord(current)) return current;
-    return Object.fromEntries(
-      Object.entries(current).map(([key, item]) => [
-        key,
-        key === "sourceRequirementIds" && Array.isArray(item)
-          ? item.map((id) => (typeof id === "string" ? normalizeId(id) : id))
-          : visit(item),
-      ]),
-    );
-  };
-  return visit(value);
-}
-
 export function normalizeFeasibilityImplementationDetailed(
   value: unknown,
   validRequirementIds: ReadonlySet<string>,
@@ -295,11 +260,7 @@ export function normalizeFeasibilityImplementationDetailed(
 ): FeasibilityNormalizationResult {
   const actions: string[] = [];
   const plan = completeFeasibilityImplementationPlanSchema.parse(
-    normalizeRequirementReferenceAliases(
-      normalizeStructuralOutput(value, externalSystems, actions),
-      validRequirementIds,
-      actions,
-    ),
+    normalizeStructuralOutput(value, externalSystems, actions),
   );
   const candidateIds = new Set<string>();
   const validateSources = (
@@ -307,11 +268,10 @@ export function normalizeFeasibilityImplementationDetailed(
     assumption: string,
     label: string,
     path: Array<string | number>,
+    requireRule = false,
   ) => {
-    for (const id of ids) {
-      if (!validRequirementIds.has(id)) {
-        validationError([...path, "sourceRequirementIds"], `${label}引用了不存在的需求规则：${id}`);
-      }
+    if (ids.length === 0 && requireRule) {
+      validationError([...path, "sourceRequirementIds"], `${label}必须在首次生成时携带真实需求来源，不能用方案假设代替`);
     }
     if (ids.length === 0 && !assumption.trim()) {
       validationError([...path, "assumption"], `${label}必须引用需求规则或明确记录方案假设`);
@@ -332,6 +292,7 @@ export function normalizeFeasibilityImplementationDetailed(
       candidate.assumption,
       `候选方案 ${candidate.id}`,
       candidatePath,
+      true,
     );
     const implementation = candidate.implementation!;
     implementation.architecture.modules.forEach((item, index) =>
@@ -340,6 +301,7 @@ export function normalizeFeasibilityImplementationDetailed(
         item.assumption,
         `模块 ${item.id}`,
         [...candidatePath, "implementation", "architecture", "modules", index],
+        true,
       ));
     validateSources(
       implementation.dataStrategy.sourceRequirementIds,
@@ -378,6 +340,7 @@ export function normalizeFeasibilityImplementationDetailed(
         item.assumption,
         `集成 ${item.id}`,
         [...candidatePath, "implementation", "integrations", index],
+        true,
       ));
     validateSources(
       implementation.deploymentAndOperations.sourceRequirementIds,
@@ -428,16 +391,4 @@ export function normalizeFeasibilityImplementationDetailed(
     }
   }
   return { plan, actions: [...new Set(actions)] };
-}
-
-export function normalizeFeasibilityImplementation(
-  value: unknown,
-  validRequirementIds: ReadonlySet<string>,
-  externalSystems?: readonly FeasibilityContextExternalSystem[],
-): FeasibilityImplementationPlan {
-  return normalizeFeasibilityImplementationDetailed(
-    value,
-    validRequirementIds,
-    externalSystems,
-  ).plan;
 }

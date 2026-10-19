@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Switch } from './switch'
 
 describe('Switch', () => {
-  it('maps the legacy default size to medium and exposes the motion thumb', () => {
+  it('uses medium size and exposes the motion thumb', () => {
     const { container } = render(<Switch aria-label='默认开关' />)
 
     expect(screen.getByRole('switch', { name: '默认开关' })).toHaveAttribute('data-size', 'md')

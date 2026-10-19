@@ -13,7 +13,7 @@ function requirement(patch: Partial<AtomicRequirement> = {}): AtomicRequirement 
     id: "REQ-007",
     sourceFragment:
       "预约成功、取消和开始前1小时通过站内消息通知；通知失败则重试，并记录最终状态。",
-    type: "functional",
+    type: "functional" as const,
     actor: null,
     subject: null,
     action:
@@ -46,6 +46,29 @@ test("semantic comparison catches deleted notification triggers", () => {
   assert.equal(labels.includes("预约成功"), true);
   assert.equal(labels.includes("取消"), true);
   assert.equal(labels.some((label) => label.includes("开始前1小时")), true);
+});
+
+test("semantic comparison keeps object wording moved into another field", () => {
+  const before = requirement({
+    action: "可通过手机端扫描教室内特定二维码，免登录快速选择故障类型并提交报修",
+    object: "通过手机端扫描教室内特定二维码",
+  });
+  const moved = requirement({
+    action: "通过手机端扫描教室内特定二维码，免登录快速选择故障类型并提交报修",
+    object: "设备故障报修信息",
+  });
+  const dropped = requirement({
+    action: "免登录快速选择故障类型并提交报修",
+    object: "设备故障报修信息",
+  });
+
+  assert.deepEqual(compareRequirementSemantics(before, moved).lostFacts, []);
+  assert.equal(
+    compareRequirementSemantics(before, dropped).lostFacts.some(
+      (fact) => fact.kind === "object",
+    ),
+    true,
+  );
 });
 
 test("semantic comparison normalizes equivalent inclusive boundaries", () => {

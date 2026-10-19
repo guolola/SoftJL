@@ -83,8 +83,8 @@ export function deriveAuthorizedRepairs(model: ReviewModel, basis: DiagramReview
       if (owner && model.packages.some((item) => item.id === owner)) change(`relationships.${i}.sourceId`, owner, "explicit-owner", edge.id, target!.id, "包含关系必须指向模型明确声明的归属");
     });
   }
-  // Only exact predicates with accepted source/manual provenance qualify. Opposite polarity may be a valid false branch.
-  const facts = basis.baseline?.requirements.filter((requirement) => requirement.status === "accepted" && requirement.condition && requirement.fieldProvenance?.condition?.status === "accepted" && ["source-text", "manual"].includes(requirement.fieldProvenance.condition.source)) ?? [];
+  // A uniquely traced literal predicate supports findings without inventing atomic facts.
+  const ruleFacts = basis.baseline?.rules ?? [];
   const visit = (value: unknown, path: string, elementId?: string) => {
     if (!value || typeof value !== "object") return;
     const row = value as Record<string, unknown>; const id = typeof row.id === "string" ? row.id : elementId;
@@ -92,14 +92,21 @@ export function deriveAuthorizedRepairs(model: ReviewModel, basis: DiagramReview
       const fieldPath = path ? `${path}.${key}` : key;
       if (typeof item === "string" && ["condition", "guard"].includes(key) && id) {
         const actual = comparison(item);
-        const matches = facts.filter((fact) => {
-          const required = comparison(fact.condition!);
-          return required && actual && required.key === actual.key && trustedBinding(basis.traceability, model, id, fact.sourceRuleId ?? fact.id, basis.requirementTraceability);
-        });
+        const matches: { id: string; condition: string }[] = [];
+        if (actual && !/&&|\|\||且|或|\band\b|\bor\b/.test(item) && actual.key.indexOf("#") > 0) {
+          for (const rule of ruleFacts) {
+            if (!trustedBinding(basis.traceability, model, id, rule.id, basis.requirementTraceability)) continue;
+            const predicate = comparison(rule.text);
+            if (!predicate) continue; // Multiple boundaries require semantic review.
+            const position = predicate.key.indexOf(actual.key);
+            if (position < 0 || /[\d.]/.test(predicate.key.charAt(position + actual.key.length))) continue;
+            matches.push({ id: rule.requirementId, condition: item.replace(/>=|<=|>|<|不少于|至少|大于等于|不超过|至多|最多|小于等于|超过|大于|少于|小于/, predicate.op) });
+          }
+        }
         if (matches.length === 1 && actual) {
           const required = comparison(matches[0]!.condition!)!;
           if ((required.op === ">=" && actual.op === ">") || (required.op === "<=" && actual.op === "<")) {
-            change(fieldPath, matches[0]!.condition, "confirmed-comparator", id, matches[0]!.id, "恢复已确认业务条件的边界比较符");
+            change(fieldPath, matches[0]!.condition, "confirmed-comparator", id, matches[0]!.id, "模型边界比较符与追踪需求中的明确条件不一致，请核对");
             if (model.diagramKind === "activity" && path.startsWith("relationships.")) {
               const index = Number(path.split(".")[1]); const edge = model.relationships[index]!;
               const siblings = model.relationships.filter((candidate) => candidate.sourceId === edge.sourceId);
@@ -133,7 +140,7 @@ export function verifyReviewClaims(claims: DiagramReviewFinding[], model: Review
     const proof = authorized.find((item) => item.path === claim.path && stableJson(item.expected) === stableJson(claim.expected));
     if (proof) return { ...proof, id: claim.id };
     const unreadable = isUnverifiableReviewText(`${claim.code} ${claim.observation}`);
-    const inferred = claim.category ?? classifyDiagramReviewIssue(claim.observation, claim.layer, claim.code);
+    const inferred = claim.category;
     const diagnostic = diagnostics.find((item) => (claim.path && item.path === claim.path) ||
       ((item.elementId === claim.elementId || item.elementId === claim.relationshipId) && item.code === claim.code));
     if (inferred === "model_structure" && diagnostic) return { ...claim, category: "model_structure", verification: "verified", repairable: true,
@@ -181,7 +188,13 @@ export function acceptStructuralRepairCandidate(candidate: ReviewModel, before: 
   if (!diagnostics.length) throw new Error("没有已核实的结构错误，不允许改写模型");
   const errors = validateModelInput(candidate, basis.stage).filter((issue) => issue.severity === "error");
   if (errors.length) throw new Error(`候选仍不符合结构规则：${errors.map((item) => item.message).join("；")}`);
-  const allowed = new Set(diagnostics.map((item) => item.path));
+  const allowed = new Set(diagnostics.flatMap((item) => [item.path, ...item.relatedPaths ?? []]));
+  // An identifier rename preserves ownership and endpoints only when its matching reference moves with it.
+  const identifierRename = (path: string) => diagnostics.some(item => item.code === "duplicate-id" && item.relatedPaths?.includes(path)
+    && at(before, path) === at(before, item.path) && at(candidate, path) === at(candidate, item.path));
+  for (const diagnostic of diagnostics) if (diagnostic.code === "duplicate-id") for (const path of diagnostic.relatedPaths ?? []) {
+    if (stableJson(at(before, path)) !== stableJson(at(candidate, path)) && !identifierRename(path)) throw new Error("标识修复改变了关联引用的业务指向");
+  }
   for (const diagnostic of diagnostics) {
     if (diagnostic.code === "fragment-range") allowed.add(`${diagnostic.path}.messageIds`);
     if (diagnostic.code === "branch-range" && "fragments" in before) {
@@ -201,7 +214,7 @@ export function acceptStructuralRepairCandidate(candidate: ReviewModel, before: 
       const old = (before as any)[collection]?.[Number(index)], next = (candidate as any)[collection]?.[Number(index)];
       if (!old || !next) continue;
       const reversed = old.sourceId === next.targetId && old.targetId === next.sourceId && old.type === next.type;
-      if (!reversed && (normalizeId(old.sourceId) !== normalizeId(next.sourceId) || normalizeId(old.targetId) !== normalizeId(next.targetId))) throw new Error("候选改变关系涉及的业务对象，没有唯一结构依据");
+      if (!reversed && (normalizeId(old.sourceId) !== normalizeId(next.sourceId) && !identifierRename(`${collection}.${index}.sourceId`) || normalizeId(old.targetId) !== normalizeId(next.targetId) && !identifierRename(`${collection}.${index}.targetId`))) throw new Error("候选改变关系涉及的业务对象，没有唯一结构依据");
       if (normalizeId(old.type) !== normalizeId(next.type)) throw new Error("候选改变关系业务含义，没有唯一结构依据");
       if (stableJson(old.extensionPointIds) !== stableJson(next.extensionPointIds) && before.diagramKind === "usecase") {
         const points = before.useCases.find((item) => item.id === next.targetId)?.extensionPoints ?? [];
@@ -215,7 +228,7 @@ export function acceptStructuralRepairCandidate(candidate: ReviewModel, before: 
     }
     if (/\.(?:systemBoundaryId|packageId|parentId|actorOrLane)$/.test(path) && normalizeId(at(before, path)) !== normalizeId(at(candidate, path))) {
       const uniqueBoundary = before.diagramKind === "usecase" && /\.systemBoundaryId$/.test(path) && before.systemBoundaries.length === 1 && at(candidate, path) === before.systemBoundaries[0].id;
-      if (!uniqueBoundary) throw new Error("归属选择涉及业务内容，没有唯一结构依据");
+      if (!uniqueBoundary && !identifierRename(path)) throw new Error("归属选择涉及业务内容，没有唯一结构依据");
     }
   }
   if ("activations" in before && "activations" in candidate) for (let i = 0; i < (before.activations?.length ?? 0); i++) {
@@ -225,6 +238,11 @@ export function acceptStructuralRepairCandidate(candidate: ReviewModel, before: 
   }
   const project = (model: ReviewModel) => {
     const copy = structuredClone(model) as any;
+    for (const diagnostic of diagnostics) if (diagnostic.code === "duplicate-id") for (const path of [diagnostic.path, ...diagnostic.relatedPaths ?? []]) {
+      const parts = path.split("."); const key = parts.pop()!;
+      const parent = parts.reduce<any>((value, part) => value?.[part], copy);
+      if (parent) delete parent[key];
+    }
     for (const path of allowed) {
       if (/^(?:relationships|messages)\.\d+(?:\.|$)/.test(path) && !/Multiplicity$/.test(path)) {
         const [collection, index] = path.split(".");

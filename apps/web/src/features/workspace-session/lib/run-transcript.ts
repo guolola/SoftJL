@@ -1,11 +1,11 @@
 // Keeps replayable conversation events separate from truncated diagnostics and ignores duplicate delivery.
-import type { RunEvent } from "@uml-platform/contracts";
+import type { RunEventInput } from "@uml-platform/contracts";
 
-export function appendTranscriptEvent(events: RunEvent[], event: RunEvent): RunEvent[] {
+export function appendTranscriptEvent<T extends RunEventInput>(events: T[], event: T): T[] {
   return mergeTranscriptEvents(events, [event]);
 }
 
-export function mergeTranscriptEvents(events: RunEvent[], incoming: RunEvent[]) {
+export function mergeTranscriptEvents<T extends RunEventInput>(events: T[], incoming: T[]) {
   if (!incoming.length || events.some((item) => ["completed", "failed", "cancelled"].includes(item.type))) return events;
   const seen = new Set(events.flatMap((event) => event.eventId ? [event.eventId] : []));
   const activityStages = new Set(events.flatMap((event) => event.type === "run_activity" ? [event.stage] : []));
@@ -23,23 +23,24 @@ export function mergeTranscriptEvents(events: RunEvent[], incoming: RunEvent[]) 
   return merged;
 }
 
-export function progressTranscriptEvents(events: RunEvent[]) {
-  return events.flatMap((event): RunEvent[] => {
+export function progressTranscriptEvents<T extends RunEventInput>(events: T[]): T[] {
+  return events.flatMap((event): T[] => {
     if (event.type === "llm_chunk") return [];
     if (event.type !== "run_activity") return [event];
     if (["reasoning", "summary", "output"].includes(event.phase)) return [];
     const { text: _text, inputImages: _images, ...progress } = event;
-    return [progress];
+    // Only optional content fields are removed; the event identity and lifecycle payload stay intact.
+    return [progress as T];
   });
 }
 
 // One accumulator owns a reconnecting subscription. Its indexes grow with new
 // progress only, so replay never rescans accumulated history or retains text.
-export function createProgressTranscriptAccumulator() {
+export function createProgressTranscriptAccumulator<T extends RunEventInput>() {
   const ids = new Set<string>();
-  const events: RunEvent[] = [];
+  const events: T[] = [];
   let terminal = false;
-  return (incoming: RunEvent[]) => {
+  return (incoming: T[]) => {
     let changed = false;
     for (const event of progressTranscriptEvents(incoming)) {
       if (terminal) break;

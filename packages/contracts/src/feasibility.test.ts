@@ -11,18 +11,76 @@ import {
   feasibilityBusinessFlowArtifactSchema,
   readFeasibilityBusinessFlowArtifact,
   buildFeasibilityImplementationFingerprint,
+  buildFeasibilityContextFingerprint,
+  buildAcceptedRequirementSnapshot,
+  createRequirementBaselineSnapshot,
   startFeasibilityRunRequestSchema,
+  captureWorkspaceGuard,
+  workspaceGuardConflicts,
 } from "./index.js";
 
-test("historical feasibility snapshots load without a business flow", () => {
+test("publication guards treat absent and default empty feasibility facts as the same input", () => {
   const snapshot = feasibilityRunSnapshotSchema.parse({
-    runId: "legacy", projectId: "project", selectedArtifacts: ["context", "implementation"],
+    runId: "current", projectId: "project", operationType: "feasibility_analysis", outputManifest: [],
+    selectedArtifacts: ["context", "business-flow", "implementation"],
     providerSettings: { providerConfigId: "provider", model: "model" }, rules: [], requirementBaseline: null,
     inputs: {}, contextModel: null, contextPlantUml: null, contextSvg: null, implementationPlan: null,
-    contextFingerprint: null, implementationFingerprint: "legacy-fingerprint", currentStage: null, status: "completed", error: null,
+    contextFingerprint: null, implementationFingerprint: null, currentStage: null, status: "running", error: null,
+  });
+  for (const facts of [undefined, null, {}, feasibilityInputsSchema.parse({})]) {
+    const record = { snapshot: { ...snapshot, workspaceGuard: captureWorkspaceGuard({ snapshot }, { feasibilityInputs: facts }) } };
+    for (const saved of [undefined, null, {}, feasibilityInputsSchema.parse({})]) {
+      assert.deepEqual(workspaceGuardConflicts(record, { feasibilityInputs: saved }), []);
+    }
+    for (const changed of [{ projectName: "新项目名称" }, { budgetLimit: 0 }, { teamSize: 1 }]) {
+      assert.deepEqual(workspaceGuardConflicts(record, { feasibilityInputs: feasibilityInputsSchema.parse(changed) }), ["feasibilityInputs"]);
+    }
+  }
+});
+
+test("publication guards preserve edits and clearing of supplied feasibility facts", () => {
+  const snapshot = feasibilityRunSnapshotSchema.parse({
+    runId: "current", projectId: "project", operationType: "feasibility_analysis", outputManifest: [],
+    selectedArtifacts: ["context"], providerSettings: { providerConfigId: "provider", model: "model" },
+    rules: [], requirementBaseline: null, inputs: { projectName: "原项目" },
+    contextModel: null, contextPlantUml: null, contextSvg: null, implementationPlan: null,
+    contextFingerprint: null, implementationFingerprint: null, currentStage: null, status: "running", error: null,
+  });
+  const record = { snapshot: { ...snapshot, workspaceGuard: captureWorkspaceGuard({ snapshot }, { feasibilityInputs: snapshot.inputs }) } };
+  assert.deepEqual(workspaceGuardConflicts(record, { feasibilityInputs: { projectName: "原项目" } }), []);
+  assert.deepEqual(workspaceGuardConflicts(record, { feasibilityInputs: { projectName: "修改名称" } }), ["feasibilityInputs"]);
+  assert.deepEqual(workspaceGuardConflicts(record, { feasibilityInputs: null }), ["feasibilityInputs"]);
+});
+
+test("context fingerprints include supplementary facts and canonicalize omitted optional fields", () => {
+  const source = { rules: [], requirementBaseline: null, inputs: {} };
+  const original = buildFeasibilityContextFingerprint(source);
+  assert.equal(original, buildFeasibilityContextFingerprint({ ...source, inputs: feasibilityInputsSchema.parse({}) }));
+  for (const inputs of [{ projectName: "新名称" }, { expectedUsers: "新增外部顾客" }, { targetEnvironment: "内网部署" }, { budgetLimit: 0 }]) {
+    assert.notEqual(original, buildFeasibilityContextFingerprint({ ...source, inputs }));
+  }
+});
+
+test("feasibility rejects mismatched baselines without fabricating provenance", () => {
+  const rule = { id: "r1", type: "functional" as const, text: "用户下单",  };
+  const baseline = createRequirementBaselineSnapshot({ runId: "old", requirementText: "订单系统", rules: [rule] });
+  const rules = [{ ...rule, text: "用户只能取消自己的订单" }];
+  const before = structuredClone(baseline);
+  assert.throws(() => buildAcceptedRequirementSnapshot(rules, baseline), /baseline does not match/);
+  assert.throws(() => buildAcceptedRequirementSnapshot([], baseline), /baseline does not match/);
+  assert.deepEqual(baseline, before);
+  assert.deepEqual(buildAcceptedRequirementSnapshot([rule], baseline).baseline, baseline);
+});
+
+test("feasibility snapshots explicitly represent an unavailable business flow", () => {
+  const snapshot = feasibilityRunSnapshotSchema.parse({
+    runId: "current", projectId: "project", operationType: "feasibility_analysis", outputManifest: [], businessFlow: null, selectedArtifacts: ["context", "implementation"],
+    providerSettings: { providerConfigId: "provider", model: "model" }, rules: [], requirementBaseline: null,
+    inputs: {}, contextModel: null, contextPlantUml: null, contextSvg: null, implementationPlan: null,
+    contextFingerprint: null, implementationFingerprint: "current-fingerprint", currentStage: null, status: "completed", error: null,
   });
   assert.equal(snapshot.businessFlow, null);
-  assert.equal(snapshot.implementationFingerprint, "legacy-fingerprint");
+  assert.equal(snapshot.implementationFingerprint, "current-fingerprint");
 });
 
 test("business flow availability requires matching complete artifacts and fingerprints ignore renders", () => {
@@ -64,8 +122,8 @@ test("context contracts keep the center system untraced and interactions traced"
     title: "系统上下文",
     summary: "边界",
     notes: [],
-    system: { id: "system", name: "维修系统", sourceRequirementIds: ["R1"] },
-    people: [{ id: "customer", name: "客户", sourceRequirementIds: ["R1"] }],
+    system: { id: "system", name: "维修系统", sourceRequirementIds: ["R1"], provenance: "ai-estimate" as const },
+    people: [{ id: "customer", name: "客户", sourceRequirementIds: ["R1"], provenance: "ai-estimate" as const }],
     externalSystems: [],
     relationships: [{ id: "rel-1", sourceId: "customer", targetId: "system", direction: "directed", label: "预约", sourceRequirementIds: [] }],
   });
@@ -100,13 +158,13 @@ function completeCandidate(id: string) {
     provenance: "ai-estimate" as const,
     implementation: {
       provenance: "ai-estimate" as const,
-      architecture: { summary: "分层架构。", modules: [{ id: `${id}-m1`, name: "工单", responsibility: "管理工单", sourceRequirementIds: ["R1"] }] },
-      dataStrategy: { summary: "持久化业务数据。", sourceRequirementIds: ["R1"] },
+      architecture: { summary: "分层架构。", modules: [{ id: `${id}-m1`, name: "工单", responsibility: "管理工单", sourceRequirementIds: ["R1"], provenance: "ai-estimate" as const }] },
+      dataStrategy: { summary: "持久化业务数据。", sourceRequirementIds: ["R1"], provenance: "ai-estimate" as const },
       integrations: [],
       integrationRationale: "当前需求没有外部系统集成。",
-      deploymentAndOperations: { summary: "容器化部署。", sourceRequirementIds: ["R1"] },
-      securityAndCompliance: { summary: "最小权限。", sourceRequirementIds: ["R1"] },
-      milestones: [{ id: `${id}-ms1`, name: "交付", timeframe: "8–12 周", deliverables: ["可运行系统"], roles: ["开发者"], dependencies: [], dependencyRationale: "仅依赖项目内部资源。", acceptanceCriteria: ["规则通过"], sourceRequirementIds: ["R1"] }],
+      deploymentAndOperations: { summary: "容器化部署。", sourceRequirementIds: ["R1"], provenance: "ai-estimate" as const },
+      securityAndCompliance: { summary: "最小权限。", sourceRequirementIds: ["R1"], provenance: "ai-estimate" as const },
+      milestones: [{ id: `${id}-ms1`, name: "交付", timeframe: "8–12 周", deliverables: ["可运行系统"], roles: ["开发者"], dependencies: [], dependencyRationale: "仅依赖项目内部资源。", acceptanceCriteria: ["规则通过"], sourceRequirementIds: ["R1"], provenance: "ai-estimate" as const }],
       analysisPeriodAssumption: { years: 3, basis: "按典型教学系统生命周期估算", provenance: "ai-estimate" as const },
       costEstimates: [
         { id: `${id}-capital`, name: "开发设备", category: "capital" as const, frequency: "one-time" as const, range: costRange, sourceRequirementIds: [], assumption: "按两名开发者估算", provenance: "ai-estimate" as const },
@@ -118,7 +176,7 @@ function completeCandidate(id: string) {
         { id: `${id}-ongoing`, name: "效率收益", category: "recurring" as const, frequency: "annual" as const, range: costRange, outcome: "降低重复操作", sourceRequirementIds: ["R1"], provenance: "ai-estimate" as const },
         { id: `${id}-intangible`, name: "体验提升", category: "intangible" as const, frequency: "annual" as const, range: null, outcome: "流程更清晰", sourceRequirementIds: ["R1"], provenance: "ai-estimate" as const },
       ],
-      absenceDeclarations: [], oneTimeCosts: ["开发投入"], recurringCosts: ["运维投入"], quantitativeBenefits: ["效率提升"], qualitativeBenefits: ["体验提升"],
+      absenceDeclarations: [],
       risks: ["进度", "质量", "运维"].map((risk, index) => ({ id: `${id}-risk-${index}`, risk, probability: "medium" as const, impact: "medium" as const, mitigation: "设置检查点", owner: "项目经理", sourceRequirementIds: [], assumption: "方案风险分析", provenance: "ai-estimate" as const })),
       verdicts: ["technical", "operational", "schedule", "economic", "legal"].map((category) => ({ category, verdict: "conditional", rationale: "条件满足后可行。", provenance: "ai-estimate" })) ,
       decision: "conditional-go" as const, preconditions: ["确认预算"],
@@ -149,28 +207,19 @@ test("complete implementation generation requires exactly two full candidates an
   assert.equal(completeFeasibilityImplementationPlanSchema.safeParse(contradictory).success, false);
 });
 
-test("legacy global implementation details migrate only to the recommended candidate", () => {
-  const legacy = feasibilityImplementationPlanSchema.parse({
-    overview: "旧方案",
-    candidates: [
-      { id: "c1", name: "推荐", summary: "推荐", advantages: [], disadvantages: [], estimatedCost: "待确认", estimatedSchedule: "待确认", sourceRequirementIds: ["R1"] },
-      { id: "c2", name: "备选", summary: "备选", advantages: [], disadvantages: [], estimatedCost: "待确认", estimatedSchedule: "待确认", sourceRequirementIds: ["R1"] },
-    ],
-    recommendedCandidateId: "c1",
-    recommendationRationale: "旧推荐",
-    architecture: { summary: "旧架构", modules: [{ id: "m1", name: "模块", responsibility: "职责", sourceRequirementIds: ["R1"] }] },
-    dataStrategy: { summary: "数据", sourceRequirementIds: ["R1"] },
-    integrations: [],
-    deploymentAndOperations: { summary: "部署", sourceRequirementIds: ["R1"] },
-    securityAndCompliance: { summary: "安全", sourceRequirementIds: ["R1"] },
-    milestones: [{ id: "ms1", name: "阶段", timeframe: "待确认", deliverables: [], roles: [], dependencies: [], acceptanceCriteria: [], sourceRequirementIds: ["R1"] }],
-    risks: [],
-    verdicts: ["technical", "operational", "schedule", "economic", "legal"].map((category) => ({ category, verdict: "unknown", rationale: "待确认" })),
-    decision: "conditional-go",
-    preconditions: [],
-  });
-  assert.equal(legacy.candidates[0]?.implementation?.architecture.summary, "旧架构");
-  assert.equal(legacy.candidates[1]?.implementation, null);
+test("implementation plans reject global details, missing provenance and legacy provenance", () => {
+  const current = { overview: "当前方案", candidates: [completeCandidate("一"), completeCandidate("二")], recommendedCandidateId: "一", recommendationRationale: "范围适用" };
+  assert.equal(feasibilityImplementationPlanSchema.safeParse(current).success, true);
+  const missing = structuredClone(current) as any;
+  delete missing.candidates[0].implementation;
+  missing.architecture = current.candidates[0]!.implementation.architecture;
+  assert.equal(feasibilityImplementationPlanSchema.safeParse(missing).success, false);
+  const oldProvenance = structuredClone(current) as any;
+  oldProvenance.candidates[0].provenance = "legacy";
+  assert.equal(feasibilityImplementationPlanSchema.safeParse(oldProvenance).success, false);
+  const noProvenance = structuredClone(current) as any;
+  delete noProvenance.candidates[0].implementation.dataStrategy.provenance;
+  assert.equal(feasibilityImplementationPlanSchema.safeParse(noProvenance).success, false);
 });
 
 test("new feasibility enum members and run request are public", () => {

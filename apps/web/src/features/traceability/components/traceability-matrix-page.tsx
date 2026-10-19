@@ -1,6 +1,6 @@
 // Renders element-level traceability from persisted generation mappings.
-import { Progress } from '../../../shared/ui/progress';
 import { Card } from "../../../shared/ui/card";
+import { CircularProgress } from "../../../shared/ui/circular-progress";
 import { TableCell } from '../../../shared/ui/table';
 import { TableBody } from '../../../shared/ui/table';
 import { TableHead } from '../../../shared/ui/table';
@@ -22,8 +22,6 @@ import { SelectControl } from "../../../shared/ui/select";
 import {
   PageContainer,
   PageHeader,
-  StatCard,
-  StatGrid,
   TablePagination,
   TableToolbar,
 } from "../../../shared/template/layout/page";
@@ -55,7 +53,9 @@ import type {
 } from "@uml-platform/contracts";
 import {
   getDesignDiagramLabel,
+  getDesignModelId,
   getDiagramLabel,
+  getRequirementModelId,
   type DesignDiagramType,
   type DiagramType,
 } from "../../../entities/diagram/model";
@@ -73,13 +73,6 @@ type TraceabilityRef = {
   label?: string;
 };
 
-function historyRunKind(item: ReturnType<typeof useWorkspaceSession>["historyItems"][number]) {
-  if (item.runKind) return item.runKind;
-  if (!item.snapshot) return null;
-  if ("documentKind" in item.snapshot) return "document";
-  if ("requirementModels" in item.snapshot) return "design";
-  return "requirements";
-}
 function ChipList({
   items,
   emptyText,
@@ -211,9 +204,8 @@ export function TraceabilityMatrixPage({
     designModels,
     requirementModelTraceability,
     designModelTraceability,
-    historyItems,
-    requirementTraceabilityStale,
-    designTraceabilityStale,
+    staleRequirementModelIds,
+    staleDesignModelIds,
   } = useWorkspaceSession();
   const [query, setQuery] = useState("");
   const [groupFilter, setGroupFilter] = useState(ALL_GROUPS);
@@ -228,27 +220,6 @@ export function TraceabilityMatrixPage({
   const isAnalysisRequirementScope = !isDesign && scope?.diagramKind === "analysis";
   const refSeparator = t("traceability.refSeparator");
   const traceabilityCopy = useMemo(() => createTraceabilityCopy(t), [t]);
-  const trustedCoverageMatrix = useMemo(
-    () => {
-      const acceptedKinds = new Set(
-        isDesign ? ["design"] : ["design", "requirements"],
-      );
-      return (
-        [...historyItems]
-          .sort(
-            (left, right) =>
-              new Date(right.createdAt).getTime() -
-              new Date(left.createdAt).getTime(),
-          )
-          .find(
-            (item) =>
-              acceptedKinds.has(historyRunKind(item) ?? "") &&
-              Boolean(item.snapshot?.coverageMatrix),
-          )?.snapshot?.coverageMatrix ?? null
-      );
-    },
-    [historyItems, isDesign],
-  );
   const rows = useMemo(
     () =>
       isBusinessFlow ? buildBusinessFlowRows(businessFlowData?.artifact ?? null, businessFlowData?.rules ?? [], traceabilityCopy) : isContext
@@ -267,7 +238,6 @@ export function TraceabilityMatrixPage({
             designModelTraceability,
             scope,
             traceabilityCopy,
-            trustedCoverageMatrix,
           )
         : buildRequirementRows(
             rules,
@@ -275,7 +245,6 @@ export function TraceabilityMatrixPage({
             requirementModelTraceability,
             scope,
             traceabilityCopy,
-            trustedCoverageMatrix,
           ),
     [
       designModelTraceability,
@@ -290,10 +259,12 @@ export function TraceabilityMatrixPage({
       rules,
       scope,
       traceabilityCopy,
-      trustedCoverageMatrix,
     ],
   );
   const groupOptions = useMemo(() => buildGroupOptions(rows), [rows]);
+  // Measure the scoped matrix, so searching and pagination cannot inflate coverage.
+  const mappedCount = rows.filter((row) => row.status === "mapped").length;
+  const mappingRate = rows.length > 0 ? Math.round((mappedCount / rows.length) * 100) : 0;
   const filteredRows = rows.filter(
     (row) =>
       (groupFilter === ALL_GROUPS || row.groupKey === groupFilter) &&
@@ -305,9 +276,6 @@ export function TraceabilityMatrixPage({
   const paginatedRows = filteredRows.slice(pageStart, pageStart + pageSize);
   const selectedRow =
     filteredRows.find((row) => row.id === selectedRowId) ?? paginatedRows[0] ?? null;
-  const mappedCount = filteredRows.filter((row) => row.status === "mapped").length;
-  const coverage =
-    filteredRows.length > 0 ? Math.round((mappedCount / filteredRows.length) * 100) : 0;
   const hasTraceability = isContext
     ? rows.length > 0
     : isDesign
@@ -318,12 +286,12 @@ export function TraceabilityMatrixPage({
   const isTraceabilityStale = isContext
     ? Boolean(isBusinessFlow ? businessFlowData?.stale : contextData?.stale)
     : isDesign
-    ? designTraceabilityStale
+    ? Object.values(designModels).some(model => staleDesignModelIds.includes(getDesignModelId(model)) &&
+        (!scope || (scope.modelId ? getDesignModelId(model) === scope.modelId : model.diagramKind === scope.diagramKind)))
     : isAnalysisRequirementScope
       ? false
-      : requirementTraceabilityStale;
-  const hasIncompleteCoverage =
-    hasTraceability && filteredRows.length > 0 && mappedCount < filteredRows.length;
+      : Object.values(models).some(model => model && staleRequirementModelIds.includes(getRequirementModelId(model)) &&
+          (!scope || (scope.modelId ? getRequirementModelId(model) === scope.modelId : model.diagramKind === scope.diagramKind)));
   const missingTraceabilityTitle = isContext
     ? t(`${feasibilityCopyPrefix}.missingTitle`)
     : isDesign
@@ -384,15 +352,17 @@ export function TraceabilityMatrixPage({
   const sourceColumnLabel = isAnalysisRequirementScope ? t("traceability.columns.sourceUseCaseFlow") : t("traceability.columns.sourceRequirementRule");
   const traceabilityNoticeTitle = !hasTraceability && rows.length > 0
     ? missingTraceabilityTitle
-    : hasTraceability && (isTraceabilityStale || hasIncompleteCoverage)
+    : hasTraceability && isTraceabilityStale
       ? isTraceabilityStale ? t("traceability.stale.title") : t("traceability.incomplete.title")
       : null;
   const traceabilityNoticeMessage = !hasTraceability && rows.length > 0
     ? missingTraceabilityMessage
-    : hasTraceability && (isTraceabilityStale || hasIncompleteCoverage)
+    : hasTraceability && isTraceabilityStale
       ? isContext
         ? t(`${feasibilityCopyPrefix}.${isTraceabilityStale ? "staleMessage" : "missingMessage"}`)
-        : isDesign ? t("traceability.stale.designMessage") : t("traceability.stale.requirementMessage")
+        : isTraceabilityStale
+          ? isDesign ? t("traceability.stale.designMessage") : t("traceability.stale.requirementMessage")
+          : t("traceability.incomplete.message")
       : null;
   const traceabilityFeedback: FeedbackDialogState | null = traceabilityNoticeTitle && traceabilityNoticeMessage ? {
     dedupeKey: `traceability:${scope}:notice`,
@@ -496,28 +466,32 @@ export function TraceabilityMatrixPage({
                 </div>
               ) : (
                 <div className="max-w-full">
-                  <Table className="w-full min-w-[1200px] border-collapse text-sm">
+                  {/* Fixed layout keeps long element names from widening the sticky column. */}
+                  <Table className={cn("w-full table-fixed border-collapse text-sm", isDesign ? "min-w-[1120px]" : "min-w-[860px]")}>
                     <TableHeader className="bg-muted/20 text-xs text-muted-foreground">
                       <TableRow>
-                        <TableHead className="sticky left-0 z-10 w-[34%] border-b border-r border-border bg-card px-4 py-4 text-left font-medium">
+                        <TableHead className="sticky left-0 z-10 w-[200px] border-b border-r border-border bg-card px-4 py-4 text-left font-medium">
                           {isContext
                             ? t(`${feasibilityCopyPrefix}.elementColumn`)
                             : isDesign
                               ? t("traceability.columns.designElement")
                               : t("traceability.columns.requirementElement")}
                         </TableHead>
-                        <TableHead className="w-[14%] border-b border-r border-border px-4 py-4 text-left font-medium">
+                        <TableHead className="w-[160px] border-b border-r border-border px-4 py-4 text-left font-medium">
+                          {t("traceability.columns.sourceModel")}
+                        </TableHead>
+                        <TableHead className="w-[100px] border-b border-r border-border px-4 py-4 text-left font-medium">
                           {t("traceability.columns.type")}
                         </TableHead>
                         {isDesign && (
-                          <TableHead className="w-[22%] border-b border-r border-border px-4 py-4 text-left font-medium">
+                          <TableHead className="w-[260px] border-b border-r border-border px-4 py-4 text-left font-medium">
                             {t("traceability.columns.sourceDesignElement")}
                           </TableHead>
                         )}
-                        <TableHead className="w-[20%] border-b border-r border-border px-4 py-4 text-left font-medium">
+                        <TableHead className="border-b border-r border-border px-4 py-4 text-left font-medium">
                           {isDesign ? t("traceability.columns.sourceRequirementDiagram") : sourceColumnLabel}
                         </TableHead>
-                        <TableHead className="w-[10%] border-b border-border px-4 py-4 text-center font-medium">
+                        <TableHead className="w-[120px] border-b border-border px-4 py-4 text-center font-medium">
                           {t("traceability.columns.mappingStatus")}
                         </TableHead>
                       </TableRow>
@@ -526,7 +500,7 @@ export function TraceabilityMatrixPage({
                       {filteredRows.length === 0 ? (
                         <TableRow>
                           <TableCell
-                            colSpan={isDesign ? 5 : 4}
+                            colSpan={isDesign ? 6 : 5}
                             className="px-4 py-10 text-center text-sm text-muted-foreground"
                           >
                             {t("traceability.empty.noMatches")}
@@ -543,24 +517,17 @@ export function TraceabilityMatrixPage({
                             onClick={() => setSelectedRowId(row.id)}
                           >
                             <TableCell className="sticky left-0 z-10 border-r border-border bg-card px-4 py-3 align-middle">
-                              <div className="flex min-w-0 flex-col gap-1">
-                                <span className="truncate font-semibold text-foreground">
-                                  {row.label}
-                                </span>
-                                <span className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                                  {row.subtitle}
-                                </span>
-                              </div>
+                              <span title={row.label} className="block min-w-0 truncate font-semibold text-foreground">
+                                {row.label}
+                              </span>
                             </TableCell>
                             <TableCell className="border-r border-border px-4 py-3 align-middle">
-                              <div className="flex flex-col gap-1">
-                                <Badge variant="secondary" className="w-fit text-[10px]">
-                                  {row.groupLabel}
-                                </Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {row.typeLabel}
-                                </span>
-                              </div>
+                              <Badge title={row.groupLabel} variant="secondary" className="max-w-full truncate text-[10px]">
+                                {row.groupLabel}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="whitespace-normal border-r border-border px-4 py-3 align-middle text-xs text-muted-foreground">
+                              {row.typeLabel}
                             </TableCell>
                             {isDesign && (
                               <TableCell className="border-r border-border px-4 py-3 align-middle">
@@ -612,27 +579,24 @@ export function TraceabilityMatrixPage({
             </Card>
 
             <aside className="flex min-w-0 flex-col gap-4">
-              <StatGrid className="grid-cols-1 gap-4 sm:grid-cols-1 xl:grid-cols-1">
-                <StatCard
-                  icon={<CheckCircle2 />}
-                  iconClassName="bg-success/10 text-success"
-                  value={`${coverage}%`}
-                  label={t("traceability.coverage.title")}
-                  badge={t("traceability.status.mapped")}
-                />
-                <Card as="section" className="gap-3 p-4">
-                  <Progress value={coverage} aria-label={t("traceability.status.mapped")} className="**:data-[slot=progress-track]:h-2" />
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    {t("traceability.coverage.mappedCount", { mapped: mappedCount, total: filteredRows.length })}
+              <Card as="section" className="gap-0 p-4">
+                <h3 className="text-sm font-semibold text-foreground">{t("traceability.coverage.title")}</h3>
+                <div className="flex flex-col items-center gap-4 py-4 text-center">
+                  <CircularProgress
+                    value={mappingRate}
+                    size={100}
+                    strokeWidth={8}
+                    showLabel
+                    aria-label={t("traceability.coverage.title")}
+                    progressClassName="stroke-sky-600 dark:stroke-sky-400"
+                    progressBgClassName="stroke-sky-600/10 dark:stroke-sky-400/10"
+                    labelClassName="text-sky-600 dark:text-sky-400"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("traceability.coverage.mappedCount", { mapped: mappedCount, total: rows.length })}
                   </p>
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    {t("traceability.coverage.integrityLabel")}
-                    {hasTraceability && !isTraceabilityStale && !hasIncompleteCoverage
-                      ? t("traceability.coverage.complete")
-                      : t("traceability.coverage.needsRegeneration")}
-                  </p>
-                </Card>
-              </StatGrid>
+                </div>
+              </Card>
 
               <Card as="section" className="gap-0 py-0 p-4">
                 <h3 className="text-sm font-semibold text-foreground">{t("traceability.details.title")}</h3>

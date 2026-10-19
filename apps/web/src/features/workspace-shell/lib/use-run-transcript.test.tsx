@@ -10,12 +10,23 @@ afterEach(() => { vi.resetAllMocks(); vi.useRealTimers(); });
 const event = (runId: string, eventId: string): RunActivityEvent => ({ type: "run_activity", runId, eventId, callId: "call", stage: "generate_models", phase: "started", createdAt: "2026-09-21T00:00:00.000Z", format: "technical" });
 
 describe("restored task transcript", () => {
+  it("stops reconnecting when stored events violate the current contract", async () => {
+    vi.useFakeTimers();
+    vi.mocked(readRunTranscript).mockRejectedValue(Object.assign(new Error("Invalid event contract"), { name: "ZodError" }));
+    const { result } = renderHook(() => useRunTranscript("project", "a", "requirements"));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.unavailable).toBe(true);
+    expect(result.current.events).toEqual([]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(readRunTranscript).toHaveBeenCalledTimes(1);
+    expect(streamRunTranscript).not.toHaveBeenCalled();
+  });
   it("merges persisted and live replay once", async () => {
     const first = event("a", "first");
     vi.mocked(readRunTranscript).mockResolvedValue({ events: [first], run: { status: "running", runKind: "requirements" } });
     vi.mocked(streamRunTranscript).mockImplementation(async (_project, _run, _kind, onEvent) => {
       onEvent(first); onEvent({ ...first, eventId: "output", phase: "output", text: "内容" });
-      onEvent({ type: "cancelled", eventId: "end", message: "停止" });
+      onEvent({ type: "cancelled", createdAt: "2026-10-18T00:00:00.000Z", eventId: "end", message: "停止" });
     });
     const { result } = renderHook(() => useRunTranscript("project", "a", "requirements"));
     await waitFor(() => expect(result.current.events).toHaveLength(2));
@@ -44,7 +55,7 @@ describe("restored task transcript", () => {
     const first = event("a", "first");
     vi.mocked(readRunTranscript).mockResolvedValue({ events: [first], run: { status: "running", runKind: "requirements" } });
     vi.mocked(streamRunTranscript).mockRejectedValueOnce(new TypeError("network"))
-      .mockImplementationOnce(async (_project, _run, _kind, onEvent) => { onEvent(first); onEvent({ type: "cancelled", eventId: "end", message: "停止" }); });
+      .mockImplementationOnce(async (_project, _run, _kind, onEvent) => { onEvent(first); onEvent({ type: "cancelled", createdAt: "2026-10-18T00:00:00.000Z", eventId: "end", message: "停止" }); });
     const { result } = renderHook(() => useRunTranscript("project", "a", "requirements"));
     await act(async () => { await Promise.resolve(); });
     expect(result.current.disconnected).toBe(true);

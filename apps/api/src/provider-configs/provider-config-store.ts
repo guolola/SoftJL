@@ -1,14 +1,12 @@
 // Owns secure model provider configuration storage and no-readback API key views.
+import { randomUUID } from "node:crypto";
 import { createSecretKey, encryptSecret, decryptSecret, hashSecret } from "./provider-secret.js";
-import {
-  randomUUID,
-} from "node:crypto";
 import {
   providerModelCapabilitySchema,
   type ProviderModelCapability,
   type ProviderModelCapabilityMap,
 } from "@uml-platform/contracts";
-import { requireAllowedModels } from "./default-provider-models.js";
+import { normalizeProviderAllowedModels } from "./default-provider-models.js";
 import {
   inferOpenAiCompatibleProvider,
   normalizeManagedProviderBaseUrl,
@@ -106,7 +104,7 @@ export interface ProviderConfigStore {
   }): ProviderConfigView;
   list(): ProviderConfigView[];
   get(id: string): ProviderConfigView | null;
-  updateMetadata?(id: string, input: {
+  updateMetadata(id: string, input: {
     allowedModels?: string[];
     apiKey?: string;
     baseUrl?: string;
@@ -120,13 +118,13 @@ export interface ProviderConfigStore {
     scopeType?: ProviderConfigScopeType;
   }, actor: string): ProviderConfigView | null;
   rotate(id: string, apiKey: string, actor: string): ProviderConfigView | null;
-  disable?(id: string, actor: string): ProviderConfigView | null;
-  enable?(id: string, actor: string): ProviderConfigView | null;
+  disable(id: string, actor: string): ProviderConfigView | null;
+  enable(id: string, actor: string): ProviderConfigView | null;
   revoke(id: string, actor: string): ProviderConfigView | null;
   getSecret(id: string): string | null;
   markUsed(id: string): ProviderConfigView | null;
   recordFailure?(id: string): ProviderConfigView | null;
-  resetBreaker?(id: string): ProviderConfigView | null;
+  resetBreaker(id: string): ProviderConfigView | null;
   tryAcquireBreakerProbe(input: {
     id: string;
     now: Date;
@@ -193,6 +191,9 @@ export function normalizeProviderModelCapabilities(
   });
   return normalized;
 }
+
+
+
 
 
 export function maskApiKey(apiKey: string) {
@@ -275,6 +276,23 @@ export function createProviderConfigStore({
     return Math.max(0, startedAt + durationMs - now.getTime());
   }
 
+  function requireAllowedModels(
+    defaultModel: string,
+    allowedModels: string[] | undefined,
+  ) {
+    const normalized = normalizeProviderAllowedModels(allowedModels ?? []);
+    if (normalized.length === 0) {
+      throw new ProviderConfigPolicyError(
+        "Provider config requires at least one allowed model",
+      );
+    }
+    if (!normalized.includes(defaultModel)) {
+      throw new ProviderConfigPolicyError(
+        "Provider default model must be included in allowed models",
+      );
+    }
+    return normalized;
+  }
 
   return {
     create(input) {
@@ -287,7 +305,6 @@ export function createProviderConfigStore({
       const allowedModels = requireAllowedModels(
         defaultModel,
         input.allowedModels,
-        { baseUrl, provider },
       );
       const view: ProviderConfigView = {
         id,
@@ -307,7 +324,7 @@ export function createProviderConfigStore({
         modelCapabilities: normalizeProviderModelCapabilities(
           allowedModels,
           input.modelCapabilities,
-          { fillMissing: Boolean(input.modelCapabilities) },
+          { fillMissing: true },
         ),
         quota: input.quota ?? "unlimited",
         status: "active",
@@ -350,7 +367,6 @@ export function createProviderConfigStore({
       const nextAllowedModels = requireAllowedModels(
         nextDefaultModel,
         input.allowedModels ?? record.view.allowedModels,
-        { baseUrl, provider },
       );
       const nextScopeType = input.scopeType ?? record.view.scopeType;
       const scope = normalizeScope({
@@ -491,8 +507,9 @@ export function createProviderConfigStore({
         };
       }
 
+      if (!record.view.breakerOpenedAt) throw new ProviderConfigPolicyError("Open provider circuit requires its recorded opening timestamp");
       const cooldownRemainingMs = millisecondsUntil(
-        record.view.breakerOpenedAt ?? record.view.breakerLastFailureAt,
+        record.view.breakerOpenedAt,
         cooldownMs,
         now,
       );

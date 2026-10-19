@@ -1077,7 +1077,7 @@ function buildSequenceDetailModel(
 
   const relationships: DiagramRelationshipDetail[] = model.messages.map((message) => ({
     id: message.id,
-    kind: "relationship",
+    kind: "relationship" as const,
     label: message.name,
     typeLabel: sequenceMessageTypeLabel(message.type),
     sourceId: message.sourceId,

@@ -1,4 +1,4 @@
-import { createRunSnapshot } from "../../../test/artifact-fixtures";
+import { createRunSnapshot } from "@/test/contract-fixtures";
 import { describe, expect, it } from "vitest";
 import type {
   DiagramError,
@@ -17,13 +17,13 @@ import {
 
 const baseRule: RequirementRule = {
   id: "REQ-001",
-  category: "功能需求",
+  type: "functional" as const,
   text: "用户登录后可以管理实验资源。",
-  relatedDiagrams: ["usecase", "class"],
+
 };
 
 function model(diagramKind: "usecase" | "class") {
-  return { diagramKind } as unknown as NonNullable<
+  return { diagramKind, classes: [{ id: "resource", name: "资源" }] } as unknown as NonNullable<
     WorkspaceRecord["models"][typeof diagramKind]
   >;
 }
@@ -83,10 +83,11 @@ function task(overrides: Partial<GenerationTask>): GenerationTask {
 
 function input(overrides: Partial<LineageGraphInput> = {}): LineageGraphInput {
   return {
+    requirementModelTraceability: [],
     requirementText: "订单系统需求",
     rules: [],
     isRulesStale: false,
-    requirementReviewCandidates: {},
+
     models: {},
     generatedDiagrams: [],
     svgArtifacts: {},
@@ -129,6 +130,7 @@ describe("buildLineageGraph", () => {
     const graph = buildLineageGraph(
       input({
         rules: [baseRule],
+        requirementModelTraceability: [{ ruleId: baseRule.id, mappingSource: "llm", target: { diagramKind: "class", elementId: "resource", elementKind: "class", label: "资源" } }],
         models: {
           usecase: model("usecase"),
           class: model("class"),
@@ -324,7 +326,7 @@ describe("buildLineageGraph", () => {
     );
     expect(documentNode?.status).toBe("stale");
     expect(documentNode?.hasViewableArtifact).toBe(false);
-    expect(documentNode?.reason).toContain("已在文档中心删除");
+    expect(documentNode?.reason).toContain("已在说明书删除");
   });
 
 
@@ -403,7 +405,7 @@ describe("buildLineageGraph", () => {
   it("marks stale downstream requirement nodes with stale-cause edges", () => {
     const graph = buildLineageGraph(
       input({
-        rules: [baseRule],
+        rules: [{ ...baseRule, type: "data" }],
         isRulesStale: true,
         models: { class: model("class") },
         generatedDiagrams: ["class"],
@@ -474,7 +476,7 @@ describe("buildLineageGraph", () => {
   it("keeps failures local and marks blocked edges as errors", () => {
     const graph = buildLineageGraph(
       input({
-        rules: [baseRule],
+        rules: [{ ...baseRule, type: "data" }],
         diagramErrors: {
           class: diagramError("Conflict in primary key definition."),
         },
@@ -624,14 +626,14 @@ describe("buildLineageGraph", () => {
     const graph = buildLineageGraph(
       input({
         projectRuns: [
-          {
+          { operationType: "design_modeling",
             runId: "server-design-active",
             status: "running",
             stage: "generate_design_models",
             runKind: "design",
             requestedDiagrams: ["deployment"],
           },
-          {
+          { operationType: "document_generation",
             runId: "server-document-active",
             status: "queued",
             runKind: "document",
@@ -653,7 +655,8 @@ describe("buildLineageGraph", () => {
   it("collects only directed upstream and downstream impact paths", () => {
     const graph = buildLineageGraph(
       input({
-        rules: [baseRule],
+        rules: [{ ...baseRule, type: "data" }],
+        requirementModelTraceability: [{ ruleId: baseRule.id, mappingSource: "llm", target: { diagramKind: "class", elementId: "resource", elementKind: "class", label: "资源" } }],
         models: {
           usecase: model("usecase"),
           class: model("class"),

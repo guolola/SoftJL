@@ -12,6 +12,14 @@ const builders = [
   (mode?: GenerationExecutionMode) => createStartFeasibilityRunInput(["context"], mode),
 ];
 describe("generation payload eligibility", () => {
+  it.each(["medium", "low"])("uses the shared reasoning preference in all engineering workflows: %s", effort => {
+    patchUserSettings({ providerConfigId: "provider-1", defaultModel: "model-1", providerModelOptions: ["model-1"] });
+    localStorage.setItem("aui-home-effort", effort);
+    for (const build of builders) {
+      expect(build("provider")).toHaveProperty("reasoning", effort === "medium");
+      expect(build("offline-demo")).toHaveProperty("reasoning", undefined);
+    }
+  });
   it.each(builders)("requires real settings unless demo context is explicit %#", (build) => {
     expect(() => build()).toThrow("供应商");
     expect(build("offline-demo").providerSettings).toEqual({ providerConfigId: "offline-demo", model: "offline-demo-fixed-artifacts" });

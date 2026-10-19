@@ -173,3 +173,27 @@ export function getDesignDiagramDescription(diagram: DesignDiagramType, t?: TFun
     defaultValue: DESIGN_DIAGRAM_META[diagram].description,
   }) ?? DESIGN_DIAGRAM_META[diagram].description;
 }
+
+// Resolve failed model tasks from business names; technical IDs remain record keys only.
+export function getModelTaskLabel(id: string, options: {
+  design?: boolean;
+  models?: readonly (DiagramModelSpec | DesignDiagramModelSpec)[];
+  requirementModels?: readonly DiagramModelSpec[];
+  t?: TFunction;
+} = {}) {
+  const model = options.models?.find((candidate) => candidate.modelId === id);
+  const kind = model?.diagramKind ?? id.split(":")[0]!;
+  const label = options.design && Object.hasOwn(DESIGN_DIAGRAM_META, kind)
+    ? getDesignDiagramLabel(kind as DesignDiagramType, options.t)
+    : Object.hasOwn(DIAGRAM_META, kind)
+      ? getDiagramLabel(kind as DiagramType, options.t)
+      : options.t?.("generation.taskKinds.unknown") ?? "项目生成任务";
+  if (kind !== "sequence" && kind !== "analysis") return label;
+  const scopedModel = model?.diagramKind === "sequence" || model?.diagramKind === "analysis" ? model : undefined;
+  const useCaseId = scopedModel?.sourceUseCaseId ?? id.slice(kind.length + 1);
+  const sources = options.design ? options.requirementModels : options.models;
+  const useCase = sources?.flatMap((source) => source.diagramKind === "usecase" ? source.useCases : [])
+    .find((candidate) => candidate.id === useCaseId);
+  const name = scopedModel?.sourceUseCaseName || useCase?.name;
+  return name ? `${label}：${name}` : label;
+}

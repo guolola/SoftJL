@@ -1,15 +1,10 @@
 // Normalizes provider-managed model catalogs without adding platform defaults.
 import { ProviderConfigPolicyError } from "./provider-url-policy.js";
 export function normalizeProviderAllowedModels(
-  _defaultModel: string,
-  allowedModels?: string[] | null,
-  _context?: {
-    baseUrl?: string | null;
-    provider?: string | null;
-  },
+  allowedModels: string[],
 ) {
   const normalized = new Set(
-    (allowedModels ?? [])
+    allowedModels
       .map((model) => model.trim())
       .filter(Boolean),
   );
@@ -19,9 +14,9 @@ export function normalizeProviderAllowedModels(
 export function requireAllowedModels(
   defaultModel: string,
   allowedModels: string[] | undefined,
-  context: { baseUrl: string; provider: string },
+  _context: { baseUrl: string; provider: string },
 ) {
-  const normalized = normalizeProviderAllowedModels(defaultModel, allowedModels, context);
+  const normalized = normalizeProviderAllowedModels(allowedModels ?? [defaultModel]);
   if (normalized.length === 0) {
     throw new ProviderConfigPolicyError(
       "Provider config requires at least one allowed model",

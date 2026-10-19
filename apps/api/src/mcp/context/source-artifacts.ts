@@ -2,8 +2,9 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
-  atomicRequirementSchema,
   requirementRuleSchema,
+  requirementBaselineSchema,
+  requirementBaselineTraceEntries,
   diagramModelSpecSchema,
   designDiagramModelSpecSchema,
   requirementModelTraceabilityEntrySchema,
@@ -58,21 +59,17 @@ export function canonical(value: unknown): string {
 export const contentHash = (value: unknown) =>
   `sha256:${createHash("sha256").update(canonical(value)).digest("hex")}`;
 function parsedItems<T>(schema: z.ZodType<T>, value: unknown): T[] {
-  return array(value).flatMap((entry) => {
-    const result = schema.safeParse(entry);
-    return result.success ? [result.data] : [];
-  });
+  return schema.array().parse(value ?? []);
 }
-// Historical review metadata cannot reject otherwise valid saved implementation facts or trace edges.
-const requirementFactsSchema = atomicRequirementSchema.omit({ status: true, fieldProvenance: true, confidence: true });
-const requirementTraceFactsSchema = requirementModelTraceabilityEntrySchema.pick({ ruleId: true, target: true });
-const designTraceFactsSchema = designModelTraceabilityEntrySchema.pick({ source: true, targets: true, upstreamDesignRefs: true });
 function freshness(
   stored: unknown,
   current: string,
 ): McpSourceVersion["freshness"] {
-  // Unknown and legacy input hashes do not establish a verified source baseline.
-  return !current || typeof stored !== "string" || !stored.startsWith("fp:v3:")
+  if (typeof stored === "string" && (stored.startsWith("stale:fp:v3:") || stored === "stale:unknown")) return "stale";
+  if (stored != null && (typeof stored !== "string" || !stored.startsWith("fp:v3:"))) {
+    throw new Error("Unsupported source fingerprint; regenerate the artifact with the current contract");
+  }
+  return !current || stored == null
     ? "unknown"
     : stored === current
       ? "current"
@@ -104,19 +101,13 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
     rules: state.rules ?? [],
   });
   const requirementTrace = parsedItems(
-    requirementTraceFactsSchema,
+    requirementModelTraceabilityEntrySchema,
     state.requirementModelTraceability,
-  );
+  ).map(({ ruleId, target }) => ({ ruleId, target }));
   const designTrace = parsedItems(
-    designTraceFactsSchema,
+    designModelTraceabilityEntrySchema,
     state.designModelTraceability,
-  );
-  if (
-    requirementTrace.length !==
-      array(state.requirementModelTraceability).length ||
-    designTrace.length !== array(state.designModelTraceability).length
-  )
-    issues.push("部分追踪记录不符合领域契约，无法验证；请在平台检查来源。");
+  ).map(({ source, targets, upstreamDesignRefs }) => ({ source, targets, ...(upstreamDesignRefs ? { upstreamDesignRefs } : {}) }));
   if (
     typeof state.requirementText === "string" &&
     state.requirementText.trim()
@@ -135,23 +126,15 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
       },
     });
   }
-  const baseline = record(state.requirementBaseline);
-  const requirements = parsedItems(
-    requirementFactsSchema,
-    baseline.requirements,
-  );
+  const baseline = requirementBaselineSchema.nullable().parse(state.requirementBaseline ?? null);
+  const snapshotRequirements = baseline ? requirementBaselineTraceEntries(baseline) : [];
   const rules = parsedItems(requirementRuleSchema, state.rules);
-  if (
-    requirements.length !== array(baseline.requirements).length ||
-    rules.length !== array(state.rules).length
-  )
-    issues.push("部分需求字段不符合领域契约，已标记缺失，未输出原始工作区。");
-  for (const requirement of requirements) {
+  for (const requirement of snapshotRequirements) {
     add(
       {
         id: `requirement:${requirement.id}`,
         stage: "requirements",
-        title: requirement.sourceFragment,
+        title: requirement.action,
         requirementIds: [
           requirement.id,
           ...(requirement.sourceRuleId ? [requirement.sourceRuleId] : []),
@@ -159,14 +142,15 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
         dependencies: [],
         sourceConsistency: "unknown",
         issues: [],
-        payload: { requirement },
+        payload: { requirement: { id: requirement.id, sourceRuleId: requirement.sourceRuleId, text: requirement.action,
+          ...(requirement.sourceFragment ? { sourceFragment: requirement.sourceFragment } : {}) } },
       },
       state.requirementInputFingerprint,
       ruleInput,
     );
   }
   for (const rule of rules) {
-    const linked = requirements.filter((req) => req.sourceRuleId === rule.id);
+    const linked = snapshotRequirements.filter((req) => req.sourceRuleId === rule.id);
     add(
       {
         id: `rule:${rule.id}`,
@@ -255,8 +239,8 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
   const resolve = (
     ref: { modelId?: string; diagramKind: string },
     stage: SourceArtifact["stage"],
-  ) =>
-    artifacts.filter(
+  ) => {
+    const matches = artifacts.filter(
       (a) =>
         a.stage === stage &&
         record(a.payload.model).diagramKind === ref.diagramKind &&
@@ -265,6 +249,13 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
             a.id === `${stage}:${ref.modelId}`
           : record(a.payload.model).diagramKind === ref.diagramKind),
     );
+    // A current singleton reference may omit modelId; ambiguous references cannot infer provenance.
+    if (matches.length > 1) {
+      issues.push(`追踪引用 ${stage}/${ref.modelId ?? ref.diagramKind} 未指定唯一模型，无法建立来源关系。`);
+      return [];
+    }
+    return matches;
+  };
   for (const trace of requirementTrace) {
     const targets = resolve(trace.target, "analysis");
     for (const target of targets) {
@@ -279,10 +270,6 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
           .map((a) => a.id),
       );
       (target.payload.traceability as unknown[]).push(trace);
-      if (targets.length > 1)
-        target.issues.push(
-          "追踪未指定唯一模型标识，保留全部候选依赖，请确认。",
-        );
     }
   }
   for (const trace of designTrace) {
@@ -410,7 +397,7 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
         staleChanged = true;
       }
   }
-  if (!requirements.length && !rules.length)
+  if (!snapshotRequirements.length && !rules.length)
     issues.push("尚无结构化需求与验收条件，可先根据原始需求实现明确的部分。");
   return {
     artifacts: artifacts.sort((a, b) => a.id.localeCompare(b.id)),

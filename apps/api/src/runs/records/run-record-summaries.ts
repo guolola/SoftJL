@@ -1,6 +1,7 @@
 // Builds run history summaries and filters from run records without mutating lifecycle state.
-import type { RunError } from "@uml-platform/contracts";
+import type { RunError, RunTokenConsumption } from "@uml-platform/contracts";
 import type { RunRecord } from "./run-record-store.js";
+import { operationForSnapshot } from "./run-output-provenance.js";
 
 type SnapshotDiagramErrorSummary = {
   diagramId: string;
@@ -94,16 +95,13 @@ function runActionEvents(record: RunRecord) {
   return record.events.filter((event) => event.type === "run_action");
 }
 
-export function summarizeRunRecord(record: RunRecord) {
+export function summarizeRunRecord(record: RunRecord, tokenConsumption?: RunTokenConsumption) {
   const snapshot = record.snapshot;
   const createdAt = record.metadata?.createdAt ?? new Date().toISOString();
   const completedAt = record.metadata?.completedAt ?? (record.terminal ? createdAt : null);
   const status = displayRunStatus(record);
   const stage = snapshot.currentStage ?? status;
-  const isActive = !record.terminal && (status === "running" || status === "queued");
   const snapshotAvailable = Boolean(snapshot);
-  const isDocumentRun = "documentKind" in snapshot;
-  const isFeasibilityRun = "selectedArtifacts" in snapshot;
   const documentDownloadAvailable = "documentKind" in snapshot
     ? (
     status === "completed" &&
@@ -118,6 +116,7 @@ export function summarizeRunRecord(record: RunRecord) {
   const latestAction = actions.at(-1) ?? null;
   return {
     runId: snapshot.runId,
+    ...(tokenConsumption ? { tokenConsumption } : {}),
     projectId: record.metadata?.projectId ?? null,
     status,
     stage,
@@ -138,6 +137,7 @@ export function summarizeRunRecord(record: RunRecord) {
 
     model: readSnapshotModel(snapshot) ?? null,
     runKind: inferRunKind(snapshot),
+    operationType: operationForSnapshot(snapshot),
     documentKind:
       "documentKind" in snapshot ? snapshot.documentKind : null,
     selectedDiagrams: readSelectedDiagrams(snapshot),
@@ -157,7 +157,6 @@ export function summarizeRunRecord(record: RunRecord) {
     eventCount: record.persistedEventCount ?? record.events.length,
     terminal: record.terminal,
     snapshotAvailable,
-    canRestore: snapshotAvailable && !isActive && !isDocumentRun && !isFeasibilityRun,
     documentDownloadAvailable,
   };
 }

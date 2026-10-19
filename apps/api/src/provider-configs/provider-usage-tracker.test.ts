@@ -35,19 +35,18 @@ test("provider usage tracker records user/project/provider/taskType usage dimens
   });
 
   assert.match(client.calls[0]?.sql ?? "", /insert into provider_usage_events/i);
-  assert.deepEqual(client.calls[0]?.params.slice(1, 9), [
+  assert.deepEqual(client.calls[0]?.params.slice(1, 8), [
     "user-1",
     "project-1",
     "provider-1",
     "requirements_to_uml",
     "203.0.113.7",
-    null,
     3,
     "success",
   ]);
 });
 
-test("provider usage tracker records provider model, course, class, and token metadata", async () => {
+test("provider usage tracker records provider model and token metadata", async () => {
   const client = new CapturingClient();
   const tracker = createProviderUsageTracker(client);
 
@@ -58,8 +57,6 @@ test("provider usage tracker records provider model, course, class, and token me
     provider: "openai",
     model: "gpt-4.1",
     taskType: "requirements_to_uml",
-    courseId: "course-1",
-    classId: "class-1",
     tokenUsage: {
       inputTokens: 10,
       outputTokens: 20,
@@ -71,8 +68,6 @@ test("provider usage tracker records provider model, course, class, and token me
   assert.deepEqual(client.calls[0]?.params.at(-1), {
     provider: "openai",
     model: "gpt-4.1",
-    courseId: "course-1",
-    classId: "class-1",
     tokenUsage: {
       inputTokens: 10,
       outputTokens: 20,
@@ -112,7 +107,6 @@ test("provider usage tracker sends only parameters referenced by the default lim
     providerConfigId: "provider-1",
     taskType: "requirements_to_uml",
     ipAddress: "203.0.113.7",
-    organizationId: "org-1",
     limit: 10,
     windowSeconds: 60,
   });
@@ -265,8 +259,6 @@ test("provider usage tracker lists usage events with nullable token usage", asyn
       units: "1",
       outcome: "success",
       metadata: {
-        courseId: "course-1",
-        classId: "class-1",
         model: "gpt-4.1-mini",
       },
       created_at: "2026-05-22T00:00:00.000Z",
@@ -276,8 +268,6 @@ test("provider usage tracker lists usage events with nullable token usage", asyn
 
   const events = await tracker.listUsageEvents();
 
-  assert.equal(events[0]?.courseId, "course-1");
-  assert.equal(events[0]?.classId, "class-1");
   assert.equal(events[0]?.provider, "openai");
   assert.equal(events[0]?.model, "gpt-4.1-mini");
   assert.equal(events[0]?.tokenUsage, null);

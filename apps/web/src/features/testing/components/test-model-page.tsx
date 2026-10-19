@@ -1,3 +1,4 @@
+import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
 // Builds black-box test cases and coverage links from requirement and design models.
 import { Card } from "../../../shared/ui/card";
 import { useEffect, useMemo, useState } from "react";
@@ -5,7 +6,7 @@ import type { ColumnDef, PaginationState } from "@tanstack/react-table";
 import { useTranslation } from "react-i18next";
 import { PageContainer, PageHeader } from "../../../shared/template/layout/page";
 import type { TFunction } from "i18next";
-import { Filter, Play, ShieldCheck } from "lucide-react";
+import { Filter, ShieldCheck } from "lucide-react";
 import type {
   BlackBoxTestCase,
   DesignDiagramModelSpec,
@@ -19,7 +20,7 @@ import type {
   UseCaseEventFlow,
 } from "@uml-platform/contracts";
 import { Badge } from "../../../shared/ui/badge";
-import { Button } from "../../../shared/ui/button";
+import { ModelingGenerationButton } from "../../../shared/ui/modeling-generation-button";
 import { SelectControl } from "../../../shared/ui/select";
 import { StudioDataTable } from "../../../shared/ui/studio-data-table";
 import {
@@ -58,8 +59,8 @@ function formatRuleId(id: string) {
 
 function priorityForRule(rule?: RequirementRule) {
   if (!rule) return "P2" as const;
-  if (rule.category === "异常处理" || rule.category === "业务规则") return "P1" as const;
-  if (rule.category === "功能需求" || rule.category === "数据需求") return "P2" as const;
+  if (rule.type === "exception" || rule.type === "business-rule") return "P1" as const;
+  if (rule.type === "functional" || getRuleDisplayLabel(rule) === "数据需求") return "P2" as const;
   return "P3" as const;
 }
 
@@ -134,33 +135,20 @@ function refsForUseCaseDesign(
     });
 }
 
-function fallbackFlow(useCase: UseCaseDiagramSpec["useCases"][number]): UseCaseEventFlow {
-  return {
-    id: `${useCase.id}:main`,
-    name: "主事件流",
-    flowType: "main",
-    steps: [
-      {
-        order: 1,
-        actor: "actor",
-        actorAction: useCase.goal,
-        systemAction: useCase.postconditions[0] ?? "系统完成用例目标",
-        expectedResult: useCase.postconditions[0] ?? useCase.goal,
-      },
-    ],
-  };
+// Tests require recorded event flows; missing source behavior must be repaired in the use-case model.
+function hasCompleteEventFlows(model: UseCaseDiagramSpec) {
+  return model.useCases.every(useCase => Array.isArray(useCase.eventFlows) && useCase.eventFlows.length > 0 &&
+    useCase.eventFlows.every(flow => Array.isArray(flow.steps) && flow.steps.length > 0 &&
+      flow.steps.every(step => Boolean(step.actorAction?.trim() || step.systemAction?.trim()) &&
+        Boolean(step.expectedResult?.trim() || step.systemAction?.trim()))));
 }
 
-function buildTestSteps(flow: UseCaseEventFlow, useCase: UseCaseDiagramSpec["useCases"][number]) {
-  const steps = flow.steps.length > 0 ? flow.steps : fallbackFlow(useCase).steps;
-  return steps.map((step, index) => ({
+function buildTestSteps(flow: UseCaseEventFlow) {
+  return flow.steps.map((step, index) => ({
     order: index + 1,
-    action: step.actorAction ?? step.systemAction ?? `${useCase.name} 第 ${index + 1} 步`,
+    action: step.actorAction || step.systemAction!,
     expectedResult:
-      step.expectedResult ??
-      step.systemAction ??
-      useCase.postconditions[index] ??
-      "系统状态和反馈符合预期",
+      step.expectedResult || step.systemAction!,
   }));
 }
 
@@ -175,13 +163,13 @@ function generateBlackBoxTests(
   traceability: RequirementModelTraceabilityEntry[],
   t: TFunction,
 ): TestGenerationResult {
+  if (!hasCompleteEventFlows(useCaseModel)) throw new Error("Use-case event flows and steps are required.");
   const testCases: BlackBoxTestCase[] = [];
   const coverageRelations: TestCoverageRelation[] = [];
 
   for (const useCase of useCaseModel.useCases) {
     const matchedRules = rulesForUseCase(rules, useCase, traceability);
-    const flows =
-      (useCase.eventFlows?.length ?? 0) > 0 ? useCase.eventFlows : [fallbackFlow(useCase)];
+    const flows = useCase.eventFlows;
     const designRefs = refsForUseCaseDesign(designModels, useCase.id);
 
     flows.forEach((flow, flowIndex) => {
@@ -202,9 +190,9 @@ function generateBlackBoxTests(
         testData: uniqueStrings([
           flow.condition,
           flow.trigger,
-          sourceRule?.category === "数据需求" ? sourceRule.text : undefined,
+          sourceRule?.type === "data" ? sourceRule.text : undefined,
         ]),
-        steps: buildTestSteps(flow, useCase),
+        steps: buildTestSteps(flow),
         expectedResults: uniqueStrings([
           ...flow.steps.map((step) => step.expectedResult),
           ...useCase.postconditions,
@@ -225,7 +213,7 @@ function generateBlackBoxTests(
     });
 
     const boundaryRule = matchedRules.find((rule) =>
-      ["数据需求", "业务规则", "异常处理"].includes(rule.category),
+      ["数据需求", "业务规则", "异常处理"].includes(getRuleDisplayLabel(rule)),
     );
     if (boundaryRule) {
       const testCase: BlackBoxTestCase = {
@@ -264,7 +252,7 @@ function generateBlackBoxTests(
     coverageRelations.flatMap((relation) => relation.requirementIds),
   );
   for (const rule of rules.filter((candidate) => !coveredRuleIds.has(candidate.id))) {
-    const isBoundaryRule = ["数据需求", "业务规则", "异常处理"].includes(rule.category);
+    const isBoundaryRule = ["数据需求", "业务规则", "异常处理"].includes(getRuleDisplayLabel(rule));
     const testCase: BlackBoxTestCase = {
       id: `tc-requirement-${rule.id}`.replace(/[^A-Za-z0-9_-]/g, "-"),
       title: `${formatRuleId(rule.id)} - 需求级验证`,
@@ -297,14 +285,16 @@ function generateBlackBoxTests(
   return { testCases, coverageRelations };
 }
 
-export function TestModelPage() {
+type DisplayTestCase = Omit<BlackBoxTestCase, "scenarioType" | "priority"> & { scenarioType?: TestScenarioType; priority?: BlackBoxTestCase["priority"] };
+export type TestModelPageData = { testCases: DisplayTestCase[]; coverageRelations: TestCoverageRelation[] };
+export function TestModelPage({ ordinary }: { ordinary?: { result: TestModelPageData } } = {}) {
   const { t } = useTranslation();
   const {
     rules,
     models,
     designModels,
     requirementModelTraceability,
-    testGenerationResult: result,
+    testGenerationResult: professionalResult,
     updateTestGenerationResult,
     rulesVersion,
     workspaceInitialized,
@@ -315,15 +305,18 @@ export function TestModelPage() {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
   // Generated models are stored by modelId, which may differ from their diagram kind.
   const useCaseModel = findRequirementModelByKind(models, "usecase");
-  const blockedReason =
+  const result = ordinary?.result ?? professionalResult;
+  const blockedReason = ordinary ? null :
     !useCaseModel || !("useCases" in useCaseModel) || useCaseModel.useCases.length === 0
       ? t("testingPage.blocked.usecase")
-      : rules.length === 0
-        ? t("testingPage.blocked.rules")
-        : null;
-  const blockedByUseCase = Boolean(blockedReason) && blockedReason === t("testingPage.blocked.usecase");
+      : !hasCompleteEventFlows(useCaseModel)
+        ? t("testingPage.blocked.eventFlows")
+        : rules.length === 0
+          ? t("testingPage.blocked.rules")
+          : null;
+  const blockedByUseCase = Boolean(blockedReason) && blockedReason !== t("testingPage.blocked.rules");
   const blockFeedback = useMemo<FeedbackDialogState | null>(() => {
-    if (!workspaceInitialized || !blockedReason) return null;
+    if (ordinary || !workspaceInitialized || !blockedReason) return null;
     return {
       dedupeKey: blockedByUseCase
         ? "test-generation:usecase"
@@ -351,6 +344,7 @@ export function TestModelPage() {
     rulesVersion,
     t,
     workspaceInitialized,
+    ordinary,
   ]);
 
   useEffect(() => {
@@ -372,7 +366,7 @@ export function TestModelPage() {
     setPagination(current => ({ ...current, pageIndex: 0 }));
   }, [result, scenarioFilter]);
 
-  const testColumns = useMemo<ColumnDef<BlackBoxTestCase>[]>(() => [
+  const testColumns = useMemo<ColumnDef<DisplayTestCase>[]>(() => [
     {
       accessorKey: "title",
       header: t("testingPage.columns.case"),
@@ -380,7 +374,7 @@ export function TestModelPage() {
       cell: ({ row }) => (
         <div className="min-w-56 max-w-80 whitespace-normal">
           <div className="font-semibold text-foreground">{row.original.title}</div>
-          <div className="mt-1 font-mono text-[11px] text-muted-foreground">{row.original.id}</div>
+          <details className="mt-1 text-[11px] text-muted-foreground"><summary className="cursor-pointer">{t("uxReview.details")}</summary><span className="break-all">{row.original.id}</span></details>
         </div>
       ),
     },
@@ -388,7 +382,7 @@ export function TestModelPage() {
       accessorKey: "scenarioType",
       header: t("testingPage.columns.scenario"),
       size: 140,
-      cell: ({ row }) => <Badge variant="outline" className={categoryChipTone(SCENARIO_TYPES.indexOf(row.original.scenarioType) - 1)}>{t(`testingPage.scenarios.${row.original.scenarioType.replace("-", "_")}`)}</Badge>,
+      cell: ({ row }) => <Badge variant="outline" className={categoryChipTone(SCENARIO_TYPES.indexOf(row.original.scenarioType ?? "all") - 1)}>{row.original.scenarioType ? t(`testingPage.scenarios.${row.original.scenarioType.replace("-", "_")}`) : t("standardProject.unclassified")}</Badge>,
     },
     {
       id: "steps",
@@ -408,15 +402,15 @@ export function TestModelPage() {
     },
     {
       id: "coverage",
-      header: t("testingPage.columns.coverage"),
+      header: ordinary ? t("standardProject.businessAndModels") : t("testingPage.columns.coverage"),
       size: 210,
       enableSorting: false,
       cell: ({ row }) => {
         const coverage = coverageByCase.get(row.original.id);
         return (
           <div className="flex min-w-40 max-w-64 flex-wrap gap-1 whitespace-normal">
-            {(coverage?.requirementIds ?? []).map(id => <Badge key={id} variant="outline" className="text-[10px]">{formatRuleId(id)}</Badge>)}
-            {(coverage?.useCaseIds ?? []).map(id => <Badge key={id} variant="secondary" className="text-[10px]">{id}</Badge>)}
+            {(coverage?.requirementIds ?? []).map(id => <Badge key={id} variant="outline" className="text-[10px]">{ordinary ? id : formatRuleId(id)}</Badge>)}
+            {(coverage?.useCaseIds ?? []).map(id => <Badge key={id} variant="secondary" className="text-[10px]">{useCaseModel && "useCases" in useCaseModel ? useCaseModel.useCases.find(useCase => useCase.id === id)?.name ?? row.original.sourceUseCaseName ?? t("testingPage.summary.usecases") : row.original.sourceUseCaseName ?? t("testingPage.summary.usecases")}</Badge>)}
           </div>
         );
       },
@@ -432,10 +426,10 @@ export function TestModelPage() {
             : row.original.priority === "P1" ? "bg-warning/10 text-warning"
               : row.original.priority === "P2" ? "bg-info/10 text-info"
                 : "bg-muted text-muted-foreground",
-        )}>{row.original.priority}</span>
+        )}>{row.original.priority ?? t("standardProject.unspecified")}</span>
       ),
     },
-  ], [coverageByCase, t]);
+  ], [coverageByCase, t, ordinary, useCaseModel]);
 
   const coveredRequirements = new Set(
     (result?.coverageRelations ?? []).flatMap((item) => item.requirementIds),
@@ -449,17 +443,16 @@ export function TestModelPage() {
       <div className="flex w-full flex-col gap-5">
           <PageHeader
             title={t("testingPage.title")}
-            description={t("testingPage.description")}
-            notice={blockFeedback?.keepReopenEntry ? (
-              <FeedbackReopenButton feedback={blockFeedback} />
-            ) : null}
-            actions={
-              <Button
+            description={ordinary ? t("standardProject.testDescription") : t("testingPage.description")}
+            notice={blockedReason ? <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"><span>{blockedReason}</span>{blockFeedback?.keepReopenEntry ? <FeedbackReopenButton feedback={blockFeedback} /> : null}</div> : null}
+            actions={!ordinary &&
+              <ModelingGenerationButton
                 type="button"
-                className="shrink-0 gap-2"
+                label={t("common.generate")}
                 disabled={Boolean(blockedReason)}
                 onClick={async () => {
-                  if (!useCaseModel || !("useCases" in useCaseModel)) return;
+                  if (ordinary) return;
+                  if (blockedReason || !useCaseModel || !("useCases" in useCaseModel) || !hasCompleteEventFlows(useCaseModel)) return;
                   try {
                     const nextResult = generateBlackBoxTests(
                       rules,
@@ -488,10 +481,7 @@ export function TestModelPage() {
                     });
                   }
                 }}
-              >
-                <Play className="size-4" />
-                {t("testingPage.generate")}
-              </Button>
+              />
             }
           />
 
@@ -501,9 +491,9 @@ export function TestModelPage() {
           >
             {[
               [t("testingPage.summary.cases"), result?.testCases.length ?? 0],
-              [t("testingPage.summary.requirements"), coveredRequirements.size],
-              [t("testingPage.summary.usecases"), coveredUseCases.size],
-              [t("testingPage.summary.relations"), result?.coverageRelations.length ?? 0],
+              [ordinary ? t("standardProject.relatedBusiness") : t("testingPage.summary.requirements"), coveredRequirements.size],
+              [ordinary ? t("standardProject.relatedModels") : t("testingPage.summary.usecases"), coveredUseCases.size],
+              [ordinary ? t("standardProject.relatedRecords") : t("testingPage.summary.relations"), result?.coverageRelations.length ?? 0],
             ].map(([label, value]) => (
               <Card key={label} className="gap-0 py-0 min-w-0 p-4">
                 <div className="truncate text-sm text-muted-foreground">

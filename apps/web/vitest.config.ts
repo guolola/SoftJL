@@ -4,7 +4,7 @@ import path from 'node:path';
 
 export default defineConfig({
   plugins: [react()],
-  resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
+  resolve: { alias: { '@/components/ui': path.resolve(__dirname, 'src/shared/ui'), '@/lib/utils': path.resolve(__dirname, 'src/shared/ui/utils'), '@': path.resolve(__dirname, 'src') } },
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",

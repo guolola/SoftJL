@@ -3,18 +3,17 @@ import type { DiagramReviewFinding, ModelRenderMapping } from "@uml-platform/con
 import { SaxesParser } from "saxes";
 
 export function verifySvgMapping(svg: string, mapping: ModelRenderMapping | undefined, modelId: string, diagramKind?: string) {
+  if (diagramKind === "activity" && mapping && mapping.mode !== "explicit-graph") {
+    throw new Error("Activity render mapping must use explicit-graph");
+  }
   const findings: DiagramReviewFinding[] = [];
-  // Current PlantUML uses qualified names plus generated entity IDs; older versions expose aliases directly.
+  // Current SVG identity uses the qualified names and generated entity IDs from the renderer.
   const groups: Array<Record<string, string> & { visibleText: string }> = [];
   const stack: typeof groups = [];
   let parseError = false;
-  let unmarkedActivityShape = false;
   const parser = new SaxesParser({ xmlns: false });
   parser.on("opentag", (tag) => {
     if (tag.name === "g") { const group = { ...tag.attributes, visibleText: "" }; groups.push(group); stack.push(group); }
-    // Older <> diamonds are visible polygons outside entity groups, not evidence of a missing business node.
-    if (diagramKind === "activity" && tag.name === "polygon" && String(tag.attributes.points ?? "").trim().split(/[\s,]+/).length >= 8 &&
-      !stack.some((group) => group.class?.split(/\s+/).some((name) => name === "link" || name === "entity"))) unmarkedActivityShape = true;
   });
   parser.on("text", (value) => { for (const group of stack) group.visibleText += value; });
   parser.on("closetag", (tag) => { if (tag.name === "g") stack.pop(); });
@@ -23,7 +22,7 @@ export function verifySvgMapping(svg: string, mapping: ModelRenderMapping | unde
   if (parseError) return { identifiable: false, findings, inconclusive: ["SVG 格式无法解析，绘制核对未完成"] };
   const identifiable = groups.some((group) => group["data-qualified-name"] || group["data-entity"] || group.id?.startsWith("elem_"));
   if (!identifiable || !mapping) return { identifiable: false, findings };
-  if (unmarkedActivityShape || groups.some((group) => group.class?.split(/\s+/).includes("entity") && !group["data-qualified-name"] && !group["data-entity"] && !group.id?.startsWith("elem_"))) {
+  if (groups.some((group) => group.class?.split(/\s+/).includes("entity") && !group["data-qualified-name"] && !group["data-entity"] && !group.id?.startsWith("elem_"))) {
     return { identifiable: true, findings, inconclusive: ["部分 SVG 节点没有可识别标记，无法确认是否缺少模型元素"] };
   }
   const identifiers = new Set<string>();
@@ -63,10 +62,6 @@ export function verifySvgMapping(svg: string, mapping: ModelRenderMapping | unde
   }
   const links = groups.filter((group) => group.class?.split(/\s+/).some((name) => name === "link" || name === "message") || group.id?.startsWith("link_"));
   const aliases = new Map(mapping.elements.map((item) => [item.elementId, item.alias]));
-  // Legacy native activity edges have no stable identities, so identifiable nodes alone cannot complete the check.
-  if (diagramKind === "activity" && mapping.mode !== "explicit-graph" && !links.length && mapping.relationships.some((edge) => edge.statement && !/^\s*'/.test(edge.statement))) {
-    return { identifiable: true, findings, inconclusive: ["原生活动图连线没有可识别标记，绘制核对未完成"] };
-  }
   // Native mindmap renderers do not expose stable link identities; do not infer missing edges there.
   if (mapping.mode === "explicit-graph" || links.length || /data-entity-[12]=/.test(svg) ||
     ["context", "usecase", "class", "prototype", "navigation", "architecture", "component", "deployment", "table", "analysis", "sequence"].includes(diagramKind ?? "")) {

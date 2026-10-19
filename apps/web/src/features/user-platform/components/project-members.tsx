@@ -233,11 +233,7 @@ export function ProjectMembers({
     }
     return true;
   });
-
-
   const ownerCount = currentMembers.filter((member) => member.status === "active" && member.role === "owner").length;
-
-
   const roleOptions = [
     { value: "viewer", label: t("projectShell.membersUi.roles.viewer") },
     { value: "editor", label: t("projectShell.membersUi.roles.editor") },
@@ -402,7 +398,7 @@ export function ProjectMembers({
                         value={member.role}
                         onValueChange={(value) => void updateRole(member.id, value)}
                         disabled={!canManageMembers}
-                        className="min-w-24"
+                        className="w-32 max-w-full"
                         size="sm"
                         options={memberRoleOptions.map((role) => ({
                           value: role.value,
@@ -419,7 +415,7 @@ export function ProjectMembers({
                       : t("projectShell.membersUi.noTime")}
                   </TableCell>
                   <TableCell>
-                    <div className="flex min-w-0 flex-wrap justify-end gap-2">
+                    <div className="flex min-w-0 flex-wrap justify-start gap-2">
                       {invitationLike ? (
                         <>
                           <Button

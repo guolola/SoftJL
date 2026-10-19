@@ -1,11 +1,29 @@
 // Applies shared model semantics to manual workspace writes before they reach persistent storage.
-import { isDeepStrictEqual } from "node:util";
-import { stripRetiredCodeData } from "@uml-platform/contracts";
+import { assertCurrentWorkspaceState, invalidateDesignDependents, createRequirementBaselineSnapshot, requirementBaselineSchema, requirementRulesSchema } from "@uml-platform/contracts";
 import { deriveTableModel, getStageModelSchema, ModelSemanticError, validateModelInput, type ModelingStage, type TableDiagramSpec } from "@uml-platform/contracts";
 
 export function normalizeWorkspaceModelState(state: Record<string, unknown>, previousState: Record<string, unknown> = {}) {
-  // Old browser sessions must not reintroduce retired prototype data after the migration.
-  const next = stripRetiredCodeData({ ...state });
+  const next: Record<string, unknown> = {
+    ...state,
+    ...(state.requirementBaseline === undefined && previousState.requirementBaseline
+      ? { requirementBaseline: previousState.requirementBaseline } : {}),
+  };
+  // An explicit rule write creates a new manual baseline before validating the
+  // complete saved state. Read paths never create baselines or alter provenance.
+  if (Array.isArray(next.rules)) {
+    next.rules = requirementRulesSchema.parse(next.rules);
+    const previous = requirementBaselineSchema.nullable().parse(next.requirementBaseline ?? previousState.requirementBaseline ?? null);
+    const baseline = createRequirementBaselineSnapshot({
+      runId: previous?.runId ?? "manual-rules",
+      requirementText: typeof next.requirementText === "string" ? next.requirementText : "",
+      rules: requirementRulesSchema.parse(next.rules),
+      previousBaseline: previous,
+      origin: "manual",
+    });
+    next.requirementBaseline = baseline;
+    next.requirementQualityReport = baseline.qualityReport;
+  }
+  assertCurrentWorkspaceState(next);
   const normalize = (model: unknown, stage: ModelingStage, expectedKind?: string) => {
     const diagnostics = validateModelInput(model, stage);
     if (diagnostics.length) throw new ModelSemanticError(diagnostics);
@@ -14,27 +32,21 @@ export function normalizeWorkspaceModelState(state: Record<string, unknown>, pre
     const parsed = getStageModelSchema(stage, kind)!.parse(model);
     return kind === "table" ? deriveTableModel(parsed as TableDiagramSpec) : parsed;
   };
-  // A rules-only save can carry older models in the full workspace payload.
-  // Validate models that changed, while preserving untouched legacy artifacts.
-  if (next.feasibilityContextModel != null && !isDeepStrictEqual(next.feasibilityContextModel, previousState.feasibilityContextModel)) next.feasibilityContextModel = normalize(next.feasibilityContextModel, "feasibility", "context");
+  // Every persisted model must satisfy the current contract, including unchanged records.
+  if (next.feasibilityContextModel != null) next.feasibilityContextModel = normalize(next.feasibilityContextModel, "feasibility", "context");
   if (next.feasibilityBusinessFlow && typeof next.feasibilityBusinessFlow === "object" && "model" in next.feasibilityBusinessFlow) {
     const flow = next.feasibilityBusinessFlow;
-    const previousFlow = previousState.feasibilityBusinessFlow;
-    const previousModel = previousFlow && typeof previousFlow === "object" && "model" in previousFlow ? previousFlow.model : undefined;
-    if (!isDeepStrictEqual(flow.model, previousModel)) next.feasibilityBusinessFlow = { ...flow, model: normalize(flow.model, "feasibility", "activity") };
+    next.feasibilityBusinessFlow = { ...flow, model: normalize(flow.model, "feasibility", "activity") };
   }
   for (const [key, stage] of [["models", "requirements"], ["designModels", "design"]] as const) {
     const collection = next[key];
     if (collection === undefined) continue;
     if (!collection || typeof collection !== "object" || Array.isArray(collection)) throw new ModelSemanticError([{ modelId: key, diagramKind: "unknown", code: "contract", path: key, severity: "error", message: "模型集合必须是以模型标识为键的对象" }]);
     const models: Record<string, unknown> = {};
-    const previousModels = previousState[key] && typeof previousState[key] === "object" && !Array.isArray(previousState[key])
-      ? previousState[key] as Record<string, unknown>
-      : {};
     for (const [id, model] of Object.entries(collection)) {
-      models[id] = isDeepStrictEqual(model, previousModels[id]) ? model : normalize(model, stage);
+      models[id] = normalize(model, stage);
     }
     next[key] = models;
   }
-  return next;
+  return invalidateDesignDependents(previousState, next);
 }

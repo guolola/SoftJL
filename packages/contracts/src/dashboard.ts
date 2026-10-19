@@ -6,7 +6,7 @@ import { documentKindSchema } from "./documents.js";
 
 // Keep zero-sample categories visible and synchronized with supported production artifacts.
 export const dashboardArtifactTypes = [
-  ...diagramKindSchema.options.map(kind => `requirements:${kind}`),
+  ...diagramKindSchema.options.filter(kind => kind !== "context").map(kind => `requirements:${kind}`),
   ...designDiagramKindSchema.options.map(kind => `design:${kind}`),
   "feasibility:context", "feasibility:business-flow", "feasibility:implementation",
   ...documentKindSchema.options.map(kind => `document:${kind}`),
@@ -17,8 +17,7 @@ const rate = z.number().min(0).max(100).nullable();
 const timestamp = z.string().datetime({ offset: true }).nullable();
 export const dashboardRunKindSchema = z.enum(["requirements", "feasibility", "design", "document"]);
 export const dashboardProgressStages = ["feasibility", "requirements", "design", "document"] as const;
-// The workspace exposes context under feasibility, so its legacy requirements alias is excluded.
-export const dashboardProgressArtifactTypes = dashboardArtifactTypes.filter(type => type !== "requirements:context");
+export const dashboardProgressArtifactTypes = dashboardArtifactTypes;
 export const dashboardArtifactTimingSchema = z.object({
   artifactId: z.string(), artifactType: z.string(), name: z.string().nullable(),
   startedAt: timestamp, completedAt: timestamp,

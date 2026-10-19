@@ -15,6 +15,7 @@ import type {
   ProjectVisibility,
   UserStatus,
 } from "@uml-platform/contracts";
+import { projectModeSchema, projectVisibilitySchema } from "@uml-platform/contracts";
 import type { Queryable } from "../db/transactions.js";
 import type {
   AdminInvitationRecord,
@@ -72,17 +73,13 @@ function mapOnboardingRow(row?: OnboardingRow): OnboardingStateResponse {
 }
 
 type ProjectRow = {
+  project_mode: "standard" | "professional";
   id: string;
   name: string;
   description: string | null;
   visibility: ProjectVisibility;
   status: ProjectStatus;
   owner_user_id: string;
-  organization_id: string | null;
-  course_id: string | null;
-  class_id: string | null;
-  team_id: string | null;
-  default_provider_config_id: string | null;
   retention_policy: ProjectRetentionPolicy;
   background_key: ProjectBackgroundKey | null;
   created_at: string | Date;
@@ -251,19 +248,15 @@ function mapSessionRow(row: SessionRow): SessionRecord {
 
 function mapProjectRow(row: ProjectRow): ProjectRecord {
   return {
+    projectMode: projectModeSchema.parse(row.project_mode),
     id: row.id,
     name: row.name,
     description: row.description,
-    visibility: row.visibility,
+    visibility: projectVisibilitySchema.parse(row.visibility),
     status: row.status,
     ownerUserId: row.owner_user_id,
-    organizationId: row.organization_id ?? null,
-    courseId: row.course_id ?? null,
-    classId: row.class_id ?? null,
-    teamId: row.team_id ?? null,
-    defaultProviderConfigId: row.default_provider_config_id ?? null,
-    retentionPolicy: row.retention_policy ?? "manual",
-    backgroundKey: row.background_key ?? null,
+    retentionPolicy: row.retention_policy,
+    backgroundKey: row.background_key,
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
   };
@@ -320,7 +313,7 @@ function mapProjectWorkspaceRow(row: ProjectWorkspaceRow): ProjectWorkspaceRecor
   return {
     projectId: row.project_id,
     version: Number(row.version),
-    state: row.state ?? {},
+    state: row.state,
     updatedByUserId: row.updated_by_user_id,
     sourceRunId: row.source_run_id,
     updatedAt: toIsoString(row.updated_at),
@@ -382,17 +375,13 @@ const sessionColumns = `
 `;
 
 const projectColumns = `
+  project_mode,
   id,
   name,
   description,
   visibility,
   status,
   owner_user_id,
-  organization_id,
-  course_id,
-  class_id,
-  team_id,
-  default_provider_config_id,
   retention_policy,
   background_key,
   created_at,
@@ -1201,15 +1190,11 @@ export function createPostgresAuthRepository(db: Queryable) {
     },
 
     async createProject(input: {
+      projectMode?: "standard" | "professional";
       ownerUserId: string;
       name: string;
       description: string | null;
       visibility: ProjectVisibility;
-      organizationId?: string | null;
-      courseId?: string | null;
-      classId?: string | null;
-      teamId?: string | null;
-      defaultProviderConfigId?: string | null;
       retentionPolicy?: ProjectRetentionPolicy;
       backgroundKey?: ProjectBackgroundKey | null;
     }) {
@@ -1221,15 +1206,11 @@ export function createPostgresAuthRepository(db: Queryable) {
             name,
             description,
             visibility,
-            organization_id,
-            course_id,
-            class_id,
-            team_id,
-            default_provider_config_id,
             retention_policy,
-            background_key
+            background_key,
+            project_mode
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          values ($1, $2, $3, $4, $5, $6, $7, $8)
           returning ${projectColumns}
         `,
         [
@@ -1238,13 +1219,9 @@ export function createPostgresAuthRepository(db: Queryable) {
           input.name,
           input.description,
           input.visibility,
-          input.organizationId ?? null,
-          input.courseId ?? null,
-          input.classId ?? null,
-          input.teamId ?? null,
-          input.defaultProviderConfigId ?? null,
           input.retentionPolicy ?? "manual",
           input.backgroundKey ?? null,
+          input.projectMode ?? "professional",
         ],
       );
       const project = mapProjectRow(projectResult.rows[0]);
@@ -1321,6 +1298,7 @@ export function createPostgresAuthRepository(db: Queryable) {
       updatedByUserId: string;
       sourceRunId?: string | null;
     }): Promise<ProjectWorkspaceSaveResult> {
+      const state = input.state;
       if (input.baseVersion === 0) {
         const inserted = await db.query<ProjectWorkspaceRow>(
           `
@@ -1338,7 +1316,7 @@ export function createPostgresAuthRepository(db: Queryable) {
           `,
           [
             input.projectId,
-            JSON.stringify(input.state),
+            JSON.stringify(state),
             input.updatedByUserId,
             input.sourceRunId ?? null,
           ],
@@ -1365,7 +1343,7 @@ export function createPostgresAuthRepository(db: Queryable) {
         [
           input.projectId,
           input.baseVersion,
-          JSON.stringify(input.state),
+          JSON.stringify(state),
           input.updatedByUserId,
           input.sourceRunId ?? null,
         ],
@@ -1391,11 +1369,6 @@ export function createPostgresAuthRepository(db: Queryable) {
           | "visibility"
           | "status"
           | "ownerUserId"
-          | "organizationId"
-          | "courseId"
-          | "classId"
-          | "teamId"
-          | "defaultProviderConfigId"
           | "retentionPolicy"
           | "backgroundKey"
         >
@@ -1410,13 +1383,8 @@ export function createPostgresAuthRepository(db: Queryable) {
             visibility = case when $6 then $7 else visibility end,
             status = case when $8 then $9 else status end,
             owner_user_id = case when $10 then $11 else owner_user_id end,
-            organization_id = case when $12 then $13 else organization_id end,
-            course_id = case when $14 then $15 else course_id end,
-            class_id = case when $16 then $17 else class_id end,
-            team_id = case when $18 then $19 else team_id end,
-            default_provider_config_id = case when $20 then $21 else default_provider_config_id end,
-            retention_policy = case when $22 then $23 else retention_policy end,
-            background_key = case when $24 then $25 else background_key end,
+            retention_policy = case when $12 then $13 else retention_policy end,
+            background_key = case when $14 then $15 else background_key end,
             updated_at = now()
           where id = $1
           returning ${projectColumns}
@@ -1433,16 +1401,6 @@ export function createPostgresAuthRepository(db: Queryable) {
           patch.status ?? null,
           Object.hasOwn(patch, "ownerUserId"),
           patch.ownerUserId ?? null,
-          Object.hasOwn(patch, "organizationId"),
-          patch.organizationId ?? null,
-          Object.hasOwn(patch, "courseId"),
-          patch.courseId ?? null,
-          Object.hasOwn(patch, "classId"),
-          patch.classId ?? null,
-          Object.hasOwn(patch, "teamId"),
-          patch.teamId ?? null,
-          Object.hasOwn(patch, "defaultProviderConfigId"),
-          patch.defaultProviderConfigId ?? null,
           Object.hasOwn(patch, "retentionPolicy"),
           patch.retentionPolicy ?? null,
           Object.hasOwn(patch, "backgroundKey"),

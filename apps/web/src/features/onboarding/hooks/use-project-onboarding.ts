@@ -32,7 +32,7 @@ function waitForStage(stage: TourStage, currentKind: () => string, timeoutMs = 4
   });
 }
 
-export function useProjectOnboarding(projectId: string) {
+export function useProjectOnboarding(projectId: string, enabled = true) {
   const tours = useOnboardingTours();
   const workspace = useWorkspaceShell();
   const { isMobile, state, openMobile, setOpen, setOpenMobile } = useSidebar();
@@ -79,6 +79,7 @@ export function useProjectOnboarding(projectId: string) {
   startRef.current = startProjectTour;
 
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     // A failed state fetch suppresses automatic guidance, while the replay button remains usable.
     void platformApi.getOnboardingState().then((onboarding) => {
@@ -88,7 +89,7 @@ export function useProjectOnboarding(projectId: string) {
       void startRef.current();
     }).catch(() => {});
     return () => { active = false; };
-  }, [projectId]);
+  }, [projectId, enabled]);
 
   return { startProjectTour };
 }

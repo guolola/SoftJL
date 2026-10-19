@@ -10,10 +10,11 @@ interface NeuralButtonProps extends Omit<React.ComponentPropsWithoutRef<typeof B
   children?: React.ReactNode
   asChild?: boolean
   reducedMotion?: boolean
+  beamStyle?: React.CSSProperties
 }
 
 const NeuralButton = React.forwardRef<HTMLButtonElement, NeuralButtonProps>(function NeuralButton(
-  { children, asChild = false, size, className, reducedMotion = false, ...rest }, ref,
+  { children, asChild = false, size, className, reducedMotion = false, beamStyle, ...rest }, ref,
 ) {
   const neuralStyles = cn(
     'relative z-1 overflow-hidden rounded-xl bg-primary! text-primary-foreground! ring-2 ring-primary/60! transition-transform duration-200 ease-in-out hover:scale-105 active:scale-95',
@@ -39,7 +40,7 @@ const NeuralButton = React.forwardRef<HTMLButtonElement, NeuralButtonProps>(func
   </>
   const overlayDecorations = <>
     <span aria-hidden='true' className='pointer-events-none absolute inset-0 z-1 rounded-xl [box-shadow:0px_1px_1.6px_0px_color-mix(in_oklab,var(--primary-foreground)_68%,transparent)_inset]' />
-    <BorderBeam colorFrom='var(--primary-foreground)' colorTo='var(--primary-foreground)' size={35} reducedMotion={reducedMotion} />
+    <BorderBeam colorFrom='var(--primary-foreground)' colorTo='var(--primary-foreground)' size={35} reducedMotion={reducedMotion} style={beamStyle} />
   </>
   if (asChild && React.isValidElement(children)) {
     const child = children as React.ReactElement<{ className?: string; children?: React.ReactNode }>

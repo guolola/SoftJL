@@ -1,12 +1,15 @@
 // Defines the in-memory run record boundary shared by routes, pipelines, and SSE.
 import { randomUUID } from "node:crypto";
+import { acceptOutputEvent } from "./run-output-provenance.js";
+import { assertCurrentRunSnapshot, runEventSchema, runEventMetadataSchema } from "@uml-platform/contracts";
 import type {
   DashboardRun,
-  
+
   DesignRunSnapshot,
   DocumentRunSnapshot,
   FeasibilityRunSnapshot,
   RunEvent,
+  RunEventInput,
   RunSnapshot,
 } from "@uml-platform/contracts";
 
@@ -20,7 +23,7 @@ export interface RunRecord {
   listeners: Set<(event: RunEvent) => void>;
   terminal: boolean;
   beforeTerminal?: Set<() => void>;
-  beforeTerminalStages?: Set<(event: RunEvent) => void>;
+  beforeTerminalStages?: Set<(event: RunEventInput) => void>;
   documentBuffer?: Buffer;
   metadata?: RunRecordMetadata;
   persist?: (record: RunRecord, event?: RunEvent) => void | Promise<void>;
@@ -76,6 +79,8 @@ export interface RunRecordMetadata {
   offlineDemoFixture?: "library-seat";
   userId?: string;
   projectId?: string;
+  /** Canonical system name from the project, kept identical across every generated model. */
+  systemName?: string;
   model?: string;
   createdAt: string;
   completedAt?: string;
@@ -103,7 +108,7 @@ function shouldStoreEvent(event: RunEvent) {
   return process.env.UML_PERSIST_LLM_CHUNKS === "true";
 }
 
-function isTerminalRunEvent(event: RunEvent) {
+function isTerminalRunEvent(event: RunEventInput) {
   return event.type === "completed" || event.type === "failed" || event.type === "cancelled";
 }
 
@@ -134,10 +139,12 @@ export function createRunRecordStore(
   initialState?: SerializedRunRecordStore,
 ): RunRecordStore {
   const store = new Map<string, RunRecord>();
+  if (initialState && initialState.version !== 1) throw new Error("Unsupported run record format");
   for (const record of initialState?.records ?? []) {
+    assertCurrentRunSnapshot(record.snapshot);
     store.set(record.snapshot.runId, {
       snapshot: record.snapshot,
-      events: record.events,
+      events: record.events.map(event => runEventSchema.parse(event)),
       eventCreatedAt: record.eventCreatedAt,
       listeners: new Set(),
       terminal: record.terminal,
@@ -166,28 +173,36 @@ export function serializeRunRecordStore(
   };
 }
 
-export function emitEvent(record: RunRecord, event: RunEvent) {
+export function emitEvent(record: RunRecord, input: RunEventInput) {
   // Terminal lifecycle events close SSE streams; late worker progress after that
   // would make the task drawer appear completed while details still mutate.
   if (record.terminal) {
-    if (event.type === "run_action") {
+    if (input.type === "run_action") {
       // Retry/rerun lineage is allowed after terminal, but lifecycle terminal
       // state itself is immutable once the first terminal event closes the run.
     } else {
-      if (isTerminalRunEvent(event)) {
+      if (isTerminalRunEvent(input)) {
         restoreRecordedTerminalStatus(record);
       }
       return;
     }
   }
-  if (isTerminalRunEvent(event)) {
+  if (isTerminalRunEvent(input)) {
     for (const flush of record.beforeTerminal ?? []) flush();
     record.beforeTerminal?.clear();
     // Stage boundaries follow buffered output and precede the SSE terminal event.
-    for (const finish of record.beforeTerminalStages ?? []) finish(event);
+    for (const finish of record.beforeTerminalStages ?? []) finish(input);
     record.beforeTerminalStages?.clear();
   }
-  event = { ...event, eventId: event.eventId ?? randomUUID(), createdAt: event.createdAt ?? new Date().toISOString() };
+  // Assign metadata after buffered stage events so publication times follow emission order.
+  // Restored events must already carry valid metadata and never pass through this creation boundary.
+  let event: RunEvent = { ...input, ...runEventMetadataSchema.parse({
+    eventId: input.eventId ?? randomUUID(),
+    createdAt: input.createdAt ?? new Date().toISOString(),
+    sequence: input.sequence,
+  }) };
+  // Artifact receipts are persisted with the accepted snapshot before terminal publication.
+  acceptOutputEvent(record, event);
   const storeEvent = shouldStoreEvent(event);
   if (storeEvent) {
     event = { ...event, sequence: (record.eventSequence ?? record.events.at(-1)?.sequence ?? record.events.length) + 1 };

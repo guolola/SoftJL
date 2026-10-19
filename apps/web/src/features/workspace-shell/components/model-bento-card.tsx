@@ -17,6 +17,7 @@ type ModelBentoCardProps = {
   categoryColorIndex?: number;
   selected: boolean;
   disabled?: boolean;
+  blockedReason?: string;
   countLabel?: ReactNode;
   pendingReview?: boolean;
   title?: string;
@@ -27,6 +28,10 @@ type ModelBentoCardProps = {
   details?: ReactNode;
   className?: string;
   onSelectedChange: (selected: boolean) => void;
+  /** Marks the card whose dependencies the page workflow illustration currently shows. */
+  inspected?: boolean;
+  /** Updates the workflow illustration on hover or keyboard focus. */
+  onInspect?: () => void;
 };
 
 export function ModelBentoCard({
@@ -38,6 +43,7 @@ export function ModelBentoCard({
   categoryColorIndex,
   selected,
   disabled = false,
+  blockedReason,
   countLabel,
   pendingReview = false,
   title,
@@ -48,8 +54,11 @@ export function ModelBentoCard({
   details,
   className,
   onSelectedChange,
+  inspected = false,
+  onInspect,
 }: ModelBentoCardProps) {
   const handleToggle = () => {
+    // Artifact availability never changes the card's selection behavior.
     if (!disabled) {
       onSelectedChange(!selected);
     }
@@ -61,7 +70,12 @@ export function ModelBentoCard({
       tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled}
       aria-label={ariaLabel}
+      aria-pressed={selected}
       title={title}
+      data-inspected={inspected || undefined}
+      // Inspection is independent from selection; it only changes which dependencies are illustrated.
+      onPointerEnter={onInspect}
+      onFocus={onInspect}
       onClick={handleToggle}
       onKeyDown={(event) => {
         if (disabled || event.target !== event.currentTarget) return;
@@ -74,6 +88,7 @@ export function ModelBentoCard({
         "group relative h-[212px] min-w-0 gap-0 overflow-hidden p-3 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-[236px] sm:p-5 [&>div]:flex [&>div]:flex-col",
         selected &&
           "ring-1 ring-primary",
+        inspected && "border-primary/45 shadow-sm",
         disabled
           ? "cursor-not-allowed"
           : "cursor-pointer hover:bg-muted/50",
@@ -109,7 +124,7 @@ export function ModelBentoCard({
               aria-label={checkboxLabel}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
-              onCheckedChange={(value) => onSelectedChange(Boolean(value))}
+              onCheckedChange={(value) => { if (!disabled) onSelectedChange(Boolean(value)); }}
             />
           </div>
         </div>
@@ -124,10 +139,11 @@ export function ModelBentoCard({
           >
             {label}
           </h3>
-          <GenerationStatusIcon status={status} label={label} />
+          {/* Keep prerequisite guidance available on hover/focus without expanding the card. */}
+          <GenerationStatusIcon status={blockedReason ? "blocked" : status} label={label} description={blockedReason} />
           {pendingReview && <Badge variant="warning" className="px-1.5 py-0 text-[10px]">待审</Badge>}
         </div>
-        <span title={english} className="block truncate font-mono text-[11px] leading-4 text-muted-foreground sm:text-xs sm:leading-5">
+        <span title={english} className="block truncate text-[11px] leading-4 text-muted-foreground sm:text-xs sm:leading-5">
           {english}
         </span>
         <p title={description} className={cn("mt-2 text-xs leading-4 text-muted-foreground sm:leading-5", singleLineDescription ? "truncate" : "line-clamp-2")}>
@@ -135,7 +151,7 @@ export function ModelBentoCard({
         </p>
       </div>
       {(details || content) && (
-        // Disabling card selection must not disable viewing an existing artifact or reviewing its inputs.
+        // Disabling card selection must not disable reviewing its inputs.
         <div aria-disabled={false} className="mt-3 min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto overscroll-contain text-[11px] leading-4 text-muted-foreground sm:text-xs sm:leading-5">
           {details}
           {content}

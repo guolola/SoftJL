@@ -25,14 +25,10 @@ import { pdfFontsReady, svgToVectorPdf } from "./pdf/vector-pdf.js";
 const DEFAULT_PORT = Number(process.env.RENDER_SERVICE_PORT ?? 4002);
 const DEFAULT_HOST = process.env.RENDER_SERVICE_HOST ?? "127.0.0.1";
 const DEFAULT_LOCAL_CORS_ORIGINS = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-  "http://localhost:5176",
-  "http://127.0.0.1:5173",
-  "http://127.0.0.1:5174",
-  "http://127.0.0.1:5175",
-  "http://127.0.0.1:5176",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:4003",
+  "http://127.0.0.1:4003",
 ];
 const DEFAULT_JAR_PATH = fileURLToPath(
   new URL("../../../plantuml/build/libs/plantuml-1.2026.3beta8.jar", import.meta.url),

@@ -2,6 +2,9 @@
 import { buildApiUrl } from "../../../services/api-client";
 import type {
   DesignDiagramKind,
+  FeasibilityRunSnapshot,
+  RunOperationType,
+  RunTokenConsumption,
   DiagramKind,
   DocumentKind,
   OnboardingStateResponse,
@@ -40,6 +43,7 @@ export interface PlatformUser {
 }
 
 export interface PlatformProject {
+  projectMode: "standard" | "professional";
   id: string;
   name: string;
   description: string | null;
@@ -48,11 +52,6 @@ export interface PlatformProject {
   ownerUserId: string;
   ownerDisplayName?: string | null;
   ownerAvatarUrl?: string | null;
-  organizationId?: string | null;
-  courseId?: string | null;
-  classId?: string | null;
-  teamId?: string | null;
-  defaultProviderConfigId?: string | null;
   retentionPolicy?: "manual" | "semester_180_days" | "one_year_365_days" | string;
   backgroundKey?: ProjectBackgroundKey | null;
   createdAt?: string;
@@ -60,9 +59,6 @@ export interface PlatformProject {
   lastGeneratedAt?: string | null;
   memberCount?: number;
   memberPreviews?: PlatformProjectMemberPreview[];
-  courseLabel?: string | null;
-  classLabel?: string | null;
-  teamLabel?: string | null;
 }
 
 export interface PlatformProjectMemberPreview {
@@ -98,16 +94,20 @@ export interface PlatformProjectInvitation {
   project?: PlatformProject;
 }
 
+export type PlatformRunTokenConsumption = RunTokenConsumption;
+
 export interface PlatformRunSummary {
   runId: string;
+  operationType: RunOperationType;
   projectId?: string;
   status: string;
   stage?: string | null;
   runKind?: "requirements" | "design" | "document" | string | null;
   documentKind?: DocumentKind | null;
   selectedDiagrams?: DiagramKind[] | DesignDiagramKind[] | null;
-  requestedDiagrams?: DesignDiagramKind[] | null;
+  requestedDiagrams?: (DiagramKind | DesignDiagramKind)[] | null;
   model?: string | null;
+  tokenConsumption?: PlatformRunTokenConsumption;
   createdByUserId?: string | null;
   sourceRunId?: string | null;
   sourceAction?: "retry" | "rerun" | string | null;
@@ -122,12 +122,12 @@ export interface PlatformRunSummary {
   updatedAt?: string | null;
   errorMessage?: string | null;
   error?: RunError | null;
-  
-  
-  
+  diagramErrorSummary?: { diagramId: string; stage?: string | null; error?: RunError | null; message: string }[] | null;
+  missingArtifactSummary?: string[] | null;
+
+
   terminal?: boolean | null;
   snapshotAvailable?: boolean | null;
-  canRestore?: boolean | null;
   documentDownloadAvailable?: boolean | null;
   documentId?: string | null;
   documentFileName?: string | null;
@@ -148,11 +148,6 @@ export interface PlatformDocument {
   status: string;
   version?: number;
   byteLength?: number | null;
-  onlyOffice?: {
-    status?: string | null;
-    lockedBy?: string | null;
-    lockedAt?: string | null;
-  } | null;
   editLock?: {
     status?: string | null;
     lockedBy?: string | null;
@@ -203,32 +198,6 @@ export interface PlatformProviderConfig {
   allowlisted: boolean;
   scopeType: string;
   scopeId: string | null;
-}
-
-export interface PlatformAcademicOptionsResponse {
-  organizations: Array<{ id: string; name: string; code?: string | null; status: string }>;
-  courses: Array<{
-    id: string;
-    organizationId: string;
-    name: string;
-    code?: string | null;
-    term?: string | null;
-    status: string;
-  }>;
-  classes: Array<{
-    id: string;
-    courseId: string;
-    name: string;
-    code?: string | null;
-    status: string;
-  }>;
-  teams: Array<{
-    id: string;
-    classId: string;
-    name: string;
-    code?: string | null;
-    status: string;
-  }>;
 }
 
 export interface PlatformSessionResponse {
@@ -364,9 +333,9 @@ async function requestJson<T>(
       : {};
     const code = typeof structured?.code === "string"
       ? structured.code
-      : legacyApiErrorCode(payload, response.status);
+      : null;
     throw new PlatformApiError(
-      localizeApiFailure(code && !structured ? { error: { code } } : payload, response.status),
+      localizeApiFailure(payload, response.status),
       response.status,
       code,
       structured?.retryable === true,
@@ -491,21 +460,6 @@ async function requestProviderModelDiscoveryStream(
   } finally {
     await reader.cancel().catch(() => {});
   }
-}
-
-// Converts known legacy natural-language responses into stable codes during API migration.
-function legacyApiErrorCode(payload: unknown, status: number) {
-  if (!payload || typeof payload !== "object") return null;
-  const message = typeof (payload as { message?: unknown }).message === "string"
-    ? (payload as { message: string }).message
-    : "";
-  if ((status === 401 || status === 403) && /email verification (?:is )?required|verify (?:your )?email/iu.test(message)) {
-    return "AUTH_EMAIL_VERIFICATION_REQUIRED";
-  }
-  if (status === 401 && /invalid (?:email|username|credentials)|incorrect (?:email|username|password)/iu.test(message)) {
-    return "AUTH_INVALID_CREDENTIALS";
-  }
-  return null;
 }
 
 export const platformApi = {
@@ -644,18 +598,11 @@ export const platformApi = {
   listProjects() {
     return requestJson<PlatformProjectListResponse>("/api/projects");
   },
-  listAcademicOptions() {
-    return requestJson<PlatformAcademicOptionsResponse>("/api/academic-options");
-  },
   createProject(input: {
+    projectMode?: "standard" | "professional";
     name: string;
     description: string | null;
     visibility?: string;
-    organizationId?: string | null;
-    courseId?: string | null;
-    classId?: string | null;
-    teamId?: string | null;
-    defaultProviderConfigId?: string | null;
     retentionPolicy?: string;
     backgroundKey?: ProjectBackgroundKey | null;
   }) {
@@ -673,7 +620,7 @@ export const platformApi = {
   getProject(projectId: string) {
     return requestJson<{
       project: PlatformProject;
-      generationExecutionMode?: "offline-demo" | "provider";
+      generationExecutionMode: "offline-demo" | "provider";
       membership?: PlatformProjectMember | null;
     }>(`/api/projects/${projectId}`);
   },
@@ -684,11 +631,6 @@ export const platformApi = {
       description?: string | null;
       visibility?: string;
       status?: string;
-      organizationId?: string | null;
-      courseId?: string | null;
-      classId?: string | null;
-      teamId?: string | null;
-      defaultProviderConfigId?: string | null;
       retentionPolicy?: string;
       backgroundKey?: ProjectBackgroundKey | null;
     },
@@ -788,7 +730,7 @@ export const platformApi = {
     return requestJson<{
       projectId: string;
       run: PlatformRunSummary;
-      snapshot?: RunHistorySnapshot;
+      snapshot?: RunHistorySnapshot | FeasibilityRunSnapshot;
       events?: unknown[];
     }>(`/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}${options.includeEvents ? '?includeEvents=true' : ''}`, { signal: options.signal });
   },
@@ -816,28 +758,15 @@ export const platformApi = {
       { method: "POST" },
     );
   },
-  rerunProjectRun(projectId: string, runId: string) {
-    return requestJson<{
-      run?: PlatformRunSummary;
-      runId?: string;
-      sourceRunId?: string;
-      action?: "retry" | "rerun" | string;
-      status?: string;
-      message?: string;
-    }>(
-      `/api/projects/${projectId}/runs/${runId}/rerun`,
-      { method: "POST" },
-    );
-  },
   deleteProjectRun(projectId: string, runId: string) {
     return requestJson<{ message?: string }>(
       `/api/projects/${projectId}/runs/${runId}`,
       { method: "DELETE" },
     );
   },
-  listProjectDocuments(projectId: string) {
+  listProjectDocuments(projectId: string, options?: { includeDeleted?: boolean }) {
     return requestJson<{ documents: PlatformDocument[] }>(
-      `/api/projects/${projectId}/documents`,
+      `/api/projects/${projectId}/documents${options?.includeDeleted ? "?includeDeleted=true" : ""}`,
     );
   },
   renameProjectDocument(projectId: string, documentId: string, name: string) {

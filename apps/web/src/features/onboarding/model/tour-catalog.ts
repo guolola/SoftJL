@@ -17,7 +17,7 @@ export const TOUR_ITEMS: Record<TourId, readonly TourItem[]> = {
     { key: "empty.create", selector: "#onboarding-create-first", side: "top" },
   ],
   "first-project-desktop": [
-    { key: "desktop.system", selector: "#requirement-text", side: "right", stage: "system" },
+    { key: "desktop.system", selector: "#requirement-text", side: "bottom", stage: "system" },
     { key: "desktop.feasibility", selector: '[data-onboarding-nav="feasibility"]', side: "right", stage: "feasibility" },
     { key: "desktop.requirements", selector: '[data-onboarding-nav="requirements"]', side: "right", stage: "requirements" },
     { key: "desktop.diagrams", selector: "#requirement-target-models", side: "top", stage: "requirements" },

@@ -22,7 +22,10 @@ for (const theme of ["light", "dark"]) {
       await page.addInitScript(theme => localStorage.setItem("admincn-ui-theme", theme), theme);
       await mockProjectApi(page, {
         selectedDiagramTypes: ["usecase", "class"],
-        rules: [{ id: "r1", text: "学生可以预约座位。", category: "功能需求", priority: "must", relatedDiagrams: ["usecase", "class"] }],
+        rules: [
+          { id: "r1", text: "学生可以预约座位。", type: "functional" as const },
+          { id: "r2", text: "预约记录包含学生和座位信息。", type: "data" as const },
+        ],
       });
       // The fixture explicitly enables fixed demo generation; no external model or run is needed.
       await page.route(`**/api/projects/${projectId}`, route => route.fulfill({
@@ -38,8 +41,8 @@ for (const theme of ["light", "dark"]) {
       await page.getByRole("navigation", { name: "项目导航" }).getByRole("button", { name: "需求模型", exact: true }).click();
       await page.getByRole("button", { name: "选择用例模型", exact: true }).click();
       await page.getByRole("button", { name: "选择领域概念模型", exact: true }).click();
-      await expect(page.getByRole("button", { name: /应用变更/ })).toBeEnabled();
-      await page.getByRole("button", { name: /应用变更/ }).click();
+      await expect(page.getByRole("button", { name: "生成", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "生成", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "确认生成需求模型" });
       await expect(dialog).toBeVisible();
       await page.setViewportSize({ width, height: 900 });

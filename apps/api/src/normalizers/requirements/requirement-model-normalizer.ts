@@ -1,7 +1,7 @@
 // Parses requirement models losslessly and validates graph semantics before traceability.
-import { diagramModelsResultSchema, useCaseDiagramSpecSchema, useCaseParticipationGaps, validateModelInput, ModelSemanticError, type DiagramModelSpec, type RequirementRule } from "@uml-platform/contracts";
+import { diagramModelsResultSchema, useCaseDiagramSpecSchema, useCaseParticipationGaps, validateModelInput, ModelSemanticError, type RequirementRule } from "@uml-platform/contracts";
+import { readGeneratedRequirementSources } from "../traceability/generated-sources.js";
 import { ensureArray, isPlainRecord, parseJson } from "../json/parse-json.js";
-import { formatTraceabilityMissingRefs, normalizeRequirementTraceabilityWithCoverage, sanitizeTraceabilityEntries } from "../traceability/traceability-normalizer.js";
 import { normalizeModelInput, omitModelNullValues as omitNullValues } from "../diagrams/model-input.js";
 
 export function parseRequirementDiagramModelsResult(
@@ -10,44 +10,13 @@ export function parseRequirementDiagramModelsResult(
   deferParticipationRepairs = false,
 ) {
   const parsed = parseJson<unknown>(value);
-  const result = parseRequirementDiagramModelsOnlyFromParsed(parsed, rules, deferParticipationRepairs);
-  const { requirementModelTraceability } = assertCompleteRequirementTraceability(
-    isPlainRecord(parsed) ? parsed.requirementModelTraceability : undefined,
-    rules,
-    result.models,
-  );
-  if (requirementModelTraceability.length === 0) {
-    throw new Error(
-      "generate_models must return non-empty requirementModelTraceability with valid rule-to-element references",
-    );
-  }
-  return {
-    ...result,
-    requirementModelTraceability,
-  };
-}
-
-function assertCompleteRequirementTraceability(
-  rawTraceability: unknown,
-  rules: RequirementRule[],
-  models: DiagramModelSpec[],
-) {
-  const { traceability: requirementModelTraceability, missingTargets } =
-    normalizeRequirementTraceabilityWithCoverage(rawTraceability, rules, models);
-  if (requirementModelTraceability.length === 0) {
-    throw new Error(
-      "generate_models must return non-empty requirementModelTraceability with valid rule-to-element references",
-    );
-  }
-  if (missingTargets.length > 0) {
-    throw new Error(formatTraceabilityMissingRefs("requirement", missingTargets));
-  }
-  return { requirementModelTraceability };
+  const result = parseRequirementDiagramModelsOnlyFromParsed(parsed, deferParticipationRepairs);
+  const requirementModelTraceability = readGeneratedRequirementSources(isPlainRecord(parsed) ? omitNullValues(parsed.requirementModelTraceability) : undefined, result.models);
+  return { ...result, requirementModelTraceability };
 }
 
 function parseRequirementDiagramModelsOnlyFromParsed(
   parsed: unknown,
-  rules: RequirementRule[] = [],
   deferParticipationRepairs = false,
 ) {
   const cleaned = omitNullValues(parsed);
@@ -59,7 +28,9 @@ function parseRequirementDiagramModelsOnlyFromParsed(
         ),
       }
     : cleaned;
-  if (isPlainRecord(normalized)) for (const model of ensureArray(normalized.models)) {
+  const diagnostics = [];
+  if (isPlainRecord(normalized)) for (const [index, model] of ensureArray(normalized.models).entries()) {
+    if (isPlainRecord(model) && !Object.keys(model).length) continue;
     let issues = validateModelInput(model, "requirements");
     const usecase = deferParticipationRepairs ? useCaseDiagramSpecSchema.safeParse(model) : null;
     if (usecase?.success && useCaseParticipationGaps(usecase.data).gaps.length) {
@@ -67,8 +38,10 @@ function parseRequirementDiagramModelsOnlyFromParsed(
       const repaired = { ...usecase.data, relationships: useCaseParticipationGaps(usecase.data).relationships };
       if (!validateModelInput(repaired, "requirements").length) issues = issues.filter((issue) => !["actor-participation", "isolated-actor", "disconnected-usecase"].includes(issue.code));
     }
-    if (issues.length) throw new ModelSemanticError(issues);
+    diagnostics.push(...issues.map(issue => ({ ...issue, responsePath: `models.${index}.${issue.path}` })));
   }
+  if (diagnostics.length) throw new ModelSemanticError(diagnostics);
+  if (isPlainRecord(normalized)) normalized.models = ensureArray(normalized.models).filter(model => !(isPlainRecord(model) && !Object.keys(model).length));
   const result = diagramModelsResultSchema
     .omit({ requirementModelTraceability: true })
     .parse(normalized);
@@ -79,34 +52,15 @@ function parseRequirementDiagramModelsOnlyFromParsed(
 }
 
 export function parseRequirementDiagramModelsOnly(value: string, deferParticipationRepairs = false) {
-  return parseRequirementDiagramModelsOnlyFromParsed(parseJson<unknown>(value), [], deferParticipationRepairs);
+  return parseRequirementDiagramModelsOnlyFromParsed(parseJson<unknown>(value), deferParticipationRepairs);
 }
 
-export function parseRequirementTraceabilityResult(
-  value: string,
-  rules: RequirementRule[],
-  models: DiagramModelSpec[],
-) {
-  const coverage = parseRequirementTraceabilityCoverageResult(value, rules, models);
-  if (coverage.traceability.length === 0) {
-    throw new Error(
-      "generate_models must return non-empty requirementModelTraceability with valid rule-to-element references",
-    );
-  }
-  if (coverage.missingTargets.length > 0) {
-    throw new Error(formatTraceabilityMissingRefs("requirement", coverage.missingTargets));
-  }
-  return { requirementModelTraceability: coverage.traceability };
-}
-
-export function parseRequirementTraceabilityCoverageResult(
-  value: string,
-  rules: RequirementRule[],
-  models: DiagramModelSpec[],
-) {
-  const parsed = omitNullValues(parseJson<unknown>(value));
-  const rawTraceability = isPlainRecord(parsed)
-    ? sanitizeTraceabilityEntries(parsed.requirementModelTraceability)
-    : [];
-  return normalizeRequirementTraceabilityWithCoverage(rawTraceability, rules, models);
+// Required source fields are part of newly generated analysis JSON, not a coverage audit.
+export function parseGeneratedAnalysisModels(value: string) {
+  const result = parseRequirementDiagramModelsOnly(value);
+  const diagnostics = result.models.flatMap((model, modelIndex) => model.diagramKind !== "analysis" ? [] :
+    (["participants", "messages", "fragments"] as const).flatMap(collection => model[collection].flatMap((element, index) =>
+      element.sourceElementIds?.length ? [] : [{ code: "required-field", modelId: model.modelId ?? "analysis", diagramKind: model.diagramKind, elementId: element.id, path: `${collection}.${index}.sourceElementIds`, responsePath: `models.${modelIndex}.${collection}.${index}.sourceElementIds`, message: "首次生成必须填写非空 sourceElementIds 上游元素编号", severity: "error" as const }])));
+  if (diagnostics.length) throw new ModelSemanticError(diagnostics);
+  return result;
 }

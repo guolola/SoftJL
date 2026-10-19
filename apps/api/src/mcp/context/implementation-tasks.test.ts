@@ -1,4 +1,6 @@
 // Verifies source-backed task identity, real element references, readiness and scoped implementation evidence.
+import { requirementRuleFacts } from "@uml-platform/contracts";
+import { requirementRuleSchema } from "@uml-platform/contracts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -20,14 +22,14 @@ function artifact(id: string, stage: SourceArtifact["stage"], payload: Record<st
 }
 function requirement(id = "BORROW", criteria = ["第5本可借，第6本借阅被拒绝"], sourceRuleId?: string) {
   const value: AtomicRequirement = {
-    id, sourceFragment: `${id} 功能`, type: "functional", actor: "学生", subject: "系统", action: "借阅",
+    id, sourceFragment: `${id} 功能`, type: "functional" as const, actor: "学生", subject: "系统", action: "借阅",
     object: "书", condition: null, outcome: "保存借阅记录", confidence: 1, status: "accepted",
     criticality: "high", acceptanceCriteria: criteria, fieldProvenance: {}, ...(sourceRuleId ? { sourceRuleId } : {}),
   };
-  return artifact(`requirement:${id}`, "requirements", { requirement: value }, { requirementIds: [id, ...(sourceRuleId ? [sourceRuleId] : [])] });
+  return artifact(`requirement:${id}`, "requirements", { requirement: { ...value, text: [...new Set(criteria)].sort().join("；") } }, { requirementIds: [id, ...(sourceRuleId ? [sourceRuleId] : [])] });
 }
 function rule(id: string, requirementIds = [id]) {
-  return artifact(`rule:${id}`, "requirements", { rule: { id, category: "业务规则", text: `${id} 原始规则正文`, relatedDiagrams: ["class"] } }, { requirementIds });
+  return artifact(`rule:${id}`, "requirements", { rule: { id, type: "business-rule" as const, text: `${id} 原始规则正文`,  } }, { requirementIds });
 }
 function classModel(id: string, elementId = "loan", modelId: string | undefined = id) {
   return {
@@ -49,7 +51,7 @@ test("atomic tasks replace their linked rules and preserve source-backed, stable
   const sources = [first, requirement("RETURN", ["释放借阅额度"], "RULE"), rule("RULE", ["RULE", "BORROW", "RETURN"]), rule("OTHER")];
   const tasks = buildImplementationTasks(sources);
   assert.deepEqual(tasks.map((task) => task.id), ["implement:requirement:BORROW", "implement:requirement:RETURN"]);
-  assert.equal(tasks[0].acceptanceCriteria.length, 2);
+  assert.equal(tasks[0].acceptanceCriteria.length, 1);
   assert.ok(tasks[0].acceptanceCriteria.every((criterion) => criterion.sourceArtifactId === first.id));
   assert.ok(tasks.every((task) => blocking(task).some((issue) => issue.code === "design-model-missing")));
   const reordered = buildImplementationTasks([requirement("BORROW", ["拒绝第6本", "允许第5本"], "RULE")])[0];
@@ -206,18 +208,28 @@ test("context functional scopes generate only their requirements and never mutat
   const borrow = requirement();
   const returnRequirement = requirement("RETURN");
   const state = {
-    requirementText: "借阅与归还", requirementBaseline: { requirements: [borrow.payload.requirement, returnRequirement.payload.requirement] },
+    requirementText: "借阅与归还", requirementBaseline: {
+          schemaVersion: 3, id: "baseline-test", version: 1, sourceInputFingerprint: "test-source-input",
+          runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
+           assumptions: [], conflicts: [],
+          qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
+          rules: ([borrow.payload.requirement, returnRequirement.payload.requirement]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id,
+            text: item.sourceFragment, sourceFragment: item.sourceFragment, origin: "generated",
+            type: "functional" as const,
+          })),
+        },
     designModels: {
       borrow: { diagramKind: "architecture", modelId: "borrow", title: "借阅", summary: "借阅模块", notes: [], packages: [], components: [{ id: "loan-service", name: "Loan", sourceRequirementIds: ["BORROW"] }], relationships: [] },
       return: { diagramKind: "architecture", modelId: "return", title: "归还", summary: "归还模块", notes: [], packages: [], components: [{ id: "return-service", name: "Return", sourceRequirementIds: ["RETURN"] }], relationships: [] },
     },
   };
-  const before = structuredClone(state);
-  const context = buildContext(state, { requirementIds: ["BORROW"], artifactIds: [] });
+  const currentState = { ...state, rules: state.requirementBaseline.rules.map(rule => requirementRuleFacts(rule)) };
+  const before = structuredClone(currentState);
+  const context = buildContext(currentState, { requirementIds: ["BORROW"], artifactIds: [] });
   const tasks = buildImplementationTasks(context.artifacts);
   assert.deepEqual(tasks.map((task) => task.id), ["implement:requirement:BORROW"]);
   assert.deepEqual(tasks[0].designRefs.map((entry) => entry.elementId), ["loan-service"]);
-  assert.deepEqual(state, before);
+  assert.deepEqual(currentState, before);
 });
 
 

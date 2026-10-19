@@ -1,11 +1,18 @@
 // Verifies run history labels and summaries shown across generation history surfaces.
-import { createRunSnapshot } from "../../test/artifact-fixtures";
+import { createRunSnapshot } from "@/test/contract-fixtures";
 import { describe, expect, it } from "vitest";
 import type {  RunSnapshot } from "@uml-platform/contracts";
-import { getRunHistorySnapshotSummary } from "./index";
+import { formatRunHistoryDiagramErrorSummary, getRunHistorySnapshotSummary } from "./index";
 
 
 describe("getRunHistorySnapshotSummary", () => {
+  it("keeps internal stages and scoped identifiers out of historical error summaries", () => {
+    const summary = formatRunHistoryDiagramErrorSummary([
+      { diagramId: "sequence:UC-DIAL", stage: "generate_design_sequence", error: { code: "PLATFORM_PROVIDER_UNAVAILABLE", category: "platform_provider", retryable: true, message: "private payload" }, message: "private payload" },
+    ], { design: true });
+    expect(summary).toContain("用例实现设计（当前模型服务暂不可用，请稍后重试。）");
+    expect(summary).not.toMatch(/generate_design_sequence|PLATFORM_PROVIDER_UNAVAILABLE|sequence:UC-DIAL|private payload/);
+  });
 
 
   it("summarizes failed rules-only snapshots as rule extraction failures", () => {

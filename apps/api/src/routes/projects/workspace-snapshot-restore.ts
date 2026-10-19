@@ -1,19 +1,20 @@
-// Restores persisted run snapshots into the project workspace state without browser round-trips.
-import { rebuildRequirementQualityReport } from "@uml-platform/contracts";
+// Merges generated run results into project state for pipelines and case initialization.
 import {
+  requirementBaselineSchema,
+  reuseRequirementBaseline,
   designDiagramKindFromRecordKey,
   designInputFingerprint,
   designRecordBelongsToDiagramKinds,
   designTraceabilityTouchesDiagramKinds,
   modelRecordBelongsToDiagramKinds,
-  normalizeSnapshotFingerprint,
   snapshotInputFingerprint,
-  isLegacyCodeSnapshot,
-  stripRetiredCodeData,
   activeRequirementModels,
+  invalidateDesignDependents,
+  requirementOutputFingerprints,
+  assertCurrentWorkspaceState,
+  assertCurrentRunSnapshot,
 } from "@uml-platform/contracts";
 import type {
-  AtomicRequirement,
 
   DesignDiagramKind,
   DesignDiagramModelSpec,
@@ -37,171 +38,76 @@ export type RestorableRunSnapshot =
 
 type AnyRunSnapshot = RestorableRunSnapshot | DocumentRunSnapshot | FeasibilityRunSnapshot;
 type WorkspaceState = Record<string, unknown>;
-type BaselineRequirement = RequirementBaseline["requirements"][number];
 
-const REVIEWABLE_REQUIREMENT_FIELDS = [
-  "actor",
-  "subject",
-  "action",
-  "object",
-  "condition",
-  "outcome",
-  "acceptanceCriteria",
-] as const;
 
 export function isRestorableRunSnapshot(
   snapshot: AnyRunSnapshot,
 ): snapshot is RestorableRunSnapshot {
-  return !isLegacyCodeSnapshot(snapshot) && !("documentKind" in snapshot) && !("selectedArtifacts" in snapshot);
+  // Retired code snapshots remain ineligible even when an old receipt is presented.
+  return !("files" in snapshot) && !("documentKind" in snapshot) && !("selectedArtifacts" in snapshot);
 }
 
-function reviewCandidateStillNeeded(
-  baseline: RequirementBaseline,
-  ruleId: string,
-) {
-  const qualityIssueRequirementIds = new Set(
-    baseline.qualityReport.issues.map((issue) => issue.requirementId),
-  );
-  const reviewRequiredRequirementIds = new Set(
-    baseline.qualityReport.reviewRequiredRequirementIds,
-  );
-  return baseline.requirements.some((requirement) => {
-    if (requirement.sourceRuleId !== ruleId) return false;
-    if (reviewRequiredRequirementIds.has(requirement.id)) return true;
-    if (qualityIssueRequirementIds.has(requirement.id)) return true;
-    if (requirement.status !== "accepted") return true;
-    return Object.values(requirement.fieldProvenance).some((provenance) => {
-      if (!provenance || typeof provenance !== "object") return false;
-      const status = stringValue(
-        (provenance as Record<string, unknown>).status,
-      );
-      return status === "pending-review" || status === "rejected";
-    });
-  });
-}
-
-
-function acceptedRequirementFromCandidate(
-  candidate: Record<string, unknown>,
-  currentRequirement: BaselineRequirement,
-): AtomicRequirement | null {
-  if (stringValue(candidate.status) !== "accepted") return null;
-  const reviewedValue =
-    isRecord(candidate.afterRequirement) ?
-      candidate.afterRequirement :
-      isRecord(candidate.beforeRequirement) ?
-        candidate.beforeRequirement :
-        null;
-  if (!reviewedValue) return null;
-  const reviewed = reviewedValue as unknown as AtomicRequirement;
-  const fieldProvenance = { ...reviewed.fieldProvenance };
-  for (const field of REVIEWABLE_REQUIREMENT_FIELDS) {
-    const provenance = fieldProvenance[field];
-    if (!provenance) continue;
-    fieldProvenance[field] = {
-      ...provenance,
-      status: "accepted",
-      issueIds: [],
-    };
-  }
-  return {
-    ...reviewed,
-    id: currentRequirement.id,
-    sourceRuleId: currentRequirement.sourceRuleId ?? reviewed.sourceRuleId,
-    status: "accepted",
-    confidence: Math.max(reviewed.confidence, currentRequirement.confidence),
-    fieldProvenance,
-  };
-}
-
-
-function reconcileAcceptedReviewCandidates(
-  baseline: RequirementBaseline,
-  candidatesValue: unknown,
-): RequirementBaseline {
-  const candidates = recordValue(candidatesValue);
-  const hasAcceptedCandidate = Object.values(candidates).some(
-    (candidate) => isRecord(candidate) && stringValue(candidate.status) === "accepted",
-  );
-  if (!hasAcceptedCandidate) return baseline;
-
-  const acceptedRequirementIds = new Set<string>();
-  const requirements = baseline.requirements.map((requirement) => {
-    const ruleId = requirement.sourceRuleId;
-    const candidate = ruleId ? candidates[ruleId] : undefined;
-    if (!isRecord(candidate) || stringValue(candidate.status) !== "accepted") {
-      return requirement;
-    }
-    const reviewed = acceptedRequirementFromCandidate(candidate, requirement);
-    if (!reviewed) return requirement;
-    acceptedRequirementIds.add(requirement.id);
-    acceptedRequirementIds.add(reviewed.id);
-    return reviewed;
-  });
-  if (acceptedRequirementIds.size === 0) return baseline;
-
-  const issues = baseline.qualityReport.issues.filter(
-    (issue) =>
-      !issue.requirementId || !acceptedRequirementIds.has(issue.requirementId),
-  );
-  return {
-    ...baseline,
-    requirements,
-    qualityReport: rebuildRequirementQualityReport(baseline, requirements, issues),
-  };
-}
-
-
-function pruneRequirementReviewCandidatesForBaseline(
-  candidates: unknown,
-  baseline: RequirementBaseline,
-) {
-  const next = { ...recordValue(candidates) };
-  for (const [ruleId, candidate] of Object.entries(next)) {
-    const status = isRecord(candidate) ? stringValue(candidate.status) : "";
-    if (
-      (status === "pending" || status === "failed") &&
-      !reviewCandidateStillNeeded(baseline, ruleId)
-    ) {
-      delete next[ruleId];
-    }
-  }
-  return next;
-}
-
-function applyRequirementBaselineToWorkspaceState(
-  state: WorkspaceState,
-  baseline: RequirementBaseline,
-) {
-  const reconciledBaseline = reconcileAcceptedReviewCandidates(
-    baseline,
-    state.requirementReviewCandidates,
-  );
-  state.requirementBaseline = reconciledBaseline;
-  state.requirementQualityReport = reconciledBaseline.qualityReport;
-  state.requirementReviewCandidates =
-    pruneRequirementReviewCandidatesForBaseline(
-      state.requirementReviewCandidates,
-      reconciledBaseline,
-    );
+function applyRequirementBaselineToWorkspaceState(state: WorkspaceState, baseline: RequirementBaseline) {
+  const current = requirementBaselineSchema.safeParse(state.requirementBaseline);
+  const resolved = reuseRequirementBaseline(current.success ? current.data : null, baseline);
+  state.requirementBaseline = structuredClone(resolved);
+  state.requirementQualityReport = structuredClone(resolved.qualityReport);
 }
 
 export function restoreRunSnapshotToWorkspaceState({
   currentState,
   snapshot,
-  mode = "merge",
   replaceRequirementInput = false,
 }: {
   currentState?: WorkspaceState | null;
   snapshot: RestorableRunSnapshot;
-  mode?: "merge" | "restore";
   replaceRequirementInput?: boolean;
 }) {
+  assertCurrentWorkspaceState(currentState ?? {});
+  assertCurrentRunSnapshot(snapshot);
   if (isDesignRunSnapshot(snapshot)) snapshot = { ...snapshot, requirementModels: activeRequirementModels(snapshot.requirementModels) };
-  const base = mode === "restore" ? {} : { ...(currentState ?? {}) };
-  return applySnapshotToWorkspaceState(base, snapshot, {
+  const base = { ...(currentState ?? {}) };
+  const next = applySnapshotToWorkspaceState(base, snapshot, {
     replaceRequirementInput,
   });
+  if (!isDesignRunSnapshot(snapshot)) next.diagramInputFingerprints = {
+    ...recordValue(next.diagramInputFingerprints), ...requirementOutputFingerprints(snapshot),
+  };
+  preserveUntargetedInstances(base, next, snapshot);
+  const regenerated = isDesignRunSnapshot(snapshot)
+    ? snapshot.models.filter(model => snapshot.outputManifest.some(output => output.kind === "model" && output.id === (model.modelId ?? model.diagramKind))).map(model => model.diagramKind)
+    : [];
+  return invalidateDesignDependents(base, next, regenerated);
+}
+
+// Instance retries publish only their requested use cases, including errors and traceability.
+function preserveUntargetedInstances(before: WorkspaceState, next: WorkspaceState, snapshot: RestorableRunSnapshot) {
+  const design = isDesignRunSnapshot(snapshot);
+  const kind = design ? "sequence" : "analysis";
+  const targets = new Set(design ? snapshot.sequenceTargetUseCaseIds ?? [] : snapshot.analysisTargetUseCaseIds ?? []);
+  if (!targets.size) return;
+  const modelField = design ? "designModels" : "models";
+  const catalog = { ...recordValue(before[modelField]), ...Object.fromEntries(snapshot.models.map(model => [model.modelId ?? model.diagramKind, model])) };
+  const scope = (key: string, value: unknown) => {
+    const id = key.replace(/^(?:requirements|design):/, "");
+    const model = recordValue(catalog[id] ?? value);
+    const related = model.diagramKind === kind || id === kind || id.startsWith(`${kind}:`);
+    const useCaseId = typeof model.sourceUseCaseId === "string" ? model.sourceUseCaseId : id.startsWith(`${kind}:`) ? id.slice(kind.length + 1) : "";
+    return { related, targeted: targets.has(useCaseId) };
+  };
+  for (const field of [modelField, design ? "designPlantUml" : "plantUml", design ? "designSvgArtifacts" : "svgArtifacts", design ? "designDiagramErrors" : "diagramErrors", design ? "designInputFingerprints" : "diagramInputFingerprints", "visualReviews"]) {
+    next[field] = Object.fromEntries([
+      ...Object.entries(recordValue(next[field])).filter(([id, value]) => { const item = scope(id, value); return !item.related || item.targeted; }),
+      ...Object.entries(recordValue(before[field])).filter(([id, value]) => { const item = scope(id, value); return item.related && !item.targeted; }),
+    ]);
+  }
+  const traceField = design ? "designModelTraceability" : "requirementModelTraceability";
+  const belongsToUntargeted = (entry: unknown) => {
+    const row = recordValue(entry), ref = recordValue(design ? row.source : row.target);
+    const item = scope(String(ref.modelId ?? ref.diagramKind ?? ""), ref);
+    return item.related && !item.targeted;
+  };
+  next[traceField] = [...arrayValue(next[traceField]).filter(entry => !belongsToUntargeted(entry)), ...arrayValue(before[traceField]).filter(belongsToUntargeted)];
 }
 
 function applySnapshotToWorkspaceState(
@@ -209,7 +115,7 @@ function applySnapshotToWorkspaceState(
   snapshot: RestorableRunSnapshot,
   options: { replaceRequirementInput?: boolean } = {},
 ) {
-  const next: WorkspaceState = stripRetiredCodeData({ ...state });
+  const next: WorkspaceState = { ...state };
   const currentRequirementText = stringValue(next.requirementText);
   const currentRules = arrayValue(next.rules);
   const currentHasRequirements =
@@ -739,42 +645,6 @@ function keepDesignScopedRecords<T>(
   ) as Record<string, T>;
 }
 
-
-function repairMissingDesignInputFingerprints(state: WorkspaceState) {
-  const generatedDesignDiagrams = stringArrayValue(state.generatedDesignDiagramTypes);
-  const designModels = recordValue(state.designModels);
-  if (
-    generatedDesignDiagrams.length === 0 ||
-    Object.keys(designModels).length === 0
-  ) {
-    return state;
-  }
-
-  const currentDesignFingerprint = designInputFingerprint(
-    presentRecordValues(state.models) as DiagramModelSpec[],
-    arrayValue(
-      state.requirementModelTraceability,
-    ) as RequirementModelTraceabilityEntry[],
-  );
-  const generated = new Set(generatedDesignDiagrams);
-  const designInputFingerprints = {
-    ...stringRecordValue(state.designInputFingerprints),
-  };
-  let repaired = false;
-  for (const [modelId, model] of Object.entries(designModels)) {
-    const diagramKind = readNestedString(model, ["diagramKind"]);
-    if (!generated.has(diagramKind)) continue;
-    if (!designInputFingerprints[modelId]) {
-      designInputFingerprints[modelId] = currentDesignFingerprint;
-      repaired = true;
-    }
-  }
-  if (repaired) {
-    state.designInputFingerprints = designInputFingerprints;
-  }
-  return state;
-}
-
 function assertGeneratedDesignChainComplete(state: WorkspaceState) {
   const generatedDesignDiagrams = stringArrayValue(state.generatedDesignDiagramTypes);
   if (generatedDesignDiagrams.length === 0) return;
@@ -859,13 +729,12 @@ function completeGeneratedDesignDiagrams(
 }
 
 function finalizeSnapshotWorkspaceState(state: WorkspaceState) {
-  const repaired = repairMissingDesignInputFingerprints(state);
-  repaired.generatedDesignDiagramTypes = completeGeneratedDesignDiagrams(
-    repaired,
-    stringArrayValue(repaired.generatedDesignDiagramTypes) as DesignDiagramKind[],
+  state.generatedDesignDiagramTypes = completeGeneratedDesignDiagrams(
+    state,
+    stringArrayValue(state.generatedDesignDiagramTypes) as DesignDiagramKind[],
   );
-  assertGeneratedDesignChainComplete(repaired);
-  return repaired;
+  assertGeneratedDesignChainComplete(state);
+  return state;
 }
 
 function mergeDesignTraceability(
@@ -925,7 +794,7 @@ function fingerprintMatches(
   storedFingerprint: string | null | undefined,
   currentFingerprint: string,
 ) {
-  return normalizeSnapshotFingerprint(storedFingerprint) === currentFingerprint;
+  return storedFingerprint === currentFingerprint;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -936,9 +805,6 @@ function recordValue(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
 
-function presentRecordValues(value: unknown) {
-  return Object.values(recordValue(value)).filter(Boolean);
-}
 
 function arrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];

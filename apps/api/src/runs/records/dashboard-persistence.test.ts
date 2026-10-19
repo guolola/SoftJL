@@ -19,23 +19,19 @@ test("dashboard reads persisted tasks absent from the process map without hydrat
   for (const [id, project, status, completed] of [["persisted", "visible", "completed", "2026-10-01T00:03:00Z"], ["other", "private", "failed", "2026-10-01T00:04:00Z"], ["missing-start", "visible", "cancelled", "2026-10-01T00:05:00Z"]]) {
     await db.query(`insert into run_records(id, project_id, snapshot, status, stage, model, created_at, completed_at) values($1,$2,$3,$4,'queued','model-a','2026-10-01T00:00:00Z',$5)`, [id, project, JSON.stringify({ ...snapshot, runId: id }), status, completed]);
   }
-  await db.query(`insert into run_events values('persisted',1,'{"type":"stage_started"}','2026-10-01T00:01:00Z')`);
+  await db.query(`insert into run_events values('persisted',1,'{"type":"stage_started","stage":"generate_models","eventId":"start","createdAt":"2026-10-01T00:01:00Z"}','2026-10-01T00:01:00Z')`);
   await db.query(`update run_records set snapshot = snapshot || '{"models":[{"modelId":"order-class","diagramKind":"class","title":"订单类图"}]}'::jsonb where id='persisted'`);
   await db.query(`insert into run_events values
-    ('persisted',2,'{"type":"stage_progress","stage":"generate_models","subtaskId":"class","diagramKind":"class","subtaskStatus":"running"}','2026-10-01T00:01:10Z'),
-    ('persisted',3,'{"type":"artifact_ready","stage":"generate_models","artifactKind":"model","subtaskId":"class","diagramKind":"class","subtaskStatus":"completed"}','2026-10-01T00:02:10Z')`);
+    ('persisted',2,'{"type":"stage_progress","stage":"generate_models","subtaskId":"class","diagramKind":"class","subtaskStatus":"running","eventId":"model-start","createdAt":"2026-10-01T00:01:10Z"}','2026-10-01T00:01:10Z'),
+    ('persisted',3,'{"type":"artifact_ready","stage":"generate_models","artifactKind":"model","subtaskId":"class","diagramKind":"class","subtaskStatus":"completed","eventId":"model-ready","createdAt":"2026-10-01T00:02:10Z"}','2026-10-01T00:02:10Z')`);
   await db.query(`insert into run_records(id,project_id,snapshot,status,stage,created_at,completed_at) values
-    ('document','visible','{"documentId":"doc-a","documentKind":"softwareDesignSpec","fileName":"设计说明书.docx"}','completed','render_document_file','2026-10-01T00:00:00Z','2026-10-01T00:02:00Z'),
-    ('legacy-model','visible','{"models":[{"modelId":"legacy-class","diagramKind":"class","title":"旧类模型"}]}','completed','generate_models','2026-10-01T00:00:00Z','2026-10-01T00:02:00Z')`);
+    ('document','visible','{"documentId":"doc-a","documentKind":"softwareDesignSpec","fileName":"设计说明书.docx"}','completed','render_document_file','2026-10-01T00:00:00Z','2026-10-01T00:02:00Z')`);
   await db.query(`insert into run_events values
-    ('document',1,'{"type":"stage_started","stage":"generate_document_text"}','2026-10-01T00:01:00Z'),
-    ('document',2,'{"type":"artifact_ready","stage":"render_document_file","artifactKind":"document"}','2026-10-01T00:02:00Z'),
-    ('legacy-model',1,'{"type":"run_activity","stage":"generate_models","callId":"legacy-call","subtaskId":"legacy-class","phase":"started"}','2026-10-01T00:00:10Z'),
-    ('legacy-model',2,'{"type":"run_activity","stage":"generate_models","callId":"legacy-call","subtaskId":"legacy-class","phase":"completed"}','2026-10-01T00:00:20Z'),
-    ('legacy-model',3,'{"type":"artifact_ready","stage":"generate_models","artifactKind":"model"}','2026-10-01T00:00:30Z')`);
+    ('document',1,'{"type":"stage_started","stage":"generate_document_text","eventId":"doc-start","createdAt":"2026-10-01T00:01:00Z"}','2026-10-01T00:01:00Z'),
+    ('document',2,'{"type":"artifact_ready","stage":"render_document_file","artifactKind":"document","eventId":"doc-ready","createdAt":"2026-10-01T00:02:00Z"}','2026-10-01T00:02:00Z')`);
   const summaries = await store.listDashboardRuns!(["visible"]);
   assert.equal(store.size, 0);
-  assert.equal(summaries.length, 4);
+  assert.equal(summaries.length, 3);
   const persisted = summaries.find(run => run.runId === "persisted")!;
   assert.equal(persisted.status, "completed");
   assert.equal(persisted.runKind, "requirements");
@@ -44,6 +40,7 @@ test("dashboard reads persisted tasks absent from the process map without hydrat
     startedAt: "2026-10-01T00:01:10.000Z", completedAt: "2026-10-01T00:02:10.000Z" }]);
   assert.equal(summaries.find(run => run.runId === "missing-start")?.startedAt, null);
   assert.equal(summaries.find(run => run.runId === "document")?.artifactTimings?.[0].artifactType, "document:softwareDesignSpec");
-  assert.equal(summaries.find(run => run.runId === "legacy-model")?.artifactTimings?.[0].completedAt, "2026-10-01T00:00:20.000Z");
   assert.deepEqual(await store.listDashboardRuns!([]), []);
+  await db.query(`insert into run_events values('persisted',4,'{"type":"stage_started","stage":"render_svg"}','2026-10-01T00:02:30Z')`);
+  await assert.rejects(store.listDashboardRuns!(["visible"]));
 });

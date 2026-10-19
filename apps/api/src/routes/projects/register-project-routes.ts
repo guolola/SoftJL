@@ -1,8 +1,10 @@
 // Registers project and membership endpoints; business rules stay in auth store/guards.
+import { createHttpErrorResponse } from "../../server/http-error-response.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { ModelSemanticError } from "@uml-platform/contracts";
 import { normalizeWorkspaceModelState } from "../../normalizers/workspace/model-state.js";
+
 import {
   projectInvitationAcceptResponseSchema,
   projectInvitationCreateRequestSchema,
@@ -31,9 +33,6 @@ import {
   createMailAdapterFromEnv,
   type MailAdapter,
 } from "../../mail/mail-adapter.js";
-import type { AcademicAdminRepository } from "../../db/academic-admin-repository.js";
-import { refreshRunRecordIfAvailable, type RunRecordStore } from "../../runs/records/run-record-store.js";
-import { isRestorableRunSnapshot } from "./workspace-snapshot-restore.js";
 import {
   devTokenPayload,
   isWorkspaceSourceRunConstraintError,
@@ -44,6 +43,11 @@ import {
   toProjectInvitationDto,
 } from "../../projects/project-route-payloads.js";
 import { requireProjectSettingsContext } from "../../projects/project-settings-access.js";
+
+function isSchemaError(error: unknown): error is z.ZodError {
+  // Contracts may resolve a workspace-local Zod copy, so constructor identity alone is insufficient.
+  return error instanceof z.ZodError || error instanceof Error && error.name === "ZodError" && "issues" in error && Array.isArray(error.issues);
+}
 
 const projectWorkspaceSaveRequestSchema = z.object({
   baseVersion: z.number().int().min(0),
@@ -56,32 +60,12 @@ export function registerProjectRoutes({
   authStore,
   mailAdapter = createMailAdapterFromEnv(),
   nodeEnv = process.env.NODE_ENV ?? null,
-  academicStore,
-  runs,
 }: {
   app: FastifyInstance;
   authStore: AuthStore;
   mailAdapter?: MailAdapter;
   nodeEnv?: string | null;
-  academicStore?: AcademicAdminRepository;
-  runs?: RunRecordStore;
 }) {
-  app.get("/api/academic-options", async (request, reply) => {
-    const auth = await requireAuth(request, reply, authStore);
-    if (isAuthError(auth)) return auth;
-    if (!academicStore) {
-      return { organizations: [], courses: [], classes: [], teams: [] };
-    }
-    return {
-      organizations: (await academicStore.listOrganizations()).filter(
-        (item) => item.status === "active",
-      ),
-      courses: (await academicStore.listCourses()).filter((item) => item.status === "active"),
-      classes: (await academicStore.listClasses()).filter((item) => item.status === "active"),
-      teams: (await academicStore.listTeams()).filter((item) => item.status === "active"),
-    };
-  });
-
   app.get("/api/projects", async (request, reply) => {
     const auth = await requireAuth(request, reply, authStore);
     if (isAuthError(auth)) return auth;
@@ -101,22 +85,15 @@ export function registerProjectRoutes({
     const parsedInput = projectCreateRequestSchema.safeParse(request.body);
     if (!parsedInput.success) {
       reply.code(400);
-      return {
-        message: "Invalid request body",
-        issues: parsedInput.error.issues,
-      };
+      return createHttpErrorResponse(reply, { issues: parsedInput.error.issues });
     }
     const input = parsedInput.data;
     const { project, ownerMember } = await authStore.createProject({
+      projectMode: input.projectMode,
       ownerUserId: auth.user.id,
       name: input.name,
       description: input.description,
       visibility: input.visibility,
-      organizationId: input.organizationId ?? null,
-      courseId: input.courseId ?? null,
-      classId: input.classId ?? null,
-      teamId: input.teamId ?? null,
-      defaultProviderConfigId: null,
       retentionPolicy: input.retentionPolicy ?? "manual",
       backgroundKey: input.backgroundKey ?? null,
     });
@@ -157,7 +134,15 @@ export function registerProjectRoutes({
     );
     if (isProjectPermissionError(context)) return context;
 
-    return projectWorkspacePayload(await authStore.getProjectWorkspace(projectId));
+    try {
+      return projectWorkspacePayload(await authStore.getProjectWorkspace(projectId));
+    } catch (error) {
+      if (error instanceof ModelSemanticError || isSchemaError(error)) {
+        reply.code(409);
+        return createHttpErrorResponse(reply);
+      }
+      throw error;
+    }
   });
 
   app.put(
@@ -181,30 +166,30 @@ export function registerProjectRoutes({
       result = await authStore.saveProjectWorkspace({
         projectId,
         baseVersion: input.baseVersion,
-        state: normalizeWorkspaceModelState(input.state, currentWorkspace.state),
+        // Ordinary workflow state is server-owned. Older clients cannot delete it or forge generated results.
+        state: normalizeWorkspaceModelState({ ...input.state, standardProject: currentWorkspace.state.standardProject }, currentWorkspace.state),
         updatedByUserId: context.user.id,
         sourceRunId: input.sourceRunId ?? null,
       });
     } catch (error) {
       if (error instanceof ModelSemanticError) {
         reply.code(400);
-        return { message: "模型未通过语义校验", diagnostics: error.diagnostics };
+        return createHttpErrorResponse(reply, { diagnostics: error.diagnostics });
+      }
+      if (isSchemaError(error)) {
+        reply.code(400);
+        return createHttpErrorResponse(reply, { issues: error.issues });
       }
       if (isWorkspaceSourceRunConstraintError(error)) {
         reply.code(400);
-        return { message: "Source run not found for project workspace" };
+        return createHttpErrorResponse(reply);
       }
       throw error;
     }
     if (!result.ok) {
       reply.code(409);
       const current = projectWorkspacePayload(result.workspace);
-      return {
-        message: "项目已由其他成员更新，请刷新最新状态后再保存。",
-        projectId,
-        currentVersion: current.version,
-        workspace: current,
-      };
+      return createHttpErrorResponse(reply, { projectId, currentVersion: current.version, workspace: current });
     }
 
     await authStore.recordAuditLog({
@@ -220,44 +205,6 @@ export function registerProjectRoutes({
     },
   );
 
-  app.post("/api/projects/:projectId/runs/:runId/restore-workspace", async (request, reply) => {
-    const { projectId, runId } = request.params as {
-      projectId: string;
-      runId: string;
-    };
-    const context = await requireProjectPermission(
-      request,
-      reply,
-      authStore,
-      projectId,
-      "update_project",
-    );
-    if (isProjectPermissionError(context)) return context;
-    if (!runs) {
-      reply.code(404);
-      return { message: "Run history is not available" };
-    }
-
-    const record = await refreshRunRecordIfAvailable(runs, runId, { events: "none" });
-    if (!record || record.metadata?.projectId !== projectId) {
-      reply.code(404);
-      return { message: "Run not found" };
-    }
-    if (!record.terminal) {
-      reply.code(409);
-      return { message: "运行尚未结束，暂不能恢复快照。" };
-    }
-    if (!isRestorableRunSnapshot(record.snapshot)) {
-      reply.code(400);
-      return { message: "说明书快照不能恢复为项目工作台。" };
-    }
-    reply.code(410);
-    return {
-      message:
-        "历史快照暂仅支持查看，不能直接覆盖当前项目工作区。请重新运行对应阶段生成当前状态。",
-    };
-  });
-
   app.patch("/api/projects/:projectId", async (request, reply) => {
     const { projectId } = request.params as { projectId: string };
     const context = await requireProjectPermission(
@@ -272,19 +219,15 @@ export function registerProjectRoutes({
     const parsedInput = projectUpdateRequestSchema.safeParse(request.body);
     if (!parsedInput.success) {
       reply.code(400);
-      return {
-        message: "Invalid request body",
-        issues: parsedInput.error.issues,
-      };
+      return createHttpErrorResponse(reply, { issues: parsedInput.error.issues });
     }
     const input = parsedInput.data;
     const project = await authStore.updateProject(projectId, {
       ...input,
-      defaultProviderConfigId: null,
     });
     if (!project) {
       reply.code(404);
-      return { message: "Project not found" };
+      return createHttpErrorResponse(reply);
     }
 
     await authStore.recordAuditLog({
@@ -312,7 +255,7 @@ export function registerProjectRoutes({
     const project = await authStore.updateProject(projectId, { status: "archived" });
     if (!project) {
       reply.code(404);
-      return { message: "Project not found" };
+      return createHttpErrorResponse(reply);
     }
     const auditLog = await authStore.recordAuditLog({
       actorUserId: context.user.id,
@@ -342,7 +285,7 @@ export function registerProjectRoutes({
     const project = await authStore.updateProject(projectId, { status: "active" });
     if (!project) {
       reply.code(404);
-      return { message: "Project not found" };
+      return createHttpErrorResponse(reply);
     }
     const auditLog = await authStore.recordAuditLog({
       actorUserId: context.user.id,
@@ -375,7 +318,7 @@ export function registerProjectRoutes({
     });
     if (!project) {
       reply.code(404);
-      return { message: "Project not found" };
+      return createHttpErrorResponse(reply);
     }
     const auditLog = await authStore.recordAuditLog({
       actorUserId: context.user.id,
@@ -410,7 +353,7 @@ export function registerProjectRoutes({
     );
     if (!nextOwner) {
       reply.code(400);
-      return { message: "New owner must be an active project member" };
+      return createHttpErrorResponse(reply);
     }
 
     for (const member of members) {
@@ -424,7 +367,7 @@ export function registerProjectRoutes({
     });
     if (!project || !updatedOwnerMember) {
       reply.code(404);
-      return { message: "Project not found" };
+      return createHttpErrorResponse(reply);
     }
 
     const auditLog = await authStore.recordAuditLog({
@@ -495,7 +438,7 @@ export function registerProjectRoutes({
     const input = projectInvitationCreateRequestSchema.parse(request.body);
     if (await authStore.findProjectMemberByEmail(projectId, input.email)) {
       reply.code(409);
-      return { message: "Project invitation already exists" };
+      return createHttpErrorResponse(reply);
     }
 
     const now = new Date().toISOString();
@@ -561,7 +504,7 @@ export function registerProjectRoutes({
       const member = await authStore.getMember(invitationId);
       if (!member || member.projectId !== projectId || member.status !== "invited") {
         reply.code(404);
-        return { message: "Project invitation not found" };
+        return createHttpErrorResponse(reply);
       }
 
       const invitationToken = await authStore.createProjectInvitationToken({
@@ -614,7 +557,7 @@ export function registerProjectRoutes({
       const member = await authStore.getMember(invitationId);
       if (!member || member.projectId !== projectId || member.status !== "invited") {
         reply.code(404);
-        return { message: "Project invitation not found" };
+        return createHttpErrorResponse(reply);
       }
 
       await authStore.revokeProjectInvitationTokens(member.id);
@@ -637,7 +580,7 @@ export function registerProjectRoutes({
     const invitation = await authStore.findActiveProjectInvitationToken(token);
     if (!invitation) {
       reply.code(404);
-      return { message: "Project invitation token is invalid or expired" };
+      return createHttpErrorResponse(reply);
     }
 
     return projectInvitationResponseSchema.parse({
@@ -655,17 +598,17 @@ export function registerProjectRoutes({
     const auth = await requireAuth(request, reply, authStore);
     if (isAuthError(auth)) {
       reply.code(401);
-      return { message: "Log in to accept this project invitation" };
+      return createHttpErrorResponse(reply);
     }
 
     const result = await authStore.acceptProjectInvitationToken(token, auth.user);
     if (!result) {
       reply.code(400);
-      return { message: "Project invitation token is invalid or expired" };
+      return createHttpErrorResponse(reply);
     }
     if ("error" in result) {
       reply.code(403);
-      return { message: "Project invitation is for a different email address" };
+      return createHttpErrorResponse(reply);
     }
 
     await authStore.recordAuditLog({
@@ -695,7 +638,7 @@ export function registerProjectRoutes({
     const input = projectMemberInviteRequestSchema.parse(request.body);
     if (await authStore.findProjectMemberByEmail(projectId, input.email)) {
       reply.code(409);
-      return { message: "Project member already exists" };
+      return createHttpErrorResponse(reply);
     }
 
     const user = await authStore.findUserByEmail(input.email);
@@ -743,7 +686,7 @@ export function registerProjectRoutes({
     const member = await authStore.getMember(memberId);
     if (!member || member.projectId !== projectId) {
       reply.code(404);
-      return { message: "Project member not found" };
+      return createHttpErrorResponse(reply);
     }
 
     const input = projectMemberUpdateRequestSchema.parse(request.body);
@@ -753,17 +696,17 @@ export function registerProjectRoutes({
       (await authStore.countOwners(projectId)) <= 1
     ) {
       reply.code(400);
-      return { message: "Cannot remove the last project owner" };
+      return createHttpErrorResponse(reply);
     }
     if (input.role === "owner" && !member.userId) {
       reply.code(400);
-      return { message: "Invited members cannot become owners before joining" };
+      return createHttpErrorResponse(reply);
     }
 
     const updated = await authStore.updateMember(memberId, { role: input.role });
     if (!updated) {
       reply.code(404);
-      return { message: "Project member not found" };
+      return createHttpErrorResponse(reply);
     }
     if (updated.role === "owner" && updated.userId) {
       await authStore.updateProject(projectId, { ownerUserId: updated.userId });
@@ -801,11 +744,11 @@ export function registerProjectRoutes({
       const member = await authStore.getMember(memberId);
       if (!member || member.projectId !== projectId) {
         reply.code(404);
-        return { message: "Project member not found" };
+        return createHttpErrorResponse(reply);
       }
       if (member.role === "owner" && (await authStore.countOwners(projectId)) <= 1) {
         reply.code(400);
-        return { message: "Cannot remove the last project owner" };
+        return createHttpErrorResponse(reply);
       }
 
       await authStore.deleteMember(memberId);

@@ -20,7 +20,6 @@ import {
   requireAuth,
   requireProjectPermission,
 } from "../../auth/guards.js";
-import type { AuthContext } from "../../auth/guards.js";
 import type { AuthStore } from "../../auth/in-memory-auth-store.js";
 import type {
   ProviderConfigStore,
@@ -1091,7 +1090,7 @@ export function registerProviderConfigRoutes({
         authStore,
         projectId,
       });
-      if ("message" in context) return context;
+      if (isProjectPermissionError(context)) return context;
 
       const input = parseProviderTestInput(request.body, reply);
       if ("error" in input) return input;
@@ -1131,7 +1130,7 @@ async function requireProjectProviderContext({
   reply: FastifyReply;
   authStore: AuthStore;
   projectId: string;
-}): Promise<AuthContext | { message: string }> {
+}) {
   const context = await requireProjectPermission(
     request,
     reply,

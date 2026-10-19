@@ -31,7 +31,7 @@ npm run typecheck:web
 - 设置面：`PageHeader` → `TabsList variant="line"` → 分节 `Card` + `Field/FieldGroup`，危险区用 `border-destructive/40`。
 - 双栏编辑器：`grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]`；仪表盘：`grid grid-cols-6 gap-6` + 响应式 col-span。
 - 弹窗：`DialogContent` 显式 `max-w-md|lg|xl|4xl` + `max-h-[85vh] overflow-y-auto`。
-- 禁止在 `features/`、`app/` 内手写 `<button>/<input>/<textarea>/<select>/<table>` 及 `rounded-* border` 面板（governance 测试扫描）；白名单仅 sr-only 文件输入、Monaco/OnlyOffice 宿主、SVG 画布、resize handle。
+- 禁止在 `features/`、`app/` 内手写 `<button>/<input>/<textarea>/<select>/<table>` 及 `rounded-* border` 面板（governance 测试扫描）；白名单仅 sr-only 文件输入、Monaco/DOCX 宿主、SVG 画布、resize handle。
 
 ## 验证
 

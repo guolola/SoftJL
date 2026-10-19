@@ -25,7 +25,7 @@ for (const theme of ["light", "dark"]) {
       }, { theme });
       await mockProjectApi(page, {
         designDiagramErrors: {
-          class: { stage: "render_svg", error: { code: "RUN_RENDER_FAILED", category: "render", retryable: true, message: "重新生成失败，仍可查看上一版。".repeat(35) } },
+          "sequence:uc-3": { stage: "render_svg", error: { code: "RUN_RENDER_FAILED", category: "render", retryable: true, message: "重新生成失败，仍可查看上一版。".repeat(35) } },
         },
       });
       await page.setViewportSize({ width: 1440, height: 1000 });
@@ -61,9 +61,7 @@ for (const theme of ["light", "dark"]) {
           await expect(failed).toBeVisible();
           await expectSemanticColor(failed.locator('svg'), '--status-failure');
           const failureCard = cards.filter({ has: page.locator('[data-generation-status="failed"]') });
-          await expect(failureCard.getByRole('button', { name: '查看', exact: true })).toBeVisible();
-          // Stable error codes use concise localized text; scrolling is available when content needs it.
-          await expect(failureCard.locator('.overflow-y-auto')).toHaveCSS('overflow-y', 'auto');
+          await expect(failureCard.getByRole('heading', { name: '用例实现设计', exact: true })).toBeVisible();
         }
         await grid.screenshot({ path: info.outputPath(`${label}.png`) });
       }
@@ -76,7 +74,7 @@ for (const theme of ["light", "dark"]) {
 
 test("switching theme palettes preserves green success and red failure icons", async ({ page }) => {
   await mockProjectApi(page, {
-    diagramErrors: { class: { stage: "render_svg", error: { code: "RUN_RENDER_FAILED", category: "render", retryable: true, message: "生成失败" } } },
+    diagramErrors: { "analysis:uc-3": { stage: "render_svg", error: { code: "RUN_RENDER_FAILED", category: "render", retryable: true, message: "生成失败" } } },
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/projects/${projectId}`);

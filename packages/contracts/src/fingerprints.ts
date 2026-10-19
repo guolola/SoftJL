@@ -1,4 +1,4 @@
-// Owns stable workspace input fingerprinting for requirement snapshots and design input compatibility.
+// Owns stable input fingerprints for current requirement snapshots and design dependencies.
 import {
   diagramModelSpecSchema,
   requirementModelTraceabilityEntrySchema,
@@ -25,9 +25,6 @@ export function designInputFingerprint(
   );
 }
 
-// Old hashes and serialized snapshots remain old: reading must never certify an unvalidated model as v3.
-export function normalizeDesignInputFingerprint(fingerprint: string | null | undefined) { return fingerprint ?? null; }
-export function normalizeSnapshotFingerprint(fingerprint: string | null | undefined) { return fingerprint ?? null; }
 
 function fingerprintHash(value: string) {
   let h1 = 1779033703;

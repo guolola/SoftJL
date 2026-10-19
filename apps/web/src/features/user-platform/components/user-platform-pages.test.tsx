@@ -28,7 +28,6 @@ function createRepository(): WorkspaceRepository {
     })),
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
-    restoreRunHistory: vi.fn(async () => null),
     deleteRunHistory: vi.fn(async () => []),
     clearRunHistory: vi.fn(async () => {}),
   };
@@ -46,7 +45,6 @@ describe("ProjectWorkspaceDrawer", () => {
   }
 
   function stubProjectWorkspaceFetch({
-    defaultProviderConfigId = "provider-long",
     backgroundKey = null,
     providerConfigs = [{
       id: "provider-long",
@@ -84,14 +82,14 @@ describe("ProjectWorkspaceDrawer", () => {
           const body = JSON.parse(String(init?.body ?? "{}"));
           return new Response(
             JSON.stringify({
-              project: {
+              project: { projectMode: "professional",
                 id: projectId,
                 name: body.name ?? longName,
                 description: body.description ?? `${longName} local test project`,
                 visibility: body.visibility ?? "private",
                 status: "active",
                 ownerUserId: "owner-user",
-                defaultProviderConfigId: body.defaultProviderConfigId ?? null,
+
                 backgroundKey: body.backgroundKey ?? null,
                 retentionPolicy: "manual",
                 updatedAt: "2026-05-24T00:00:00.000Z",
@@ -102,15 +100,15 @@ describe("ProjectWorkspaceDrawer", () => {
           );
         }
         return new Response(
-          JSON.stringify({
-            project: {
+          JSON.stringify({ generationExecutionMode: "provider",
+            project: { projectMode: "professional",
               id: projectId,
               name: longName,
               description: `${longName} local test project`,
               visibility: "private",
               status: "active",
               ownerUserId: "owner-user",
-              defaultProviderConfigId,
+
               backgroundKey,
               retentionPolicy: "manual",
               updatedAt: "2026-05-24T00:00:00.000Z",
@@ -340,7 +338,7 @@ describe("ProjectWorkspaceDrawer", () => {
 
     expect(screen.queryByRole("button", { name: /质量追溯系统/u })).not.toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: /选择背景图/u }));
-    await user.click(await screen.findByRole("button", { name: /质量追溯系统/u }));
+    await user.click(await screen.findByRole("button", { name: "选择背景图 20" }));
     await user.click(screen.getByRole("button", { name: "保存项目设置" }));
     await screen.findByText("项目设置已保存。");
 
@@ -354,11 +352,11 @@ describe("ProjectWorkspaceDrawer", () => {
     });
   });
 
-  it("does not render project default provider controls for unavailable old bindings", async () => {
+  it("keeps provider controls out of project settings", async () => {
     const user = userEvent.setup();
     const scopedProjectId = "project-with-very-long-drawer-values";
     const projectId = stubProjectWorkspaceFetch({
-      defaultProviderConfigId: "provider-disabled",
+
       providerConfigs: [
         {
           id: "provider-disabled",

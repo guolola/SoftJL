@@ -1,4 +1,4 @@
-// Renders the requirement rule table, pagination, and inline review-status controls.
+// Renders the requirement rule table, pagination, and per-rule view/delete actions.
 import { Card } from "../../../shared/ui/card";
 import { TableCell } from '../../../shared/ui/table';
 import { TableBody } from '../../../shared/ui/table';
@@ -7,31 +7,18 @@ import { TableRow } from '../../../shared/ui/table';
 import { TableHeader } from '../../../shared/ui/table';
 import { Table } from '../../../shared/ui/table';
 import type { Dispatch, SetStateAction } from "react";
-import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import type {
-  AtomicRequirement,
-  RequirementQualityIssue,
-} from "@uml-platform/contracts";
-import { Plus, Trash2 } from "lucide-react";
+import { Eye, Plus, Trash2 } from "lucide-react";
+import type { RequirementRuleType } from "@uml-platform/contracts";
 import {
-  RULE_CATEGORY_ORDER,
+  REQUIREMENT_KIND_ORDER,
   type RequirementRule,
 } from "../../../entities/requirement-rule/model";
-import type { WorkspaceRecord } from "../../../entities/workspace/model";
-import { Badge } from "../../../shared/ui/badge";
 import { Button } from "../../../shared/ui/button";
 import { Input } from "../../../shared/ui/input";
 import { SelectControl } from "../../../shared/ui/select";
 import { TablePagination, TableToolbar } from "../../../shared/template/layout/page";
 import { cn } from "../../../shared/ui/utils";
-import {
-  requirementHintCount,
-  requirementRowState,
-  requirementStateTone,
-  reviewCandidateDecisionLabel,
-  reviewCandidateStateLabel,
-} from "../lib/requirement-review-view-model";
 
 export const REQUIREMENT_RULES_PER_PAGE = 10;
 export const ALL_RULE_CATEGORIES = "";
@@ -39,37 +26,9 @@ export const ALL_RULE_CATEGORIES = "";
 const RULE_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 const RULE_ROW_CLASS = "h-[46px] md:h-[60px]";
 
-function categoryLabel(category: RequirementRule["category"], t: TFunction) {
-  const key = {
-    "业务规则": "business",
-    "功能需求": "functional",
-    "外部接口": "externalInterface",
-    "界面需求": "interface",
-    "数据需求": "data",
-    "非功能需求": "nonFunctional",
-    "部署需求": "deployment",
-    "异常处理": "exception",
-  }[category];
-  return t(`requirements.categories.${key}`);
-}
-
-function statusLabel(status: string, t: TFunction) {
-  const key = {
-    "已编辑": "edited",
-    "已生成": "generated",
-    "已确认": "confirmed",
-    "有待确认提示": "pending",
-    "存在冲突提示": "conflict",
-    "修复失败待重试": "repairFailed",
-    "修复结果待确认": "repairPending",
-    "已采纳修复": "repairAccepted",
-    "已拒绝修复": "repairRejected",
-  }[status];
-  return key ? t(`requirements.statuses.${key}`) : status;
-}
 
 export type RequirementRuleCategoryFilter =
-  | RequirementRule["category"]
+  | RequirementRuleType
   | typeof ALL_RULE_CATEGORIES;
 
 interface RequirementRulesTableProps {
@@ -83,12 +42,9 @@ interface RequirementRulesTableProps {
   generating: boolean;
   lastRuleIndex: number;
   onAddRule: () => void;
-  onOpenHintDetail: (ruleId: string) => void;
+  onViewRule: (ruleId: string) => void;
   pagedRules: RequirementRule[];
-  qualityIssuesByRequirementId: Map<string, RequirementQualityIssue[]>;
   query: string;
-  requirementByRuleId: Map<string, AtomicRequirement>;
-  requirementReviewCandidates: WorkspaceRecord["requirementReviewCandidates"];
   ruleCategoryFilter: RequirementRuleCategoryFilter;
   rulePageSize: number;
   rulesCount: number;
@@ -108,16 +64,13 @@ export function RequirementRulesTable({
   editBlockedReason,
   emptyRuleSlots,
   filteredRules,
-  firstRuleIndex: _firstRuleIndex,
+  firstRuleIndex: firstRuleIndex,
   generating,
   lastRuleIndex: _lastRuleIndex,
   onAddRule,
-  onOpenHintDetail,
+  onViewRule,
   pagedRules,
-  qualityIssuesByRequirementId,
   query,
-  requirementByRuleId,
-  requirementReviewCandidates,
   ruleCategoryFilter,
   rulePageSize,
   safeRulePage,
@@ -157,9 +110,9 @@ export function RequirementRulesTable({
               aria-label={t("requirements.table.categoryFilter")}
               options={[
                 { value: ALL_RULE_CATEGORIES, label: t("requirements.table.allCategories") },
-                ...RULE_CATEGORY_ORDER.map((category) => ({
+                ...REQUIREMENT_KIND_ORDER.map((category) => ({
                   value: category,
-                  label: categoryLabel(category, t),
+                  label: t(`requirementSemantics.kinds.${category}`),
                 })),
               ]}
             />
@@ -183,7 +136,7 @@ export function RequirementRulesTable({
       <div className="w-full min-w-0 max-w-full overflow-x-auto">
         <Table
           data-testid="requirement-rules-compact-table"
-          className="w-full min-w-[900px] table-fixed border-collapse bg-card text-[12px] md:text-sm"
+          className="w-full table-fixed border-collapse bg-card text-[12px] md:text-sm"
         >
           <TableHeader className="text-[11px] tracking-normal text-muted-foreground md:text-xs md:tracking-[0.02em]">
             <TableRow className="border-b border-border">
@@ -192,9 +145,6 @@ export function RequirementRulesTable({
               </TableHead>
               <TableHead className="w-[112px] px-1.5 py-2 text-center font-medium md:w-48 md:px-4 md:py-4">
                 {t("requirements.table.type")}
-              </TableHead>
-              <TableHead className="w-[84px] px-1.5 py-2 text-left font-medium md:w-52 md:px-4 md:py-4">
-                {t("requirements.table.status")}
               </TableHead>
               <TableHead className="px-1.5 py-2 text-left font-medium md:px-6 md:py-4">
                 {t("requirements.table.content")}
@@ -211,56 +161,15 @@ export function RequirementRulesTable({
                 className={cn(RULE_ROW_CLASS, "border-b border-border")}
               >
                 <TableCell
-                  colSpan={5}
+                  colSpan={4}
                   className="px-3 py-2 text-center align-middle text-[12px] text-muted-foreground md:px-6 md:py-3 md:text-sm"
                 >
                   {t("requirements.table.noMatches")}
                 </TableCell>
               </TableRow>
             ) : (
-              pagedRules.map((rule) => {
-                const requirement = requirementByRuleId.get(rule.id);
-                const qualityIssues = requirement
-                  ? (qualityIssuesByRequirementId.get(requirement.id) ?? [])
-                  : [];
-                const rowState = requirement
-                  ? requirementRowState(requirement, qualityIssues)
-                  : t("requirements.table.edited");
-                const candidate = requirementReviewCandidates[rule.id];
-                const displayRowState = reviewCandidateStateLabel(
-                  candidate,
-                  rowState,
-                );
-                const reviewDecisionLabel =
-                  reviewCandidateDecisionLabel(candidate);
-                const hintCount =
-                  requirementHintCount(requirement) + qualityIssues.length;
-                const hasHintDetails = Boolean(
-                  requirement && (hintCount > 0 || candidate),
-                );
-                const statusContent = displayRowState ? (
-                  <>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "max-w-full px-1 py-0.5 text-[10px] md:max-w-[112px] md:px-2 md:py-1 md:text-xs",
-                        candidate?.status === "failed"
-                          ? ""
-                          : requirementStateTone(displayRowState),
-                      )}
-                    >
-                      <span className="truncate">{statusLabel(displayRowState, t)}</span>
-                    </Badge>
-                    {reviewDecisionLabel && (
-                      <Badge
-                        variant="secondary"
-                        className="shrink-0 px-1 py-0.5 text-[10px] md:px-1.5 md:text-[11px]"
-                      >
-                        {statusLabel(reviewDecisionLabel, t)}
-                      </Badge>
-                    )}
-                  </>
-                ) : null;
+              pagedRules.map((rule, index) => {
+
                 return (
                   <TableRow
                     key={rule.id}
@@ -273,16 +182,17 @@ export function RequirementRulesTable({
                   >
                     <TableCell className="px-1.5 py-2 text-center align-middle md:px-6 md:py-3">
                       <span className="font-mono text-[11px] uppercase text-muted-foreground md:text-xs">
-                        {rule.id}
+                        {/* Visible row numbers are independent of persistent traceability IDs. */}
+                        {firstRuleIndex + index}
                       </span>
                     </TableCell>
                     <TableCell className="px-1.5 py-2 text-center align-middle md:px-4 md:py-3">
                       <SelectControl
-                        value={rule.category}
+                        value={rule.type}
                         onValueChange={(value) =>
                           canEditRequirements
                             ? updateRequirementRule(rule.id, {
-                                category: value as RequirementRule["category"],
+                                type: value as RequirementRuleType,
                               })
                             : undefined
                         }
@@ -290,27 +200,11 @@ export function RequirementRulesTable({
                         contentClassName="min-w-[8rem]"
                         aria-label={t("requirements.table.categoryAria", { id: rule.id })}
                         disabled={generating || !canEditRequirements}
-                        options={RULE_CATEGORY_ORDER.map((category) => ({
+                        options={REQUIREMENT_KIND_ORDER.map((category) => ({
                           value: category,
-                          label: categoryLabel(category, t),
+                          label: t(`requirementSemantics.kinds.${category}`),
                         }))}
                       />
-                    </TableCell>
-                    <TableCell className="px-1.5 py-2 align-middle md:px-4 md:py-3">
-                      <div className="flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap md:gap-1.5">
-                        {hasHintDetails ? (
-                          <Button variant="ghost"
-                            type="button"
-                            className="inline-flex h-auto min-w-0 items-center justify-start gap-1 overflow-hidden rounded-none border-0 p-0 text-left md:gap-1.5"
-                            aria-label={t("requirements.table.hintAria", { id: rule.id })}
-                            onClick={() => onOpenHintDetail(rule.id)}
-                          >
-                            {statusContent}
-                          </Button>
-                        ) : (
-                          statusContent
-                        )}
-                      </div>
                     </TableCell>
                     <TableCell className="min-w-0 px-1.5 py-2 align-middle md:px-6 md:py-3">
                       <Input
@@ -331,12 +225,29 @@ export function RequirementRulesTable({
                       />
                     </TableCell>
                     <TableCell className="px-1 py-2 text-center align-middle md:px-6 md:py-3">
+                      <div className="flex items-center justify-center gap-1">
                       <Button
                         type="button"
                         size="sm"
-                        variant="destructive"
+                        variant="outline"
+                        className="h-7 px-1 md:h-8 md:px-2"
+                        onClick={() => onViewRule(rule.id)}
+                        aria-label={t("requirements.table.viewAria", { id: rule.id })}
+                        title={t("requirements.table.view")}
+                      >
+                        <Eye className="size-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
                         className="mx-auto h-7 px-1 md:h-8 md:px-2"
-                        onClick={() => deleteRequirementRule(rule.id)}
+                        onClick={() => {
+                          // Confirm before committing: deleting a rule also invalidates downstream results.
+                          if (!generating && canEditRequirements && window.confirm(t("uxReview.confirmDeleteRule", { id: rule.id.toUpperCase() }))) {
+                            deleteRequirementRule(rule.id);
+                          }
+                        }}
                         disabled={generating || !canEditRequirements}
                         title={
                           !canEditRequirements ? editBlockedReason : undefined
@@ -345,6 +256,7 @@ export function RequirementRulesTable({
                       >
                         <Trash2 className="size-3.5" />
                       </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -362,7 +274,7 @@ export function RequirementRulesTable({
                 aria-hidden="true"
                 className={cn(RULE_ROW_CLASS, "border-b border-border")}
               >
-                <TableCell colSpan={5} className="px-3 py-2 md:px-6 md:py-3">
+                <TableCell colSpan={4} className="px-3 py-2 md:px-6 md:py-3">
                   &nbsp;
                 </TableCell>
               </TableRow>

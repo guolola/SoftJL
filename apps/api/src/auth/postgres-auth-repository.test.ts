@@ -48,15 +48,24 @@ const sessionRow = {
 };
 
 const projectRow = {
+  project_mode: "professional",
   id: "project-1",
   name: "Project One",
   description: null,
   visibility: "private",
   status: "active",
   owner_user_id: "user-1",
+  retention_policy: "manual", background_key: null,
   created_at: "2026-05-22T00:00:00.000Z",
   updated_at: "2026-05-22T00:00:00.000Z",
 };
+
+test("postgres project reads require an explicit current project mode", async () => {
+  for (const project_mode of [undefined, "obsolete-mode"]) {
+    const client = new CapturingClient(); client.nextRows = [{ ...projectRow, project_mode }];
+    await assert.rejects(createPostgresAuthRepository(client).getProject(projectRow.id));
+  }
+});
 
 const memberRow = {
   id: "member-1",
@@ -331,6 +340,23 @@ test("postgres auth repository saves project workspace without issuing an empty 
   assert.match(client.calls[0]?.sql ?? "", /insert into project_workspace_states/i);
   assert.match(client.calls[1]?.sql ?? "", /update projects\s+set updated_at = now\(\)\s+where id = \$1/i);
   assert.deepEqual(client.calls[1]?.params, ["project-1"]);
+});
+
+test("postgres workspace reads and writes preserve explicit rules without migration", async () => {
+  const client = new CapturingClient();
+  const state = { requirementText: "用户查看信息", rules: [{ id: "r1", type: "functional" as const, text: "用户查看信息",  }], rulesVersion: 1 };
+  const row = { project_id: "project-1", version: 1, state, updated_by_user_id: "user-1", source_run_id: "run-1", updated_at: "2026-05-22T00:01:00.000Z" };
+  client.queueRows([row], [row], []);
+  const repository = createPostgresAuthRepository(client);
+  const loaded = await repository.getProjectWorkspace("project-1");
+  const expected = structuredClone(state.rules);
+  assert.deepEqual(loaded.state.rules, expected);
+  assert.equal(loaded.version, 1);
+  assert.equal(loaded.state.rulesVersion, 1);
+  await repository.saveProjectWorkspace({ projectId: "project-1", baseVersion: 1, state, updatedByUserId: "user-1" });
+  const persisted = JSON.parse(client.calls[1]!.params[2] as string) as typeof state;
+  assert.deepEqual(persisted.rules, expected);
+  assert.deepEqual(state.rules, expected);
 });
 
 test("postgres auth repository manages project members with normalized invite email", async () => {

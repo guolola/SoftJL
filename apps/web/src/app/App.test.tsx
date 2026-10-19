@@ -1,5 +1,5 @@
 // Verifies top-level app routing, provider composition, shell layout behavior, and account/project entry flows.
-import { createDocumentRunSnapshot } from "../test/artifact-fixtures";
+import { createDocumentRunSnapshot } from "@/test/contract-fixtures";
 import { installReactFlowTestLayout } from '../test/react-flow-test-layout';
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -13,12 +13,12 @@ import {
 } from "../test/workspace-test-utils";
 import { loadUserSettings, USER_SETTINGS_STORAGE_KEY } from "../shared/lib/user-settings";
 import { Shell } from "./App";
-import { matchAppRoute } from "./app-routes";
 import {
   ProjectWorkspaceAccessBoundary,
   ProjectsIndexPage,
 } from "../features/user-platform/components/user-platform-pages";
 import { formatProjectDateTimeMinute } from "../features/user-platform/lib/project-presentation";
+import { PROJECT_BACKGROUND_OPTIONS } from "../features/user-platform/lib/project-backgrounds";
 import { i18n, LOCALE_PREFERENCE_STORAGE_KEY } from "../shared/i18n";
 import { requestOpenGenerationTask, requestOpenProjectWorkspaceTarget } from "../shared/lib/app-navigation";
 import { invalidateProviderConfigCache } from "../features/user-platform/services/provider-config-cache";
@@ -36,6 +36,67 @@ let providerConfigFixtures: Array<Record<string, unknown>>;
 installReactFlowTestLayout();
 
 const projectUpdatedAt = "2026-05-22T02:00:00.000Z";
+const billingTestSkus = [
+  {
+    code: "credits_10",
+    name: "10 次包",
+    kind: "credit_pack",
+    description: "买 10 次送 1 次，到账 11 次",
+    creditAmount: 11,
+    amountCents: 990,
+    currency: "CNY",
+    active: true,
+    sortOrder: 110,
+  },
+  {
+    code: "credits_50",
+    name: "50 次包",
+    kind: "credit_pack",
+    description: "买 50 次送 8 次，到账 58 次",
+    creditAmount: 58,
+    amountCents: 4900,
+    currency: "CNY",
+    active: true,
+    sortOrder: 120,
+  },
+  {
+    code: "credits_100",
+    name: "100 次包",
+    kind: "credit_pack",
+    description: "买 100 次送 20 次，到账 120 次",
+    creditAmount: 120,
+    amountCents: 9900,
+    currency: "CNY",
+    active: true,
+    sortOrder: 130,
+  },
+  {
+    code: "credits_500",
+    name: "500 次包",
+    kind: "credit_pack",
+    description: "买 500 次送 120 次，到账 620 次",
+    creditAmount: 620,
+    amountCents: 39900,
+    currency: "CNY",
+    active: true,
+    sortOrder: 140,
+  },
+] as const;
+
+const billingPrimarySku = billingTestSkus.find((sku) => sku.code === "credits_100") ?? billingTestSkus[0]!;
+
+const billingTestOrder = {
+  orderId: "order-test-1",
+  merchantOrderNo: "UML202606050001",
+  sku: billingPrimarySku,
+  amountCents: billingPrimarySku.amountCents,
+  currency: "CNY",
+  channel: "alipay",
+  status: "pending",
+  createdAt: "2026-06-05T04:00:00.000Z",
+  expiresAt: "2026-06-05T04:15:00.000Z",
+  paidAt: null,
+} as const;
 
 function createRepository(): WorkspaceRepository {
   return {
@@ -48,7 +109,6 @@ function createRepository(): WorkspaceRepository {
     testProviderSettings: vi.fn(),
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
-    restoreRunHistory: vi.fn(async () => null),
     deleteRunHistory: vi.fn(async () => []),
     clearRunHistory: vi.fn(async () => {}),
   };
@@ -77,18 +137,6 @@ function getSelectTrigger(name: string) {
     throw new Error(`Select trigger not found: ${name}`);
   }
   return trigger;
-}
-
-async function findSelectTrigger(name: string) {
-  return waitFor(() => {
-    const trigger = Array.from(
-      document.querySelectorAll<HTMLElement>('button[role="combobox"]'),
-    ).find((element) => element.getAttribute("aria-label") === name);
-    if (!trigger) {
-      throw new Error(`Select trigger not found: ${name}`);
-    }
-    return trigger;
-  });
 }
 
 function createDeferred<T>() {
@@ -125,11 +173,11 @@ function createProjectListResponse() {
   return new Response(
     JSON.stringify({
       projects: [
-        {
+        { projectMode: "professional",
           id: "library-booking",
           name: "智慧图书馆预约系统",
           description: "真实项目数据",
-          visibility: "team",
+          visibility: "private",
           status: "active",
           ownerUserId: "e91237c8-5ccf-45aa-b0d2-822b96915a24",
           ownerDisplayName: "New Student",
@@ -150,12 +198,12 @@ function createProjectListResponse() {
 
 function createProjectOverviewResponse() {
   return new Response(
-    JSON.stringify({
-      project: {
+    JSON.stringify({ generationExecutionMode: "provider",
+      project: { projectMode: "professional",
         id: "library-booking",
         name: "智慧图书馆预约系统",
         description: "真实项目数据",
-        visibility: "team",
+        visibility: "private",
         status: "active",
         ownerUserId: "e91237c8-5ccf-45aa-b0d2-822b96915a24",
         ownerDisplayName: "New Student",
@@ -226,8 +274,8 @@ describe("App shell routes", () => {
         riskState: "low",
         quota: "unlimited",
         lastUsedAt: null,
-        scopeType: "organization",
-        scopeId: "course-uml",
+        scopeType: "project",
+        scopeId: "project-uml",
         breakerState: "closed",
       },
     ];
@@ -306,7 +354,7 @@ describe("App shell routes", () => {
         }
         if (pathname === "/api/auth/login" && loginApiMode === "email-unverified") {
           return new Response(
-            JSON.stringify({ message: "Email verification is required before login" }),
+            JSON.stringify({ error: { code: "AUTH_EMAIL_VERIFICATION_REQUIRED", category: "authorization", retryable: false } }),
             {
               status: 403,
               headers: { "Content-Type": "application/json" },
@@ -314,7 +362,7 @@ describe("App shell routes", () => {
           );
         }
         if (pathname === "/api/auth/login") {
-          return new Response(JSON.stringify({ message: "Invalid email or password" }), {
+          return new Response(JSON.stringify({ error: { code: "AUTH_INVALID_CREDENTIALS", category: "authentication", retryable: false } }), {
             status: 401,
             headers: { "Content-Type": "application/json" },
           });
@@ -534,6 +582,64 @@ describe("App shell routes", () => {
             },
           );
         }
+        if (pathname === "/api/billing/skus") {
+          return new Response(JSON.stringify({ skus: billingTestSkus }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (pathname === "/api/billing/summary") {
+          return new Response(
+            JSON.stringify({
+              creditBalance: 10,
+              signupBonus: {
+                granted: true,
+                creditAmount: 5,
+                validUntil: "2026-07-05T04:00:00.000Z",
+              },
+              recentOrders: [billingTestOrder],
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+        if (pathname === "/api/billing/orders" && method === "POST") {
+          const body = JSON.parse(String(init?.body ?? "{}")) as {
+            skuCode?: string;
+            channel?: "alipay";
+          };
+          const sku = billingTestSkus.find((candidate) => candidate.code === body.skuCode) ?? billingPrimarySku;
+          const order = {
+            ...billingTestOrder,
+            sku,
+            amountCents: sku.amountCents,
+            channel: body.channel ?? "alipay",
+          };
+          return new Response(
+            JSON.stringify({
+              orderId: order.orderId,
+              merchantOrderNo: order.merchantOrderNo,
+              status: order.status,
+              amountCents: order.amountCents,
+              currency: order.currency,
+              expiresAt: order.expiresAt,
+              channel: order.channel,
+              paymentFormHtml: "<form action=\"https://zpayz.cn/submit.php\"><button>pay</button></form>",
+            }),
+            {
+              status: 201,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+        if (pathname.startsWith("/api/billing/orders/") && method === "GET") {
+          return new Response(JSON.stringify(billingTestOrder), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
         if (pathname === "/api/invitations/course-token-123/accept") {
           return new Response(
             JSON.stringify({ message: "Invitation accepted" }),
@@ -554,11 +660,11 @@ describe("App shell routes", () => {
                 status: "invited",
                 invitedAt: "2026-05-22T02:00:00.000Z",
                 expiresAt: "2026-05-29T02:00:00.000Z",
-                project: {
+                project: { projectMode: "professional",
                   id: "library-booking",
                   name: "智慧图书馆预约系统",
                   description: "真实项目数据",
-                  visibility: "team",
+                  visibility: "private",
                   status: "active",
                   ownerUserId: "user-owner",
                   createdAt: "2026-05-22T01:00:00.000Z",
@@ -619,8 +725,8 @@ describe("App shell routes", () => {
             "library-lending": "图书馆借阅系统",
           };
           return new Response(
-            JSON.stringify({
-              project: {
+            JSON.stringify({ generationExecutionMode: "provider",
+              project: { projectMode: "professional",
                 id: `case-project-${caseId}`,
                 name: caseTitleById[caseId] ?? "项目",
                 description: "案例生成项目",
@@ -654,8 +760,8 @@ describe("App shell routes", () => {
         ) {
           const projectId = pathname.split("/")[3] ?? "case-project";
           return new Response(
-            JSON.stringify({
-              project: {
+            JSON.stringify({ generationExecutionMode: "provider",
+              project: { projectMode: "professional",
                 id: projectId,
                 name: "案例项目",
                 description: "案例生成项目",
@@ -685,11 +791,11 @@ describe("App shell routes", () => {
           return new Response(
             JSON.stringify({
               projects: [
-                {
+                { projectMode: "professional",
                   id: "library-booking",
                   name: "智慧图书馆预约系统",
                   description: "真实项目数据",
-                  visibility: "team",
+                  visibility: "private",
                   status: "active",
                   ownerUserId: "e91237c8-5ccf-45aa-b0d2-822b96915a24",
                   ownerDisplayName: "New Student",
@@ -725,7 +831,7 @@ describe("App shell routes", () => {
                     },
                   ],
                 },
-                {
+                { projectMode: "professional",
                   id: "archived-demo",
                   name: "归档课程演示",
                   description: "已经归档的真实项目",
@@ -768,12 +874,12 @@ describe("App shell routes", () => {
         }
         if (pathname === "/api/projects/library-booking") {
           return new Response(
-            JSON.stringify({
-              project: {
+            JSON.stringify({ generationExecutionMode: "provider",
+              project: { projectMode: "professional",
                 id: "library-booking",
                 name: "智慧图书馆预约系统",
                 description: "真实项目数据",
-                visibility: "team",
+                visibility: "private",
                 status: "active",
                 ownerUserId: "user-new",
                 createdAt: "2026-05-22T01:00:00.000Z",
@@ -802,12 +908,12 @@ describe("App shell routes", () => {
         }
         if (pathname === "/api/projects/created-project" && method === "GET") {
           return new Response(
-            JSON.stringify({
-              project: {
+            JSON.stringify({ generationExecutionMode: "provider",
+              project: { projectMode: "professional",
                 id: "created-project",
                 name: "课程 UML 实验项目",
                 description: null,
-                visibility: "team",
+                visibility: "private",
                 status: "active",
                 ownerUserId: "user-new",
                 createdAt: "2026-05-22T01:00:00.000Z",
@@ -999,7 +1105,7 @@ describe("App shell routes", () => {
               projectId: "library-booking",
               generatedAt: "2026-05-22T02:00:00.000Z",
               runs: [
-                {
+                { operationType: "requirement_modeling",
                   runId: "run-1",
                   status: "running",
                   stage: "render_svg",
@@ -1010,7 +1116,7 @@ describe("App shell routes", () => {
                   updatedAt: "2026-05-22T02:05:00.000Z",
                   errorMessage: null,
                 },
-                {
+                { operationType: "design_modeling",
                   runId: "run-failed",
                   status: "failed",
                   stage: "render_svg",
@@ -1021,7 +1127,7 @@ describe("App shell routes", () => {
                   updatedAt: "2026-05-22T01:05:00.000Z",
                   errorMessage: "PlantUML render failed",
                 },
-                {
+                { operationType: "document_generation",
                   runId: "run-doc",
                   status: "completed",
                   stage: "generate_document_text",
@@ -1033,7 +1139,7 @@ describe("App shell routes", () => {
                   updatedAt: "2026-05-22T00:05:00.000Z",
                   errorMessage: null,
                 },
-                {
+                { operationType: "document_generation",
                   runId: "run-doc-failed",
                   status: "failed",
                   stage: "render_document_file",
@@ -1068,76 +1174,8 @@ describe("App shell routes", () => {
             },
           );
         }
-        if (pathname === "/api/projects/library-booking/runs/run-1/retry") {
-          return new Response(
-            JSON.stringify({
-              action: "retry",
-              sourceRunId: "run-1",
-              runId: "run-retry-1",
-              status: "queued",
-            }),
-            {
-              status: 202,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        if (pathname === "/api/projects/library-booking/runs/run-1/rerun") {
-          return new Response(
-            JSON.stringify({
-              action: "rerun",
-              sourceRunId: "run-1",
-              runId: "run-rerun-1",
-              status: "queued",
-            }),
-            {
-              status: 202,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        if (pathname === "/api/projects/library-booking/runs/run-failed/retry") {
-          return new Response(
-            JSON.stringify({
-              action: "retry",
-              sourceRunId: "run-failed",
-              runId: "run-retry-failed",
-              status: "queued",
-            }),
-            {
-              status: 202,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        if (pathname === "/api/projects/library-booking/runs/run-failed/rerun") {
-          return new Response(
-            JSON.stringify({
-              action: "rerun",
-              sourceRunId: "run-failed",
-              runId: "run-rerun-failed",
-              status: "queued",
-            }),
-            {
-              status: 202,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        if (pathname === "/api/projects/library-booking/runs/run-doc/rerun") {
-          return new Response(
-            JSON.stringify({
-              action: "rerun",
-              sourceRunId: "run-doc",
-              runId: "run-rerun-doc",
-              status: "queued",
-            }),
-            {
-              status: 202,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
+
+
         if (
           (pathname === "/api/projects/library-booking/runs/run-failed" ||
             pathname === "/api/projects/library-booking/runs/run-doc") &&
@@ -1161,11 +1199,6 @@ describe("App shell routes", () => {
                   byteLength: 1234,
                   version: 2,
                   status: "active",
-                  onlyOffice: {
-                    status: "editing",
-                    lockedBy: "teacher@example.edu",
-                    lockedAt: "2026-05-22T02:01:00.000Z",
-                  },
                   editLock: {
                     status: "locked",
                     lockedBy: "teacher@example.edu",
@@ -1260,47 +1293,6 @@ describe("App shell routes", () => {
             },
           );
         }
-        if (pathname === "/api/academic-options") {
-          return new Response(
-            JSON.stringify({
-              organizations: [
-                { id: "org-software-school", name: "软件学院", code: "SSE", status: "active" },
-              ],
-              courses: [
-                {
-                  id: "course-software-2026-spring",
-                  organizationId: "org-software-school",
-                  name: "软件工程 2026 春",
-                  code: "SE2026",
-                  term: "2026 春",
-                  status: "active",
-                },
-              ],
-              classes: [
-                {
-                  id: "class-software-2026-spring-1",
-                  courseId: "course-software-2026-spring",
-                  name: "1 班",
-                  code: "01",
-                  status: "active",
-                },
-              ],
-              teams: [
-                {
-                  id: "team-software-2026-a",
-                  classId: "class-software-2026-spring-1",
-                  name: "Team A",
-                  code: "A",
-                  status: "active",
-                },
-              ],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
         if (pathname === "/api/provider-configs") {
           return new Response(
             JSON.stringify({
@@ -1325,11 +1317,11 @@ describe("App shell routes", () => {
         if (pathname === "/api/projects" && method === "POST") {
           return new Response(
             JSON.stringify({
-              project: {
+              project: { projectMode: "professional",
                 id: "created-project",
                 name: "课程 UML 实验项目",
                 description: null,
-                visibility: "team",
+                visibility: "private",
                 status: "active",
                 ownerUserId: "user-new",
                 updatedAt: new Date().toISOString(),
@@ -1349,6 +1341,46 @@ describe("App shell routes", () => {
     );
   });
 
+  it("shows OAuth consent independently of the workbench and keeps connection management in its shell", async () => {
+    const fetchMock = vi.mocked(fetch);
+    const defaultFetch = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const pathname = new URL(String(input), "http://127.0.0.1:4101").pathname;
+      if (pathname === "/api/mcp/connections") return Response.json({ enabled: true, serverUrl: "http://localhost:3000/api/mcp", csrf: "consent-csrf", projects: [{ id: "library-id", name: "图书管理系统" }], connections: [] });
+      if (pathname === "/api/mcp/interactions/consent-id") return Response.json({ clientName: "Codex", clientId: "client-id" });
+      return defaultFetch(input, init);
+    });
+    window.history.pushState({}, "", "/projects/connections?interaction=consent-id");
+    const { container } = render(withWorkspaceProviders(<Shell />, createRepository()));
+
+    expect(await screen.findByRole("heading", { name: "授权给 Codex" })).toBeVisible();
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+    expect(container.querySelector('[data-slot="sidebar"]')).toBeNull();
+    expect(screen.queryByRole("heading", { name: "编程助手" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("使用的软件")).not.toBeInTheDocument();
+    expect(screen.queryByText("如何根据项目资料开始实现？")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认授权" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "授权项目" })).toBeInTheDocument();
+
+    act(() => {
+      window.history.pushState({}, "", "/projects/connections");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(await screen.findByRole("heading", { name: "MCP 地址" })).toBeVisible();
+    expect(screen.getByRole("banner")).toBeInTheDocument();
+    expect(container.querySelector('[data-slot="sidebar"]')).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "授权给 Codex" })).not.toBeInTheDocument();
+  });
+
+  it("preserves the OAuth interaction through the standalone consent login guard", async () => {
+    authSessionMode = "unauthenticated";
+    window.history.pushState({}, "", "/projects/connections?interaction=consent-id");
+    render(withWorkspaceProviders(<Shell />, createRepository()));
+    await screen.findByLabelText("邮箱或用户名");
+    expect(window.location.pathname).toBe("/login");
+    expect(new URLSearchParams(window.location.search).get("redirect")).toBe("/projects/connections?interaction=consent-id");
+  });
+
   it("redirects direct workspace access to login when the session is missing", async () => {
     authSessionMode = "unauthenticated";
     window.history.pushState({}, "", "/workspace");
@@ -1360,46 +1392,6 @@ describe("App shell routes", () => {
     expect(window.location.search).toBe("?redirect=%2Fworkspace&reason=login-required");
     expect(await screen.findByText("此页面需要登录，请登录后继续。")).toBeInTheDocument();
     expect(screen.queryByText("项目导航")).not.toBeInTheDocument();
-  });
-
-  it("redirects unauthenticated top-level feature pages to login", async () => {
-    for (const path of ["/projects"] as const) {
-      authSessionMode = "unauthenticated";
-      window.history.pushState({}, "", path);
-      const view = render(withWorkspaceProviders(<Shell />, createRepository()));
-
-      await waitFor(() => {
-        expect(window.location.pathname).toBe("/login");
-      });
-      expect(window.location.search).toBe(`?redirect=${encodeURIComponent(path)}&reason=login-required`);
-      expect(screen.queryByRole("heading", { name: "项目首页" })).not.toBeInTheDocument();
-      expect(screen.queryByText("项目导航")).not.toBeInTheDocument();
-
-      view.unmount();
-    }
-  });
-
-  it("navigates top-level feature pages for signed-in users without opening workspace tabs", async () => {
-    const user = userEvent.setup();
-    authSessionMode = "authenticated";
-    projectApiMode = "authenticated";
-    window.history.pushState({}, "", "/projects");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-    const banner = (await screen.findAllByRole("banner"))[0];
-    const navButtons = within(within(banner).getByRole("navigation")).getAllByRole("button");
-
-    expect(navButtons.map((button) => button.textContent)).toEqual(["主页"]);
-    expect(within(banner).queryByRole("button", { name: "工作台" })).not.toBeInTheDocument();
-
-    await user.click(within(banner).getByRole("button", { name: "主页" }));
-
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/projects");
-    });
-    expect(await screen.findByRole("heading", { name: "项目首页" })).toBeInTheDocument();
-    expect(screen.queryByText("项目导航")).not.toBeInTheDocument();
-    expect(within(banner).queryByRole("button", { name: "购买" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "关闭 工作台" })).not.toBeInTheDocument();
   });
 
   it("keeps the platform shell mounted across sidebar navigation and history while revalidating target content", async () => {
@@ -1428,6 +1420,8 @@ describe("App shell routes", () => {
       const sidebar = container.querySelector('[data-slot="sidebar"]')!;
       const destinations = [
         { path: "/projects", heading: "项目首页" },
+        { path: "/projects/connections", heading: "MCP 地址" },
+
         { path: "/dashboard", heading: null },
       ];
       // Hold each server check so even a slow network cannot hide a shell remount.
@@ -1467,13 +1461,13 @@ describe("App shell routes", () => {
       await act(flushResolvedPromises);
       expect(screen.getByRole("banner")).toBe(banner);
       expect(container.querySelector('[data-slot="sidebar"]')).toBe(sidebar);
-      expect(screen.queryByTestId("projects-index-shell")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("account-billing-dashboard")).not.toBeInTheDocument();
       await act(async () => {
         pendingAuth!.resolve(createAuthMeResponse());
         pendingAuth = null;
         await flushResolvedPromises();
       });
-      expect(screen.getByTestId("projects-index-shell")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "项目首页" })).toBeInTheDocument();
       expect(screen.getByRole("banner")).toBe(banner);
     } finally {
       vi.useRealTimers();
@@ -1503,7 +1497,7 @@ describe("App shell routes", () => {
     fetchMock.mockClear();
     await user.click(sidebar.querySelector<HTMLAnchorElement>('a[href="/projects"]')!);
     expect(screen.getByRole("banner")).toBe(banner);
-    expect(screen.queryByTestId("projects-index-shell")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("account-billing-dashboard")).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/billing/"))).toBe(false);
 
     await act(async () => {
@@ -1515,7 +1509,7 @@ describe("App shell routes", () => {
     expect(await screen.findByLabelText("邮箱或用户名")).toBeInTheDocument();
     expect(banner).not.toBeInTheDocument();
     expect(sidebar).not.toBeInTheDocument();
-    expect(screen.queryByTestId("projects-index-shell")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("account-billing-dashboard")).not.toBeInTheDocument();
   });
 
   it("omits the copyright footer from the dashboard", async () => {
@@ -1526,102 +1520,6 @@ describe("App shell routes", () => {
 
     expect(await screen.findByTestId("dashboard-shell")).toBeInTheDocument();
     expect(document.querySelector('[data-slot="sidebar-inset"] > footer')).not.toBeInTheDocument();
-  });
-
-  it("syncs route state on browser popstate", async () => {
-    authSessionMode = "authenticated";
-    projectApiMode = "authenticated";
-    window.history.pushState({}, "", "/projects/library-booking");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-    expect(await screen.findByText("项目导航")).toBeInTheDocument();
-    expect(screen.getByRole("separator", { name: "拖拽调整项目菜单宽度" })).toBeInTheDocument();
-
-    window.history.pushState({}, "", "/projects");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "项目首页" })).toBeInTheDocument();
-    });
-    expect(screen.queryByText("项目导航")).not.toBeInTheDocument();
-    expect(screen.queryByRole("separator", { name: "拖拽调整项目菜单宽度" })).not.toBeInTheDocument();
-  });
-
-  it.each(["authenticated", "unauthenticated"] as const)("opens the community entry for %s sessions", async mode => {
-    authSessionMode = mode;
-    projectApiMode = mode;
-    window.history.pushState({}, "", "/");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-    if (mode === "authenticated") {
-      expect(await screen.findByRole("heading", { name: "项目首页" })).toBeInTheDocument();
-      expect(window.location.pathname).toBe("/projects");
-    } else {
-      expect(await screen.findByTestId("auth-shell")).toBeInTheDocument();
-      expect(window.location.pathname).toBe("/login");
-      expect(new URLSearchParams(window.location.search).get("redirect")).toBe("/projects");
-    }
-    expect(document.querySelector('[data-testid="flow-homepage"]')).not.toBeInTheDocument();
-  });
-
-  it("matches first-round user platform routes", () => {
-    expect(matchAppRoute("/")).toEqual({ kind: "legacy-redirect", path: "/", to: "/projects" });
-    expect(matchAppRoute("/features")).toMatchObject({ kind: "not-found", path: "/features" });
-    expect(matchAppRoute("/workflow")).toMatchObject({ kind: "not-found", path: "/workflow" });
-    expect(matchAppRoute("/cases")).toMatchObject({ kind: "not-found", path: "/cases" });
-    expect(matchAppRoute("/pricing")).toMatchObject({ kind: "not-found", path: "/pricing" });
-    expect(matchAppRoute("/workspace")).toMatchObject({ kind: "shell", path: "/workspace" });
-    expect(matchAppRoute("/login")).toMatchObject({ kind: "auth", path: "/login" });
-    expect(matchAppRoute("/register")).toMatchObject({ kind: "auth", path: "/register" });
-    expect(matchAppRoute("/verify-email")).toMatchObject({ kind: "auth", path: "/verify-email" });
-    expect(matchAppRoute("/invitations/accept")).toMatchObject({
-      kind: "invitation-accept",
-      path: "/invitations/accept",
-    });
-    expect(matchAppRoute("/forgot-password")).toMatchObject({ kind: "auth", path: "/forgot-password" });
-    expect(matchAppRoute("/reset-password")).toMatchObject({ kind: "auth", path: "/reset-password" });
-    expect(matchAppRoute("/projects")).toMatchObject({ kind: "projects-index" });
-    expect(matchAppRoute("/projects/new")).toMatchObject({ kind: "projects-new" });
-    expect(matchAppRoute("/projects/course-demo")).toMatchObject({
-      kind: "project-workspace",
-      projectId: "course-demo",
-    });
-    expect(matchAppRoute("/projects/course-demo/settings")).toMatchObject({
-      kind: "project-workspace",
-      projectId: "course-demo",
-      section: "settings",
-    });
-    expect(matchAppRoute("/projects/course-demo/members")).toMatchObject({
-      kind: "project-workspace",
-      projectId: "course-demo",
-      section: "members",
-    });
-    expect(matchAppRoute("/projects/course-demo/history")).toMatchObject({
-      kind: "project-workspace",
-      projectId: "course-demo",
-      section: "history",
-    });
-    expect(matchAppRoute("/projects/course-demo/documents")).toMatchObject({
-      kind: "project-workspace",
-      projectId: "course-demo",
-      section: "documents",
-    });
-    expect(matchAppRoute("/account")).toMatchObject({ kind: "legacy-account", path: "/account" });
-    expect(matchAppRoute("/account/security")).toMatchObject({
-      kind: "legacy-account",
-      path: "/account/security",
-    });
-
-    expect(matchAppRoute("/projects")).toMatchObject({
-      kind: "projects-index",
-      path: "/projects",
-    });
-    expect(matchAppRoute("/about")).toMatchObject({
-      kind: "not-found",
-      path: "/about",
-    });
-    expect(matchAppRoute("/admin/system-notices")).toMatchObject({
-      kind: "not-found",
-      path: "/admin/system-notices",
-    });
   });
 
   it("renders static login and registration form states", async () => {
@@ -1671,18 +1569,6 @@ describe("App shell routes", () => {
       expect(document.documentElement.lang).toBe("en");
     });
     expect(screen.getByRole("button", { name: "Change interface language" })).toBeInTheDocument();
-  });
-
-  it("redirects the removed model settings route to projects", async () => {
-    projectApiMode = "authenticated";
-    window.history.pushState({}, "", "/projects");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/projects");
-    });
-    expect(await screen.findByRole("heading", { name: "项目首页" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "模型设置" })).not.toBeInTheDocument();
   });
 
   it("remembers only the login account and lets users reveal the entered password", async () => {
@@ -1790,7 +1676,7 @@ describe("App shell routes", () => {
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe("/dashboard");
+      expect(window.location.pathname).toBe("/projects");
       expect(screen.getByTestId("platform-loading-screen")).toBeInTheDocument();
     });
 
@@ -1798,7 +1684,7 @@ describe("App shell routes", () => {
       authDeferred.resolve(createAuthMeResponse());
       await flushResolvedPromises();
     });
-    expect(screen.getByTestId("dashboard-shell")).toBeInTheDocument();
+    expect(screen.getByTestId("projects-index-shell")).toBeInTheDocument();
   });
 
   it("sends unverified logins to the website email verification page", async () => {
@@ -1852,7 +1738,7 @@ describe("App shell routes", () => {
       }),
     );
     await waitFor(() => {
-      expect(window.location.pathname).toBe("/dashboard");
+      expect(window.location.pathname).toBe("/projects");
     });
     expect(localStorage.getItem("uml-auth-remembered-email")).toBe("student@example.edu");
     expect(localStorage.getItem("uml-auth-remembered-password")).toBeNull();
@@ -2014,7 +1900,6 @@ describe("App shell routes", () => {
   });
 
   it.each([
-    { path: "/projects", readyTestId: null },
     { path: "/dashboard", readyTestId: "dashboard-shell" },
   ])("blocks $path content without an intermediate loading page while verifying the session", async ({ path, readyTestId }) => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
@@ -2039,7 +1924,7 @@ describe("App shell routes", () => {
 
       expect(screen.getByTestId("auth-check-placeholder")).toHaveAttribute("aria-busy", "true");
       expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: "项目首页" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "准备好迎接" })).not.toBeInTheDocument();
 
       await act(async () => {
         authDeferred.resolve(createAuthMeResponse());
@@ -2049,7 +1934,7 @@ describe("App shell routes", () => {
       if (readyTestId) {
         expect(screen.getByTestId(readyTestId)).toBeInTheDocument();
       } else {
-        expect(screen.getByRole("heading", { name: "项目首页" })).toBeInTheDocument();
+        expect(screen.getByRole("heading", { name: "准备好迎接" })).toBeInTheDocument();
       }
       expect(screen.queryByTestId("auth-check-placeholder")).not.toBeInTheDocument();
       expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
@@ -2517,7 +2402,7 @@ describe("App shell routes", () => {
     expect(document.querySelector('[data-slot="sidebar-inset"] > footer')).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "全部项目" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "我的项目" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "团队项目" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "协作项目" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "归档项目" })).toBeInTheDocument();
     const searchInput = screen.getByPlaceholderText("搜索项目、成员...");
     expect(searchInput).toBeInTheDocument();
@@ -2531,13 +2416,10 @@ describe("App shell routes", () => {
     expect(screen.queryByRole("button", { name: "历史" })).not.toBeInTheDocument();
 
     expect(screen.getByText("负责人：New Student")).toBeInTheDocument();
-    expect(screen.getByText("真实项目数据")).toHaveClass(
-      "line-clamp-1",
-      "md:line-clamp-2",
-      "overflow-hidden",
-    );
+    expect(screen.getByText("真实项目数据")).toHaveClass("truncate");
+    expect(screen.getByText("真实项目数据")).toHaveAttribute("title", "真实项目数据");
     expect(screen.queryByText("e91237c8-5ccf-45aa-b0d2-822b96915a24")).not.toBeInTheDocument();
-    expect(screen.getByText("团队成员可见")).toBeInTheDocument();
+    expect(screen.getAllByText("仅成员可见").length).toBeGreaterThan(0);
     expect(screen.getByText(`最近更新：${formatProjectDateTimeMinute(projectUpdatedAt)}`)).toBeInTheDocument();
     expect(screen.getByLabelText("成员头像 New Student")).toBeInTheDocument();
     expect(screen.getByLabelText("成员头像 Editor User")).toBeInTheDocument();
@@ -2547,6 +2429,8 @@ describe("App shell routes", () => {
 
     expect(window.location.pathname).toBe("/projects/library-booking");
     expect(await screen.findByText("项目导航")).toBeInTheDocument();
+    expect(screen.queryByText("设计做好了？")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "去连接" })).not.toBeInTheDocument();
     expect(document.querySelector('[data-slot="sidebar-inset"] > footer')).not.toBeInTheDocument();
     const workspaceLayoutMain = document.querySelector('[data-slot="sidebar-inset"] > main');
     expect(workspaceLayoutMain).not.toHaveClass("overflow-hidden");
@@ -2560,7 +2444,7 @@ describe("App shell routes", () => {
     expect(screen.getByRole("button", { name: "运行历史" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "项目设置" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "成员" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "文档中心" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "文档中心" })).not.toBeInTheDocument();
     expect(screen.getByText("智慧图书馆预约系统")).toBeInTheDocument();
     expect(screen.queryByText("运行中 1")).not.toBeInTheDocument();
     expect(screen.queryByText("文档 1")).not.toBeInTheDocument();
@@ -2597,32 +2481,36 @@ describe("App shell routes", () => {
 
     await user.clear(screen.getByPlaceholderText("搜索项目、成员..."));
     await user.type(screen.getByPlaceholderText("搜索项目、成员..."), "不存在");
-    expect(screen.getByText("没有匹配的项目")).toBeInTheDocument();
+    expect(screen.queryByText("没有匹配的项目")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("projects-card-grid")).not.toBeInTheDocument();
   });
 
-  it("renders the Figma empty project state for signed-in users without projects", async () => {
+  it("renders the supplied bento for signed-in users without projects and creates projects from the header", async () => {
     const user = userEvent.setup();
     authSessionMode = "authenticated";
     projectApiMode = "empty";
     window.history.pushState({}, "", "/projects");
     render(withWorkspaceProviders(<Shell />, createRepository()));
 
-    expect(await screen.findByRole("heading", { name: "还没有项目" })).toBeInTheDocument();
-    expect(screen.getByText("创建项目后才能进入实验工作台。您可以新建一个独立项目或加入团队协作。")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "创建第一个项目" }));
+    expect(await screen.findByRole("heading", { name: "从一句需求到完整的工程交付" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "还没有项目" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看引导" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "新建项目" }));
 
     expect(window.location.pathname).toBe("/projects");
     expect(await screen.findByRole("dialog", { name: "创建项目" })).toBeInTheDocument();
-    expect(screen.getByLabelText("项目名称")).toHaveValue("课程 UML 实验项目");
+    expect(screen.getByLabelText("项目名称")).toHaveValue("");
     const descriptionInput = screen.getByLabelText("项目描述");
     expect(descriptionInput.tagName).toBe("TEXTAREA");
     expect(descriptionInput).toHaveAttribute("rows", "4");
+    await user.type(screen.getByLabelText("项目名称"), "订单系统");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
     const visibilityGroup = screen.getByRole("group", { name: "可见性" });
     expect(
-      within(visibilityGroup).getByRole("button", { name: "团队成员可见" }),
+      within(visibilityGroup).getByRole("button", { name: "仅成员可见" }),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByLabelText("课程/班级/team")).toBeInTheDocument();
+    expect(screen.queryByLabelText("课程 / 班级 / 团队")).not.toBeInTheDocument();
   });
 
   it("opens the project creation form in a dialog from the projects page", async () => {
@@ -2642,19 +2530,16 @@ describe("App shell routes", () => {
     const descriptionInput = screen.getByLabelText("项目描述");
     expect(descriptionInput.tagName).toBe("TEXTAREA");
     expect(descriptionInput).toHaveAttribute("rows", "4");
+    await user.type(screen.getByLabelText("项目名称"), "订单系统");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
     const visibilityGroup = screen.getByRole("group", { name: "可见性" });
-    await user.click(within(visibilityGroup).getByRole("button", { name: "仅我可见" }));
-    expect(within(visibilityGroup).getByRole("button", { name: "仅我可见" })).toHaveAttribute(
+    await user.click(within(visibilityGroup).getByRole("button", { name: "仅成员可见" }));
+    expect(within(visibilityGroup).getByRole("button", { name: "仅成员可见" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(screen.getByLabelText("课程/班级/team")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(getSelectTrigger("课程/班级/team")).toHaveTextContent(
-        "暂不绑定课程团队",
-      );
-    });
+    expect(screen.queryByLabelText("课程 / 班级 / 团队")).not.toBeInTheDocument();
     expect(screen.queryByText("默认模型策略")).not.toBeInTheDocument();
   });
 
@@ -2693,7 +2578,8 @@ describe("App shell routes", () => {
       expect(requirementText).toBeDisabled();
     });
     expect(screen.getByText("当前项目角色仅允许查看，不能编辑内容或启动生成。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "提取需求规则" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "提取需求规则" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "停止生成" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /电商系统/ })).not.toBeInTheDocument();
 
     await user.type(requirementText, "访客不应写入需求");
@@ -2793,7 +2679,6 @@ describe("App shell routes", () => {
       ["运行历史", "history", "运行历史"],
       ["项目设置", "settings", "项目设置"],
       ["成员", "members", "项目成员与权限"],
-      ["文档中心", "documents", "文档中心"],
     ]) {
       await user.click(within(navigation).getByRole("button", { name: label }));
       expect(window.location.pathname).toBe('/projects/library-booking/' + section);
@@ -2819,7 +2704,7 @@ describe("App shell routes", () => {
     const initialWorkspaceLoads = vi.mocked(repository.loadWorkspace).mock.calls.length;
     await user.click(within(navigation).getByRole("button", { name: "需求模型" }));
     expect(await screen.findByRole("heading", { name: "目标模型" })).toBeInTheDocument();
-    for (const name of ["链路图", "运行历史", "项目设置", "成员", "文档中心"]) {
+    for (const name of ["链路图", "运行历史", "项目设置", "成员"]) {
       await user.click(within(navigation).getByRole("button", { name }));
       expect(screen.getByRole("navigation", { name: "项目导航" })).toBe(navigation);
       expect(screen.queryByTestId("auth-check-placeholder")).not.toBeInTheDocument();
@@ -2827,9 +2712,9 @@ describe("App shell routes", () => {
       expect(authCalls()).toBe(initialAuthCalls);
     }
     act(() => window.history.back());
-    expect(await screen.findByRole("heading", { name: "项目成员与权限" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "项目设置" })).toBeInTheDocument();
     act(() => window.history.forward());
-    expect(await screen.findByRole("heading", { name: "文档中心" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "项目成员与权限" })).toBeInTheDocument();
     await user.click(within(navigation).getByRole("button", { name: "需求模型" }));
     expect(window.location.pathname).toBe("/projects/library-booking");
     expect(await screen.findByRole("heading", { name: "目标模型" })).toBeInTheDocument();
@@ -2838,7 +2723,7 @@ describe("App shell routes", () => {
     expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
   });
 
-  it.each(["settings", "members", "history", "documents", "lineage"])("opens the %s section from a direct child route", async section => {
+  it.each(["settings", "members", "history", "lineage"])("opens the %s section from a direct child route", async section => {
     projectApiMode = "authenticated";
     window.history.pushState({}, "", "/projects/library-booking/" + section);
     render(withWorkspaceProviders(<Shell />, createRepository()));
@@ -2848,7 +2733,7 @@ describe("App shell routes", () => {
     expect(screen.getByText("项目导航")).toBeInTheDocument();
   });
 
-  it("loads project run history from the project API and cancels runs there", async () => {
+  it("loads project run history without offering task controls", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.mocked(fetch);
     projectApiMode = "authenticated";
@@ -2860,8 +2745,8 @@ describe("App shell routes", () => {
     expect(await screen.findByRole("region", { name: "运行历史" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/projects/library-booking/history");
     expect(screen.getByText("项目导航")).toBeInTheDocument();
-    expect(await screen.findByText("渲染需求图表")).toBeInTheDocument();
-    expect(screen.getByText("渲染设计图表")).toBeInTheDocument();
+    expect(await screen.findByText("生成需求模型")).toBeInTheDocument();
+    expect(screen.getByText("生成设计模型")).toBeInTheDocument();
     const historyTable = screen.getByRole("table");
     expect(within(historyTable).getByRole("columnheader", { name: "模型" })).toBeInTheDocument();
     expect(within(historyTable).getByRole("columnheader", { name: "操作者" })).toBeInTheDocument();
@@ -2872,7 +2757,11 @@ describe("App shell routes", () => {
     expect(getSelectTrigger("筛选状态")).toBeInTheDocument();
     expect(getSelectTrigger("筛选阶段")).toBeInTheDocument();
     expect(screen.queryByLabelText("筛选模型")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "刷新历史" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "返回工作台" })).not.toBeInTheDocument();
+    const runListRequests = () => fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/api/projects/library-booking/runs")).length;
+    const previousRequests = runListRequests();
+    await user.click(screen.getByRole("button", { name: "刷新历史" }));
+    await waitFor(() => expect(runListRequests()).toBeGreaterThan(previousRequests));
     expect(screen.queryByText("run-1")).not.toBeInTheDocument();
     expect(screen.queryByText("a3023f76-6da3-4fcd-9a82-8a187c30691d")).not.toBeInTheDocument();
     expect(screen.queryByText("未记录阶段")).not.toBeInTheDocument();
@@ -2880,13 +2769,7 @@ describe("App shell routes", () => {
     expect(screen.queryByText("操作者 系统")).not.toBeInTheDocument();
     expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
 
-    await user.click(screen.getAllByRole("button", { name: "取消任务" })[0]!);
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/projects/library-booking/runs/run-1/cancel"),
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(await screen.findByText("任务已取消。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "取消任务" })).not.toBeInTheDocument();
   });
 
   it("manages project members through invitation APIs, role, and revoke actions", async () => {
@@ -2948,7 +2831,7 @@ describe("App shell routes", () => {
     );
   });
 
-  it("filters project history, shows errors, and queues retry/rerun actions truthfully", async () => {
+  it("filters project history and shows errors without generation actions", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.mocked(fetch);
     const repository = createRepository();
@@ -2964,16 +2847,6 @@ describe("App shell routes", () => {
         }),
       },
     ]);
-    repository.restoreRunHistory = vi.fn(async () => ({
-      id: "run-1",
-      createdAt: "2026-05-22T02:05:00.000Z",
-      title: "需求生成",
-      providerModel: "gpt-5-mini",
-      snapshot: createRunSnapshot({
-        runId: "run-1",
-        requirementText: "生成图书馆预约系统 UML",
-      }),
-    }));
     repository.deleteRunHistory = vi.fn(async () => []);
     projectApiMode = "authenticated";
     window.history.pushState({}, "", "/projects/library-booking");
@@ -2981,32 +2854,25 @@ describe("App shell routes", () => {
 
     await user.click(await screen.findByRole("button", { name: "运行历史" }));
 
-    expect(await screen.findByText("渲染需求图表")).toBeInTheDocument();
-    expect(screen.getByText("渲染设计图表")).toBeInTheDocument();
+    expect(await screen.findByText("生成需求模型")).toBeInTheDocument();
+    expect(screen.getByText("生成设计模型")).toBeInTheDocument();
     expect(screen.queryByText("run-1")).not.toBeInTheDocument();
     expect(screen.queryByText("run-failed")).not.toBeInTheDocument();
     await chooseSelectOption(user, getSelectTrigger("筛选状态"), "失败");
-    expect(screen.queryByText("渲染需求图表")).not.toBeInTheDocument();
-    const failedDesignCard = screen.getByText("渲染设计图表").closest("tr");
+    expect(screen.queryByText("生成需求模型")).not.toBeInTheDocument();
+    const failedDesignCard = screen.getByText("生成设计模型").closest("tr");
     expect(failedDesignCard).toBeTruthy();
     const failedDesignControls = within(failedDesignCard as HTMLElement);
-    await user.click(failedDesignControls.getByRole("button", { name: "查看错误" }));
-    expect(screen.getByText("服务暂时不可用，请稍后重试。")).toBeInTheDocument();
-    await user.click(failedDesignControls.getByRole("button", { name: "重试" }));
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/projects/library-booking/runs/run-failed/retry"),
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(await screen.findByText("已重新排队，稍后启动。")).toBeInTheDocument();
-    expect(await screen.findByText("已重试为 run-retry-failed")).toBeInTheDocument();
-
-    await user.click(failedDesignControls.getByRole("button", { name: "重新运行" }));
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/projects/library-booking/runs/run-failed/rerun"),
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(await screen.findByText("已重新排队，稍后启动。")).toBeInTheDocument();
-    expect(await screen.findByText("已重新运行为 run-rerun-failed")).toBeInTheDocument();
+    await user.click(failedDesignControls.getByRole("button", { name: "查看运行记录 run-failed" }));
+    const runDetails = await screen.findByRole("dialog", { name: "运行详情" });
+    expect(runDetails).toHaveTextContent("生成任务失败，请稍后重试。");
+    expect(runDetails).not.toHaveTextContent("PlantUML render failed");
+    for (const name of ["重试", "重新运行", "恢复快照", "取消任务", "重新下载"]) {
+      expect(failedDesignControls.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+    expect(fetchMock.mock.calls.some(([url, options]) =>
+      /\/runs\/[^/]+\/(retry|rerun|restore-workspace)$/.test(String(url)) && options?.method === "POST"
+    )).toBe(false);
   });
 
   it("shows run history actions only when each run supports them", async () => {
@@ -3080,61 +2946,51 @@ describe("App shell routes", () => {
 
     await user.click(await screen.findByRole("button", { name: "运行历史" }));
 
-    const runningCard = (await screen.findByText("渲染需求图表")).closest("tr");
-    const failedCard = screen.getByText("渲染设计图表").closest("tr");
-    const documentCard = screen.getByText("生成需求规格说明书").closest("tr");
-    const failedDocumentCard = screen
-      .getByText("生成需求规格说明书文件")
-      .closest("tr");
+    const runningCard = (await screen.findByText("生成需求模型")).closest("tr");
+    const failedCard = screen.getByText("生成设计模型").closest("tr");
+    const documentCard = screen.getByRole("button", { name: "查看运行记录 run-doc" }).closest("tr");
+    const failedDocumentCard = screen.getByRole("button", { name: "查看运行记录 run-doc-failed" }).closest("tr");
     expect(runningCard).toBeTruthy();
     expect(failedCard).toBeTruthy();
     expect(documentCard).toBeTruthy();
     expect(failedDocumentCard).toBeTruthy();
 
     const runningControls = within(runningCard as HTMLElement);
-    expect(runningControls.getByRole("button", { name: "取消任务" })).toBeInTheDocument();
+    expect(runningControls.queryByRole("button", { name: "取消任务" })).not.toBeInTheDocument();
     expect(runningControls.queryByRole("button", { name: "查看错误" })).not.toBeInTheDocument();
     expect(runningControls.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
     expect(runningControls.queryByRole("button", { name: "重新运行" })).not.toBeInTheDocument();
     expect(runningControls.queryByRole("button", { name: "恢复快照" })).not.toBeInTheDocument();
     expect(runningControls.queryByRole("button", { name: "导出报告" })).not.toBeInTheDocument();
     expect(runningControls.queryByRole("button", { name: "重新下载" })).not.toBeInTheDocument();
-    expect(runningControls.queryByRole("button", { name: "删除记录" })).not.toBeInTheDocument();
+    expect(runningControls.getByRole("button", { name: "删除运行记录 run-1" })).toBeDisabled();
 
     const failedControls = within(failedCard as HTMLElement);
     expect(failedControls.queryByRole("button", { name: "取消任务" })).not.toBeInTheDocument();
-    expect(failedControls.getByRole("button", { name: "查看错误" })).toBeInTheDocument();
-    expect(failedControls.getByRole("button", { name: "重试" })).toBeInTheDocument();
-    expect(failedControls.getByRole("button", { name: "重新运行" })).toBeInTheDocument();
+    expect(failedControls.getByRole("button", { name: "查看运行记录 run-failed" })).toBeInTheDocument();
+    expect(failedControls.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
+    expect(failedControls.queryByRole("button", { name: "重新运行" })).not.toBeInTheDocument();
     expect(failedControls.queryByRole("button", { name: "恢复快照" })).not.toBeInTheDocument();
     expect(failedControls.queryByRole("button", { name: "导出报告" })).not.toBeInTheDocument();
     expect(failedControls.queryByRole("button", { name: "重新下载" })).not.toBeInTheDocument();
-    expect(failedControls.getByRole("button", { name: "删除记录" })).toBeInTheDocument();
+    expect(failedControls.getByRole("button", { name: "删除运行记录 run-failed" })).toBeInTheDocument();
 
     const documentControls = within(documentCard as HTMLElement);
     expect(documentControls.queryByRole("button", { name: "取消任务" })).not.toBeInTheDocument();
     expect(documentControls.queryByRole("button", { name: "查看错误" })).not.toBeInTheDocument();
     expect(documentControls.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
-    expect(documentControls.getByRole("button", { name: "重新运行" })).toBeInTheDocument();
+    expect(documentControls.queryByRole("button", { name: "重新运行" })).not.toBeInTheDocument();
     expect(documentControls.queryByRole("button", { name: "恢复快照" })).not.toBeInTheDocument();
     expect(documentControls.queryByRole("button", { name: "导出报告" })).not.toBeInTheDocument();
-    expect(documentControls.getByRole("button", { name: "重新下载" })).toBeInTheDocument();
-    expect(documentControls.getByRole("button", { name: "删除记录" })).toBeInTheDocument();
+    expect(documentControls.queryByRole("button", { name: "重新下载" })).not.toBeInTheDocument();
+    expect(documentControls.getByRole("button", { name: "删除运行记录 run-doc" })).toBeInTheDocument();
 
     const failedDocumentControls = within(failedDocumentCard as HTMLElement);
-    expect(failedDocumentControls.getByRole("button", { name: "查看错误" })).toBeInTheDocument();
+    expect(failedDocumentControls.getByRole("button", { name: "查看运行记录 run-doc-failed" })).toBeInTheDocument();
     expect(failedDocumentControls.queryByRole("button", { name: "重新下载" })).not.toBeInTheDocument();
-    expect(failedDocumentControls.getByRole("button", { name: "删除记录" })).toBeInTheDocument();
+    expect(failedDocumentControls.getByRole("button", { name: "删除运行记录 run-doc-failed" })).toBeInTheDocument();
 
-    await user.click(documentControls.getByRole("button", { name: "重新下载" }));
-    expect(repository.downloadDocumentRun).toHaveBeenCalledWith(
-      "run-doc",
-      "requirements.docx",
-    );
-
-    expect(repository.restoreRunHistory).not.toHaveBeenCalledWith("run-doc");
-
-    await user.click(failedControls.getByRole("button", { name: "删除记录" }));
+    await user.click(failedControls.getByRole("button", { name: "删除运行记录 run-failed" }));
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/projects/library-booking/runs/run-failed"),
       expect.objectContaining({ method: "DELETE" }),
@@ -3142,68 +2998,21 @@ describe("App shell routes", () => {
     expect(repository.deleteRunHistory).toHaveBeenCalledWith("run-failed");
   });
 
-  it("manages project documents through versions, rename, delete, restore, and download APIs", async () => {
-    const user = userEvent.setup();
-    const fetchMock = vi.mocked(fetch);
-    projectApiMode = "authenticated";
-    window.history.pushState({}, "", "/projects/library-booking");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-
-    await user.click(await screen.findByRole("button", { name: "文档中心" }));
-
-    expect(await screen.findByRole("region", { name: "文档中心" })).toBeInTheDocument();
-    expect(await screen.findByText("requirements.docx")).toBeInTheDocument();
-    expect(screen.getByText("OnlyOffice：编辑中")).toBeInTheDocument();
-    expect(screen.getByText("编辑锁：teacher@example.edu")).toBeInTheDocument();
-    expect(screen.getByText("下载：可用")).toBeInTheDocument();
-
-    expect(screen.queryByText(/doc-1/)).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "版本记录 requirements.docx" }));
-    expect(await screen.findByText("v2 requirements.docx")).toBeInTheDocument();
-    expect(screen.getByText("v1 requirements-v1.docx")).toBeInTheDocument();
-
-    await user.clear(screen.getByLabelText("文档名称"));
-    await user.type(screen.getByLabelText("文档名称"), "requirements-renamed.docx");
-    await user.click(screen.getByRole("button", { name: "重命名 requirements.docx" }));
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/projects/library-booking/documents/doc-1"),
-      expect.objectContaining({
-        method: "PATCH",
-        body: JSON.stringify({ fileName: "requirements-renamed.docx" }),
-      }),
-    );
-    await waitFor(() => {
-      expect(screen.getByLabelText("文档名称")).toHaveValue("requirements-renamed.docx");
-    });
-
-    await user.click(screen.getByRole("button", { name: "下载 requirements-renamed.docx" }));
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/projects/library-booking/documents/doc-1/download"),
-      expect.objectContaining({ credentials: "include" }),
-    );
-
-    await user.click(screen.getByRole("button", { name: "删除 requirements-renamed.docx" }));
-    expect(await screen.findByText("文档 requirements-renamed.docx 已删除，可在当前页面恢复。")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "恢复 requirements-renamed.docx" }));
-    expect(await screen.findByText("文档 requirements-renamed.docx 已恢复。")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "上传新文档" })).not.toBeInTheDocument();
-  });
-
-  it("creates projects with explicit binding and visibility", async () => {
+  it("creates projects with explicit mode and visibility", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.mocked(fetch);
     window.history.pushState({}, "", "/projects/new");
     render(withWorkspaceProviders(<Shell />, createRepository()));
 
-    expect(screen.queryByLabelText("课程/班级/team")).not.toBeInTheDocument();
+    const preview = await screen.findByTestId("project-background-preview-image");
+    const defaultBackground = PROJECT_BACKGROUND_OPTIONS.find(option => option.imageUrl === preview.getAttribute("src"));
+    expect(defaultBackground).toBeDefined();
+
+    expect(screen.queryByLabelText("课程 / 班级 / 团队")).not.toBeInTheDocument();
+    await user.type(await screen.findByLabelText("项目名称"), "课程 UML 实验项目");
     await user.click(await screen.findByRole("button", { name: "下一步" }));
-    await chooseSelectOption(
-      user,
-      await findSelectTrigger("课程/班级/team"),
-      "软件学院 / 软件工程 2026 春 / 1 班 / Team A",
-    );
-    await user.click(screen.getByRole("button", { name: "课程班级可见" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: "公开可见" }));
     expect(screen.queryByText("默认模型策略")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
@@ -3213,14 +3022,11 @@ describe("App shell routes", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
+          projectMode: "standard",
           name: "课程 UML 实验项目",
           description: null,
-          visibility: "team",
-          organizationId: "org-software-school",
-          courseId: "course-software-2026-spring",
-          classId: "class-software-2026-spring-1",
-          teamId: "team-software-2026-a",
-          backgroundKey: null,
+          visibility: "public",
+          backgroundKey: defaultBackground!.key,
         }),
       }),
     );
@@ -3243,17 +3049,14 @@ describe("App shell routes", () => {
     expect(await screen.findByRole("heading", { name: "模型配置" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "模型" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "偏好" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("模型托管配置").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("模型配置").length).toBeGreaterThan(0);
     expect(screen.getByText("修改后自动重新生成规则")).toBeInTheDocument();
     expect(screen.queryByText("深色主题")).not.toBeInTheDocument();
     expect(screen.queryByText("字号")).not.toBeInTheDocument();
     expect(screen.getByText("修改后自动重新生成规则")).toBeInTheDocument();
     expect(screen.getByText("显示过期模型横幅")).toBeInTheDocument();
     expect(
-      screen.queryByText("模型托管配置和工作台偏好集中在这里；登录态不会把明文密钥作为主路径保存。"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("登录态必须使用服务端托管 Provider；明文 API Key 只允许显式 dev legacy 模式。"),
+      screen.queryByText("模型配置和工作台偏好集中在这里；登录态不会把明文密钥作为主路径保存。"),
     ).not.toBeInTheDocument();
     expect(await screen.findByText(/课程 OpenAI 托管配置/u)).toBeInTheDocument();
     expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
@@ -3269,7 +3072,7 @@ describe("App shell routes", () => {
     expect(
       await screen.findByRole(
         "button",
-        { name: "添加供应商" },
+        { name: "添加自己的模型密钥" },
         { timeout: 5_000 },
       ),
     ).toBeEnabled();
@@ -3301,8 +3104,6 @@ describe("App shell routes", () => {
         providerModelOptions: ["old-model"],
         providerModelCapabilities: {},
         defaultModel: "old-model",
-        imageModel: "gpt-image-2",
-        fontSize: "md",
         autoGenerate: false,
         showStaleBanner: true,
       }),
@@ -3371,7 +3172,7 @@ describe("App shell routes", () => {
       ]);
     });
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "qwen3.7-plus" }).length).toBeGreaterThan(0);
+      expect(screen.getByRole("combobox", { name: "选择模型" })).toHaveTextContent("qwen3.7-plus");
     });
   });
 
@@ -3385,7 +3186,7 @@ describe("App shell routes", () => {
     await waitForPlatformLoadingToExit();
     expect(await screen.findByRole("heading", { name: "系统需求" })).toBeInTheDocument();
     expect(loadUserSettings().providerConfigId).toBe("");
-    expect(screen.getAllByRole("button", { name: "未选择模型" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("combobox", { name: "选择模型" })).toHaveTextContent("选择模型");
   });
 
   it("clears stale provider settings when no active providers are available", async () => {
@@ -3417,7 +3218,7 @@ describe("App shell routes", () => {
         providerModelCapabilities: {},
       });
     });
-    expect(screen.getAllByRole("button", { name: "未选择模型" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("combobox", { name: "选择模型" })).toHaveTextContent("选择模型");
   });
 
   it("blocks returning to the previous protected route after the session is cleared", async () => {

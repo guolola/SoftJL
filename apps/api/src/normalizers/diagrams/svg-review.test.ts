@@ -32,10 +32,8 @@ test("parallel relationships require separate SVG links; containment comments ar
   const svg = `${entities}<g class="link" id="link_a_b" data-entity-1="a" data-entity-2="b"/></svg>`;
   assert.deepEqual(verifySvgMapping(svg, parallel, "class", "class").findings.map((item) => item.relationshipId), ["r2"]);
 });
-test("native renderers without link identity are left to image checks", () => {
-  const check = verifySvgMapping(`${entities}</svg>`, mapping, "activity", "activity");
-  assert.deepEqual(check.findings, []);
-  assert.ok(check.inconclusive?.length, "identifiable nodes cannot falsely complete an unidentifiable edge check");
+test("obsolete activity mappings are rejected rather than treated as current renders", () => {
+  assert.throws(() => verifySvgMapping(`${entities}</svg>`, mapping, "activity", "activity"), /must use explicit-graph/);
 });
 
 test("current PlantUML qualified names resolve generated IDs for nested nodes and association links", () => {

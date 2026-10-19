@@ -586,7 +586,10 @@ export type SequenceDiagramSpec = z.infer<typeof sequenceDiagramSpecSchema>;
 
 export const analysisSequenceDiagramSpecSchema = sequenceDiagramSpecSchema.extend({
   diagramKind: z.literal("analysis"),
-  participants: z.array(sequenceParticipantSchema.extend({ participantType: z.enum(["actor", "boundary", "control", "entity"]) })),
+  // Generation records exact use-case/flow/step IDs on each analysis business element.
+  participants: z.array(sequenceParticipantSchema.extend({ participantType: z.enum(["actor", "boundary", "control", "entity"]), sourceElementIds: z.array(z.string().min(1)).min(1).optional() })),
+  messages: z.array(sequenceMessageSchema.extend({ sourceElementIds: z.array(z.string().min(1)).min(1).optional() })),
+  fragments: z.array(sequenceFragmentSchema.extend({ sourceElementIds: z.array(z.string().min(1)).min(1).optional() })),
 });
 export type AnalysisSequenceDiagramSpec = z.infer<
   typeof analysisSequenceDiagramSpecSchema
@@ -1089,11 +1092,7 @@ export function designDiagramKindFromRecordKey(
 ): DesignDiagramKind | null {
   if (!key) return null;
   const scopedKind = key.includes(":") ? key.split(":", 1)[0] : key;
-  if (isDesignDiagramKind(scopedKind)) return scopedKind;
-  const legacyDesignKind = scopedKind.startsWith("design-")
-    ? scopedKind.slice("design-".length)
-    : null;
-  return isDesignDiagramKind(legacyDesignKind) ? legacyDesignKind : null;
+  return isDesignDiagramKind(scopedKind) ? scopedKind : null;
 }
 
 function designRecordStringField(record: unknown, field: string) {

@@ -1,4 +1,5 @@
 // Owns run history data contracts, local persistence compaction, and snapshot summaries.
+import { assertCurrentRunSnapshot } from "@uml-platform/contracts";
 import type {
 
   DesignRunSnapshot,
@@ -8,10 +9,10 @@ import type {
   RunError,
   RunSnapshot,
 } from "@uml-platform/contracts";
-import { stripRetiredCodeData } from "@uml-platform/contracts";
 import {
   DESIGN_DIAGRAM_META,
   DIAGRAM_META,
+  getModelTaskLabel,
 } from "../diagram/model";
 
 import { localizeRunFailure } from "../../shared/i18n/api-errors";
@@ -62,7 +63,6 @@ export interface RunHistoryItem {
   missingArtifactSummary?: string[] | null;
 
 
-  canRestore?: boolean | null;
   snapshotAvailable?: boolean | null;
   documentDownloadAvailable?: boolean | null;
 }
@@ -113,11 +113,14 @@ export function createRunHistoryTitle(requirementText: string) {
 function safeParseHistory(value: string | null): RunHistoryItem[] {
   if (!value) return [];
   try {
-    const parsed = stripRetiredCodeData(JSON.parse(value)) as unknown;
+    const parsed = JSON.parse(value) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((item): item is RunHistoryItem => {
       if (!item || typeof item !== "object") return false;
       const candidate = item as Partial<RunHistoryItem>;
+      if (candidate.snapshot) {
+        try { assertCurrentRunSnapshot(candidate.snapshot); } catch { return false; }
+      }
       return (
         typeof candidate.id === "string" &&
         typeof candidate.createdAt === "string" &&
@@ -277,30 +280,12 @@ export function getRunHistorySnapshotLabel(snapshot: RunHistorySnapshot) {
   return "需求阶段";
 }
 
-function baseDiagramId(diagramId: string) {
-  return diagramId.split(":")[0] ?? diagramId;
-}
-
-function getRequirementDiagramLabel(diagramId: string) {
-  const id = baseDiagramId(diagramId);
-  return id in DIAGRAM_META
-    ? DIAGRAM_META[id as keyof typeof DIAGRAM_META].label
-    : diagramId;
-}
-
-function getDesignDiagramLabel(diagramId: string) {
-  const id = baseDiagramId(diagramId);
-  return id in DESIGN_DIAGRAM_META
-    ? DESIGN_DIAGRAM_META[id as keyof typeof DESIGN_DIAGRAM_META].label
-    : diagramId;
-}
-
 function summarizeDiagramError(error: RunHistoryDiagramErrorSummary) {
   const message = localizeRunFailure(
-    error.error,
+    error.error ?? error.message,
     "图表生成失败，请稍后重试。",
   );
-  return [error.stage, message].filter(Boolean).join("：") || message;
+  return message;
 }
 
 export function formatRunHistoryDiagramErrorSummary(
@@ -308,10 +293,9 @@ export function formatRunHistoryDiagramErrorSummary(
   options: { design?: boolean } = {},
 ) {
   if (!errors || errors.length === 0) return null;
-  const labelFor = options.design ? getDesignDiagramLabel : getRequirementDiagramLabel;
   const preview = errors
     .slice(0, 2)
-    .map((error) => `${labelFor(error.diagramId)}（${summarizeDiagramError(error)}）`)
+    .map((error) => `${getModelTaskLabel(error.diagramId, options)}（${summarizeDiagramError(error)}）`)
     .join("、");
   const suffix = errors.length > 2 ? `等 ${errors.length} 张图` : `${errors.length} 张图`;
   return `图级失败 ${suffix}：${preview}`;

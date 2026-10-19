@@ -4,22 +4,31 @@ import test from "node:test";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
 import { normalizeFeasibilityImplementationDetailed } from "./implementation-normalizer.js";
 
-test("normalizes purpose and links the integration to the context external system", () => {
+function sourcedExample() {
   const value = structuredClone(FEASIBILITY_IMPLEMENTATION_EXAMPLE) as any;
+  for (const candidate of value.candidates) {
+    candidate.sourceRequirementIds = ["r1"];
+    for (const module of candidate.implementation.architecture.modules) module.sourceRequirementIds = ["r1"];
+  }
+  return value;
+}
+
+test("normalizes purpose and links the integration to the context external system", () => {
+  const value = sourcedExample();
   const originalCosts = structuredClone(
     value.candidates[0].implementation.costEstimates,
   );
   value.candidates[0].implementation.integrations = [{
     name: "统一身份平台",
     purpose: "完成用户身份校验",
-    sourceRequirementIds: [],
+    sourceRequirementIds: ["r1"],
     assumption: "上下文只定义了系统边界，协议仍待确认。",
-    provenance: "legacy",
+    provenance: "user-confirmed",
   }];
 
   const result = normalizeFeasibilityImplementationDetailed(
     value,
-    new Set(),
+    new Set(["r1"]),
     [{ id: "external-auth", name: "统一身份平台" }],
   );
   const integration = result.plan.candidates[0]!.implementation!.integrations[0]!;
@@ -39,7 +48,7 @@ test("normalizes purpose and links the integration to the context external syste
 });
 
 test("normalizes rationale, deduplicates scopes and removes declarations that conflict with items", () => {
-  const value = structuredClone(FEASIBILITY_IMPLEMENTATION_EXAMPLE) as any;
+  const value = sourcedExample();
   const implementation = value.candidates[0].implementation;
   implementation.benefitEstimates = implementation.benefitEstimates.filter(
     (item: any) => item.category !== "one-time",
@@ -48,21 +57,21 @@ test("normalizes rationale, deduplicates scopes and removes declarations that co
     {
       scope: "one-time-benefits",
       rationale: "没有可识别的一次性收益。",
-      provenance: "legacy",
+      provenance: "user-confirmed",
     },
     {
       scope: "one-time-benefits",
       rationale: "重复声明应删除。",
-      provenance: "legacy",
+      provenance: "user-confirmed",
     },
     {
       scope: "recurring-costs",
       rationale: "与实际年度运维成本冲突。",
-      provenance: "legacy",
+      provenance: "user-confirmed",
     },
   ];
 
-  const result = normalizeFeasibilityImplementationDetailed(value, new Set(), []);
+  const result = normalizeFeasibilityImplementationDetailed(value, new Set(["r1"]), []);
   const declarations =
     result.plan.candidates[0]!.implementation!.absenceDeclarations;
 
@@ -76,8 +85,8 @@ test("normalizes rationale, deduplicates scopes and removes declarations that co
   assert.ok(result.actions.includes("removed-conflicting-absence-declaration"));
 });
 
-test("normalizes REQ-001 provider aliases to an existing r1 rule", () => {
-  const value = structuredClone(FEASIBILITY_IMPLEMENTATION_EXAMPLE) as any;
+test("preserves first-generation source IDs without guessing an existing rule", () => {
+  const value = sourcedExample();
   value.candidates[0].implementation.architecture.modules[0].sourceRequirementIds =
     ["REQ-001"];
 
@@ -90,7 +99,19 @@ test("normalizes REQ-001 provider aliases to an existing r1 rule", () => {
   assert.deepEqual(
     result.plan.candidates[0]!.implementation!.architecture.modules[0]!
       .sourceRequirementIds,
-    ["r1"],
+    ["REQ-001"],
   );
-  assert.ok(result.actions.includes("normalized-requirement-id-alias"));
+  assert.ok(!result.actions.includes("normalized-requirement-id-alias"));
+});
+
+
+test("candidate, business module and integration cannot replace sources with assumptions", () => {
+  for (const select of [
+    (value: any) => value.candidates[0],
+    (value: any) => value.candidates[0].implementation.architecture.modules[0],
+  ]) {
+    const value = sourcedExample();
+    select(value).sourceRequirementIds = [];
+    assert.throws(() => normalizeFeasibilityImplementationDetailed(value, new Set(["r1"]), []), /必须在首次生成时携带真实需求来源/);
+  }
 });

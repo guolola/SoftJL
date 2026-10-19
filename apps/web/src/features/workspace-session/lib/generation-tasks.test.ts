@@ -1,8 +1,7 @@
 // Verifies model-level task summaries remain accurate when a run partially succeeds.
-import { createDesignRunSnapshot } from "../../../test/artifact-fixtures";
-import { createRenderMeta } from "../../../test/artifact-fixtures";
+import { createDesignRunSnapshot, createRenderMeta } from "@/test/contract-fixtures";
 import { describe, expect, it } from "vitest";
-import type { RunEvent } from "@uml-platform/contracts";
+import type { RunEventInput } from "@uml-platform/contracts";
 import {
   applyVisualReviewConfirmations,
   createGenerationTask,
@@ -11,10 +10,48 @@ import {
 } from "./generation-tasks";
 import { createEmptyDiagnostics } from "./diagnostics";
 import { createRequirementBaseline, createRunSnapshot } from "../../../test/workspace-test-utils";
+import { designGenerationSubtasks, requirementGenerationSubtasks } from "./generation-planning";
 
 describe("workspace-session generation task helpers", () => {
+  it("uses business labels for failures recovered without a planned task", () => {
+    const task = createGenerationTask({ clientTaskId: "unplanned-failure", kind: "design", title: "生成设计模型",
+      providerModel: null, startedAt: "now", message: "生成中" });
+    const next = updateTaskFromEvent(task, { type: "completed", snapshot: createDesignRunSnapshot({
+      selectedDiagrams: ["sequence"],
+      diagramErrors: { "sequence:UC-DIAL": { stage: "generate_design_sequence", error: {
+        code: "PLATFORM_PROVIDER_UNAVAILABLE", message: "private provider response", category: "platform_provider", retryable: true,
+      } } },
+    }) }, { queued: "排队中", completed: "完成" });
+    expect(next.subtasks).toContainEqual(expect.objectContaining({ id: "sequence:UC-DIAL", label: "用例实现设计",
+      message: null, errorMessage: "当前模型服务暂不可用，请稍后重试。" }));
+  });
+  it.each(["requirements", "design"] as const)("updates planned %s phases when artifact events carry a custom model ID", (kind) => {
+    let task = createGenerationTask({ clientTaskId: "custom-model", kind, title: "生成模型", providerModel: null,
+      startedAt: "now", message: "生成中", subtasks: kind === "requirements"
+        ? requirementGenerationSubtasks(["class", "usecase"], {}) : designGenerationSubtasks(["class", "component"], {}) });
+    const labels = { queued: "排队中", completed: "完成" };
+    task = updateTaskFromEvent(task, { type: "artifact_ready", stage: "render_svg", artifactKind: "svg",
+      diagramKind: "class", modelId: "domain-class-custom", subtaskId: "domain-class-custom", subtaskStatus: "completed" }, labels);
+    expect(task.subtasks.find((subtask) => subtask.id === "render_svg:class")?.status).toBe("completed");
+    expect(task.subtasks.find((subtask) => subtask.id === `render_svg:${kind === "requirements" ? "usecase" : "component"}`)?.status).toBe("queued");
+    task = updateTaskFromEvent(task, { type: "stage_progress", stage: "verify_diagram_visual", progress: 98,
+      diagramKind: "class", modelId: "domain-class-custom", subtaskId: "domain-class-custom", subtaskStatus: "pending_review" }, labels);
+    expect(task.subtasks.find((subtask) => subtask.id === "verify_diagram_visual:class")?.status).toBe("pending_review");
+    expect(task.subtasks.some((subtask) => subtask.id.includes("domain-class-custom"))).toBe(false);
+  });
+
+  it("fails downstream placeholders when a custom model ID fails generation", () => {
+    const task = createGenerationTask({ clientTaskId: "custom-failure", kind: "requirements", title: "生成模型",
+      providerModel: null, startedAt: "now", message: "生成中", subtasks: requirementGenerationSubtasks(["usecase", "class"], {}) });
+    const failed = updateTaskFromEvent(task, { type: "stage_progress", stage: "generate_models", progress: 65,
+      diagramKind: "usecase", subtaskId: "uc_custom", subtaskStatus: "failed", message: "结构校验失败" },
+    { queued: "排队中", completed: "完成" });
+    expect(failed.subtasks.filter((subtask) => subtask.id.endsWith(":usecase")).every((subtask) => subtask.status === "failed")).toBe(true);
+    expect(failed.subtasks.filter((subtask) => subtask.id.endsWith(":class")).every((subtask) => subtask.status === "queued")).toBe(true);
+  });
+
   it("clears only the confirmed visual subtask from the task summary", () => {
-    const review = { status: "pending_review" as const, issues: ["业务条件是否合适需要确认"], reason: "请人工确认", attempts: 3, checkedAt: "check-1" };
+    const review = { findings: [], status: "pending_review" as const, issues: ["业务条件是否合适需要确认"], reason: "请人工确认", attempts: 3, checkedAt: "check-1" };
     const task = createGenerationTask({ clientTaskId: "confirm-visual", kind: "requirements", title: "需求模型生成", providerModel: null, startedAt: "now", message: "已完成", subtasks: [
       { id: "verify_diagram_visual:usecase", label: "用例图", status: "pending_review", message: review.reason, errorMessage: null },
     ] });
@@ -26,7 +63,7 @@ describe("workspace-session generation task helpers", () => {
   });
 
   it.each(["failed", "not_completed"] as const)("preserves a %s review in snapshot reconciliation and ignores manual confirmation", (status) => {
-    const review = { status, issues: ["检查未完成"], reason: "结构检查失败或未完成", attempts: 1, checkedAt: "check-1" };
+    const review = { findings: [], status, issues: ["检查未完成"], reason: "结构检查失败或未完成", attempts: 1, checkedAt: "check-1" };
     const task = createGenerationTask({ clientTaskId: "failed-review", kind: "requirements", title: "需求模型生成", providerModel: null, startedAt: "now", message: "生成中", subtasks: [
       { id: "verify_diagram_visual:usecase", label: "用例", status: "running", message: null, errorMessage: null },
     ] });
@@ -46,13 +83,13 @@ describe("workspace-session generation task helpers", () => {
       ]),
     });
     const labels = { queued: "排队中", completed: "生成完成" };
-    task = updateTaskFromEvent(task, { type: "artifact_ready", stage: "render_svg", artifactKind: "svg", diagramKind: "usecase", subtaskId: "usecase", subtaskStatus: "completed" } satisfies RunEvent, labels);
+    task = updateTaskFromEvent(task, { type: "artifact_ready", stage: "render_svg", artifactKind: "svg", diagramKind: "usecase", subtaskId: "usecase", subtaskStatus: "completed" } satisfies RunEventInput, labels);
     expect(task.subtasks.find((item) => item.id === "verify_diagram_visual:usecase")?.status).toBe("queued");
     expect(task.subtasks.find((item) => item.id === "verify_diagram_visual:class")?.status).toBe("queued");
-    task = updateTaskFromEvent(task, { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, diagramKind: "usecase", subtaskId: "usecase", subtaskStatus: "running", message: "正在检查图面" } satisfies RunEvent, labels);
+    task = updateTaskFromEvent(task, { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, diagramKind: "usecase", subtaskId: "usecase", subtaskStatus: "running", message: "正在检查图面" } satisfies RunEventInput, labels);
     expect(task.subtasks.find((item) => item.id === "verify_diagram_visual:usecase")).toEqual(expect.objectContaining({ status: "running", message: "正在检查图面" }));
     expect(task.subtasks.find((item) => item.id === "verify_diagram_visual:class")?.status).toBe("queued");
-    task = updateTaskFromEvent(task, { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, diagramKind: "usecase", subtaskId: "usecase", subtaskStatus: "pending_review", message: "视觉检查仍有问题：标签不可读" } satisfies RunEvent, labels);
+    task = updateTaskFromEvent(task, { type: "stage_progress", stage: "verify_diagram_visual", progress: 98, diagramKind: "usecase", subtaskId: "usecase", subtaskStatus: "pending_review", message: "视觉检查仍有问题：标签不可读" } satisfies RunEventInput, labels);
     expect(task.subtasks.find((item) => item.id === "verify_diagram_visual:usecase")).toEqual(expect.objectContaining({ status: "pending_review", message: "视觉检查仍有问题：标签不可读" }));
     expect(task.subtasks.find((item) => item.id === "verify_diagram_visual:class")?.status).toBe("queued");
   });
@@ -67,29 +104,27 @@ describe("workspace-session generation task helpers", () => {
     const next = updateTaskFromEvent(task, {
       type: "completed",
       snapshot: createRunSnapshot({ status: "completed", visualReviews: {
-        usecase: { status: "pending_review", issues: ["标签不可读", "连线交叉"], reason: "视觉检查仍有问题，请人工确认", attempts: 3, checkedAt: "2026-09-23T00:00:00.000Z" },
-        class: { status: "pending_review", issues: [], reason: "需要人工核对", attempts: 1, checkedAt: "2026-09-23T00:00:00.000Z" },
+        usecase: { findings: [], status: "pending_review", issues: ["标签不可读", "连线交叉"], reason: "视觉检查仍有问题，请人工确认", attempts: 3, checkedAt: "2026-09-23T00:00:00.000Z" },
+        class: { findings: [], status: "pending_review", issues: [], reason: "需要人工核对", attempts: 1, checkedAt: "2026-09-23T00:00:00.000Z" },
       } }),
     }, { queued: "排队中", completed: "生成完成" });
     expect(next.subtasks.find((item) => item.id === "verify_diagram_visual:usecase")?.message).toBe("标签不可读");
     expect(next.subtasks.find((item) => item.id === "verify_diagram_visual:class")?.message).toBe("需要人工核对");
   });
-  it("keeps a rules-only task running after extraction until local repair completes", () => {
+  it("completes extraction from its terminal snapshot", () => {
     const task = createGenerationTask({
       clientTaskId: "rules-1", kind: "requirements", title: "需求规则生成",
       providerModel: "fake-model", startedAt: "2026-09-23T00:00:00.000Z",
       message: "排队中", subtasks: [
         { id: "extract_rules", label: "抽取需求规则", status: "completed", message: null, errorMessage: null },
-        { id: "repair_rules", label: "修复需求规则", status: "queued", message: null, errorMessage: null },
       ],
     });
     const next = updateTaskFromEvent(task, {
       type: "completed", snapshot: createRunSnapshot({ selectedDiagrams: [], requirementBaseline: createRequirementBaseline(), status: "completed" }),
     }, { queued: "排队中", completed: "生成完成" });
-    expect(next.status).toBe("running");
-    expect(next.message).toBe("正在修复需求规则");
-    expect(next.finishedAt).toBeNull();
-    expect(next.subtasks.find((subtask) => subtask.id === "repair_rules")?.status).toBe("queued");
+    expect(next.status).toBe("completed");
+    expect(next.message).not.toBe("正在修复需求规则");
+    expect(next.finishedAt).not.toBeNull();
   });
   it("completes extraction when no requirement baseline requires a repair pass", () => {
     const task = createGenerationTask({
@@ -97,7 +132,6 @@ describe("workspace-session generation task helpers", () => {
       providerModel: "fake-model", startedAt: "2026-09-23T00:00:00.000Z",
       message: "排队中", subtasks: [
         { id: "extract_rules", label: "抽取需求规则", status: "completed", message: null, errorMessage: null },
-        { id: "repair_rules", label: "修复需求规则", status: "queued", message: null, errorMessage: null },
       ],
     });
     const next = updateTaskFromEvent(task, {
@@ -112,7 +146,7 @@ describe("workspace-session generation task helpers", () => {
       type: "llm_chunk",
       stage: "generate_models",
       chunk: "   \n",
-    } satisfies RunEvent;
+    } satisfies RunEventInput;
 
     const next = updateDiagnosticsFromEvent(diagnostics, blankEvent);
 
@@ -169,13 +203,8 @@ describe("workspace-session generation task helpers", () => {
         selectedDiagrams: ["usecase", "activity"],
         rules: [],
         models: [
-          {
-            useCases: [],
-            summary: "测试模型",
+          { summary: "", relationships: [], actors: [], useCases: [], systemBoundaries: [],
             notes: [],
-            actors: [],
-            systemBoundaries: [],
-            relationships: [],
             diagramKind: "usecase",
             title: "用例模型",
           },
@@ -205,7 +234,7 @@ describe("workspace-session generation task helpers", () => {
         status: "completed",
         error: null,
       }),
-    } satisfies RunEvent;
+    } satisfies RunEventInput;
 
     const next = updateTaskFromEvent(task, event, {
       queued: "排队中",
@@ -262,7 +291,7 @@ describe("workspace-session generation task helpers", () => {
         estimatedWaitMs: 60_000,
         queueReason: "project",
         message: "模型调用排队中：前方 1 个模型调用",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "设计生成任务已进入队列",
         completed: "设计生成完成",
@@ -292,11 +321,8 @@ describe("workspace-session generation task helpers", () => {
           requirementModels: [],
           requirementModelTraceability: [],
           models: [
-            {
-              summary: "测试模型",
+            { summary: "", interfaces: [], enums: [],
               notes: [],
-              interfaces: [],
-              enums: [],
               diagramKind: "class",
               title: "设计类图",
               classes: [],
@@ -338,7 +364,7 @@ describe("workspace-session generation task helpers", () => {
           status: "completed",
           error: null,
         }),
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "设计生成任务已进入队列",
         completed: "设计生成完成",
@@ -382,7 +408,7 @@ describe("workspace-session generation task helpers", () => {
         stage: "generate_design_sequence",
         artifactKind: "model",
         diagramKind: "sequence",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "设计生成任务已进入队列",
         completed: "设计生成完成",
@@ -433,7 +459,7 @@ describe("workspace-session generation task helpers", () => {
         diagramKind: "sequence",
         subtaskId: "sequence",
         subtaskStatus: "completed",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "设计生成任务已进入队列",
         completed: "设计生成完成",
@@ -490,7 +516,7 @@ describe("workspace-session generation task helpers", () => {
         subtaskLabel: "需求分析模型：查看预约",
         subtaskStatus: "running",
         message: "正在生成需求分析模型：查看预约",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "任务已进入队列",
         completed: "生成完成",
@@ -514,7 +540,7 @@ describe("workspace-session generation task helpers", () => {
         subtaskId: "analysis:uc_view",
         subtaskLabel: "查看预约需求分析模型",
         subtaskStatus: "completed",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "任务已进入队列",
         completed: "生成完成",
@@ -570,7 +596,7 @@ describe("workspace-session generation task helpers", () => {
         diagramKind: "usecase",
         subtaskId: "usecase",
         subtaskStatus: "completed",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "任务已进入队列",
         completed: "生成完成",
@@ -586,7 +612,7 @@ describe("workspace-session generation task helpers", () => {
         diagramKind: "usecase",
         subtaskId: "usecase",
         subtaskStatus: "completed",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "任务已进入队列",
         completed: "生成完成",
@@ -675,7 +701,7 @@ describe("workspace-session generation task helpers", () => {
             retryable: true,
           },
         }),
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "设计生成任务已进入队列",
         completed: "设计生成完成",
@@ -735,7 +761,7 @@ describe("workspace-session generation task helpers", () => {
         diagramKind: "deployment",
         subtaskId: "deployment",
         subtaskStatus: "completed",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "任务已进入队列",
         completed: "生成完成",
@@ -757,7 +783,7 @@ describe("workspace-session generation task helpers", () => {
         diagramKind: "deployment",
         subtaskId: "deployment",
         subtaskStatus: "rendering",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "任务已进入队列",
         completed: "生成完成",
@@ -780,7 +806,7 @@ describe("workspace-session generation task helpers", () => {
         diagramKind: "deployment",
         subtaskId: "deployment",
         subtaskStatus: "repairing",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "任务已进入队列",
         completed: "生成完成",
@@ -858,7 +884,7 @@ describe("workspace-session generation task helpers", () => {
         diagramKind: "usecase",
         subtaskId: "usecase",
         subtaskStatus: "completed",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "任务已进入队列",
         completed: "生成完成",
@@ -920,7 +946,7 @@ describe("workspace-session generation task helpers", () => {
         subtaskId: "activity",
         subtaskLabel: "界面关系图",
         subtaskStatus: "failed",
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "设计生成任务已进入队列",
         completed: "设计生成完成",
@@ -988,15 +1014,7 @@ describe("workspace-session generation task helpers", () => {
           requirementText: "部署到 Web 和数据库服务器",
           selectedDiagrams: ["deployment"],
           rules: [],
-          models: [{
-              summary: "测试模型",
-              notes: [],
-              nodes: [],
-              databases: [],
-              components: [],
-              externalSystems: [],
-              artifacts: [],
-              relationships: [], diagramKind: "deployment", title: "部署需求模型" }],
+          models: [{ summary: "", relationships: [], nodes: [], databases: [], components: [], artifacts: [], externalSystems: [],  notes: [], diagramKind: "deployment", title: "部署需求模型" }],
           requirementModelTraceability: [],
           plantUml: [
             {
@@ -1021,7 +1039,7 @@ describe("workspace-session generation task helpers", () => {
           status: "completed",
           error: null,
         }),
-      } satisfies RunEvent,
+      } satisfies RunEventInput,
       {
         queued: "任务已进入队列",
         completed: "生成完成",

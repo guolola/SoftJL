@@ -1,7 +1,7 @@
 // Guards model-specific semantics independently of whether PlantUML can compile a picture.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deriveTableModel, getStageModelSchemas, validateModelInput, validateModelSemantics, type ModelingStage } from "./model-semantics.js";
+import { deriveTableModel, getModelGraphElements, getStageModelSchemas, validateModelInput, validateModelSemantics, type ModelingStage } from "./model-semantics.js";
 import { modelFixture, objectActivityFixture } from "./testing/model-fixtures.js";
 
 for (const stage of ["feasibility", "requirements", "design"] as ModelingStage[]) for (const schema of getStageModelSchemas(stage)) {
@@ -14,7 +14,41 @@ for (const stage of ["feasibility", "requirements", "design"] as ModelingStage[]
     else (invalid.messages ?? invalid.relationships)[0].targetId = "absent";
     assert.ok(validateModelInput(invalid, stage).length);
   });
+  test(`${stage}/${kind}: duplicate identifiers retain real model paths`, () => {
+    const model = modelFixture(stage, kind);
+    const elements = getModelGraphElements(model);
+    const at = (path: string) => path.split(".").reduce<any>((value, key) => value[key], model);
+    for (const element of elements) assert.equal(at(`${element.path}.id`), element.id);
+    const duplicate = elements[1]!;
+    at(duplicate.path).id = elements[0]!.id;
+    const diagnostics = validateModelInput(model, stage).filter(issue => issue.code === "duplicate-id");
+    assert.ok(diagnostics.some(issue => issue.path === `${duplicate.path}.id`));
+    for (const diagnostic of diagnostics) assert.equal(at(diagnostic.path), diagnostic.elementId);
+  });
 }
+
+test("duplicate lane identifiers authorize only their lane references", () => {
+  const model = modelFixture("feasibility", "activity");
+  if (model.diagramKind !== "activity") throw new Error("fixture");
+  model.swimlanes.push({ id: "work", name: "外部工具" });
+  const work = model.nodes[1]!;
+  work.actorOrLane = "work";
+  const diagnostic = validateModelInput(model, "feasibility").find(issue => issue.code === "duplicate-id")!;
+  assert.equal(diagnostic.path, "swimlanes.1.id");
+  assert.deepEqual(diagnostic.relatedPaths, ["nodes.1.actorOrLane"]);
+});
+
+test("nested pin and sequence auxiliary collisions point to their declarations", () => {
+  const activity = objectActivityFixture();
+  const work = activity.nodes.find(node => node.type === "activity")!;
+  if (work.type !== "activity") throw new Error("fixture");
+  work.outputPins![0]!.id = "work";
+  assert.ok(validateModelInput(activity, "requirements").some(issue => issue.code === "duplicate-id" && issue.path === "nodes.1.outputPins.0.id"));
+  const sequence = modelFixture("design", "sequence");
+  if (sequence.diagramKind !== "sequence") throw new Error("fixture");
+  sequence.activations = [{ id: "m", participantId: "b", startMessageId: "m", endMessageId: "m" }];
+  assert.ok(validateModelInput(sequence, "design").some(issue => issue.code === "duplicate-id" && issue.path === "activations.0.id"));
+});
 test("phase profiles exclude technical concept classes, implementation participants and design activity", () => {
   const cls = modelFixture("requirements", "class") as any;
   cls.relationships[0].type = "dependency";

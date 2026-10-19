@@ -15,16 +15,27 @@ const classModel = (modelId: string, elementId = "loan") => ({
 });
 function savedState() {
   const requirement: AtomicRequirement = {
-    id: "REQ-001", sourceRuleId: "r1", sourceFragment: "private-requirement-body", type: "functional",
+    id: "REQ-001", sourceRuleId: "r1", sourceFragment: "private-requirement-body", type: "functional" as const,
     actor: "学生", subject: "系统", action: "借阅", object: "图书", condition: null, outcome: "保存记录",
     confidence: 1, status: "accepted", criticality: "high", acceptanceCriteria: ["借阅成功后保存一条记录"], fieldProvenance: {},
   };
-  return {
-    rules: [{ id: "r1", category: "功能需求", text: "private-rule-body", relatedDiagrams: ["class"] }],
-    requirementBaseline: { requirements: [requirement] },
+  const state = {
+    rules: [{ id: "r1", type: "functional" as const, text: "private-rule-body",  }],
+    requirementBaseline: {
+          schemaVersion: 3, id: "baseline-test", version: 1, sourceInputFingerprint: "test-source-input",
+          runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
+           assumptions: [], conflicts: [],
+          qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
+          rules: ([requirement]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id,
+            text: "借阅成功后保存一条记录", sourceFragment: item.sourceFragment, origin: "generated",
+            type: "functional" as const,
+          })),
+        },
     models: { domain: classModel("domain") },
     requirementModelTraceability: [{ ruleId: "r1", target: ref("domain", "loan"), reviewStatus: "confirmed" }],
   };
+  state.rules = state.requirementBaseline.rules.map(({ requirementId, origin, ...rule }) => rule);
+  return state;
 }
 
 test("every design kind inherits saved acceptance through canonical traces without embedded requirement IDs", () => {
@@ -98,4 +109,24 @@ test("model IDs cannot attach traces across diagram kinds or analysis and design
   assert.deepEqual(wrong.payload.traceability, []);
   const task = buildImplementationTasks(buildContext(state, whole).artifacts).find((entry) => entry.id === "implement:design:wrong")!;
   assert.ok(task.issues.some((issue) => issue.code === "acceptance-criteria-missing"));
+});
+
+test("singleton references remain valid while ambiguous kinds cannot infer requirement provenance", () => {
+  const original = savedState();
+  const target = { diagramKind: "class", elementId: "loan", elementKind: "class", label: "Loan" };
+  const state = { ...original, requirementModelTraceability: [{ ruleId: "r1", target }] };
+  const singleton = extractSourceArtifacts(state);
+  assert.ok(singleton.artifacts.find((artifact) => artifact.id === "analysis:domain")!.requirementIds.includes("r1"));
+  const ambiguous = extractSourceArtifacts({ ...state, models: { ...state.models, sibling: classModel("sibling") } });
+  assert.ok(ambiguous.artifacts.filter((artifact) => artifact.stage === "analysis").every((artifact) => artifact.requirementIds.length === 0));
+  assert.ok(ambiguous.issues.some((issue) => issue.includes("未指定唯一模型")));
+});
+
+test("obsolete trace metadata and source fingerprints are rejected without mutation", () => {
+  const state = savedState();
+  const invalidTrace = { ...state, requirementModelTraceability: [{ ...state.requirementModelTraceability[0], confidence: "retired" }] };
+  const before = structuredClone(invalidTrace);
+  assert.throws(() => extractSourceArtifacts(invalidTrace));
+  assert.deepEqual(invalidTrace, before);
+  assert.throws(() => extractSourceArtifacts({ ...state, requirementInputFingerprint: "fp:v1:old" }), /Unsupported source fingerprint/);
 });

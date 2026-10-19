@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LineageRunCache } from './lineage-run-cache';
 import type { LineageRunDetail } from '../lib/lineage-generation';
-const run = (runId: string, status = 'completed') => ({ runId, status });
+const run = (runId: string, status = 'completed') => ({ operationType: "unknown" as const, runId, status });
 function deferred() { let resolve!: (value: LineageRunDetail) => void; const promise = new Promise<LineageRunDetail>(done => { resolve = done; }); return { promise, resolve }; }
 describe('lineage run cache', () => {
   it('deduplicates within a project and keeps shared work alive for its remaining consumer', async () => {

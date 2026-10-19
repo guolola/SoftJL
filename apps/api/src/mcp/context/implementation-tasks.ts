@@ -105,7 +105,7 @@ export function buildImplementationTasks(input: SourceArtifact[], scope?: McpSco
   };
   for (const id of [...coveredDesignIds]) cover(id);
   const seeds = [
-    ...atomic.map(({ artifact, requirement }) => ({ artifact, title: `实现设计：${requirement.id}`, criteria: requirement.acceptanceCriteria })),
+    ...atomic.map(({ artifact, requirement }) => ({ artifact, title: `实现设计：${requirement.id}`, criteria: [requirement.text] })),
     ...artifacts.filter((artifact) => artifact.stage === "design" && !coveredDesignIds.has(artifact.id))
       .map((artifact) => ({ artifact, title: `实现设计：${artifact.title}`, criteria: [] as string[] })),
   ];
@@ -149,7 +149,7 @@ export function buildImplementationTasks(input: SourceArtifact[], scope?: McpSco
       if (!candidates.some((artifact) => traceElementIds(models.get(artifact.id)!).has(ref.elementId)))
         issues.push({ code: "trace-reference-missing", severity: "blocking", message: `${owner} 的追踪目标 ${ref.modelId ?? ref.diagramKind}/${ref.elementId} 不存在或无法核对，须修复映射。` });
       else if (!ref.modelId && candidates.length > 1)
-        issues.push({ code: "trace-model-ambiguous", severity: "warning", message: `${owner} 的 ${ref.diagramKind}/${ref.elementId} 未指定模型标识，存在多个同类型模型候选。` });
+        issues.push({ code: "trace-model-ambiguous", severity: "blocking", message: `${owner} 的 ${ref.diagramKind}/${ref.elementId} 未指定模型标识，无法确定唯一模型。` });
     };
     for (const source of sources.filter((artifact) => artifact.stage === "analysis" || artifact.stage === "design")) {
       for (const trace of list(source.payload.traceability).map(record)) {
@@ -167,7 +167,7 @@ export function buildImplementationTasks(input: SourceArtifact[], scope?: McpSco
       text,
       sourceArtifactId: seed.id,
     }));
-    if (!acceptanceCriteria.length) issues.push({ code: "acceptance-criteria-missing", severity: "blocking", message: "尚无结构化验收条件；可先计划或实现明确部分，但必须补齐并确认验收条件后才能标为验证通过。" });
+    if (!acceptanceCriteria.length) issues.push({ code: "acceptance-criteria-missing", severity: "blocking", message: "缺少可核对的需求正文；必须关联明确需求后才能标为验证通过。" });
     const designRefs = sources.filter((artifact) => artifact.stage === "design").flatMap((artifact) => {
       const model = models.get(artifact.id);
       if (!model) return [];

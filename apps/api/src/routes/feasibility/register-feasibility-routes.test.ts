@@ -1,22 +1,26 @@
 // Verifies formal feasibility run persistence, provider generation, dependency gates, and partial sync.
 import assert from "node:assert/strict";
+import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
 import test from "node:test";
 import Fastify from "fastify";
-import { buildAcceptedRequirementSnapshot } from "@uml-platform/contracts";
+import { snapshotInputFingerprint } from "@uml-platform/contracts";
+import { buildAcceptedRequirementSnapshot, buildFeasibilityContextFingerprint, createRequirementBaselineSnapshot } from "@uml-platform/contracts";
 import { createBusinessFlowArtifact } from "../../test-fixtures/feasibility/business-flow.js";
 import { createRunRecordStore } from "../../runs/records/run-record-store.js";
 import { registerFeasibilityRoutes } from "./register-feasibility-routes.js";
 import { librarySeatDemoFixture } from "../../runs/demo/fixtures/library-seat-demo-fixture.js";
+import { ModelCatalog } from "../../provider-configs/model-catalog.js";
+import { normalizeFeasibilityImplementationDetailed } from "../../normalizers/feasibility/implementation-normalizer.js";
 
 function acceptedBaseline(condition: string | null = null) {
-  return {
+  const text = condition ? `${condition}时计算总成本` : "完成维护后计算总成本。";
+  const baseline = createRequirementBaselineSnapshot({
     runId: "requirements-run",
-    sourceDocumentId: "inline",
+    requirementText: text,
+    rules: [{ id: "R9", type: "functional" as const, text }],
     createdAt: "2026-07-19T00:00:00.000Z",
-    requirements: [{ id: "REQ-009", sourceRuleId: "R9", sourceFragment: "计算总成本", sourceLocation: { section: "input", startOffset: 0, endOffset: 5 }, type: "functional", actor: "技工", subject: "系统", action: "计算", object: "总成本", condition, outcome: "得到总成本", confidence: 1, status: "accepted", criticality: "high", acceptanceCriteria: ["得到总成本"], priority: "must", fieldProvenance: {} }],
-    assumptions: [], conflicts: [],
-    qualityReport: { runId: "requirements-run", status: "accepted", summary: "已确认", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
-  };
+  });
+  return baseline;
 }
 
 const contextOutput = JSON.stringify({
@@ -33,7 +37,7 @@ const contextOutput = JSON.stringify({
 
 const businessFlowOutput = JSON.stringify({
   model: {
-    diagramKind: "activity", modelId: "feasibility-business-flow", title: "业务与系统流程图", summary: "计算总成本", notes: [],
+    diagramKind: "activity", modelId: "feasibility-business-flow", title: "业务流程图", summary: "计算总成本", notes: [],
     swimlanes: [{ id: "system", name: "维修预约系统" }],
     nodes: [
       { id: "start", type: "start", name: "开始" },
@@ -71,7 +75,7 @@ function generatedCandidate(id: string, name: string) {
         { id: `${id}-benefit-recurring`, name: "效率收益", category: "recurring", frequency: "annual", range, outcome: "持续减少计算时间", sourceRequirementIds: ["R9"], provenance: "ai-estimate" },
         { id: `${id}-benefit-intangible`, name: "可追踪性", category: "intangible", frequency: "annual", range: null, outcome: "提高结果可追踪性", sourceRequirementIds: ["R9"], provenance: "ai-estimate" },
       ],
-      absenceDeclarations: [], oneTimeCosts: ["开发与上线"], recurringCosts: ["年度运维"], quantitativeBenefits: ["节省处理时间"], qualitativeBenefits: ["提高可追踪性"],
+      absenceDeclarations: [],
       risks: ["进度偏差", "估算偏差", "运维能力"].map((risk) => ({ risk, probability: "medium", impact: "medium", mitigation: "设置阶段检查点", owner: "项目经理", sourceRequirementIds: [], assumption: "基于方案实施特征", provenance: "ai-estimate" })),
       verdicts: ["technical", "operational", "schedule", "economic", "legal"].map((category) => ({ category, verdict: "conditional", rationale: "满足前置条件后可行", provenance: "ai-estimate" })),
       decision: "conditional-go", preconditions: ["确认真实预算与法律约束"],
@@ -89,7 +93,7 @@ const implementationOutput = JSON.stringify({
 function providerConfigs() {
   return {
     async get() {
-      return { scopeType: "system", scopeId: null, allowlisted: true, status: "active", breakerState: "closed", allowedModels: ["test-model"], baseUrl: "https://provider.example/v1", modelCapabilities: {} };
+      return { scopeType: "system", scopeId: null, allowlisted: true, status: "active", breakerState: "closed", allowedModels: ["test-model"], baseUrl: "https://provider.example/v1", modelCapabilities: { "test-model": strictTestModelCapability("test-model") } };
     },
     async getSecret() { return "test-key"; },
   };
@@ -110,15 +114,21 @@ function registerTestRoutes(input: {
   outputs?: string[];
   state?: Record<string, unknown>;
   projectName?: string;
+  modelCatalog?: ModelCatalog;
+  onReasoning?: (reasoning: boolean | undefined) => void;
   renderClient?: Parameters<typeof registerFeasibilityRoutes>[0]["renderClient"];
   onSync?: (record: Parameters<NonNullable<Parameters<typeof registerFeasibilityRoutes>[0]["syncProjectWorkspace"]>>[0]) => Promise<void>;
 }) {
   const runs = createRunRecordStore();
   const outputs = [...(input.outputs ?? [contextOutput, businessFlowOutput, implementationOutput])];
   const prompts: string[] = [];
+  const onReasoning = input.onReasoning;
+  // Flow tests use a known large-capacity fake model; fallback/overflow is tested separately.
+  const catalog = input.modelCatalog ?? new ModelCatalog("unused-test-catalog.json");
+  if (!input.modelCatalog) catalog.resolve = () => ({ context: 1_000_000, output: 16384, source: "admin", matchedId: "test-model", updatedAt: null });
   const state = input.state ?? {
     name: "维修预约系统",
-    rules: [{ id: "R9", category: "功能需求", text: "完成维护后计算总成本。", relatedDiagrams: ["context"] }],
+    rules: [{ id: "R9", type: "functional" as const, text: "完成维护后计算总成本。",  }],
     requirementBaseline: acceptedBaseline(),
     feasibilityInputs: { projectName: "维修预约系统" },
   };
@@ -127,12 +137,14 @@ function registerTestRoutes(input: {
     runs,
     renderClient: input.renderClient ?? (async (artifact) => ({ svg: `<svg>${artifact.diagramKind}</svg>`, renderMeta: { engine: "plantuml", generatedAt: "2026-07-19T00:00:00.000Z", sourceLength: artifact.source.length, durationMs: 1 } })),
     llmTransport: { async *streamChatCompletion(input) {
+      onReasoning?.(input.reasoning);
       const current = input.messages.at(-1)?.content;
       if (typeof current === "string" && /^核对 feasibility\.[a-z]+ 的结构与业务内容。/.test(current)) { yield '{"passed":true,"issues":[],"findings":[]}'; return; }
       prompts.push(input.messages.map((message) => message.content).join("\n")); yield outputs.shift() ?? "{}";
     } },
     providerConfigs: providerConfigs() as never,
-    defaultSseAllowOrigin: "http://localhost:5173",
+    modelCatalog: catalog,
+    defaultSseAllowOrigin: "http://localhost:3000",
     resolveUserId: async (request) => request.headers.authorization === "Bearer test" ? "user-1" : null,
     canUpdateProject: async () => true,
     loadWorkspace: async () => ({ version: 1, state }),
@@ -141,6 +153,26 @@ function registerTestRoutes(input: {
   });
   return { runs, state, prompts };
 }
+
+for (const reasoning of [true, false]) for (const supported of [true, false]) test(`feasibility applies reasoning=${reasoning} only when supported=${supported}`, async t => {
+  const app = Fastify();
+  t.after(() => app.close());
+  const catalog = new ModelCatalog("unused-model-catalog.json");
+  catalog.resolve = () => ({ context: 128000, output: 8192, source: "modelpedia", matchedId: "test-model", updatedAt: null,
+    capabilities: { vision: false, reasoning: supported, toolCall: true } });
+  const calls: (boolean | undefined)[] = [];
+  registerTestRoutes({ app, modelCatalog: catalog, onReasoning: value => calls.push(value), outputs: [contextOutput] });
+  const response = await app.inject({ method: "POST", url: "/api/feasibility-runs", headers: { authorization: "Bearer test" }, payload: {
+    projectId: "project-1", selectedArtifacts: ["context"], reasoning, providerSettings: { providerConfigId: "provider-1", model: "test-model" },
+  } });
+  assert.equal(response.statusCode, 202, response.body);
+  const snapshot = await waitForTerminal(app, response.json().runId);
+  assert.equal(snapshot.status, "completed", JSON.stringify(snapshot.error));
+  assert.equal(snapshot.reasoning, supported ? reasoning : undefined);
+  assert.equal(snapshot.contextFingerprint, buildFeasibilityContextFingerprint(snapshot));
+  assert.ok(calls.length > 0);
+  assert.ok(calls.every(value => value === (supported ? reasoning : undefined)));
+});
 
 test("real feasibility rejects absent models and demo placeholders before creating runs", async (t) => {
   const app = Fastify();
@@ -238,7 +270,7 @@ test("persists the run before syncing context and implementation from the select
 test("generates a standalone business flow, repairs invalid references and emits persisted activity artifacts", async () => {
   const app = Fastify();
   const invalid = JSON.parse(businessFlowOutput);
-  invalid.traceability[0].requirementId = "R-invalid";
+  invalid.model.relationships[0].targetId = "missing-node";
   const { runs } = registerTestRoutes({ app, outputs: [JSON.stringify(invalid), businessFlowOutput] });
   const start = await app.inject({ method: "POST", url: "/api/feasibility-runs", headers: { authorization: "Bearer test" }, payload: {
     projectId: "project-1", selectedArtifacts: ["business-flow"], providerSettings: { providerConfigId: "provider-1", model: "test-model" },
@@ -268,7 +300,7 @@ test("does not publish a partial business flow after structured output remains i
   assert.equal(snapshot.status, "failed");
   assert.equal(snapshot.businessFlow, null);
   assert.equal(snapshot.error.code, "RUN_STRUCTURED_OUTPUT_INVALID");
-  assert.match(snapshot.error.message, /业务与系统流程图/);
+  assert.match(snapshot.error.message, /业务流程图/);
   await app.close();
 });
 
@@ -279,7 +311,7 @@ test("requires provider settings and rejects implementation without a current co
   assert.equal(missingProvider.statusCode, 400);
   const dependency = await app.inject({ method: "POST", url: "/api/feasibility-runs", headers: { authorization: "Bearer test" }, payload: { projectId: "project-1", selectedArtifacts: ["implementation"], providerSettings: { providerConfigId: "provider-1", model: "test-model" } } });
   assert.equal(dependency.statusCode, 409);
-  assert.match(dependency.json().message, /系统环境图/u);
+  assert.equal(dependency.json().error.code, "RESOURCE_CONFLICT");
   await app.close();
 });
 
@@ -288,7 +320,7 @@ test("rejects missing or stale business flow and reuses both current diagrams as
   const fixture = registerTestRoutes({ app, outputs: [implementationOutput], renderClient: async () => { throw new Error("Existing diagrams must be reused"); } });
   const source = buildAcceptedRequirementSnapshot(fixture.state.rules, fixture.state.requirementBaseline);
   Object.assign(fixture.state, { feasibilityContextModel: JSON.parse(contextOutput), feasibilityContextPlantUml: "@startuml\n@enduml",
-    feasibilityContextSvg: "<svg />", feasibilityContextFingerprint: source.snapshot.fingerprint });
+    feasibilityContextSvg: "<svg />", feasibilityContextFingerprint: buildFeasibilityContextFingerprint({ rules: source.rules, requirementBaseline: source.baseline, inputs: fixture.state.feasibilityInputs ?? {} }) });
   const request = { method: "POST" as const, url: "/api/feasibility-runs", headers: { authorization: "Bearer test" }, payload: {
     projectId: "project-1", selectedArtifacts: ["implementation"], providerSettings: { providerConfigId: "provider-1", model: "test-model" },
   } };
@@ -298,14 +330,21 @@ test("rejects missing or stale business flow and reuses both current diagrams as
   assert.equal((await app.inject(request)).statusCode, 409);
   assert.equal(fixture.prompts.length, 0);
   fixture.state.feasibilityBusinessFlow = flow;
+  const savedInputs = fixture.state.feasibilityInputs;
+  fixture.state.feasibilityInputs = { ...savedInputs, projectName: "变更后的系统名称" };
+  const staleContext = await app.inject(request);
+  assert.equal(staleContext.statusCode, 409);
+  assert.equal(staleContext.json().error.code, "RESOURCE_CONFLICT");
+  assert.equal(fixture.prompts.length, 0);
+  fixture.state.feasibilityInputs = savedInputs;
   const start = await app.inject(request);
   assert.equal(start.statusCode, 202, start.body);
   const snapshot = await waitForTerminal(app, start.json().runId);
   assert.equal(snapshot.status, "completed", JSON.stringify(snapshot.error));
   assert.equal(fixture.prompts.length, 1);
   assert.match(fixture.prompts[0]!, /"businessFlow"/);
-  assert.match(fixture.prompts[0]!, /"actorOrLane": "system"/);
-  assert.match(fixture.prompts[0]!, /"targetId": "process"/);
+  assert.match(fixture.prompts[0]!, /"actorOrLane":\s*"system"/);
+  assert.match(fixture.prompts[0]!, /"targetId":\s*"process"/);
   assert.deepEqual(snapshot.businessFlow, flow);
   await app.close();
 });
@@ -320,7 +359,7 @@ test("stops before implementation when a requested business flow fails", async (
   assert.equal(snapshot.status, "failed");
   assert.equal(snapshot.businessFlow, null);
   assert.equal(snapshot.implementationPlan, null);
-  assert.equal(fixture.prompts.length, 4);
+  assert.equal(fixture.prompts.length, 7);
   assert.ok(!fixture.runs.get(snapshot.runId)?.events.some((event) => event.type === "stage_started" && event.stage === "generate_implementation"));
   await app.close();
 });
@@ -386,7 +425,7 @@ test("section repair fixes integrations without overwriting valid economics", as
       businessFlowOutput,
       JSON.stringify(invalidPlan),
       JSON.stringify(repairedPlan),
-      JSON.stringify(repairedPlan),
+      JSON.stringify({ targetId: "implementation", baseFingerprint: snapshotInputFingerprint(invalidPlan), changes: invalidPlan.candidates.map((candidate, index) => ({ path: `candidates.${index}.implementation.integrations.0.responsibility`, value: "提交支付请求" })) }),
     ],
   });
 
@@ -416,6 +455,29 @@ test("section repair fixes integrations without overwriting valid economics", as
       repair.section === "technical" && repair.succeeded,
   ));
   await app.close();
+});
+
+test("economics patches use one candidate's chapter and preserve the other complete candidate", async t => {
+  const app = Fastify(); t.after(() => app.close());
+  const valid = JSON.parse(implementationOutput);
+  valid.candidates[1].name = "OTHER_CANDIDATE_UNCHANGED";
+  const invalid = structuredClone(valid);
+  invalid.candidates[0].implementation.costEstimates[0].range.minimum = "invalid amount";
+  const fields = ["analysisPeriodAssumption", "costEstimates", "benefitEstimates", "absenceDeclarations"];
+  const patch = Object.fromEntries(fields.map(key => [key, valid.candidates[0].implementation[key]]));
+  const fixture = registerTestRoutes({ app, outputs: [contextOutput, businessFlowOutput, JSON.stringify(invalid), JSON.stringify({ candidateIndex: 0, patch })] });
+  const start = await app.inject({ method: "POST", url: "/api/feasibility-runs", headers: { authorization: "Bearer test" }, payload: {
+    projectId: "project-1", selectedArtifacts: ["context", "business-flow", "implementation"], providerSettings: { providerConfigId: "provider-1", model: "test-model" },
+  } });
+  const snapshot = await waitForTerminal(app, start.json().runId);
+  assert.equal(snapshot.status, "completed", JSON.stringify(snapshot.error));
+  assert.equal(snapshot.implementationPlan.candidates[0].implementation.costEstimates[0].range.minimum, 10_000);
+  const expected = normalizeFeasibilityImplementationDetailed(valid, new Set(["R9"]), []).plan;
+  assert.deepEqual(snapshot.implementationPlan.candidates[1].implementation, expected.candidates[1].implementation);
+  const repair = fixture.prompts.find(prompt => prompt.includes("仅修复候选方案索引"));
+  assert.ok(repair);
+  assert.ok(!repair.includes("OTHER_CANDIDATE_UNCHANGED"));
+  assert.ok(repair.includes("完成维护后计算总成本"));
 });
 
 test("rejects feasibility render failures without requesting a source rewrite", async () => {
@@ -464,8 +526,7 @@ test("rejects feasibility render failures without requesting a source rewrite", 
 test("feasibility preserves business boundary questions and implementation receives the unchanged flow", async () => {
   const app = Fastify();
   const baseline = acceptedBaseline("数量>=10");
-  baseline.qualityReport.status = "passed";
-  baseline.requirements[0]!.fieldProvenance = { condition: { source: "manual", status: "accepted" } };
+  // The confirmed boundary belongs to this exact rule version.
   const flow = JSON.parse(businessFlowOutput);
   flow.model.nodes.splice(1, 0, { id: "decision", type: "decision", question: "数量边界" });
   flow.model.relationships = [
@@ -477,7 +538,7 @@ test("feasibility preserves business boundary questions and implementation recei
   flow.traceability.push({ requirementId: "R9", targetId: "yes", targetKind: "relationship" });
   flow.traceability.push({ requirementId: "R9", targetId: "decision", targetKind: "node" });
   const fixture = registerTestRoutes({ app, outputs: [contextOutput, JSON.stringify(flow), implementationOutput], state: {
-    name: "维修预约系统", rules: [{ id: "R9", category: "功能需求", text: "数量>=10时计算总成本", relatedDiagrams: ["context", "activity"] }], requirementBaseline: baseline,
+    name: "维修预约系统", rules: [{ id: "R9", type: "functional" as const, text: "数量>=10时计算总成本",  }], requirementBaseline: baseline,
   } });
   const start = await app.inject({ method: "POST", url: "/api/feasibility-runs", headers: { authorization: "Bearer test" }, payload: { projectId: "project-1", selectedArtifacts: ["context", "business-flow", "implementation"], providerSettings: { providerConfigId: "provider-1", model: "test-model" } } });
   const snapshot = await waitForTerminal(app, start.json().runId);

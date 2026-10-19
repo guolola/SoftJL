@@ -1,5 +1,5 @@
 // Builds a deterministic project read model for requirement coverage across generated stages.
-import type { FeasibilityCandidateImplementation } from "@uml-platform/contracts";
+import type { FeasibilityArtifactKind, FeasibilityCandidateImplementation } from "@uml-platform/contracts";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
 import { feasibilityArtifactState } from "./feasibility-freshness";
 
@@ -89,9 +89,12 @@ export function buildCrossStageRequirementCoverage(workspace: WorkspaceRecord) {
   }
   const designCovered = new Set<string>();
   for (const entry of workspace.designModelTraceability) {
-    const key = `${entry.source.modelId}:${entry.source.elementId}`;
-    for (const ruleId of requirementRulesByElement.get(key) ?? []) {
-      designCovered.add(ruleId);
+    // Design mappings point from the design source to the requirement targets.
+    for (const target of entry.targets) {
+      const key = `${target.modelId}:${target.elementId}`;
+      for (const ruleId of requirementRulesByElement.get(key) ?? []) {
+        designCovered.add(ruleId);
+      }
     }
   }
   const referencedIds = new Set([
@@ -102,17 +105,20 @@ export function buildCrossStageRequirementCoverage(workspace: WorkspaceRecord) {
   ]);
   const unknownReferences = [...referencedIds].filter((id) => !acceptedRuleIds.has(id));
   const assumptions = countExplicitAssumptions(workspace);
+  const staleArtifacts: FeasibilityArtifactKind[] = [];
+  if (states.contextStale) staleArtifacts.push("context");
+  if (states.businessFlowStale) staleArtifacts.push("business-flow");
+  if (states.implementationStale) staleArtifacts.push("implementation");
 
   return {
     requirementSource: states.requirementSource,
     sourceConsistent:
       unknownReferences.length === 0 &&
-      !states.contextStale &&
-      !states.implementationStale,
+      staleArtifacts.length === 0,
     needsUpdate:
       unknownReferences.length > 0 ||
-      states.contextStale ||
-      states.implementationStale,
+      staleArtifacts.length > 0,
+    staleArtifacts,
     unknownReferences,
     explicitAssumptions: assumptions,
     rows: states.requirementSource.ruleIds.map((ruleId) => ({

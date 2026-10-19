@@ -13,13 +13,10 @@ export type ProviderTaskType =
 export interface ProviderUsageInput {
   userId: string | null;
   projectId: string | null;
-  organizationId?: string | null;
   ipAddress?: string | null;
   providerConfigId: string;
   provider?: string | null;
   model?: string | null;
-  courseId?: string | null;
-  classId?: string | null;
   taskType: ProviderTaskType;
   units?: number;
   outcome?: "success" | "failed" | "blocked";
@@ -29,7 +26,6 @@ export interface ProviderUsageInput {
 export interface ProviderLimitCheckInput {
   userId: string | null;
   projectId: string | null;
-  organizationId?: string | null;
   ipAddress?: string | null;
   providerConfigId: string;
   taskType: ProviderTaskType;
@@ -56,7 +52,6 @@ export type ProviderRateLimitPolicyScopeType =
   | "global"
   | "user"
   | "project"
-  | "organization"
   | "ip"
   | "provider";
 
@@ -83,8 +78,6 @@ export interface ProviderUsageEventRecord {
   id: string;
   userId: string | null;
   projectId: string | null;
-  courseId: string | null;
-  classId: string | null;
   providerConfigId: string;
   provider: string;
   model: string | null;
@@ -173,7 +166,7 @@ function policyScopeMatches(
   input: Pick<
     ProviderLimitCheckInput,
     "userId" | "projectId" | "providerConfigId" | "taskType"
-    | "organizationId" | "ipAddress"
+    | "ipAddress"
   >,
   policy: ProviderRateLimitPolicyRecord,
 ) {
@@ -189,9 +182,6 @@ function policyScopeMatches(
   }
   if (policy.scopeType === "project") return policy.scopeId === input.projectId;
   if (policy.scopeType === "user") return policy.scopeId === input.userId;
-  if (policy.scopeType === "organization") {
-    return policy.scopeId === input.organizationId;
-  }
   if (policy.scopeType === "ip") return policy.scopeId === input.ipAddress;
   return false;
 }
@@ -199,7 +189,6 @@ function policyScopeMatches(
 function policySpecificity(policy: ProviderRateLimitPolicyRecord) {
   const scopeScore = {
     global: 1,
-    organization: 2,
     ip: 2,
     provider: 2,
     project: 3,
@@ -217,7 +206,7 @@ export function selectProviderRateLimitPolicy(
   input: Pick<
     ProviderLimitCheckInput,
     "userId" | "projectId" | "providerConfigId" | "taskType"
-    | "organizationId" | "ipAddress"
+    | "ipAddress"
   >,
   policies: readonly ProviderRateLimitPolicyRecord[],
   fallback: ProviderRateLimitPolicy,
@@ -251,7 +240,6 @@ function usageScopeClause(policy: ProviderRateLimitPolicyRecord | null) {
   if (policy.scopeType === "provider") return "";
   if (policy.scopeType === "user") return "and user_id = $1";
   if (policy.scopeType === "project") return "and project_id = $2";
-  if (policy.scopeType === "organization") return "and organization_id = $7";
   if (policy.scopeType === "ip") return "and ip_address = $6";
   return "";
 }
@@ -273,8 +261,6 @@ function limitCheckParams(
   // the selected stored policy's SQL clause actually references those placeholders.
   if (selectedPolicyRecord?.scopeType === "ip") {
     params.push(input.ipAddress ?? null);
-  } else if (selectedPolicyRecord?.scopeType === "organization") {
-    params.push(input.ipAddress ?? null, input.organizationId ?? null);
   }
 
   return params;
@@ -317,8 +303,6 @@ function buildUsageMetadata(input: ProviderUsageInput) {
   return {
     provider: input.provider ?? null,
     model: input.model ?? null,
-    courseId: input.courseId ?? null,
-    classId: input.classId ?? null,
     tokenUsage: input.tokenUsage ?? null,
   };
 }
@@ -381,12 +365,11 @@ export function createProviderUsageTracker(db: Queryable): ProviderUsageTracker 
             provider_config_id,
             task_type,
             ip_address,
-            organization_id,
             units,
             outcome,
             metadata
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `,
         [
           randomUUID(),
@@ -395,7 +378,6 @@ export function createProviderUsageTracker(db: Queryable): ProviderUsageTracker 
           input.providerConfigId,
           input.taskType,
           input.ipAddress ?? null,
-          input.organizationId ?? null,
           units,
           input.outcome ?? "success",
           buildUsageMetadata(input),
@@ -526,8 +508,6 @@ export function createProviderUsageTracker(db: Queryable): ProviderUsageTracker 
           id: row.id,
           userId: row.user_id,
           projectId: row.project_id,
-          courseId: readNullableString(metadata.courseId),
-          classId: readNullableString(metadata.classId),
           providerConfigId: row.provider_config_id,
           provider: readNullableString(metadata.provider) ?? row.provider,
           model: readNullableString(metadata.model) ?? row.default_model,
@@ -573,7 +553,6 @@ export function createProviderUsageTracker(db: Queryable): ProviderUsageTracker 
                   policy.scope_type in ('global', 'provider')
                   or (policy.scope_type = 'user' and usage.user_id = policy.scope_id)
                   or (policy.scope_type = 'project' and usage.project_id = policy.scope_id)
-                  or (policy.scope_type = 'organization' and usage.organization_id = policy.scope_id)
                   or (policy.scope_type = 'ip' and usage.ip_address = policy.scope_id)
                 )
             ), 0) as used_units

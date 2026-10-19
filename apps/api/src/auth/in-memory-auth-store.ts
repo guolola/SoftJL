@@ -49,17 +49,13 @@ export type SessionRecord = {
 };
 
 export type ProjectRecord = {
+  projectMode?: "standard" | "professional";
   id: string;
   name: string;
   description: string | null;
   visibility: ProjectVisibility;
   status: ProjectStatus;
   ownerUserId: string;
-  organizationId: string | null;
-  courseId: string | null;
-  classId: string | null;
-  teamId: string | null;
-  defaultProviderConfigId: string | null;
   retentionPolicy: ProjectRetentionPolicy;
   backgroundKey: ProjectBackgroundKey | null;
   createdAt: string;
@@ -652,31 +648,23 @@ export function createInMemoryAuthStore() {
   }
 
   function createProject(input: {
+    projectMode?: "standard" | "professional";
     ownerUserId: string;
     name: string;
     description: string | null;
     visibility: ProjectVisibility;
-    organizationId?: string | null;
-    courseId?: string | null;
-    classId?: string | null;
-    teamId?: string | null;
-    defaultProviderConfigId?: string | null;
     retentionPolicy?: ProjectRetentionPolicy;
     backgroundKey?: ProjectBackgroundKey | null;
   }) {
     const createdAt = now();
     const project: ProjectRecord = {
+      projectMode: input.projectMode ?? "professional",
       id: randomUUID(),
       name: input.name,
       description: input.description,
       visibility: input.visibility,
       status: "active",
       ownerUserId: input.ownerUserId,
-      organizationId: input.organizationId ?? null,
-      courseId: input.courseId ?? null,
-      classId: input.classId ?? null,
-      teamId: input.teamId ?? null,
-      defaultProviderConfigId: input.defaultProviderConfigId ?? null,
       retentionPolicy: input.retentionPolicy ?? "manual",
       backgroundKey: input.backgroundKey ?? null,
       createdAt,
@@ -726,7 +714,8 @@ export function createInMemoryAuthStore() {
   }
 
   function getProjectWorkspace(projectId: string) {
-    return projectWorkspaces.get(projectId) ?? createDefaultProjectWorkspace(projectId);
+    const workspace = projectWorkspaces.get(projectId) ?? createDefaultProjectWorkspace(projectId);
+    return { ...workspace, state: workspace.state };
   }
 
   function saveProjectWorkspace(input: {
@@ -765,11 +754,6 @@ export function createInMemoryAuthStore() {
         | "visibility"
         | "status"
         | "ownerUserId"
-        | "organizationId"
-        | "courseId"
-        | "classId"
-        | "teamId"
-        | "defaultProviderConfigId"
         | "retentionPolicy"
         | "backgroundKey"
       >

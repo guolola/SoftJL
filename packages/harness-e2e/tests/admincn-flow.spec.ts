@@ -27,7 +27,7 @@ for (const {viewport, locale, colorScheme} of scenarios) {
       await expect(header).toBeVisible();
       const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       expect(await overflow()).toBeLessThanOrEqual(1);
-      await expect(page.locator('#requirement-text')).toHaveAttribute('data-slot','textarea');
+      await expect(page.locator('#requirement-text')).toHaveAttribute('data-composer-input','true');
       const triggerBox = await page.getByRole('button',{name:'Toggle Sidebar'}).boundingBox();
       const actionsBox = await header.locator('.overflow-x-auto').boundingBox();
       const headerBox = (await header.boundingBox())!;

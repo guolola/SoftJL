@@ -71,7 +71,8 @@ export function buildCostBenefitMetrics(
   inputs: FeasibilityInputs,
   implementation?: FeasibilityCandidateImplementation | null,
 ) {
-  if (implementation?.costEstimates.length && implementation.benefitEstimates.length) {
+  if (implementation?.costEstimates.length && implementation.benefitEstimates.length &&
+      (inputs.analysisYears !== null || implementation.analysisPeriodAssumption)) {
     const years = inputs.analysisYears ?? implementation.analysisPeriodAssumption?.years ?? null;
     const factor = (frequency: "one-time" | "monthly" | "annual", horizon: number) =>
       frequency === "monthly" ? horizon * 12 : frequency === "annual" ? horizon : 1;
@@ -122,25 +123,15 @@ export function buildCostBenefitMetrics(
         analysisYears: years,
         analysisPeriodSource: inputs.analysisYears !== null
           ? "user-confirmed" as const
-          : implementation.analysisPeriodAssumption?.provenance ?? "legacy",
+          : implementation.analysisPeriodAssumption?.provenance ?? null,
       };
     }
   }
-  const complete = moneyItemsComplete(inputs.costItems) && moneyItemsComplete(inputs.benefitItems);
-  const totalCost = complete ? inputs.costItems.reduce((sum, item) => sum + (item.amount ?? 0), 0) : null;
-  const totalBenefit = complete ? inputs.benefitItems.reduce((sum, item) => sum + (item.amount ?? 0), 0) : null;
-  const calculable = totalCost !== null && totalBenefit !== null && totalCost > 0 && totalBenefit > 0;
+  // Supplementary money facts inform generation; calculations require the candidate's structured estimates.
   return {
-    totalCost: calculable ? totalCost : null,
-    totalBenefit: calculable ? totalBenefit : null,
-    ratio: calculable ? totalBenefit / totalCost : null,
-    payback: calculable ? totalCost / totalBenefit : null,
-    totalCostRange: calculable ? { minimum: totalCost!, maximum: totalCost! } : null,
-    totalBenefitRange: calculable ? { minimum: totalBenefit!, maximum: totalBenefit! } : null,
-    ratioRange: calculable ? { minimum: totalBenefit! / totalCost!, maximum: totalBenefit! / totalCost! } : null,
-    paybackRange: calculable ? { minimum: totalCost! / totalBenefit!, maximum: totalCost! / totalBenefit! } : null,
-    analysisYears: inputs.analysisYears,
-    analysisPeriodSource: "user-confirmed" as const,
+    totalCost: null, totalBenefit: null, ratio: null, payback: null,
+    totalCostRange: null, totalBenefitRange: null, ratioRange: null, paybackRange: null,
+    analysisYears: inputs.analysisYears, analysisPeriodSource: null,
   };
 }
 

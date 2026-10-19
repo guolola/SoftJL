@@ -1,3 +1,4 @@
+import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
 // Builds activity trace rows from persisted mappings only; missing and invalid rule references remain visible.
 import type { FeasibilityBusinessFlowArtifact, RequirementRule } from "@uml-platform/contracts";
 import { buildDiagramDetailModel } from "../../../entities/diagram/lib/model-details";
@@ -30,7 +31,7 @@ export function buildBusinessFlowRows(
       requirementElements: [], upstreamDesignElements: [],
       detailLines: [
         copy.context.sourceRules(sourceIds.join(", ") || copy.context.unmapped),
-        ...requirementRules.map((rule) => `${formatRuleId(rule.id)} [${rule.category}] ${rule.text}`),
+        ...requirementRules.map((rule) => `${formatRuleId(rule.id)} [${getRuleDisplayLabel(rule)}] ${rule.text}`),
       ],
     };
   };

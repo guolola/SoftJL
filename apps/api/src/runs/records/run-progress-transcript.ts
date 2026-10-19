@@ -4,13 +4,14 @@ import type { RunRecord } from "./run-record-store.js";
 
 export function compactRunProgressSnapshot(snapshot: RunRecord["snapshot"]): RunRecord["snapshot"] {
   const compact = { ...snapshot } as Record<string, unknown>;
-  for (const key of ["rules", "models", "requirementModels", "plantUml", "svgArtifacts", "requirementTrace", "designTrace", "requirementModelTraceability", "designModelTraceability", "sections", "contextTraceability"]) {
+  for (const key of ["rules", "models", "requirementModels", "plantUml", "svgArtifacts", "requirementTrace", "designTrace", "requirementModelTraceability", "designModelTraceability", "sections", "contextTraceability", "attachments"]) {
     if (key in compact) compact[key] = [];
   }
   for (const key of ["requirementBaseline", "coverageMatrix", "traceabilityMatrix", "contextModel", "contextPlantUml", "contextSvg", "businessFlow", "implementationPlan", "feasibilityImplementationPlan"]) {
     if (key in compact) compact[key] = null;
   }
   if ("requirementText" in compact) compact.requirementText = "";
+  if ("submittedRequirementText" in compact) compact.submittedRequirementText = "";
   if ("visualReviews" in snapshot) compact.visualReviews = Object.fromEntries(Object.entries(snapshot.visualReviews ?? {}).map(([id, review]) =>
     [id, { ...review, issues: [], findings: [], repairHistory: [] }]));
   return compact as RunRecord["snapshot"];

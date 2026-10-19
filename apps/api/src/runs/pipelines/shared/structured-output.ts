@@ -1,5 +1,6 @@
 // Owns shared LLM text collection and structured output parse diagnostics.
-import { type ProviderSettings, type RunInputImage, type RunStage } from "@uml-platform/contracts";
+import { type ProviderSettings, type RunInputImage, type RunStage, type RunInputMetrics } from "@uml-platform/contracts";
+import { promptInputMetrics } from "./prompt-input-metrics.js";
 import {
   type ChatCompletionResponseFormat,
   type ChatMessage,
@@ -14,7 +15,7 @@ export interface LlmChunkHandlers {
   runContext?: StreamChatCompletionInput["runContext"];
   callId?: string;
   onChunk: (chunk: string) => void;
-  onStart?: (inputImages?: RunInputImage[]) => void;
+  onStart?: (inputImages?: RunInputImage[], inputMetrics?: RunInputMetrics) => void;
   onComplete?: () => void;
   onError?: () => void;
   onReasoningChunk?: (chunk: string) => void;
@@ -163,7 +164,7 @@ export async function collectStructuredResult<T>(
 ) {
   let content = "";
   const observer = typeof onChunk === "function" ? undefined : onChunk;
-  observer?.onStart?.(inputImages(messages));
+  observer?.onStart?.(inputImages(messages), promptInputMetrics(messages, responseFormat));
   const stopNoVisibleChunkHeartbeat =
     typeof onChunk === "function"
       ? undefined
@@ -215,7 +216,7 @@ export async function collectTextResult(
 ) {
   let content = "";
   const observer = typeof onChunk === "function" ? undefined : onChunk;
-  observer?.onStart?.(inputImages(messages));
+  observer?.onStart?.(inputImages(messages), promptInputMetrics(messages, responseFormat));
   const stopNoVisibleChunkHeartbeat =
     typeof onChunk === "function"
       ? undefined

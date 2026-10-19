@@ -1,6 +1,6 @@
 // Covers run-event to diagnostics helpers outside the session Provider.
 import { describe, expect, it, vi } from "vitest";
-import type { RunEvent } from "@uml-platform/contracts";
+import type { RunEventInput } from "@uml-platform/contracts";
 import {
   appendDiagnosticStream,
   createEmptyDiagnostics,
@@ -46,13 +46,13 @@ describe("workspace-session diagnostics helpers", () => {
         category: "internal",
         retryable: false,
       },
-    } satisfies RunEvent);
+    } satisfies RunEventInput);
     expect(failed.label).toBe("任务失败");
 
     const cancelled = summarizeEvent({
       type: "cancelled",
       message: "任务已取消",
-    } satisfies RunEvent);
+    } satisfies RunEventInput);
     expect(cancelled.label).toBe("任务已取消");
     expect(cancelled.detail).toBe("任务已取消");
   });
@@ -62,7 +62,7 @@ describe("workspace-session diagnostics helpers", () => {
       type: "llm_chunk",
       stage: "generate_models",
       chunk: "   \n",
-    } satisfies RunEvent;
+    } satisfies RunEventInput;
 
     expect(isMeaningfulLlmChunkEvent(blankEvent)).toBe(false);
     const summary = summarizeEvent(blankEvent);
@@ -77,13 +77,13 @@ describe("workspace-session diagnostics helpers", () => {
       type: "llm_chunk",
       stage: "extract_rules",
       chunk: "正在分析需求文本",
-    } satisfies RunEvent;
+    } satisfies RunEventInput;
     const progressEvent = {
       type: "stage_progress",
       stage: "extract_rules",
       progress: 20,
       message: "正在抽取需求规则",
-    } satisfies RunEvent;
+    } satisfies RunEventInput;
 
     const afterChunk = deriveRunDiagnosticsFromEvent(
       diagnostics,
@@ -103,7 +103,7 @@ describe("workspace-session diagnostics helpers", () => {
   });
 
   it("retains stage boundaries for replay without duplicate diagnostic notices or progress resets", () => {
-    const event: RunEvent = { type: "stage_finished", stage: "generate_models", status: "completed", eventId: "stage-end", createdAt: "2026-09-23T00:00:00.000Z" };
+    const event: RunEventInput = { type: "stage_finished", stage: "generate_models", status: "completed", eventId: "stage-end", createdAt: "2026-09-23T00:00:00.000Z" };
     const next = deriveRunDiagnosticsFromEvent(createEmptyDiagnostics(), event, summarizeEvent(event));
     expect(next.transcript).toEqual([event]);
     expect(next.events).toEqual([]);

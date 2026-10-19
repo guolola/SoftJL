@@ -32,7 +32,6 @@ const REQUIRED_RUNTIME_EXPORTS = [
   "renderSvgResponseSchema",
   "snapshotInputFingerprint",
   "designInputFingerprint",
-  "normalizeSnapshotFingerprint",
   "designRecordBelongsToDiagramKinds",
   "findModelByDiagramKind",
   "modelRecordBelongsToDiagramKinds",

@@ -35,7 +35,7 @@ describe('lineage node toolbar', () => {
     let signal: AbortSignal | undefined;
     const request = vi.spyOn(platformApi, 'getProjectRun').mockImplementation((_project, _run, options) => { signal = options?.signal; return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true })); });
     try {
-      const { unmount } = render(<I18nextProvider i18n={i18n}><LineageGraphPage projectId='metadata-project' projectRuns={[{ runId: 'loading-run', status: 'running' }]} /></I18nextProvider>);
+      const { unmount } = render(<I18nextProvider i18n={i18n}><LineageGraphPage projectId='metadata-project' projectRuns={[{ operationType: "unknown" as const, runId: 'loading-run', status: 'running' }]} /></I18nextProvider>);
       expect(await screen.findByTestId('lineage-node-requirement-model:function')).toBeInTheDocument();
       expect(request).toHaveBeenCalledWith('metadata-project', 'loading-run', expect.objectContaining({ includeEvents: true }));
       expect(signal?.aborted).toBe(false); unmount(); expect(signal?.aborted).toBe(true);
@@ -44,20 +44,20 @@ describe('lineage node toolbar', () => {
   it('keeps the graph usable when provenance loading fails', async () => {
     const request = vi.spyOn(platformApi, 'getProjectRun').mockRejectedValue(new Error('unavailable'));
     try {
-      render(<I18nextProvider i18n={i18n}><LineageGraphPage projectId='failed-metadata-project' projectRuns={[{ runId: 'failed-read', status: 'completed' }]} /></I18nextProvider>);
+      render(<I18nextProvider i18n={i18n}><LineageGraphPage projectId='failed-metadata-project' projectRuns={[{ operationType: "unknown" as const, runId: 'failed-read', status: 'completed' }]} /></I18nextProvider>);
       expect(await screen.findByTestId('lineage-node-requirement-model:function')).toBeInTheDocument();
       await waitFor(() => expect(request).toHaveBeenCalledOnce());
-      expect(screen.getAllByText('耗时未记录').length).toBe(2);
+      expect(screen.queryByText('耗时未记录')).not.toBeInTheDocument();
     } finally { request.mockRestore(); }
   });
   it('keeps type icons identical in cards and details across language changes', async () => {
     await i18n.changeLanguage('en');
     const { card } = await setup();
-    expect(card.querySelector('.lucide-git-fork')).not.toBeNull();
+    expect(card.querySelector('.lucide-model-function-structure')).not.toBeNull();
     fireEvent.click(card);
-    expect(screen.getByRole('complementary', { name: 'Node details' }).querySelector('.lucide-git-fork')).not.toBeNull();
+    expect(screen.getByRole('complementary', { name: 'Node details' }).querySelector('.lucide-model-function-structure')).not.toBeNull();
     await i18n.changeLanguage('zh-CN');
-    expect(screen.getByRole('complementary', { name: '节点详情' }).querySelector('.lucide-git-fork')).not.toBeNull();
+    expect(screen.getByRole('complementary', { name: '节点详情' }).querySelector('.lucide-model-function-structure')).not.toBeNull();
   });
   it('routes rules to system requirements instead of the requirement model page', async () => {
     const original = { ...graph.nodes[0] };

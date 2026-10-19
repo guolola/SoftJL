@@ -15,7 +15,7 @@ export function useRunTranscript(projectId?: string | null, runId?: string | nul
     let delay = 1000;
     let terminal = false;
     let cursor = 0;
-    const accumulate = createProgressTranscriptAccumulator();
+    const accumulate = createProgressTranscriptAccumulator<RunEvent>();
     let pending: RunEvent[] = [];
     let flushTimer: ReturnType<typeof setTimeout> | undefined;
     setState({ key, events: [], loading: true, disconnected: false, unavailable: false });
@@ -44,7 +44,8 @@ export function useRunTranscript(projectId?: string | null, runId?: string | nul
       } catch (error) {
         flush();
         if (controller.signal.aborted || terminal) return;
-        const unavailable = error instanceof ApiClientError && [401, 403, 404].includes(error.status);
+        const unavailable = error instanceof ApiClientError && [401, 403, 404].includes(error.status) ||
+          error instanceof SyntaxError || error instanceof Error && error.name === "ZodError";
         setState((current) => ({ ...current, loading: false, disconnected: !unavailable, unavailable }));
         if (!unavailable) {
           timer = setTimeout(() => void connect(), delay);
