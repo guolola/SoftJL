@@ -8,8 +8,8 @@ import { i18n } from '@/shared/i18n'
 import UserDatatable, { type Item } from './datatable-user'
 
 const rows: Item[] = [
-  { id: 'one', avatar: '', fallback: 'ON', user: '订单系统', email: 'Guest', role: 'editor', plan: 'enterprise', billing: 'manual-cash', status: 'pending' },
-  { id: 'two', avatar: '', fallback: 'LI', user: '图书馆系统', email: 'Owner', role: 'admin', plan: 'team', billing: 'auto-debit', status: 'active' },
+  { id: 'one', avatar: '', fallback: 'ON', user: '订单系统', email: 'Guest', role: 'editor', plan: 'enterprise', status: 'pending' },
+  { id: 'two', avatar: '', fallback: 'LI', user: '图书馆系统', email: 'Owner', role: 'admin', plan: 'team', status: 'active' },
 ]
 
 afterEach(async () => {
@@ -25,7 +25,7 @@ describe('UserDatatable localization', () => {
     await user.click(screen.getByRole('button', { name: '前往下一页' }))
     expect(screen.getByText('显示第 6–10 条，共 12 条')).toBeInTheDocument()
     await user.click(screen.getByRole('combobox', { name: '每页显示条数' }))
-    await user.click(screen.getByRole('option', { name: '10' }))
+    await user.click(await screen.findByRole('option', { name: '10' }))
     expect(screen.getByText('显示第 1–10 条，共 12 条')).toBeInTheDocument()
     expect(screen.getByText('项目 1')).toBeInTheDocument()
     expect(screen.queryByText('项目 11')).not.toBeInTheDocument()
@@ -41,7 +41,7 @@ describe('UserDatatable localization', () => {
     expect(screen.getByRole('columnheader', { name: '用户' })).toBeInTheDocument()
     expect(screen.getByText('编辑者')).toBeInTheDocument()
     expect(screen.getByText('企业版')).toBeInTheDocument()
-    expect(screen.getByText('手动—现金')).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: '账单' })).not.toBeInTheDocument()
     expect(screen.getByText('待生成')).toBeInTheDocument()
     expect(screen.getByText('显示第 1–2 条，共 2 条')).toBeInTheDocument()
     expect(screen.queryByText('Select Role')).not.toBeInTheDocument()

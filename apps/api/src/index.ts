@@ -7,6 +7,7 @@ import { DEFAULT_HOST, DEFAULT_PORT, RELEASE_STARTED_AT, } from "./server/defaul
 import { createConfiguredFastifyApp } from "./server/fastify-app.js";
 import { isMainModule, resolveRuntimeCwd } from "./server/runtime.js";
 import { seedGuestUser } from "./server/bootstrap-users.js";
+import { seedDemoProvider } from "./server/bootstrap-provider.js";
 import { registerApiRoutes, type RunAccessContext, } from "./server/register-routes.js";
 import { createApiPersistence } from "./server/persistence.js";
 import { createApiExternalAdapters } from "./server/external-adapters.js";
@@ -78,6 +79,8 @@ export async function createApiServer(options?: {
         });
     }
     const generationUsage = createGenerationUsageService({ providerUsageTracker });
+    const providerSeedMessage = await seedDemoProvider(providerConfigs, runtimeNodeEnv);
+    if (providerSeedMessage) app.log.info(providerSeedMessage);
     const guestUserId = await seedGuestUser(authStore);
     const healthPayload = () => ({
         status: "ok",

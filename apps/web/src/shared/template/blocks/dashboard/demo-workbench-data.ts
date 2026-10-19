@@ -198,7 +198,6 @@ export const demoWorkbenchData: WorkbenchData = {
       email: 'Amanda Lee',
       role: 'admin',
       plan: 'enterprise',
-      billing: 'auto-debit',
       status: 'active'
     },
     {
@@ -209,7 +208,6 @@ export const demoWorkbenchData: WorkbenchData = {
       email: 'Sam Kim',
       role: 'editor',
       plan: 'team',
-      billing: 'manual-paypal',
       status: 'active'
     },
     {
@@ -220,7 +218,6 @@ export const demoWorkbenchData: WorkbenchData = {
       email: 'Jenny Wilson',
       role: 'maintainer',
       plan: 'company',
-      billing: 'auto-debit',
       status: 'pending'
     },
     {
@@ -231,7 +228,6 @@ export const demoWorkbenchData: WorkbenchData = {
       email: 'Robert Chen',
       role: 'author',
       plan: 'basic',
-      billing: 'manual-cash',
       status: 'inactive'
     },
     {
@@ -242,7 +238,6 @@ export const demoWorkbenchData: WorkbenchData = {
       email: 'Maya Gonzalez',
       role: 'subscriber',
       plan: 'team',
-      billing: 'manual-paypal',
       status: 'active'
     },
     {
@@ -253,7 +248,6 @@ export const demoWorkbenchData: WorkbenchData = {
       email: 'Olivia Sparks',
       role: 'editor',
       plan: 'enterprise',
-      billing: 'auto-debit',
       status: 'pending'
     },
     {
@@ -264,7 +258,6 @@ export const demoWorkbenchData: WorkbenchData = {
       email: 'Howard Lloyd',
       role: 'admin',
       plan: 'company',
-      billing: 'manual-cash',
       status: 'active'
     }
   ],

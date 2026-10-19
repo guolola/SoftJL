@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch --import tsx src/index.ts",
+    "demo": "node --env-file-if-exists=../../.env.local --import tsx src/index.ts",
     "workspace:cleanup-design-records": "node scripts/cleanup-stale-design-records.mjs",
     "build": "tsc -p tsconfig.json",
     "test": "tsx --test \"src/**/*.test.ts\""

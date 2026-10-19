@@ -17,6 +17,6 @@ export function AccountMenuItems({ onAccount, onNavigate, onGuideSelect }: {
     return (<DropdownMenuGroup>
       <DropdownMenuItem onClick={onAccount}><User />{t('auth.account')}</DropdownMenuItem>
       {destinations.map(({ path, label, icon: Icon }) => (<DropdownMenuItem key={path} onClick={() => onNavigate(path)}><Icon />{label}</DropdownMenuItem>))}
-      <DropdownMenuItem onClick={onGuideSelect} render={<a href={PRODUCT_TUTORIAL_URL} target="_blank" rel="noopener noreferrer" />}><BookOpen />{t('nav.tutorial')}</DropdownMenuItem>
+      <DropdownMenuItem onClick={onGuideSelect} render={<a href={PRODUCT_TUTORIAL_URL} target="_blank" rel="noopener noreferrer"/>}><BookOpen />{t('nav.tutorial')}</DropdownMenuItem>
     </DropdownMenuGroup>);
 }

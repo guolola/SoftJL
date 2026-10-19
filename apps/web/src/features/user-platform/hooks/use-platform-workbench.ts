@@ -355,7 +355,6 @@ export function projectToItem(project: PlatformProject, now: Date = new Date()):
     email: project.ownerDisplayName || project.visibility,
     role: roleByVisibility[project.visibility] ?? "editor",
     plan: planByStatus[project.status] ?? "company",
-    billing: (project.memberCount ?? 0) > 1 ? "auto-debit" : "manual-cash",
     status,
   };
 }

@@ -66,7 +66,6 @@ export type Item = {
   email: string
   role: 'admin' | 'author' | 'editor' | 'maintainer' | 'subscriber'
   plan: 'basic' | 'company' | 'enterprise' | 'team'
-  billing: 'auto-debit' | 'manual-cash' | 'manual-paypal'
   status: 'active' | 'inactive' | 'pending'
 }
 

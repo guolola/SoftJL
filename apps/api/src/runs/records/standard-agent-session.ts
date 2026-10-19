@@ -9,11 +9,19 @@ export function restoreStandardSession(projectId: string, saved?: StandardProjec
     if (entry.parentId && ids.has(entry.parentId)) manager.branch(ids.get(entry.parentId)!);
     else if (!entry.parentId) manager.resetLeaf();
     let id: string | undefined;
-    if (entry.type === "message" && ["user", "assistant", "toolResult", "custom", "bashExecution"].includes(entry.message.role)) id = manager.appendMessage(entry.message as Parameters<SessionManager["appendMessage"]>[0]);
+    if (entry.type === "message" && ["system", "user", "assistant", "toolResult", "custom", "bashExecution"].includes(entry.message.role)) id = manager.appendMessage(entry.message as Parameters<SessionManager["appendMessage"]>[0]);
     else if (entry.type === "compaction") {
       const kept = ids.get(entry.firstKeptEntryId);
-      if (!kept) throw new Error("项目会话压缩记录缺少保留边界，请联系管理员");
-      id = manager.appendCompaction(entry.summary, kept, entry.tokensBefore, entry.details, entry.fromHook);
+      // Pi uses the compaction entry itself when no earlier message is retained.
+      if (!kept && entry.firstKeptEntryId !== entry.id) throw new Error("项目会话压缩记录缺少保留边界，请联系管理员");
+      id = manager.appendCompaction(entry.summary, kept ?? null, entry.tokensBefore, entry.details, entry.fromHook, entry.usage);
+    } else if (entry.type === "context_edit") {
+      // Replayed entry IDs differ from storage IDs; edits must still target the restored message.
+      const targetId = ids.get(entry.targetId);
+      if (!targetId) throw new Error("项目会话修改记录缺少目标消息，请联系管理员");
+      id = manager.appendContextEdit(targetId, entry.replacement);
+    } else if (entry.type === "usage") {
+      id = manager.appendUsage(entry.kind, entry.provider, entry.model, entry.usage, entry.note).id;
     } else if (entry.type === "custom_message") id = manager.appendCustomMessageEntry(entry.customType, entry.content, entry.display, entry.details);
     else if (entry.type === "model_change") id = manager.appendModelChange(entry.provider, entry.modelId);
     else if (entry.type === "thinking_level_change") id = manager.appendThinkingLevelChange(entry.thinkingLevel);

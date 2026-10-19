@@ -85,7 +85,8 @@ for (const width of [1440, 390]) for (const colorScheme of ["light", "dark"] as 
       await expect(transcript.getByText(/PRIVATE_LARGE_BODY/)).toHaveCount(0);
       expect(await transcript.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
       const drawer = page.getByTestId("project-workspace-drawer");
-      expect((await drawer.boundingBox())!.width).toBeLessThanOrEqual(768);
+      // Chromium transforms can report a fractional-pixel overshoot on the settled drawer.
+      expect(Math.round((await drawer.boundingBox())!.width)).toBeLessThanOrEqual(768);
     });
 
     test("progress replay omits reasoning, payloads and input images", async ({ page }) => {

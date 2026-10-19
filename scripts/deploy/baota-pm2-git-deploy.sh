@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds and publishes a production release from a persistent server-side git checkout.
+# Publishes a verified CI build or builds locally when the server runtime differs.
 set -Eeuo pipefail
 
 DEPLOY_PATH="${DEPLOY_PATH:-/www/wwwroot/uml-platform}"
@@ -151,6 +151,52 @@ verify_web_bundle() {
   fi
 
   echo "Next.js web bundle check passed: $web_dir"
+}
+
+restore_ci_build() {
+  local staging_dir
+  local status=0
+  local payload_paths
+  local relative
+  local font_asset
+  [[ -f "$BUILD_ARTIFACT" ]] || { echo "CI build archive is missing: $BUILD_ARTIFACT" >&2; return 1; }
+  staging_dir="$(mktemp -d "$DEPLOY_PATH/incoming/build-$RELEASE_SHA.XXXXXX")" || return 1
+  tar -xzf "$BUILD_ARTIFACT" -C "$staging_dir" || { rm -rf -- "$staging_dir"; return 1; }
+  node "$SOURCE_DIR/scripts/deploy/build-artifacts.mjs" check "$staging_dir" "$RELEASE_SHA" "$SOURCE_DIR" || status=$?
+  if [[ "$status" -ne 0 && "$status" -ne 3 ]]; then
+    rm -rf -- "$staging_dir"
+    return "$status"
+  fi
+  # Fonts are platform independent: a verified but incompatible build still supplies offline fonts.
+  mkdir -p "$SOURCE_DIR/apps/render-service/.runtime/pdf-fonts" || { rm -rf -- "$staging_dir"; return 1; }
+  for font_asset in NotoSansCJKsc-Regular.otf NotoSansCJKsc-Bold.otf LICENSE.txt; do
+    cp "$staging_dir/apps/render-service/dist/assets/pdf-fonts/$font_asset" \
+      "$SOURCE_DIR/apps/render-service/.runtime/pdf-fonts/$font_asset" || { rm -rf -- "$staging_dir"; return 1; }
+  done
+  if [[ "$status" -eq 3 ]]; then
+    rm -rf -- "$staging_dir"
+    return 3
+  fi
+  payload_paths="$(node "$SOURCE_DIR/scripts/deploy/build-artifacts.mjs" paths)" || { rm -rf -- "$staging_dir"; return 1; }
+  while IFS= read -r relative; do
+    rm -rf -- "$SOURCE_DIR/$relative" || { rm -rf -- "$staging_dir"; return 1; }
+    mkdir -p "$(dirname "$SOURCE_DIR/$relative")" || { rm -rf -- "$staging_dir"; return 1; }
+    cp -R "$staging_dir/$relative" "$SOURCE_DIR/$relative" || { rm -rf -- "$staging_dir"; return 1; }
+  done <<< "$payload_paths"
+  rm -rf -- "$staging_dir"
+  echo "Reused the verified CI build for the exact server runtime."
+}
+
+restore_pdf_font_cache() {
+  local cache="$DEPLOY_PATH/shared/pdf-fonts"
+  local asset
+  [[ -n "${PDF_FONT_MANIFEST:-}" ]] || return 0
+  # The tiny CI checksum list binds reused fonts to this build before source caches are repopulated.
+  (cd "$cache" && sha256sum --check "$PDF_FONT_MANIFEST") || return 1
+  mkdir -p "$SOURCE_DIR/apps/render-service/.runtime/pdf-fonts" || return 1
+  for asset in NotoSansCJKsc-Regular.otf NotoSansCJKsc-Bold.otf LICENSE.txt; do
+    cp "$cache/$asset" "$SOURCE_DIR/apps/render-service/.runtime/pdf-fonts/$asset" || return 1
+  done
 }
 
 copy_release_payload() {
@@ -426,19 +472,33 @@ df -h "$DEPLOY_PATH" /tmp || true
 
 cleanup_stale_deploy_artifacts
 
-echo "Building production bundles from $SOURCE_DIR ..."
-(
-  cd "$SOURCE_DIR"
-  git rev-parse --verify "$RELEASE_SHA^{commit}" >/dev/null
-  rm -rf apps/api/dist apps/render-service/dist apps/web/.next packages/contracts/dist packages/prompts/dist
-  run_timed "npm ci build dependencies" \
-    npm ci --no-audit --no-fund --cache "$NPM_CACHE_DIR" --registry="$NPM_REGISTRY"
-  run_timed "build contracts" npm run build:contracts
-  run_timed "build prompts" npm run build:prompts
-  run_timed "build api" npm run build:api
-  run_timed "build render service" npm run build:render
-  run_timed "build production web" npm run build:web:production:prepared
-)
+reused_ci_build=false
+if [[ -n "${BUILD_ARTIFACT:-}" ]]; then
+  reuse_status=0
+  run_timed "verify and restore CI build" restore_ci_build || reuse_status=$?
+  if [[ "$reuse_status" -eq 0 ]]; then
+    reused_ci_build=true
+  elif [[ "$reuse_status" -ne 3 ]]; then
+    echo "CI build verification failed; refusing to deploy an invalid artifact." >&2
+    exit 1
+  fi
+fi
+if [[ "$reused_ci_build" != true ]]; then
+  run_timed "restore verified portable fonts" restore_pdf_font_cache
+  echo "Building production bundles for the local server runtime ..."
+  (
+    cd "$SOURCE_DIR"
+    git rev-parse --verify "$RELEASE_SHA^{commit}" >/dev/null
+    rm -rf apps/api/dist apps/render-service/dist apps/web/.next packages/contracts/dist packages/prompts/dist
+    run_timed "npm ci build dependencies" \
+      npm ci --no-audit --no-fund --cache "$NPM_CACHE_DIR" --registry="$NPM_REGISTRY"
+    run_timed "build contracts" npm run build:contracts
+    run_timed "build prompts" npm run build:prompts
+    run_timed "build api" npm run build:api
+    run_timed "build render service" npm run build:render
+    run_timed "build production web" npm run build:web:production:prepared
+  )
+fi
 verify_web_bundle "$SOURCE_DIR/apps/web"
 
 copy_release_payload
