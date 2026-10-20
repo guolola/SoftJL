@@ -50,6 +50,10 @@ test("project cards expand without page shifts and keep overlays above the heade
   await page.goto("/projects");
   const cards = page.getByTestId("projects-card-grid").getByRole("button");
   await expect(cards).toHaveCount(8);
+  await page.evaluate(() => document.fonts.ready);
+  // Full-page capture can temporarily relayout Chromium. Finish it before measuring
+  // the baseline so every sampled frame belongs to the actual preview interaction.
+  await page.screenshot({ path: info.outputPath("project-cards-desktop.png"), fullPage: true });
   const initialGrid = (await page.getByTestId("projects-card-grid").boundingBox())!;
   expect((await cards.nth(3).boundingBox())!.y).toBe((await cards.nth(0).boundingBox())!.y);
   const initialScrollY = await page.evaluate(() => window.scrollY);
@@ -79,7 +83,6 @@ test("project cards expand without page shifts and keep overlays above the heade
     };
     sample();
   });
-  await page.screenshot({ path: info.outputPath("project-cards-desktop.png"), fullPage: true });
   const previewTrigger = page.getByRole("button", { name: "查看项目 布局验收项目 1", exact: true });
   await previewTrigger.click();
   const preview = page.getByRole("dialog", { name: "布局验收项目 1", exact: true });
@@ -165,6 +168,10 @@ test("project cards expand without page shifts and keep overlays above the heade
       frames: { x: number; width: number; scrollY: number }[];
       entryFrames: { x: number; y: number; width: number; height: number; textHeight: number }[];
     };
+  });
+  await info.attach("project-layout-samples", {
+    contentType: "application/json",
+    body: JSON.stringify({ initialGrid, initialScrollY, ...frames }),
   });
   for (const frame of frames.frames) {
     expect(Math.abs(frame.x - initialGrid.x)).toBeLessThan(1);
