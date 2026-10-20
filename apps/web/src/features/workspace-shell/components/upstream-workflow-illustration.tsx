@@ -51,7 +51,6 @@ type UpstreamWorkflowIllustrationProps<S extends UpstreamStage> = {
   /** Candidate rules before generation or evidenced references from the current model. */
   rules?: readonly RequirementRule[];
   ruleMode?: "mapped";
-  pendingReferenceCount?: number;
   resolveState: (input: UpstreamInput) => UpstreamInputState;
   className?: string;
 };
@@ -67,7 +66,6 @@ export function UpstreamWorkflowIllustration<S extends UpstreamStage>({
   targetHint,
   rules,
   ruleMode,
-  pendingReferenceCount = 0,
   resolveState,
   className,
 }: UpstreamWorkflowIllustrationProps<S>) {
@@ -141,7 +139,7 @@ export function UpstreamWorkflowIllustration<S extends UpstreamStage>({
     >
       {/* Keyboard and screen-reader users hear the dependency summary when the inspected card changes. */}
       <p className="sr-only" aria-live="polite">{summary}</p>
-      {ruleMode && <figcaption className="mb-3 text-center text-xs text-muted-foreground">{t("requirementSemantics.mappedHint")}{pendingReferenceCount > 0 ? ` · ${t("requirementSemantics.pending", { count: pendingReferenceCount })}` : ""}</figcaption>}
+      {ruleMode && <figcaption className="mb-3 text-center text-xs text-muted-foreground">{t("requirementSemantics.mappedHint")}</figcaption>}
       <div
         className="flex min-w-0 flex-col items-center md:flex-row md:justify-center"
         style={{ "--upstream-flow-height": `${height}px` } as CSSProperties}

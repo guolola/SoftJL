@@ -126,11 +126,11 @@ describe("UpstreamWorkflowIllustration", () => {
     expect(screen.queryByText("暂无业务规则")).not.toBeInTheDocument();
   });
 
-  it("shows missing mapped inputs and keeps element review status separate", () => {
-    renderIllustration({ stage: "requirement", target: "function", targetLabel: "功能结构图", rules: [], ruleMode: "mapped", pendingReferenceCount: 2, resolveState: () => "missing" });
+  it("shows missing mapped inputs without mapping review counts", () => {
+    renderIllustration({ stage: "requirement", target: "function", targetLabel: "功能结构图", rules: [], ruleMode: "mapped", resolveState: () => "missing" });
     expect(screen.getByText("缺少功能需求").closest("li")).toHaveAttribute("data-state", "missing");
     expect(screen.queryByText("暂无该模型对应类型的需求")).not.toBeInTheDocument();
-    expect(screen.getByText(/按需求类型固定关联.*2 条元素关联待审核/)).toBeInTheDocument();
+    expect(screen.queryByText(/元素关联待审核/)).not.toBeInTheDocument();
   });
 
   it("groups rule nodes by category and sorts numeric IDs within each category", () => {

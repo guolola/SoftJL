@@ -18,6 +18,7 @@ import {
   User,
   X,
 } from "lucide-react";
+import { WorkspacePreferencesPanel } from "../../settings/components/workspace-preferences-panel";
 import { GlobalSettingsPanel, type GlobalSettingsActions } from "../../settings/components/global-settings-panel";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
 import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
@@ -95,6 +96,8 @@ export function AccountDialog({
   const preferences = useAccountPreferences(open);
   const modelActions = useRef<GlobalSettingsActions>(null);
   const [modelDirty, setModelDirty] = useState(false);
+  const workspaceActions = useRef<GlobalSettingsActions>(null);
+  const [workspaceDirty, setWorkspaceDirty] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const profileSaveInFlight = useRef(false);
   const [loading, setLoading] = useState(false);
@@ -405,16 +408,17 @@ export function AccountDialog({
     { id: 'profile', label: t('account.profile'), icon: User },
     { id: 'security', label: t('account.security'), icon: Shield },
     { id: 'sessions', label: t('account.sessions'), icon: Monitor },
+    { id: 'workspace', label: t('providerSettings.preferences'), icon: LayoutDashboard },
     { id: 'global', label: t('account.block37.models'), icon: Settings },
   ];
   const tabTitle = activeTab === 'profile' ? t('account.profileTitle') : activeTab === 'sessions' ? t('account.activeSessions') : tabs.find(item => item.id === activeTab)?.label;
-  const tabDescription = ['theme','layout','language'].includes(activeTab) ? t('account.block37.' + activeTab + 'Description') : activeTab === 'profile' ? t('account.profileDescription') : activeTab === 'security' ? t('account.securityDescription') : activeTab === 'sessions' ? t('account.activeSessionsDescription') : t('account.globalSettingsDescription');
+  const tabDescription = ['theme','layout','language'].includes(activeTab) ? t('account.block37.' + activeTab + 'Description') : activeTab === 'profile' ? t('account.profileDescription') : activeTab === 'security' ? t('account.securityDescription') : activeTab === 'sessions' ? t('account.activeSessionsDescription') : activeTab === 'workspace' ? t('providerSettings.preferencesDescription') : t('account.globalSettingsDescription');
   const instantPage = activeTab === 'security' || activeTab === 'sessions';
   const profileDirty = displayName !== (user?.displayName ?? '') || avatarUrl !== (user?.avatarUrl ?? '') || Boolean(avatarFile);
-  const dirty = activeTab === 'profile' ? profileDirty : activeTab === 'global' ? modelDirty : preferences.dirty(activeTab);
+  const dirty = activeTab === 'profile' ? profileDirty : activeTab === 'global' ? modelDirty : activeTab === 'workspace' ? workspaceDirty : preferences.dirty(activeTab);
   const resetProfile = useCallback(() => { setDisplayName(user?.displayName ?? ''); setAvatarUrl(user?.avatarUrl ?? ''); clearPendingAvatar(); if (avatarInputRef.current) avatarInputRef.current.value = ''; }, [user?.displayName, user?.avatarUrl, clearPendingAvatar]);
-  const resetActivePage = () => { if (activeTab === 'profile') resetProfile(); else if (activeTab === 'global') modelActions.current?.reset(); else preferences.reset(activeTab); };
-  const saveActivePage = () => { if (activeTab === 'profile') void saveProfile(); else if (activeTab === 'global') modelActions.current?.save(); else preferences.save(activeTab); };
+  const resetActivePage = () => { if (activeTab === 'profile') resetProfile(); else if (activeTab === 'global') modelActions.current?.reset(); else if (activeTab === 'workspace') workspaceActions.current?.reset(); else preferences.reset(activeTab); };
+  const saveActivePage = () => { if (activeTab === 'profile') void saveProfile(); else if (activeTab === 'global') modelActions.current?.save(); else if (activeTab === 'workspace') workspaceActions.current?.save(); else preferences.save(activeTab); };
   // Discard pending uploads and security input when the modal closes by any entry point.
   useEffect(() => {
     if (open) return;
@@ -670,6 +674,9 @@ export function AccountDialog({
                         </div>
                       </li>)}
                     </ul>
+                  </TabsContent>
+                  <TabsContent value="workspace" keepMounted className="space-y-2">
+                    <WorkspacePreferencesPanel ref={workspaceActions} active={open} onDirtyChange={setWorkspaceDirty} />
                   </TabsContent>
                   <TabsContent value="global" keepMounted className="space-y-2">
                     <GlobalSettingsPanel ref={modelActions} embedded onDirtyChange={setModelDirty} active={open} currentUserId={userId ?? ""} onNavigate={route => { setDialogOpen(false); onNavigate(route); }} />

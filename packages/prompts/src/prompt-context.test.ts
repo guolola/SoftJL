@@ -92,11 +92,11 @@ test("review sources retain complete use-case dependencies and pending trace pro
   const usecase = modelFixture("requirements", "usecase"); if (usecase.diagramKind !== "usecase") throw new Error("fixture");
   usecase.useCases = ["wanted", "included", "unrelated"].map(id => ({ ...usecase.useCases[0], id, name: id, goal: id }));
   usecase.relationships = [{ id: "dependency", sourceId: "wanted", targetId: "included", type: "include", label: "必经业务" }];
-  const trace = [{ source: { modelId: model.modelId, diagramKind: "sequence", elementId: "m1" }, targets: [{ modelId: usecase.modelId, diagramKind: "usecase", elementId: "wanted" }], mappingSource: "auto-filled-pending-review", reviewStatus: "pending", confidence: "low", rationale: "候选映射需要确认" }];
+  const trace = [{ source: { modelId: model.modelId, diagramKind: "sequence", elementId: "m1" }, targets: [{ modelId: usecase.modelId, diagramKind: "usecase", elementId: "wanted" }], mappingSource: "llm", rationale: "候选映射需要确认" }];
   const result = reviewPromptContext("design", model, { baseline, upstreamModels: [usecase], traceability: trace, requirementTraceability: [{ ruleId: "R1", target: trace[0].targets[0] }, { ruleId: "OTHER", target: { ...trace[0].targets[0], elementId: "unrelated" } }] }) as any;
   assert.deepEqual(result.upstreamModels[0].useCases.map((item: any) => item.id), ["wanted", "included"]);
   assert.deepEqual(result.upstreamModels[0].useCases[0].eventFlows, usecase.useCases[0].eventFlows);
-  assert.equal(result.traceability[0].reviewStatus, "pending");
+  assert.equal(result.traceability[0].mappingSource, "llm");
   assert.equal(result.traceability[0].rationale, "候选映射需要确认");
   assert.equal(result.requirementTraceability.length, 1);
   assert.deepEqual(trace[0].targets[0].elementId, "wanted", "stored evidence stays unchanged");
@@ -106,7 +106,7 @@ test("singleton model references use their current diagram-kind identity", () =>
   const model = modelFixture("design", "class"); delete model.modelId;
   const domain = modelFixture("requirements", "class"); delete domain.modelId;
   const result = reviewPromptContext("design", model, { upstreamModels: [domain], traceability: [{
-    source: { diagramKind: "class", modelId: "class", elementId: "entity" }, targets: [], reviewStatus: "confirmed", rationale: "仅为相似候选，并非已核实事实",
+    source: { diagramKind: "class", modelId: "class", elementId: "entity" }, targets: [], rationale: "仅为相似候选，并非已核实事实",
   }] }) as any;
   assert.deepEqual(result.upstreamModels, [domain]);
   assert.equal(result.traceability.length, 1);
@@ -121,11 +121,11 @@ test("compact references retain omitted source element labels once without whole
   const model = modelFixture("design", "component");
   const target = { modelId: "domain", diagramKind: "class", elementId: "Order", elementKind: "class", label: "订单领域对象" };
   const result = reviewPromptContext("design", model, { upstreamModels: [], traceability: ["a", "b"].map(elementId => ({
-    source: { modelId: model.modelId, diagramKind: "component", elementId }, targets: [target], reviewStatus: "pending",
+    source: { modelId: model.modelId, diagramKind: "component", elementId }, targets: [target],
   })) }) as any;
   assert.deepEqual(result.referenceIndex, [target]);
   assert.equal(result.traceability.length, 2);
-  assert.ok(result.traceability.every((entry: any) => entry.reviewStatus === "pending"));
+  assert.ok(result.traceability.every((entry: any) => !("reviewStatus" in entry) && !("confidence" in entry)));
 });
 
 test("design dependencies exclude sequences and use domain/use-case sources for class generation", () => {

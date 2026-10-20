@@ -108,7 +108,7 @@ test("historical acceptance and trace reviews do not block while stale and confl
   const value = accepted.payload.requirement as AtomicRequirement;
   value.status = "rejected";
   value.fieldProvenance = { acceptanceCriteria: { source: "ai-suggested", status: "rejected" } };
-  pending.payload.traceability = [{ source: ref("pending", "loan"), targets: [ref("business", "borrow-case")], reviewStatus: "pending", rationale: "待确认" }];
+  pending.payload.traceability = [{ source: ref("pending", "loan"), targets: [ref("business", "borrow-case")], rationale: "待确认" }];
   pending.version.freshness = "unknown";
   assert.equal(blocking(buildImplementationTasks([accepted, pending])[0]).length, 0);
   assert.ok(!buildImplementationTasks([accepted, pending])[0].issues.some((issue) => /review|unconfirmed/.test(issue.code)));
@@ -120,11 +120,11 @@ test("broken design trace sources block without fabricating design references", 
   const analysis = modelArtifact("business", "analysis", "borrow-case");
   const design = modelArtifact("loan", "design", "loan-service");
   design.dependencies = [analysis.id];
-  design.payload.traceability = [{ source: ref("loan", "missing-service"), targets: [ref("business", "borrow-case")], reviewStatus: "confirmed" }];
+  design.payload.traceability = [{ source: ref("loan", "missing-service"), targets: [ref("business", "borrow-case")] }];
   const task = buildImplementationTasks([requirement(), analysis, design])[0];
   assert.ok(blocking(task).some((issue) => issue.code === "trace-reference-missing"));
   assert.deepEqual(task.designRefs.map((entry) => entry.elementId), ["loan-service"]);
-  design.payload.traceability = [{ source: ref("loan", "loan-service"), targets: [ref("business", "borrow-case")], reviewStatus: "confirmed" }];
+  design.payload.traceability = [{ source: ref("loan", "loan-service"), targets: [ref("business", "borrow-case")] }];
   assert.equal(blocking(buildImplementationTasks([requirement(), analysis, design])[0]).length, 0);
 });
 
@@ -134,7 +134,7 @@ test("valid relationship trace refs remain legal and absent sibling models do no
   analysis.payload.model = { ...model, classes: [...model.classes, { id: "book", name: "Book" }], relationships: [{ id: "borrows", type: "association", sourceId: "borrow-case", targetId: "book" }] };
   const design = modelArtifact("loan", "design", "loan-service");
   design.payload.model = { ...classModel("loan", "loan-service"), classes: [{ id: "loan-service", name: "Loan" }, { id: "book", name: "Book" }], relationships: [{ id: "borrows", type: "association", sourceId: "loan-service", targetId: "book" }] };
-  design.payload.traceability = [{ source: { ...ref("loan", "borrows"), elementKind: "relationship" }, targets: [ref("business", "borrows"), ref("outside-scope", "other")], reviewStatus: "confirmed" }];
+  design.payload.traceability = [{ source: { ...ref("loan", "borrows"), elementKind: "relationship" }, targets: [ref("business", "borrows"), ref("outside-scope", "other")] }];
   const task = buildImplementationTasks([requirement(), analysis, design])[0];
   assert.equal(blocking(task).length, 0);
   assert.deepEqual(task.dependsOnTaskIds, []);
@@ -144,7 +144,7 @@ test("same-kind requirement provenance does not become a design reference", () =
   const first = modelArtifact("first", "analysis", "borrow-case");
   const second = modelArtifact("second", "analysis", "borrow-case");
   const design = modelArtifact("loan", "design", "loan-service");
-  design.payload.traceability = [{ source: ref("loan", "loan-service"), targets: [ref(undefined, "borrow-case")], reviewStatus: "confirmed" }];
+  design.payload.traceability = [{ source: ref("loan", "loan-service"), targets: [ref(undefined, "borrow-case")] }];
   const task = buildImplementationTasks([requirement(), first, second, design])[0];
   assert.ok(!task.sourceArtifactIds.some((id) => id.startsWith("analysis:")));
   assert.equal(blocking(task).length, 0);
@@ -154,11 +154,11 @@ test("design trace sources must exist in their owning model even when a sibling 
   const design = modelArtifact("loan", "design", "loan-service");
   const sibling = modelArtifact("sibling", "design", "other-service");
   for (const source of [ref("sibling", "other-service"), ref(undefined, "other-service"), {}, undefined]) {
-    design.payload.traceability = [{ source, targets: [ref("business", "borrow-case")], reviewStatus: "confirmed" }];
+    design.payload.traceability = [{ source, targets: [ref("business", "borrow-case")] }];
     const task = buildImplementationTasks([requirement(), design, sibling])[0];
     assert.ok(blocking(task).some((issue) => ["trace-reference-missing", "trace-reference-invalid"].includes(issue.code)));
   }
-  design.payload.traceability = [{ source: ref(undefined, "loan-service"), targets: [ref("business", "borrow-case")], reviewStatus: "confirmed" }];
+  design.payload.traceability = [{ source: ref(undefined, "loan-service"), targets: [ref("business", "borrow-case")] }];
   assert.equal(blocking(buildImplementationTasks([requirement(), design, sibling])[0]).length, 0);
 });
 
@@ -171,7 +171,7 @@ test("sequence messages, fragments and activations are legal design trace source
     fragments: [{ id: "optional", type: "opt", label: "borrow", messageIds: ["request"] }],
     activations: [{ id: "active", participantId: "service", startMessageId: "request", endMessageId: "result" }],
   };
-  design.payload.traceability = ["request", "optional", "active"].map((id) => ({ source: ref("sequence", id, "sequence"), targets: [ref("business", "borrow-case")], reviewStatus: "confirmed" }));
+  design.payload.traceability = ["request", "optional", "active"].map((id) => ({ source: ref("sequence", id, "sequence"), targets: [ref("business", "borrow-case")] }));
   assert.equal(blocking(buildImplementationTasks([requirement(), design])[0]).length, 0);
 });
 

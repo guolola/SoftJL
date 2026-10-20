@@ -69,6 +69,7 @@ function toProviderConfigDto(view: ProviderConfigView) {
     status: view.status,
     riskState: view.riskState,
     quota: view.quota,
+    updatedAt: view.updatedAt,
     lastUsedAt: view.lastUsedAt,
     scopeType: view.scopeType,
     scopeId: view.scopeId,
@@ -775,18 +776,17 @@ export function registerProviderConfigRoutes({
     const input = parseSelfServiceCreateInput(request.body, reply);
     if ("error" in input) return input;
 
+    // Discovery already probes model calls and JSON capabilities; saving only validates the address policy.
     try {
-      await verifyTemporaryProviderConnection({
-        baseUrl: input.baseUrl,
-        apiKey: input.apiKey,
-        model: input.defaultModel,
-        resolveHostname: resolveProviderHostname,
-      });
+      await assertManagedProviderBaseUrlResolvesPublicly(
+        input.baseUrl,
+        resolveProviderHostname,
+      );
     } catch (error) {
       const message =
         error instanceof Error
           ? redactProviderSecret(error.message, input.apiKey)
-          : "Provider connection test failed";
+          : "Provider configuration validation failed";
       await recordSelfServiceProviderAudit({
         providerConfigs,
         actor: auth.user.id,
@@ -866,17 +866,15 @@ export function registerProviderConfigRoutes({
 
     let normalizedBaseUrl: string;
     try {
-      normalizedBaseUrl = await verifyTemporaryProviderConnection({
-        baseUrl: nextBaseUrl,
-        apiKey,
-        model: nextModel,
-        resolveHostname: resolveProviderHostname,
-      });
+      normalizedBaseUrl = await assertManagedProviderBaseUrlResolvesPublicly(
+        nextBaseUrl,
+        resolveProviderHostname,
+      );
     } catch (error) {
       const message =
         error instanceof Error
           ? redactProviderSecret(error.message, apiKey)
-          : "Provider connection test failed";
+          : "Provider configuration validation failed";
       await recordSelfServiceProviderAudit({
         providerConfigs,
         actor: auth.user.id,

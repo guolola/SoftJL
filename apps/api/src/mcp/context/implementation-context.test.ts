@@ -48,7 +48,7 @@ function fixture() {
     relationships: [],
   };
   const requirementModelTraceability = [
-    { ruleId: "BORROW", target: ref, reviewStatus: "confirmed" },
+    { ruleId: "BORROW", target: ref },
   ];
   const state = {
     requirementText: rule.text,
@@ -192,7 +192,7 @@ test("repaired and unresolved review records cannot alter MCP payloads, tasks or
       requirementReviewCandidates: { BORROW: { status, repairRationale: "private-candidate" } },
       requirementQualityReport: { summary: "private-quality-opinion" },
       designModelTraceability: state.designModelTraceability.map((trace) => ({ ...trace,
-        reviewStatus: status, mappingSource: "auto-filled-pending-review", confidence: "low", rationale: "private-trace-opinion",
+        mappingSource: "llm", rationale: "private-trace-opinion",
       })),
     };
     const before = structuredClone(withReviews);

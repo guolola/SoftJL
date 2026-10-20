@@ -177,6 +177,7 @@ async function generateFeasibilityJson<T>(input: {
   llmTransport: LlmTransport;
   diagnostics: FeasibilityGenerationDiagnostics;
   parse: (value: unknown) => { value: T; normalizationActions?: string[] };
+  onConversation?: (conversation: ModelGenerationConversation) => void;
 }) {
   let prompt = input.prompt;
   const targetId = input.promptStage === "business-flow" ? "activity" : input.promptStage;
@@ -210,6 +211,7 @@ async function generateFeasibilityJson<T>(input: {
       input.diagnostics.normalizationActions.push(...(result.normalizationActions ?? []));
       input.diagnostics.normalizationActions = [...new Set(input.diagnostics.normalizationActions)];
       for (const entry of input.diagnostics.repairs) if (entry.stage === input.promptStage) entry.succeeded = true;
+      if (conversation) input.onConversation?.(conversation);
       return result.value;
     } catch (error) {
       logFailedStructuredOutput(input.stage, input.providerSettings.model, error, raw, attempt + 1);
@@ -294,6 +296,7 @@ export async function runFeasibilityStagePipeline(
   const generateContext = async () => {
     if (!snapshot.selectedArtifacts.includes("context")) return;
     updateStage("generate_context", "正在使用所选模型生成系统上下文");
+    let conversation!: ModelGenerationConversation;
     let contextModel = await generateFeasibilityJson({
       record,
       stage: "generate_context",
@@ -302,6 +305,7 @@ export async function runFeasibilityStagePipeline(
       providerSettings,
       llmTransport,
       diagnostics,
+      onConversation: value => { conversation = value; },
       parse: (value) => ({
         value: normalizeContextDiagram(value, validRequirementIds),
       }),
@@ -312,6 +316,13 @@ export async function runFeasibilityStagePipeline(
       model: contextModel, mutable: true,
       basis: { stage: "feasibility", baseline: snapshot.requirementBaseline, rules: candidateRulesForDiagram(snapshot.rules, "context"), traceability: traceabilityFromContext(contextModel) },
       validateModel: (model) => { normalizeContextDiagram(model, validRequirementIds); },
+      generationRepair: {
+        conversation,
+        parse: raw => {
+          const model = normalizeContextDiagram(parseJson(raw), validRequirementIds);
+          return { model, traceability: traceabilityFromContext(model) };
+        },
+      },
     });
     throwIfRunCancelled(record);
     contextModel = checked.model as typeof contextModel;
@@ -342,6 +353,7 @@ export async function runFeasibilityStagePipeline(
   const generateBusinessFlow = async () => {
     if (!snapshot.selectedArtifacts.includes("business-flow")) return;
     updateStage("generate_business_flow", "正在根据需求规则生成业务流程图");
+    let conversation!: ModelGenerationConversation;
     const result = await generateFeasibilityJson({
       record,
       stage: "generate_business_flow",
@@ -350,6 +362,7 @@ export async function runFeasibilityStagePipeline(
       providerSettings,
       llmTransport,
       diagnostics,
+      onConversation: value => { conversation = value; },
       parse: (value) => ({ value: normalizeFeasibilityBusinessFlow(value, validRequirementIds) }),
     });
     finishStage("generate_business_flow");
@@ -357,11 +370,16 @@ export async function runFeasibilityStagePipeline(
     const checked = await reviewCandidate({ record, providerSettings, llmTransport, renderClient,
       model: result.model, mutable: true,
       basis: { stage: "feasibility", baseline: snapshot.requirementBaseline, rules: snapshot.rules, traceability: result.traceability },
-      validateModel: (model) => { normalizeFeasibilityBusinessFlow({ model, traceability: result.traceability }, validRequirementIds); },
+      validateTraceability: (model, traceability) => { normalizeFeasibilityBusinessFlow({ model, traceability }, validRequirementIds); },
+      generationRepair: {
+        conversation,
+        parse: raw => normalizeFeasibilityBusinessFlow(parseJson(raw), validRequirementIds),
+      },
     });
     throwIfRunCancelled(record);
     const artifact = checked.rendered.artifact;
     result.model = checked.model as typeof result.model;
+    result.traceability = checked.traceability as typeof result.traceability;
     snapshot.visualReviews[artifact.modelId ?? "business-flow"] = checked.review;
     snapshot.businessFlow = {
       ...result,

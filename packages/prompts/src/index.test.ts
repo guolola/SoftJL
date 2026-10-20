@@ -236,7 +236,7 @@ test("requirement traceability prompts only ask for element mappings", () => {
   assert.match(prompt, /禁止把 requirements、requirement、design、model、traceability、page/);
   assert.match(prompt, /没有来源的业务内容不得生成/);
   assert.match(prompt, /不要为 system-boundary、swimlane、start\/end\/flow_final\/merge\/fork\/join/);
-  assert.match(prompt, /不得使用待确认、低置信或系统猜测的映射/);
+  assert.match(prompt, /引用是否有效仅按对应模型及真实元素 id 匹配/);
   assert.match(prompt, /allowedTargets（唯一可引用目标清单/);
   assert.match(prompt, /target 必须从 allowedTargets 清单原样复制/);
   assert.match(prompt, /"elementId":\s*"uc1"/);
@@ -319,6 +319,8 @@ test("design model prompt keeps navigation and implementation contracts separate
   assert.match(prompt, /sourceUseCaseId/);
   assert.match(prompt, /下游聚合设计模型/);
   assert.match(prompt, /首次生成必须同时返回 models 和完整 designModelTraceability/);
+  assert.match(prompt, /elementId 必须匹配对应模型内真实存在的 id，包括嵌套事件流的 id/);
+  assert.match(prompt, /不得把 order 顺序号当作元素 id/);
   assert.doesNotMatch(prompt, /系统会在模型结构解析成功后按元素清单确定性补齐可追踪关系/);
   assert.match(prompt, /禁止只生成模型后再补来源/);
   assert.match(prompt, /每个设计业务元素和 relationship 必须在首次生成时至少声明一个直接上游元素/);
@@ -506,7 +508,7 @@ test("design traceability prompts require actual direct upstream mappings", () =
   assert.match(prompt, /targets 引用本次实际提供的直接上游，允许需求模型或设计模型/);
   assert.match(prompt, /每个设计业务元素和 relationship 必须在首次生成时至少声明一个直接上游元素/);
   assert.match(prompt, /不要为 swimlane、start\/end\/flow_final\/merge\/fork\/join/);
-  assert.match(prompt, /不得使用待确认、低置信或系统猜测的映射/);
+  assert.match(prompt, /引用是否有效仅按对应模型及真实元素 id 匹配/);
   assert.doesNotMatch(prompt, /返回格式必须是 \{"models"/);
 
   const repairPrompt = buildRepairDesignTraceabilityPrompt(

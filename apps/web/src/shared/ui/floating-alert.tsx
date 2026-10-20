@@ -130,6 +130,8 @@ function FloatingAlertCard({ alert, onDismiss }: { alert: FloatingAlertEntry; on
 
 export function FloatingAlertProvider({ children }: { children: React.ReactNode }) {
   const [alerts, setAlerts] = React.useState<FloatingAlertEntry[]>([])
+  const [portalTarget, setPortalTarget] = React.useState<HTMLElement | null>(null)
+  React.useEffect(() => { setPortalTarget(document.body) }, [])
   const reduceMotion = useReducedMotion()
   const dismissAlert = React.useCallback((id: string) => setAlerts(current => current.filter(alert => alert.id !== id)), [])
   const showAlert = React.useCallback((input: FloatingAlertInput) => {
@@ -153,11 +155,9 @@ export function FloatingAlertProvider({ children }: { children: React.ReactNode 
     pending.forEach(listener)
     return () => { floatingAlertListeners.delete(listener) }
   }, [showAlert])
-  const overlayPortalTarget = typeof document === 'undefined'
-    ? null
-    : document.querySelector<HTMLElement>('[data-slot="dialog-content"][data-open], [data-slot="drawer-content"]')
+  // Body-level live regions stay above nested modal stacking contexts and outside clipped popups.
   const viewport = (
-    <div className='font-sans pointer-events-none fixed inset-x-4 top-4 z-[100] mx-auto flex max-w-xl flex-col items-center gap-2 sm:top-20' aria-live='polite' aria-atomic='false'>
+    <div data-slot='floating-alert-viewport' className='font-sans pointer-events-none fixed inset-x-4 top-4 z-[100] mx-auto flex max-w-xl flex-col items-center gap-2 sm:top-20' aria-live='polite' aria-atomic='false'>
       <AnimatePresence initial={false} mode='popLayout'>
         {alerts.map(alert => (
           <motion.div
@@ -181,7 +181,7 @@ export function FloatingAlertProvider({ children }: { children: React.ReactNode 
   return (
     <FloatingAlertContext.Provider value={value}>
       {children}
-      {overlayPortalTarget ? createPortal(viewport, overlayPortalTarget) : viewport}
+      {portalTarget ? createPortal(viewport, portalTarget) : null}
     </FloatingAlertContext.Provider>
   )
 }

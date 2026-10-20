@@ -66,9 +66,8 @@ describe("workspace-session generation task actions", () => {
             id: "class",
             label: "设计类图",
             status: "pending_review",
-            message: "有 1 条低置信追踪关系需复核",
+            message: "模型结构检查待处理",
             errorMessage: null,
-            pendingReviewCount: 1,
           },
         ],
       });

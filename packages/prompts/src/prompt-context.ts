@@ -31,9 +31,7 @@ export function compactPromptTraceability(value: unknown): unknown {
       ...(entry.targets ? { targets: rows(entry.targets).map(ref) } : {}),
       ...(entry.upstreamDesignRefs ? { upstreamDesignRefs: rows(entry.upstreamDesignRefs).map(ref) } : {}),
       ...(entry.mappingSource ? { mappingSource: entry.mappingSource } : {}),
-      ...(entry.reviewStatus ? { reviewStatus: entry.reviewStatus } : {}),
-      ...(entry.confidence ? { confidence: entry.confidence } : {}),
-      ...((entry.reviewStatus === "pending" || entry.confidence === "low" || /相似|similar|候选/i.test(entry.rationale ?? "")) && entry.rationale ? { rationale: entry.rationale } : {}),
+      ...(entry.rationale ? { rationale: entry.rationale } : {}),
     };
   });
 }
@@ -94,7 +92,7 @@ export function reviewPromptContext(stage: ModelingStage, model: AnyDiagramModel
     ...(traceability ? { traceability: compactPromptTraceability(traceability) } : {}),
     ...(requirementTraceability ? { requirementTraceability: compactPromptTraceability(requirementTraceability) } : {}),
     ...(referenceIndex.length ? { referenceIndex } : {}),
-    referenceFormat: "引用数组为 [modelId或null, diagramKind, elementId]；pending/低置信映射仅用于定位，不能作为业务已确认的证明。",
+    referenceFormat: "引用数组为 [modelId或null, diagramKind, elementId]；引用按对应模型中真实存在的元素 id 匹配。",
   };
 }
 

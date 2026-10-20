@@ -52,3 +52,19 @@ test("model tasks and returned request snapshots cannot mutate each other's hist
   assert.doesNotMatch(JSON.stringify(second.messages), /"modelId":"first"/);
   assert.deepEqual(initial, createMessages("source"));
 });
+
+test("artifact branches inherit generation history and spent repairs without sharing later turns", () => {
+  const original = new ModelGenerationConversation("batch", createMessages("完整生成依据"), 2);
+  original.accept('{"models":[]}');
+  original.prepare(new Error("首次生成错误"));
+  original.accept('{"models":[{"modelId":"first"},{"modelId":"second"}]}');
+  const prefix = original.messages;
+  const first = original.fork("first"), second = original.fork("second");
+  first.prepare(new Error("只修复第一个模型"));
+  assert.deepEqual(first.messages.slice(0, prefix.length), prefix);
+  assert.deepEqual(second.messages, prefix);
+  assert.deepEqual(original.messages, prefix);
+  assert.equal(first.attempts, 2);
+  assert.equal(second.attempts, 1);
+  assert.throws(() => first.prepare(new Error("预算不能重置")), /共享 2 次/);
+});

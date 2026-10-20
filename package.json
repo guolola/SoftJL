@@ -2,7 +2,7 @@
   "name": "softjl-community",
   "private": true,
   "license": "Apache-2.0",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "devDependencies": {
     "@types/node": "22.15.21",
     "concurrently": "9.1.2",

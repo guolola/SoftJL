@@ -138,7 +138,6 @@ export function requirementTargetCardState(input: RequirementTargetCardStateInpu
     isAnalysisDiagram,
     linkedRules,
     associationMode: sources.mode,
-    pendingReferenceCount: sources.pendingCount,
     pendingAutoReviews,
     sourceCount: isAnalysisDiagram
       ? Number(hasUseCaseSourceForAnalysis)

@@ -1155,6 +1155,7 @@ test("contracts describe user-visible provider config DTOs without secrets", () 
         status: "active",
         riskState: "medium",
         quota: "unlimited",
+        updatedAt: "2026-10-01T00:00:00.000Z",
         lastUsedAt: null,
         scopeType: "system",
         scopeId: null,
@@ -1163,6 +1164,7 @@ test("contracts describe user-visible provider config DTOs without secrets", () 
     ],
   });
   assert.equal(list.providerConfigs[0]?.scopeType, "system");
+  assert.equal(list.providerConfigs[0]?.updatedAt, "2026-10-01T00:00:00.000Z");
   assert.throws(() =>
     providerConfigListResponseSchema.parse({
       providerConfigs: [
@@ -1578,45 +1580,13 @@ test("contracts require element-level traceability for generated model results",
   );
 });
 
-test("contracts mark auto-filled design traceability as pending review", () => {
-  const designModelsWithPendingTrace = designDiagramModelsResultSchema.parse({
-    models: [],
-    designModelTraceability: [
-      {
-        source: {
-          diagramKind: "class",
-          elementId: "class-loan-service",
-          elementKind: "class",
-          label: "LoanService",
-        },
-        targets: [
-          {
-            diagramKind: "usecase",
-            elementId: "uc_borrow_book",
-            elementKind: "usecase",
-            label: "借书",
-          },
-        ],
-        mappingSource: "auto-filled-pending-review",
-        reviewStatus: "pending",
-        confidence: "low",
-        rationale: "LLM 修复后仍缺少该设计元素映射，系统自动补齐。",
-      },
-    ],
-  });
-
-  assert.equal(
-    designModelsWithPendingTrace.designModelTraceability[0]?.mappingSource,
-    "auto-filled-pending-review",
-  );
-  assert.equal(
-    designModelsWithPendingTrace.designModelTraceability[0]?.reviewStatus,
-    "pending",
-  );
-  assert.equal(
-    designModelsWithPendingTrace.designModelTraceability[0]?.confidence,
-    "low",
-  );
+test("contracts reject removed mapping review and confidence fields", () => {
+  const source = { diagramKind: "class", elementId: "service", elementKind: "class", label: "Service" };
+  const target = { diagramKind: "usecase", elementId: "borrow", elementKind: "usecase", label: "借书" };
+  for (const removed of [{ reviewStatus: "pending" }, { reviewStatus: "confirmed" }, { confidence: "low" }, { mappingSource: "auto-filled-pending-review" }]) {
+    assert.equal(designDiagramModelsResultSchema.safeParse({ models: [], designModelTraceability: [{ source, targets: [target], ...removed }] }).success, false);
+    assert.equal(diagramModelsResultSchema.safeParse({ models: [], requirementModelTraceability: [{ ruleId: "r1", target, ...removed }] }).success, false);
+  }
 });
 
 test("contracts accept use-case scoped sequence models and upstream design refs", () => {

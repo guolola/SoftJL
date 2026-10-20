@@ -927,11 +927,9 @@ export type ModelElementRef = z.infer<typeof modelElementRefSchema>;
 export const requirementModelTraceabilityEntrySchema = z.object({
   ruleId: z.string().min(1),
   target: modelElementRefSchema,
-  mappingSource: z.enum(["llm", "auto-filled-pending-review"]).optional(),
-  reviewStatus: z.enum(["confirmed", "pending"]).optional(),
-  confidence: z.enum(["high", "medium", "low"]).optional(),
+  mappingSource: z.enum(["llm"]).optional(),
   rationale: z.string().min(1).optional(),
-});
+}).strict();
 export type RequirementModelTraceabilityEntry = z.infer<
   typeof requirementModelTraceabilityEntrySchema
 >;
@@ -941,12 +939,10 @@ export const designModelTraceabilityEntrySchema = z.object({
   targets: z.array(modelElementRefSchema).min(1),
   upstreamDesignRefs: z.array(modelElementRefSchema).optional(),
   mappingSource: z
-    .enum(["llm", "derived-from-endpoints", "auto-filled-pending-review"])
+    .enum(["llm", "derived-from-endpoints"])
     .optional(),
-  reviewStatus: z.enum(["confirmed", "pending"]).optional(),
-  confidence: z.enum(["high", "medium", "low"]).optional(),
   rationale: z.string().min(1).optional(),
-});
+}).strict();
 export type DesignModelTraceabilityEntry = z.infer<
   typeof designModelTraceabilityEntrySchema
 >;

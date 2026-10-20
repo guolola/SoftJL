@@ -11,7 +11,7 @@ import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "./mo
 import { umlAlias } from "./plantuml-text.js";
 
 function draw(model: AnyDiagramModel, stage: ModelingStage = "design") {
-  return (stage === "design" ? generateDesignPlantUmlArtifacts([model as never]) : generatePlantUmlArtifacts([model as never]))[0]!;
+  return (stage === "design" ? generateDesignPlantUmlArtifacts([model as never]) : generatePlantUmlArtifacts([model as never], stage))[0]!;
 }
 const root = fileURLToPath(new URL("../../../../../", import.meta.url));
 const jars = resolve(root, "plantuml/build/libs");
@@ -26,10 +26,16 @@ function compile(source: string) {
   assert.doesNotMatch(result.stdout, /Syntax Error|An error has occurred/);
   return result.stdout;
 }
-for (const stage of ["requirements", "design"] as const) for (const schema of getStageModelSchemas(stage)) {
+for (const stage of ["feasibility", "requirements", "design"] as const) for (const schema of getStageModelSchemas(stage)) {
   const kind = schema.shape.diagramKind.value;
   test(`${stage}/${kind}: actual PlantUML compile and model coverage`, () => {
-    const model = modelFixture(stage, kind), artifact = draw(model, stage), svg = compile(artifact.source);
+    const model = modelFixture(stage, kind);
+    model.notes = ["MODEL_NOTES_EXCLUDED_FROM_DIAGRAM", "本模型仅依据已确认的业务规则构建。"];
+    const artifact = draw(model, stage), svg = compile(artifact.source);
+    assert.doesNotMatch(artifact.source, /\blegend\b|MODEL_NOTES_EXCLUDED_FROM_DIAGRAM|活动图：显式图形映射/);
+    assert.doesNotMatch(svg, /MODEL_NOTES_EXCLUDED_FROM_DIAGRAM/);
+    assert.ok(!artifact.renderMapping?.auxiliary?.some((item) => item.kind === "legend"));
+    assert.deepEqual(artifact, draw({ ...model, notes: [] }, stage), "Model notes must not affect diagrams or their review mapping");
     for (const item of getModelGraphElements(model)) {
       assert.ok(artifact.renderMapping?.elements.some((entry) => entry.elementId === item.id));
       if (kind !== "function") assert.ok(svg.includes(umlAlias(item.id)), `${kind}: SVG omitted ${item.id}`);
@@ -149,7 +155,7 @@ test("review mapping preserves labels, symbols, ownership and distinct parallel 
   assert.ok(artifact.renderMapping?.relationships.find((item) => item.relationshipId === "alternate")?.statement?.includes("数量<10"));
   assert.equal(artifact.renderMapping?.relationships[0]?.symbol, "-->");
   assert.equal(artifact.renderMapping?.elements.find((item) => item.elementId === "work")?.ownerId, "system");
-  assert.ok(artifact.renderMapping?.auxiliary?.some((item) => item.kind === "legend"));
+  assert.ok(!artifact.renderMapping?.auxiliary?.some((item) => item.kind === "legend"));
   compile(artifact.source);
 });
 

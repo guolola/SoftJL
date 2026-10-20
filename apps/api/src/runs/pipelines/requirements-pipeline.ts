@@ -13,6 +13,7 @@ import { withRequirementTokenUsage } from "../records/requirement-token-usage.js
 import { withRunReasoning } from "./shared/run-reasoning.js";
 import {
   artifactReadyRunEventSchema,
+  requirementModelTraceabilityEntrySchema,
   completedRunEventSchema,
   diagramErrorSchema,
   stageProgressRunEventSchema,
@@ -217,7 +218,7 @@ function mergeRequirementModels(
 }
 
 function coerceAnalysisModelForUseCase(
-  result: Awaited<ReturnType<typeof generateAnalysisModelWithRepair>>,
+  result: Pick<Awaited<ReturnType<typeof generateAnalysisModelWithRepair>>, "models" | "requirementModelTraceability">,
   useCase: UseCaseForAnalysis,
 ) {
   const analysisModels = result.models.filter(
@@ -340,7 +341,7 @@ async function generateAnalysisModelWithRepair(
         kind: "parsed_model",
         parsedData: result,
       });
-      return result;
+      return { ...result, conversation: repair };
     } catch (error) {
       logFailedStructuredOutput(
         "generate_models",
@@ -588,7 +589,7 @@ export async function generateModelsWithRepair(
         kind: "parsed_model",
         parsedData: filteredParsed,
       });
-      return filteredParsed;
+      return { ...filteredParsed, conversation: repair };
     } catch (error) {
       logFailedStructuredOutput(
         "generate_models",
@@ -672,14 +673,36 @@ export async function runStagePipeline(
   const renderFailures: string[] = [];
   let diagramErrors: Record<string, DiagramError> = {};
 
-  const renderRequirementModelArtifact = async <T extends DiagramModelSpec>(model: T, traceability: typeof requirementModelTraceability) => {
+  const renderRequirementModelArtifact = async <T extends DiagramModelSpec>(model: T, traceability: typeof requirementModelTraceability, conversation: ModelGenerationConversation) => {
     throwIfRunCancelled(record);
     try {
+      const modelTrace = (candidate: DiagramModelSpec, value: unknown) => requirementModelTraceabilityEntrySchema.array().parse(value)
+        .filter(entry => entry.target.diagramKind === candidate.diagramKind && (!candidate.modelId || entry.target.modelId === candidate.modelId));
       const checked = await reviewRenderedArtifact({
         record, providerSettings, llmTransport, renderClient, model, mutable: true,
         basis: { stage: "requirements", baseline: snapshot.requirementBaseline, rules: snapshot.rules,
           upstreamModels: models, traceability },
-
+        validateTraceability: (candidate, value) => assertRequirementMappings([candidate as DiagramModelSpec], snapshot.rules, modelTrace(candidate as DiagramModelSpec, value)),
+        generationRepair: {
+          conversation: conversation.fork(model.modelId ?? model.diagramKind),
+          parse: (raw, current) => {
+            let parsed: { models: DiagramModelSpec[]; requirementModelTraceability: RequirementModelTraceabilityEntry[] };
+            if (current.diagramKind === "analysis") {
+              const useCaseModel = models.find(source => source.diagramKind === "usecase");
+              const useCase = useCaseModel && useCasesFromModel(useCaseModel).find(useCase => useCase.id === current.sourceUseCaseId);
+              if (!useCase) throw new Error("修复对象的上游用例不存在");
+              parsed = coerceAnalysisModelForUseCase({ models: parseGeneratedAnalysisModels(raw).models as AnalysisRequirementModel[], requirementModelTraceability: [] }, useCase);
+            } else {
+              parsed = parseRequirementDiagramModelsResult(raw, snapshot.rules, true);
+            }
+            const candidates = parsed.models.filter(candidate => candidate.diagramKind === current.diagramKind && candidate.modelId === current.modelId);
+            if (candidates.length !== 1 || parsed.models.length !== 1) throw new Error("结构修复必须只返回当前模型并保持模型 ID");
+            const candidate = candidates[0]!;
+            const sources = modelTrace(candidate, parsed.requirementModelTraceability);
+            assertRequirementMappings([candidate], snapshot.rules, sources);
+            return { model: candidate, traceability: sources };
+          },
+        },
       });
       throwIfRunCancelled(record);
       // Publish the accepted tuple together; rejected candidates stay private.
@@ -889,7 +912,7 @@ export async function runStagePipeline(
             "（精简重试）",
           );
         }
-        result.models = await Promise.all(result.models.map((model) => renderRequirementModelArtifact(model, result.requirementModelTraceability)));
+        result.models = await Promise.all(result.models.map((model) => renderRequirementModelArtifact(model, result.requirementModelTraceability, result.conversation)));
         result.requirementModelTraceability = requirementModelTraceability.filter((entry) => result.models.some((model) => model.modelId ? entry.target.modelId === model.modelId : entry.target.diagramKind === model.diagramKind)) as typeof result.requirementModelTraceability;
         models = [
           ...models.filter((model) => model.diagramKind !== diagram),
@@ -1078,7 +1101,7 @@ export async function runStagePipeline(
             );
           }
           const result = coerceAnalysisModelForUseCase(rawResult, useCase);
-          result.models = await Promise.all(result.models.map((model) => renderRequirementModelArtifact(model, result.requirementModelTraceability)));
+          result.models = await Promise.all(result.models.map((model) => renderRequirementModelArtifact(model, result.requirementModelTraceability, rawResult.conversation)));
         result.requirementModelTraceability = requirementModelTraceability.filter((entry) => result.models.some((model) => model.modelId ? entry.target.modelId === model.modelId : entry.target.diagramKind === model.diagramKind)) as typeof result.requirementModelTraceability;
           models = mergeRequirementModels(models, result.models);
           requirementModelTraceability = [

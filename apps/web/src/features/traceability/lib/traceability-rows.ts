@@ -25,9 +25,6 @@ import {
 } from "../../../entities/diagram/lib/model-details";
 import type { useWorkspaceSession } from "../../workspace-session/state";
 
-const AUTO_FILLED_PENDING_REVIEW_NOTE =
-  "由系统自动建立候选映射，需复核。";
-
 export type RowStatus = "mapped" | "unmapped";
 export type MatrixScope = {
   diagramKind: DiagramKind | DesignDiagramKind;
@@ -166,7 +163,6 @@ export type TraceabilityRowCopy = {
   semanticKindLabel: (kind: keyof typeof SEMANTIC_KIND_META) => string;
   requirementGroupLabel: (diagramKind: DiagramKind | DesignDiagramKind) => string;
   designGroupLabel: (diagramKind: DiagramKind | DesignDiagramKind) => string;
-  autoFilledPendingReviewNote: string;
   unnamedEventFlow: string;
   step: (order?: string) => string;
   systemResponse: (response: string) => string;
@@ -175,8 +171,6 @@ export type TraceabilityRowCopy = {
   missingSourceUseCaseOrEventFlow: string;
   sourceUseCase: (label: string) => string;
   sourceUseCaseMissing: string;
-  pending: (note: string) => string;
-  confidence: (confidence: string) => string;
   endpointDerived: string;
   mappingDescription: (note: string) => string;
   sourceUseCaseRealization: (modelLabel: string, elementLabel?: string) => string;
@@ -207,7 +201,6 @@ export const DEFAULT_TRACEABILITY_ROW_COPY: TraceabilityRowCopy = {
     DIAGRAM_META[diagramKind as DiagramType]?.label ?? String(diagramKind),
   designGroupLabel: (diagramKind) =>
     DESIGN_DIAGRAM_META[diagramKind as DesignDiagramType]?.label ?? String(diagramKind),
-  autoFilledPendingReviewNote: AUTO_FILLED_PENDING_REVIEW_NOTE,
   unnamedEventFlow: "未命名事件流",
   step: (order) => (order ? `步骤 ${order}` : "步骤"),
   systemResponse: (response) => `系统响应：${response}`,
@@ -216,8 +209,6 @@ export const DEFAULT_TRACEABILITY_ROW_COPY: TraceabilityRowCopy = {
   missingSourceUseCaseOrEventFlow: "缺少来源用例或事件流",
   sourceUseCase: (label) => `来源用例：${label}`,
   sourceUseCaseMissing: "来源用例：未找到",
-  pending: (note) => `待确认：${note}`,
-  confidence: (confidence) => `置信度：${confidence}`,
   endpointDerived: "由端点映射推导",
   mappingDescription: (note) => `映射说明：${note}`,
   sourceUseCaseRealization: (modelLabel, elementLabel) =>
@@ -257,7 +248,7 @@ function hasInteractiveReviewText(text: string) {
   return /未找到明确(?:上游)?来源|请在跟踪矩阵|采纳|忽略|确认是否采纳/u.test(text);
 }
 
-function traceabilityDisplayNote(value: string | undefined, fallback = AUTO_FILLED_PENDING_REVIEW_NOTE) {
+function traceabilityDisplayNote(value: string | undefined, fallback: string) {
   const text = value?.trim();
   if (!text || hasInteractiveReviewText(text)) return fallback;
   return text;
@@ -516,8 +507,6 @@ export function buildRequirementRows(
     Array<{
       rule: RequirementRule;
       mappingSource?: string;
-      reviewStatus?: string;
-      confidence?: string;
       rationale?: string;
     }>
   >();
@@ -534,9 +523,7 @@ export function buildRequirementRows(
       {
         rule,
         mappingSource: entry.mappingSource,
-        reviewStatus: entry.reviewStatus,
-        confidence: entry.confidence,
-        rationale: entry.rationale,
+              rationale: entry.rationale,
       },
     ]);
   }
@@ -545,17 +532,8 @@ export function buildRequirementRows(
   return refsForRequirementModels(models, scope, copy).map(({ ref, typeLabel, description }) => {
     if (ref.diagramKind === "analysis") return analysisRows.get(refKey(ref))!;
     const mappedEntries = traceByTarget.get(refKey(ref)) ?? [];
-    const confirmedEntries = mappedEntries.filter(entry =>
-      entry.confidence !== "low" && entry.reviewStatus !== "pending" &&
-      entry.mappingSource !== "auto-filled-pending-review",
-    );
     // Use current explicit mappings. Historical coverage may have used retired semantic slots.
     const mappedRules = uniqueBy(mappedEntries.map((entry) => entry.rule), rule => rule.id);
-    const pendingEntry = mappedEntries.find(
-      (entry) =>
-        entry.mappingSource === "auto-filled-pending-review" ||
-        entry.reviewStatus === "pending",
-    );
     return {
       id: refKey(ref),
       label: ref.label,
@@ -564,20 +542,12 @@ export function buildRequirementRows(
       groupKey: ref.modelId ?? ref.diagramKind,
       groupLabel: requirementGroupLabel(ref.diagramKind, copy),
       scopeKey: ref.modelId ?? ref.diagramKind,
-      status: confirmedEntries.length > 0 && !/placeholder|todo|unknown|占位|未命名|孤立/iu.test(`${ref.label} ${ref.elementId}`) ? "mapped" : "unmapped",
-      mappingNote: pendingEntry
-        ? traceabilityDisplayNote(pendingEntry.rationale, copy.autoFilledPendingReviewNote)
-        : null,
+      status: mappedEntries.length > 0 ? "mapped" : "unmapped",
+      mappingNote: null,
       requirementRules: mappedRules,
       requirementElements: [],
       upstreamDesignElements: [],
       detailLines: [
-        ...(pendingEntry
-          ? [copy.pending(traceabilityDisplayNote(pendingEntry.rationale, copy.autoFilledPendingReviewNote))]
-          : []),
-        ...mappedEntries
-          .filter((entry) => entry.confidence)
-          .map((entry) => copy.confidence(entry.confidence ?? "")),
         ...mappedRules.map(
         (rule) => `${formatRuleId(rule.id)} [${getRuleDisplayLabel(rule)}] ${rule.text}`,
         ),
@@ -627,21 +597,13 @@ export function buildDesignRows(
       groupLabel: designGroupLabel(ref.diagramKind, copy),
       scopeKey: ref.modelId ?? ref.diagramKind,
       status: targets.length > 0 ? "mapped" : "unmapped",
-      mappingNote:
-        traceEntry?.mappingSource === "auto-filled-pending-review" ||
-        traceEntry?.reviewStatus === "pending"
-          ? traceabilityDisplayNote(traceEntry.rationale, copy.autoFilledPendingReviewNote)
-          : traceEntry?.mappingSource === "derived-from-endpoints"
+      mappingNote: traceEntry?.mappingSource === "derived-from-endpoints"
             ? traceabilityDisplayNote(traceEntry.rationale, copy.endpointDerived)
             : null,
       requirementRules: [],
       requirementElements: targets.filter(target => !isDesignTarget(target)),
       upstreamDesignElements,
       detailLines: [
-        ...(traceEntry?.mappingSource === "auto-filled-pending-review" ||
-        traceEntry?.reviewStatus === "pending"
-          ? [copy.pending(traceabilityDisplayNote(traceEntry.rationale, copy.autoFilledPendingReviewNote))]
-          : []),
         ...(traceEntry?.mappingSource === "derived-from-endpoints"
           ? [copy.mappingDescription(traceabilityDisplayNote(traceEntry.rationale, copy.endpointDerived))]
           : []),

@@ -25,7 +25,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Version-v2.2.2-2563eb?style=flat-square" alt="Current product version v2.2.2" />
+  <img src="https://img.shields.io/badge/Version-v2.2.3-2563eb?style=flat-square" alt="Current product version v2.2.3" />
   <img src="https://img.shields.io/badge/Frontend-React%20%2B%20Next.js-61dafb?style=flat-square" alt="React and Next.js" />
   <img src="https://img.shields.io/badge/API-Fastify%20%2B%20Zod-111827?style=flat-square" alt="Fastify and Zod" />
   <img src="https://img.shields.io/badge/UML-PlantUML-f59e0b?style=flat-square" alt="PlantUML" />
@@ -63,25 +63,26 @@ Review generated content, organize documents according to your school's requirem
 
 SoftJL Community is a self-hosted AI software engineering workspace, distributed as an independent source snapshot with a fresh Git history.
 
-## What changed in v2.2.2
+## What changed in v2.2.3
 
-This release aligns model generation, repair and dependency checks:
+This release improves model repair continuity and provider configuration:
 
-- Repair model structure and source mappings in the same task conversation, retaining exact earlier messages and returning complete corrected models within a shared five-repair limit.
-- Prevent dependent models from running in the same batch, including indirect design dependencies. Cards explain conflicts, bulk selection retains independent choices, and API guards enforce the same rules.
-- Mark existing analysis models and downstream designs stale when their actual upstream inputs change, with clearer source status and links.
-- Include explicit JSON instructions in JSON mode, including schema fallback, while preserving text and image inputs.
-- Keep model guidance readable with content-driven card heights, and draw project workflow connections as soon as the creation dialog becomes visible.
-- Keep username accounts, in-app invitations, project previews, live context occupancy and durable quick-modeling history from earlier releases.
+- Continue post-generation structure and provenance repairs in the original task conversation, retaining the spent budget while isolating sibling artifacts.
+- Validate source references against real model elements, including nested flows and qualified field IDs. Publish the accepted model, mappings and rendered output together.
+- Manage providers in a table with status, update time and a single enabled selection; only the owner can edit or delete personal credentials.
+- Search discovered models with provider icons and output-mode badges. Reuse successful discovery probes when saving, while retaining server address safety checks.
+- Save workspace preferences independently from provider drafts; show actionable errors above configuration dialogs without closing them.
 
 This release uses the current `current_platform_schema_v3` installation baseline. Existing v1/v2 databases are rejected; use a clean database. SMTP and emailed invitation links are retired.
+
+Mapping metadata fields `reviewStatus`, `confidence` and the `auto-filled-pending-review` value are retired. Workspaces containing them are rejected by the current contract; recreate affected projects and models. No automatic data conversion is provided.
 
 ## Generation workflow
 
 The generation workflow focuses on shorter waits and fewer repeated model inputs.
 
 - **Scoped context**: send task dependencies and the selected use case with its include/extend relationships; retain business constraints and complete target models.
-- **Task-local model repair**: append validation feedback to the retained model conversation; correct structure, references and provenance together within five repairs. Implementation plans and document sections retain their scoped patch protocol.
+- **Task-local model repair**: generation and rendering append feedback to the same retained conversation, share five repairs and publish validated model/mapping/render results together. Implementation plans and document sections retain their scoped patch protocol.
 - **Independent progress**: run independent design branches concurrently and retry failed model instances while retaining successful results.
 - **Two project modes**: start a conversational Standard project or use the complete Professional workflow. Both are available with your own provider; mode names do not indicate pricing tiers.
 - **Visible consumption**: task history reports provider-supplied token usage, including repairs and failed calls; unknown usage stays unknown.
@@ -204,7 +205,7 @@ The root `npm run dev` builds shared packages automatically; use `npm run build:
 
 ## Release and upgrades
 
-Current version: **v2.2.2**. See [release notes and setup requirements](release-notes.md). New installations initialize an empty database with `current_platform_schema_v3`; databases already using this baseline can continue to be used. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
+Current version: **v2.2.3**. See [release notes and setup requirements](release-notes.md). New installations initialize an empty database with `current_platform_schema_v3`; databases already using this baseline can continue to be used, subject to the current workspace contracts. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
 
 ## Online Access
 

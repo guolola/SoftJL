@@ -1,13 +1,13 @@
 // Verifies structural and provenance errors continue one model conversation and shared repair budget.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type DiagramModelSpec, type RequirementModelTraceabilityEntry } from "@uml-platform/contracts";
+import { useCaseParticipationGaps, type DiagramModelSpec, type RequirementModelTraceabilityEntry } from "@uml-platform/contracts";
 import type { LlmTransport } from "../../../llm.js";
 import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
 import { readDiagramReviewCounters } from "../../records/diagram-review-record.js";
 import type { RunRecord } from "../../records/run-record-store.js";
 import { createEmptySnapshot } from "../../records/snapshots.js";
-import { generateModelsWithRepair } from "../requirements-pipeline.js";
+import { generateModelsWithRepair, runStagePipeline } from "../requirements-pipeline.js";
 import { createRunLlmChunkHandlers } from "../shared/llm-chunk-events.js";
 import { collectModelRefs } from "../../../normalizers/traceability/traceability-normalizer.js";
 
@@ -28,6 +28,35 @@ const settings = { apiBaseUrl: "https://llm.test", apiKey: "test-key", model: "t
 function record(): RunRecord {
   return { snapshot: createEmptySnapshot("coverage-repair", rule.text, ["function"], [rule]), events: [], listeners: new Set(), terminal: false };
 }
+
+test("post-generation participation repair continues the original conversation and saves complete sources", async () => {
+  const { modelFixture } = await import("../../../../../../packages/contracts/src/testing/model-fixtures.js");
+  const before = modelFixture("requirements", "usecase");
+  if (before.diagramKind !== "usecase") throw new Error("fixture");
+  before.useCases[0]!.primaryActorId = "actor";
+  before.relationships = [];
+  const corrected = { ...before, relationships: useCaseParticipationGaps(before).relationships };
+  const output = (model: typeof before) => JSON.stringify({ models: [model], requirementModelTraceability: collectModelRefs([model]).refs.map(target => ({ ruleId: rule.id, target })) });
+  const run: RunRecord = { snapshot: createEmptySnapshot("post-generation", rule.text, ["usecase"], [rule]), events: [], listeners: new Set(), terminal: false };
+  let calls = 0, renders = 0;
+  let firstMessages: import("../../../llm.js").ChatMessage[] = [];
+  await runStagePipeline(run, settings, { async *streamChatCompletion(input) {
+    calls++;
+    if (calls === 1) { firstMessages = structuredClone(input.messages); yield output(before); return; }
+    assert.deepEqual(input.messages.slice(0, firstMessages.length), firstMessages);
+    assert.equal(input.messages.at(-2)!.content, output(before));
+    assert.match(String(input.messages.at(-1)!.content), /映射仍缺少/);
+    yield output(corrected);
+  } }, async artifact => {
+    renders++;
+    return { svg: "<svg/>", renderMeta: { engine: "test", generatedAt: new Date().toISOString(), sourceLength: artifact.source.length, durationMs: 1 } };
+  });
+  assert.equal(calls, 2);
+  assert.equal(renders, 1);
+  assert.equal(run.snapshot.status, "completed");
+  assert.deepEqual(run.snapshot.models[0]!.relationships, corrected.relationships);
+  assert.ok(run.snapshot.requirementModelTraceability.some(entry => entry.target.elementId === corrected.relationships[0]!.id));
+});
 
 test("a multi-parent function tree can repair nodes, relationships and provenance in one complete response", async () => {
   const run = record();

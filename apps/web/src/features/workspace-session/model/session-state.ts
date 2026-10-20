@@ -78,7 +78,6 @@ export interface GenerationSubtask {
   waitMs?: number;
   estimatedWaitMs?: number;
   queueReason?: "global" | "provider" | "project" | "user" | "run";
-  pendingReviewCount?: number;
 }
 
 export interface GenerationTask {

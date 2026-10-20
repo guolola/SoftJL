@@ -15,6 +15,12 @@ import { modelFixture } from "../../../../../../packages/contracts/src/testing/m
 import { generateDesignPlantUmlArtifacts } from "../../../adapters/plantuml/model-renderer.js";
 import { RunCancelledError } from "../../records/run-cancellation.js";
 import { createCallActivity } from "../shared/call-activity.js";
+import { ModelGenerationConversation } from "../shared/model-generation-conversation.js";
+import { createMessages } from "../shared/llm-messages.js";
+import { parseDesignDiagramModelsResult } from "../../../normalizers/design/design-model-normalizer.js";
+import { assertDesignMappings } from "../shared/model-mapping-validation.js";
+import { collectModelRefs } from "../../../normalizers/traceability/traceability-normalizer.js";
+import { designModelTraceabilityEntrySchema } from "@uml-platform/contracts";
 
 function repairTransport(candidate?: DesignDiagramModelSpec): LlmTransport {
   return { async *streamChatCompletion(input) {
@@ -153,6 +159,82 @@ test("two correction rounds keep one artifact scope and never trigger an indepen
   assert.deepEqual(result.review.repairHistory?.map(item => item.status), ["rejected", "accepted"]);
   assert.deepEqual(result.model, corrected);
   assert.deepEqual(run.events.filter(event => event.type === "run_activity" && event.phase === "started").map(event => event.type === "run_activity" && [event.operation, event.round]), [["model_repair", 1], ["model_repair", 2]]);
+});
+
+test("late repair appends to the original generation history and publishes only synchronized sources", async () => {
+  const before = modelFixture("design", "class");
+  if (before.diagramKind !== "class") throw new Error("fixture");
+  before.relationships[0]!.id = "order";
+  const corrected = structuredClone(before);
+  corrected.relationships[0]!.id = "relation_order";
+  const upstream = modelFixture("requirements", "usecase");
+  const target = collectModelRefs([upstream]).refs.find(ref => ref.elementId === "case")!;
+  const bindings = (model: typeof before) => collectModelRefs([model]).refs.map(source => ({ source, targets: [target] }));
+  const stale = bindings(before), valid = bindings(corrected);
+  const conversation = new ModelGenerationConversation("class", createMessages("ORIGINAL_GENERATION_INPUT"));
+  const rejectedGeneration = JSON.stringify({ models: [], designModelTraceability: [] });
+  conversation.accept(rejectedGeneration);
+  conversation.prepare(new Error("EARLIER_GENERATION_DIAGNOSIS"));
+  const originalOutput = JSON.stringify({ models: [before], designModelTraceability: stale });
+  conversation.accept(originalOutput);
+  const prefix = conversation.messages;
+  const candidateOutputs = [
+    JSON.stringify({ models: [corrected], designModelTraceability: stale }),
+    JSON.stringify({ models: [corrected], designModelTraceability: valid }),
+  ];
+  const run = record();
+  const previous = createCallActivity({ record: run, stage: "generate_design_models", modelId: "class", subtaskId: "class", operation: "model_repair", round: 1 });
+  previous.onStart(); previous.onComplete();
+  let calls = 0, renders = 0;
+  const result = await reviewRenderedArtifact({
+    record: run, providerSettings: settings, model: before, mutable: true,
+    basis: { stage: "design", upstreamModels: [upstream], traceability: stale },
+    generationRepair: {
+      conversation,
+      parse: raw => {
+        const parsed = parseDesignDiagramModelsResult(raw, [upstream]);
+        assertDesignMappings(parsed.models, [upstream], parsed.designModelTraceability);
+        return { model: parsed.models[0]!, traceability: parsed.designModelTraceability };
+      },
+    },
+    validateTraceability: (model, traceability) => assertDesignMappings([model as DesignDiagramModelSpec], [upstream], designModelTraceabilityEntrySchema.array().parse(traceability)),
+    llmTransport: { async *streamChatCompletion(input) {
+      assert.deepEqual(input.messages.slice(0, prefix.length), prefix);
+      assert.equal(input.messages.at(-1)!.role, "user");
+      if (calls === 1) {
+        assert.equal(input.messages.at(-2)!.content, candidateOutputs[0]);
+        assert.match(String(input.messages.at(-1)!.content), /映射仍缺少.*relation_order/);
+      }
+      yield candidateOutputs[calls++]!;
+    } },
+    renderClient: async artifact => { renders++; return renderClient(artifact); },
+  });
+  assert.equal(calls, 2);
+  assert.equal(renders, 1);
+  assert.deepEqual(result.model, corrected);
+  assert.deepEqual(result.traceability, valid.map(binding => ({ ...binding, mappingSource: "llm" })));
+  assert.equal(result.review.repairAttempts, 3);
+  assert.deepEqual(result.review.repairHistory?.map(item => item.status), ["rejected", "accepted"]);
+  assert.equal(before.relationships[0]!.id, "order");
+  assert.deepEqual(stale, bindings(before));
+});
+
+test("a deterministic correction cannot publish a model whose source validation fails", async () => {
+  const before = modelFixture("requirements", "usecase");
+  if (before.diagramKind !== "usecase") throw new Error("fixture");
+  before.useCases[0]!.primaryActorId = "actor";
+  before.relationships = [];
+  let renders = 0;
+  await assert.rejects(reviewRenderedArtifact({
+    record: record(), providerSettings: settings, model: before, mutable: true,
+    basis: { stage: "requirements", traceability: [] },
+    validateTraceability: candidate => {
+      if (candidate.diagramKind === "usecase" && candidate.relationships.length) throw new Error("新关联缺少来源");
+    },
+    llmTransport: repairTransport(), renderClient: async artifact => { renders++; return renderClient(artifact); },
+  }), /新关联缺少来源/);
+  assert.equal(renders, 0);
+  assert.deepEqual(before.relationships, []);
 });
 
 test("structural review rejects the retired complete-model envelope instead of unwrapping it", async () => {

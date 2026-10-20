@@ -71,6 +71,6 @@ test("first design output retains declared sources without coverage or reference
   assert.equal(parseOutput(traceability).designModelTraceability.length, 3);
   assert.deepEqual(parseOutput([]).designModelTraceability, []);
   assert.equal(parseOutput(traceability.slice(0, 1)).designModelTraceability.length, 1);
-  assert.equal(parseOutput(traceability.map(entry => ({ ...entry, confidence: "low" }))).designModelTraceability.length, 3);
+  assert.throws(() => parseOutput(traceability.map(entry => ({ ...entry, confidence: "low" }))), /Unrecognized key/);
   assert.equal(parseOutput(traceability.map(entry => ({ ...entry, targets: [...entry.targets, { ...entry.targets[0], elementId: "ef-real-nested-flow" }] }))).designModelTraceability[0]!.targets.length, 2);
 });

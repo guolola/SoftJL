@@ -705,7 +705,6 @@ export function TextRequirementView({
             targetColorIndex={DIAGRAM_ORDER.indexOf(inspectedDiagram)}
             rules={inspectedRules}
             ruleMode={inspectedDiagram === "analysis" ? undefined : inspectedSources.mode}
-            pendingReferenceCount={inspectedSources.pendingCount}
             resolveState={resolveUpstreamState}
           />}
       </PageContainer>

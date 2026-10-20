@@ -32,7 +32,7 @@ function savedState() {
           })),
         },
     models: { domain: classModel("domain") },
-    requirementModelTraceability: [{ ruleId: "r1", target: ref("domain", "loan"), reviewStatus: "confirmed" }],
+    requirementModelTraceability: [{ ruleId: "r1", target: ref("domain", "loan") }],
   };
   state.rules = state.requirementBaseline.rules.map(({ requirementId, origin, ...rule }) => rule);
   return state;
@@ -53,7 +53,7 @@ test("every design kind inherits saved acceptance through canonical traces witho
     ...savedState(), designModels: Object.fromEntries(designs.map((model) => [model.modelId!, model])),
     designModelTraceability: designs.map((model) => ({
       source: ref(model.modelId!, model.diagramKind === "table" ? "loans.id" : "service", model.diagramKind),
-      targets: [ref("domain", "loan")], reviewStatus: "confirmed",
+      targets: [ref("domain", "loan")],
     })),
   };
   const before = structuredClone(state);
@@ -80,8 +80,8 @@ test("upstream design references preserve dependency closure and missing refs re
   const state = {
     ...savedState(), designModels: { service: classModel("service"), storage: classModel("storage"), other: classModel("other") },
     designModelTraceability: [
-      { source: ref("service", "loan"), targets: [ref("domain", "loan")], upstreamDesignRefs: [ref("storage", "loan")], reviewStatus: "confirmed" },
-      { source: ref("storage", "loan"), targets: [ref("missing-domain", "loan")], upstreamDesignRefs: [ref("service", "loan")], reviewStatus: "confirmed" },
+      { source: ref("service", "loan"), targets: [ref("domain", "loan")], upstreamDesignRefs: [ref("storage", "loan")] },
+      { source: ref("storage", "loan"), targets: [ref("missing-domain", "loan")], upstreamDesignRefs: [ref("service", "loan")] },
     ],
   };
   const context = buildContext(state, { requirementIds: ["REQ-001"], artifactIds: [] });
@@ -98,8 +98,8 @@ test("model IDs cannot attach traces across diagram kinds or analysis and design
   const state = {
     ...savedState(), designModels: { domain: classModel("domain"), wrong: classModel("wrong") },
     designModelTraceability: [
-      { source: ref("domain", "loan"), targets: [ref("domain", "loan")], reviewStatus: "confirmed" },
-      { source: ref("wrong", "loan", "sequence"), targets: [ref("domain", "loan")], reviewStatus: "confirmed" },
+      { source: ref("domain", "loan"), targets: [ref("domain", "loan")] },
+      { source: ref("wrong", "loan", "sequence"), targets: [ref("domain", "loan")] },
     ],
   };
   const designs = extractSourceArtifacts(state).artifacts.filter((artifact) => artifact.stage === "design");

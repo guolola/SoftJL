@@ -11,9 +11,5 @@ export function requirementModelSources(input: {
   stale?: boolean;
 }) {
   const rules = candidateRulesForDiagram(input.rules, input.diagram);
-  const ids = new Set(rules.map(rule => rule.id));
-  const pendingCount = input.stale ? 0 : new Set(input.traceability.filter(entry =>
-    ids.has(entry.ruleId) && entry.target.diagramKind === input.diagram && entry.reviewStatus === "pending",
-  ).map(entry => entry.ruleId)).size;
-  return { mode: "mapped" as const, rules, pendingCount };
+  return { mode: "mapped" as const, rules };
 }

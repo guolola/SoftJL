@@ -11,7 +11,6 @@ import {
   normalizeDesignTraceabilityWithCoverage,
   normalizeRequirementTraceability,
   normalizeRequirementTraceabilityWithCoverage,
-  reconcileRequirementTraceabilityAfterRepair,
 } from "./traceability-normalizer.js";
 
 const rule = {
@@ -215,7 +214,7 @@ test("requirement traceability reports uncovered model elements and relationship
 });
 
 
-test("requirement traceability preserves pending review metadata", () => {
+test("requirement traceability preserves declared source rationale", () => {
   const normalized = normalizeRequirementTraceability(
     [
       {
@@ -226,9 +225,7 @@ test("requirement traceability preserves pending review metadata", () => {
           elementKind: "class",
           label: "UserDomain",
         },
-        mappingSource: "auto-filled-pending-review",
-        reviewStatus: "pending",
-        confidence: "low",
+        mappingSource: "llm",
         rationale: "系统兜底补齐，需复核。",
       },
     ],
@@ -236,9 +233,7 @@ test("requirement traceability preserves pending review metadata", () => {
     [requirementModel],
   );
 
-  assert.equal(normalized[0]?.mappingSource, "auto-filled-pending-review");
-  assert.equal(normalized[0]?.reviewStatus, "pending");
-  assert.equal(normalized[0]?.confidence, "low");
+  assert.equal(normalized[0]?.mappingSource, "llm");
   assert.equal(normalized[0]?.rationale, "系统兜底补齐，需复核。");
 });
 

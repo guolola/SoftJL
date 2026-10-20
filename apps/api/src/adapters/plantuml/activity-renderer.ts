@@ -41,6 +41,6 @@ export function renderActivityGraph(model: ActivityDiagramSpec): string {
     // Preserve edge identity even when several guards connect the same pair of nodes.
     lines.push(`' @relationship ${umlAlias(edge.id)}`, `${umlAlias(edge.sourceId)} --> ${umlAlias(edge.targetId)}${semantics.length ? ` : ${semantics.join("\\n")}` : ""}`);
   }
-  lines.push(`legend left\n活动图：显式图形映射；方形端点表示动作输入/输出引脚。\n${model.notes.map(umlText).join("\n")}\nendlegend`, "@enduml");
+  lines.push("@enduml");
   return lines.join("\n");
 }

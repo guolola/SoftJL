@@ -25,6 +25,7 @@ test("preloads global settings before the tab is selected without duplicate requ
     me: 0,
     providerConfigs: 0,
     billingSummary: 0,
+    temporaryTests: 0,
   };
 
   page.on("request", (request) => {
@@ -32,6 +33,7 @@ test("preloads global settings before the tab is selected without duplicate requ
     if (pathname === "/api/auth/me") requestCounts.me += 1;
     if (pathname === "/api/provider-configs") requestCounts.providerConfigs += 1;
     if (pathname === "/api/billing/summary") requestCounts.billingSummary += 1;
+    if (pathname === "/api/provider-configs/test-temporary") requestCounts.temporaryTests += 1;
   });
 
   await page.route("**/api/provider-configs", async (route) => {
@@ -62,6 +64,13 @@ test("preloads global settings before the tab is selected without duplicate requ
         ],
       }),
     );
+  });
+  await page.route("**/api/provider-configs/discover-models/stream", route => {
+    const failure = route.request().postDataJSON().apiKey === "incorrect-key";
+    const event = failure
+      ? { type: "error", code: "PROVIDER_AUTH_FAILED", message: "Provider model discovery failed", retryable: false, status: 401 }
+      : { type: "completed", result: { models: [{ id: "deepseek-ai/DeepSeek-V3", structuredOutputMode: "strict_json" }, { id: "gpt-5.6", structuredOutputMode: "json_object" }, { id: "gemini-3.1-pro", structuredOutputMode: "compatible" }], fetchedAt: now, sourceBaseUrl: "https://provider.example.test/v1" } };
+    return route.fulfill({ contentType: "text/event-stream", body: `data: ${JSON.stringify(event)}\n\n` });
   });
   await page.route("**/api/billing/summary", async (route) => {
     await route.fulfill(
@@ -134,38 +143,107 @@ test("preloads global settings before the tab is selected without duplicate requ
 
   const countsBeforeTabSwitch = { ...requestCounts };
   await dialog.getByRole("tab", { name: "模型配置" }).click();
-  await expect(dialog.getByLabel("模型来源")).toContainText("课程 OpenAI");
-  await expect(dialog.getByLabel("默认模型")).toContainText("gpt-5.6");
+  const providers = dialog.getByRole("table", { name: "模型配置" });
+  await expect(providers.getByRole("columnheader")).toHaveText(["供应商名称", "状态", "默认模型", "更新时间", "启用", "操作"]);
+  await expect(providers.getByText("课程 OpenAI")).toBeVisible();
+  await expect(providers.getByText("gpt-5.6")).toBeVisible();
+  await expect(providers.getByText("默认", { exact: true })).toBeVisible();
+  await expect(providers.getByRole("switch", { name: "启用 课程 OpenAI" })).toBeChecked();
+  await expect(providers.getByRole("button", { name: /编辑/ })).toHaveCount(0);
+  await expect(dialog.getByLabel("模型来源", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("switch", { name: "完成提示音" })).toHaveCount(0);
+  await dialog.getByRole("tab", { name: "工作台偏好" }).click();
+  await expect(dialog.getByRole("switch", { name: "完成提示音" })).toBeVisible();
+  await dialog.getByRole("tab", { name: "模型配置" }).click();
 
   await expect.poll(() => ({ ...requestCounts })).toEqual(countsBeforeTabSwitch);
 
-  // Real element measurements protect widths and alignment across both block layouts.
+  // The table scrolls inside its own container while the dialog fits both viewports.
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
-    const providerWidth = await dialog.getByLabel("模型来源").evaluate(element => element.getBoundingClientRect().width);
-    const modelWidth = await dialog.getByLabel("默认模型", { exact: true }).evaluate(element => element.getBoundingClientRect().width);
-    // Fractional layout pixels can differ while both controls share the same rendered width.
-    expect(Math.abs(providerWidth - modelWidth)).toBeLessThan(1);
+    const bounds = await dialog.boundingBox();
+    expect(bounds!.width).toBeLessThanOrEqual(width);
+    const tableContainer = dialog.locator('[data-slot="table-container"]');
+    expect((await tableContainer.boundingBox())!.width).toBeLessThanOrEqual(bounds!.width);
     await expect(dialog.locator("[data-page-description]")).not.toHaveText(/[。.]+$/u);
 
-  await dialog.getByRole("button", { name: "添加自己的模型密钥", exact: true }).click();
+  await dialog.getByRole("button", { name: "添加供应商", exact: true }).click();
     const creation = page.getByRole("dialog", { name: "添加供应商", exact: true });
     // The shared popup may animate even in a development build; measure after it reaches full size.
     await expect.poll(async () => {
       return await creation.locator("#provider-create-name").evaluate(element => element.getBoundingClientRect().height);
     }).toBe(36);
-    const inputBox = await creation.getByLabel("名称", { exact: true }).boundingBox();
-    const buttonBox = await creation.getByRole("button", { name: "获取模型列表", exact: true }).boundingBox();
-    expect(Math.abs(inputBox!.height - buttonBox!.height)).toBeLessThan(1);
-    expect(Math.abs(inputBox!.y - buttonBox!.y)).toBeLessThan(1);
-    const alignment = await creation.locator('[data-slot="card-content"]').evaluate(element => {
-      const icon = element.querySelector("svg")!.getBoundingClientRect();
-      const text = element.querySelector("p")!.getBoundingClientRect();
-      return Math.abs(icon.y + icon.height / 2 - text.y - text.height / 2);
-    });
-    expect(alignment).toBeLessThan(1);
-    const bounds = await creation.boundingBox();
-    expect(bounds!.height).toBeLessThanOrEqual(844 * 0.9 + 1);
+    const sections = [
+      creation.getByLabel("名称", { exact: true }),
+      creation.getByLabel("Base URL", { exact: true }),
+      creation.getByLabel("API Key", { exact: true }),
+      creation.getByRole("combobox", { name: "供应商默认模型" }),
+      creation.getByRole("button", { name: "获取模型列表", exact: true }),
+    ];
+    const positions = await Promise.all(sections.map(section => section.evaluate(element => element.getBoundingClientRect().top)));
+    positions.slice(1).forEach((position, index) => expect(position).toBeGreaterThan(positions[index]));
+    const fetchButton = creation.getByRole("button", { name: "获取模型列表", exact: true });
+    await expect(creation.getByRole("button", { name: "测试托管配置", exact: true })).toHaveCount(0);
+    await expect(creation.getByRole("button", { name: "保存供应商", exact: true })).toBeDisabled();
+    const assertVisibleAlert = async (message: string) => {
+      const alert = page.getByRole("alert").filter({ hasText: message });
+      await expect(alert).toBeVisible();
+      // Visibility alone does not detect another popup covering the message.
+      await expect.poll(() => alert.evaluate(element => {
+        const bounds = element.getBoundingClientRect();
+        return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
+      })).toBe(true);
+      await expect(creation).toBeVisible();
+      await alert.getByRole("button", { name: "关闭提示" }).click();
+      await expect(alert).toHaveCount(0);
+      await expect(creation).toBeVisible();
+    };
+    await fetchButton.click();
+    await assertVisibleAlert("请填写供应商名称");
+    await creation.getByLabel("名称", { exact: true }).fill("My provider");
+    await creation.getByLabel("Base URL", { exact: true }).fill("https://provider.example.test/v1");
+    await creation.getByLabel("API Key", { exact: true }).fill("incorrect-key");
+    await creation.getByLabel("Base URL", { exact: true }).fill("incorrect-url");
+    await fetchButton.click();
+    await assertVisibleAlert("请输入有效的 HTTP 或 HTTPS 服务地址。");
+    await creation.getByLabel("Base URL", { exact: true }).fill("https://provider.example.test/v1");
+    await fetchButton.click();
+    const authAlert = page.getByRole("alert").filter({ hasText: "模型供应商鉴权失败，请检查密钥和账号权限。" });
+    await expect(authAlert).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath(`provider-error-alert-${width}.png`) });
+    await assertVisibleAlert("模型供应商鉴权失败，请检查密钥和账号权限。");
+    await expect(creation.getByRole("button", { name: "保存供应商", exact: true })).toBeDisabled();
+    await creation.getByLabel("API Key", { exact: true }).fill("test-only-key");
+    await fetchButton.click();
+    const modelInput = creation.getByRole("combobox", { name: "供应商默认模型" });
+    await expect(modelInput).toHaveValue("deepseek-ai/DeepSeek-V3");
+    await creation.getByRole("button", { name: "展开模型列表" }).click();
+    await expect(page.getByRole("option", { name: "deepseek-ai/DeepSeek-V3" }).getByTestId("provider-icon-deepseek")).toBeVisible();
+    await expect(page.getByRole("option", { name: "gpt-5.6" }).getByTestId("provider-icon-openai")).toBeVisible();
+    await expect(page.getByRole("option", { name: "deepseek-ai/DeepSeek-V3" }).getByText("严格 JSON")).toBeVisible();
+    await expect(page.getByRole("option", { name: "gpt-5.6" }).getByText("JSON 模式")).toBeVisible();
+    await expect(page.getByRole("option", { name: "gemini-3.1-pro" }).getByText("兼容", { exact: true })).toBeVisible();
+    const popup = page.locator('[data-slot="combobox-content"]');
+    const inputGroup = creation.locator('[data-component="combobox-09"] [data-slot="input-group"]');
+    await expect.poll(async () => {
+      const menuBounds = (await popup.boundingBox())!;
+      const fieldBounds = (await inputGroup.boundingBox())!;
+      return Math.max(
+        Math.abs(menuBounds.width - fieldBounds.width),
+        Math.abs(menuBounds.x - fieldBounds.x),
+        Math.abs(menuBounds.x + menuBounds.width - fieldBounds.x - fieldBounds.width),
+      );
+    }).toBeLessThanOrEqual(0.5);
+    await page.screenshot({ path: test.info().outputPath(`provider-model-combobox-${width}.png`) });
+    await modelInput.fill("gpt");
+    await expect(page.getByRole("option", { name: "deepseek-ai/DeepSeek-V3" })).toHaveCount(0);
+    await page.getByRole("option", { name: "gpt-5.6" }).click();
+    await expect(modelInput).toHaveValue("gpt-5.6");
+    await expect(creation.getByRole("button", { name: "保存供应商", exact: true })).toBeEnabled();
+    await expect(creation.locator('[data-slot="input-group"]').getByText("JSON 模式")).toBeVisible();
+    expect(requestCounts.temporaryTests).toBe(0);
+    const creationBounds = await creation.boundingBox();
+    expect(creationBounds!.height).toBeLessThanOrEqual(844 * 0.9 + 1);
     await creation.getByRole("button", { name: "取消", exact: true }).click();
     await expect(dialog).toBeVisible();
   }

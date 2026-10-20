@@ -2805,15 +2805,15 @@ describe("App shell routes", () => {
     expect(screen.queryByRole("tab", { name: "模型" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "偏好" })).not.toBeInTheDocument();
     expect(screen.getAllByText("模型配置").length).toBeGreaterThan(0);
-    expect(screen.getByText("修改后自动重新生成规则")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "修改后自动重新生成规则" })).not.toBeInTheDocument();
     expect(screen.queryByText("深色主题")).not.toBeInTheDocument();
     expect(screen.queryByText("字号")).not.toBeInTheDocument();
-    expect(screen.getByText("修改后自动重新生成规则")).toBeInTheDocument();
-    expect(screen.getByText("显示过期模型横幅")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "修改后自动重新生成规则" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "显示过期模型横幅" })).not.toBeInTheDocument();
     expect(
       screen.queryByText("模型配置和工作台偏好集中在这里；登录态不会把明文密钥作为主路径保存。"),
     ).not.toBeInTheDocument();
-    expect(await screen.findByText(/课程 OpenAI 托管配置/u)).toBeInTheDocument();
+    expect(await screen.findByText("课程 OpenAI 托管配置")).toBeInTheDocument();
     expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(loadUserSettings()).toMatchObject({
@@ -2827,7 +2827,7 @@ describe("App shell routes", () => {
     expect(
       await screen.findByRole(
         "button",
-        { name: "添加自己的模型密钥" },
+        { name: "添加供应商" },
         { timeout: 5_000 },
       ),
     ).toBeEnabled();

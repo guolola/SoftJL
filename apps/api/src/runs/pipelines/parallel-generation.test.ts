@@ -635,7 +635,7 @@ test("requirement pipeline calls the LLM once per selected model and keeps succe
   }
 });
 
-test("requirement pipeline publishes declared actor-link repairs without inventing source mappings", async () => {
+test("requirement pipeline rejects actor-link repairs whose source mappings remain absent", async () => {
   const generated = JSON.parse(outputForKind("usecase"));
   generated.models[0].modelId = "custom-usecase";
   generated.models[0].actors.push({ ...generated.models[0].actors[0], id: "actor_panel", name: "控制面板", actorType: "external" });
@@ -644,17 +644,13 @@ test("requirement pipeline publishes declared actor-link repairs without inventi
     target: { diagramKind: "usecase", elementId: "actor_panel", elementKind: "actor", label: "控制面板" } });
   const snapshot = createEmptySnapshot("actor-repair", LIBRARY_REQUIREMENT_TEXT, ["usecase"], libraryRules);
   const record: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false };
-  await runStagePipeline(record, providerSettings, {
+  await assert.rejects(runStagePipeline(record, providerSettings, {
     async *streamChatCompletion() { yield JSON.stringify(generated); },
   }, async (artifact) => ({ svg: "<svg></svg>", renderMeta: {
     engine: "test", generatedAt: new Date().toISOString(), sourceLength: artifact.source.length, durationMs: 1,
-  } }));
-  assert.equal(snapshot.status, "completed");
-  assert.deepEqual(snapshot.diagramErrors, {});
-  assert.equal(snapshot.models[0].modelId, "custom-usecase");
-  assert.ok(snapshot.svgArtifacts.some((artifact) => artifact.modelId === "custom-usecase"));
-  const published = snapshot.models[0];
-  assert.ok(published.diagramKind === "usecase" && published.relationships.some((edge) => edge.id === "association:actor_panel:uc_borrow"));
+  } })), /映射仍缺少/);
+  assert.equal(snapshot.models.length, 0);
+  assert.equal(snapshot.svgArtifacts.length, 0);
   assert.equal(snapshot.requirementModelTraceability.some((entry) => entry.target.elementId === "association:actor_panel:uc_borrow"), false);
   assert.deepEqual(snapshot.rules, libraryRules);
 });

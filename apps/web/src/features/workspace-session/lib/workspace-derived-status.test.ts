@@ -113,8 +113,7 @@ describe("deriveWorkspaceStatus", () => {
           },
           targets: [requirementTrace[0]!.target],
           rationale: "设计类承接订单领域概念。",
-          confidence: "high",
-        },
+          },
       ],
       designModels: {
         "design-class": designClassModel,
@@ -170,8 +169,7 @@ describe("deriveWorkspaceStatus", () => {
           },
           targets: [requirementTrace[0]!.target],
           rationale: "设计类承接订单领域概念。",
-          confidence: "high",
-        },
+          },
       ],
       designModels: {
         "design-class": designClassModel,

@@ -17,7 +17,7 @@ describe("traceability row builders", () => {
     expect(overview).toHaveLength(3);
     expect(overview.every(row => row.status === "mapped")).toBe(true);
   });
-  it("counts only existing targets of allowed types and keeps pending duplicates from hiding confirmed mappings", () => {
+  it("counts only existing targets of allowed types and counts duplicate valid mappings once", () => {
     const model = {
       diagramKind: "function" as const, modelId: "config", title: "系统配置", summary: "配置", notes: [],
       nodes: [{ id: "configure", name: "系统配置", description: "安装时进行配置", sourceRequirementIds: ["r1"] }], relationships: [],
@@ -31,9 +31,8 @@ describe("traceability row builders", () => {
       { ...entry, ruleId: "missing" }, { ...entry, ruleId: "r2" },
       { ...entry, target: { ...entry.target, elementId: "missing" } },
       { ...entry, target: { ...entry.target, modelId: "other-model" } },
-      { ...entry, reviewStatus: "pending" as const }, { ...entry, confidence: "low" as const },
     ]) expect(buildRequirementRows(rules, { config: model }, [trace])[0]?.status).toBe("unmapped");
-    expect(buildRequirementRows(rules, { config: model }, [{ ...entry, reviewStatus: "pending" }, entry])[0]?.status).toBe("mapped");
+    expect(buildRequirementRows(rules, { config: model }, [entry, entry])[0]?.status).toBe("mapped");
     expect(buildRequirementRows(rules, { a: { ...model, modelId: "a" }, b: { ...model, modelId: "b" } }, [entry]).every(row => row.status === "unmapped")).toBe(true);
   });
   it("builds context coverage from people, external systems, and relationships only", () => {
@@ -82,7 +81,7 @@ describe("traceability row builders", () => {
     expect(rows[0]).toMatchObject({ status: "unmapped", mappingNote: "无效来源规则：R404" });
   });
 
-  it("surfaces pending auto-filled requirement mappings with confidence details", () => {
+  it("counts valid ID mappings without review metadata", () => {
     const rows = buildRequirementRows(
       [
         {
@@ -122,9 +121,7 @@ describe("traceability row builders", () => {
             elementKind: "class",
             label: "Book",
           },
-          mappingSource: "auto-filled-pending-review",
-          reviewStatus: "pending",
-          confidence: "low",
+          mappingSource: "llm",
           rationale: "系统按相关图类型兜底补齐，需人工复核。",
         },
       ],
@@ -132,13 +129,10 @@ describe("traceability row builders", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      status: "unmapped",
-      mappingNote: "系统按相关图类型兜底补齐，需人工复核。",
+      status: "mapped",
+      mappingNote: null,
     });
-    expect(rows[0]?.detailLines).toContain(
-      "待确认：系统按相关图类型兜底补齐，需人工复核。",
-    );
-    expect(rows[0]?.detailLines).toContain("置信度：low");
+    expect(rows[0]?.detailLines.join(" ")).not.toMatch(/待确认|置信度/);
   });
 
   it("counts explicit mappings without historical semantic coverage filters", () => {
@@ -307,9 +301,7 @@ describe("traceability row builders", () => {
               label: "借书",
             },
           ],
-          mappingSource: "auto-filled-pending-review",
-          reviewStatus: "pending",
-          confidence: "low",
+          mappingSource: "llm",
           rationale:
             "未找到明确上游来源，系统仅按最接近的需求元素临时补齐；请在跟踪矩阵中采纳、忽略或稍后处理。",
         },
@@ -324,9 +316,8 @@ describe("traceability row builders", () => {
     expect(rows[0]?.requirementElements.map((ref) => ref.label)).toEqual([
       "借书",
     ]);
-    expect(rows[0]?.mappingNote).toBe("由系统自动建立候选映射，需复核。");
+    expect(rows[0]?.mappingNote).toBeNull();
     expect(rows[0]?.detailLines).toEqual([
-      "待确认：由系统自动建立候选映射，需复核。",
       "来源用例实现设计：sequence:borrow-book / 借书服务调用",
       "需求元素：用例模型 / 借书",
     ]);

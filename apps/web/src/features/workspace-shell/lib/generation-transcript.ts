@@ -407,7 +407,7 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
           : undefined;
         call.message = !includeContent && step.stage === "verify_diagram_visual"
           ? modelProgressMessage("pending_review")
-          : visualReviewDetail(savedReview) ?? subtask.message ?? `有 ${subtask.pendingReviewCount ?? 1} 条追踪关系需复核`;
+          : visualReviewDetail(savedReview) ?? subtask.message ?? modelProgressMessage("pending_review");
       }
       else if (subtask.status === "failed") {
         call.message = subtask.messageCode

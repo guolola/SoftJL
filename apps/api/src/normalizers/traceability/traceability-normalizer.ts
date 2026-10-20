@@ -1,6 +1,5 @@
 // Validates generated traceability references against the model elements that actually exist.
 import {
-  useCaseParticipationGaps,
   requirementTypeAppliesToModel,
   diagramKindSchema,
   type DesignDiagramModelSpec,
@@ -59,22 +58,7 @@ function normalizeMappingSource(
   value: unknown,
 ): DesignModelTraceabilityEntry["mappingSource"] {
   return value === "derived-from-endpoints" ||
-    value === "llm" ||
-    value === "auto-filled-pending-review"
-    ? value
-    : undefined;
-}
-
-function normalizeReviewStatus(
-  value: unknown,
-): DesignModelTraceabilityEntry["reviewStatus"] {
-  return value === "confirmed" || value === "pending" ? value : undefined;
-}
-
-function normalizeConfidence(
-  value: unknown,
-): DesignModelTraceabilityEntry["confidence"] {
-  return value === "high" || value === "medium" || value === "low"
+    value === "llm"
     ? value
     : undefined;
 }
@@ -82,7 +66,7 @@ function normalizeConfidence(
 function normalizeRequirementMappingSource(
   value: unknown,
 ): RequirementModelTraceabilityEntry["mappingSource"] {
-  return value === "llm" || value === "auto-filled-pending-review"
+  return value === "llm"
     ? value
     : undefined;
 }
@@ -462,8 +446,6 @@ export function normalizeRequirementTraceabilityWithCoverage(
             ruleId,
             target,
             mappingSource: normalizeRequirementMappingSource(entry.mappingSource),
-            reviewStatus: normalizeReviewStatus(entry.reviewStatus),
-            confidence: normalizeConfidence(entry.confidence),
             rationale: compactString(entry.rationale) || undefined,
           },
         ]
@@ -474,39 +456,6 @@ export function normalizeRequirementTraceabilityWithCoverage(
     traceability.map((entry) => entry.target),
   );
   return { traceability, missingTargets };
-}
-
-// A declared actor link is a structural repair, so reuse the use case's existing
-// rule bindings as reviewable candidates; never invent rules or cover new business elements.
-export function reconcileRequirementTraceabilityAfterRepair(
-  raw: unknown,
-  rules: RequirementRule[],
-  original: DiagramModelSpec,
-  candidate: DiagramModelSpec,
-): RequirementTraceabilityCoverageResult {
-  const coverage = normalizeRequirementTraceabilityWithCoverage(raw, rules, [candidate]);
-  if (original.diagramKind !== "usecase" || candidate.diagramKind !== "usecase" ||
-      original.modelId !== candidate.modelId || !coverage.missingTargets.length) return coverage;
-
-  const originalTrace = normalizeRequirementTraceability(raw, rules, [original]);
-  const derived: RequirementModelTraceabilityEntry[] = [];
-  for (const gap of useCaseParticipationGaps(original).gaps) {
-    if (!candidate.relationships.some((edge) => edge.id === gap.relationship.id &&
-        edge.type === "association" && edge.sourceId === gap.actorId && edge.targetId === gap.useCaseId)) continue;
-    const target = coverage.missingTargets.find((ref) => ref.elementId === gap.relationship.id);
-    if (!target) continue;
-    for (const binding of originalTrace.filter((entry) => entry.target.elementId === gap.useCaseId)) {
-      derived.push({
-        ruleId: binding.ruleId,
-        target,
-        mappingSource: "auto-filled-pending-review",
-        reviewStatus: "pending",
-        confidence: binding.confidence ?? "low",
-        rationale: `按用例 ${gap.useCaseId} 明确声明的参与者 ${gap.actorId} 补齐关联，沿用该用例的需求规则映射，需复核。`,
-      });
-    }
-  }
-  return normalizeRequirementTraceabilityWithCoverage([...coverage.traceability, ...derived], rules, [candidate]);
 }
 
 export function normalizeDesignTraceability(
@@ -574,8 +523,6 @@ export function normalizeDesignTraceabilityForSources(
             upstreamDesignRefs:
               upstreamDesignRefs.length > 0 ? upstreamDesignRefs : undefined,
             mappingSource: normalizeMappingSource(entry.mappingSource),
-            reviewStatus: normalizeReviewStatus(entry.reviewStatus),
-            confidence: normalizeConfidence(entry.confidence),
             rationale: compactString(entry.rationale) || undefined,
           },
         ]
@@ -719,8 +666,6 @@ export function mergeDesignTraceability(
           ? Array.from(upstreamDesignRefs.values())
           : undefined,
       mappingSource: existing.mappingSource ?? entry.mappingSource,
-      reviewStatus: existing.reviewStatus ?? entry.reviewStatus,
-      confidence: existing.confidence ?? entry.confidence,
       rationale: existing.rationale ?? entry.rationale,
     });
   }

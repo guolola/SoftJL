@@ -18,7 +18,6 @@ function trace(modelId: string | undefined, elementId: string, useCaseId = "UC-0
   return {
     source: { modelId, diagramKind: "sequence", elementId, elementKind: "participant", label: elementId },
     targets: [{ modelId: "requirements", diagramKind: "usecase", elementId: useCaseId, elementKind: "usecase", label: useCaseId }],
-    reviewStatus: "confirmed",
   };
 }
 
@@ -85,4 +84,36 @@ test("design generation repairs complete output in the same direct dependency co
   assert.equal(result.designModelTraceability.length, 3);
   assert.equal(result.designModelTraceability[0]!.targets[0]!.elementId, "order");
   assert.deepEqual(result.models, [generated]);
+});
+
+test("generation and repair both match event-flow references against the actual upstream model", async () => {
+  const { createEmptyDesignSnapshot, createEmptySnapshot } = await import("../records/snapshots.js");
+  const { generateDesignModelsWithRepair } = await import("./design-pipeline.js");
+  const { strictTestModelCapability } = await import("../../test-fixtures/providers/model-capability.js");
+  const { modelFixture } = await import("../../../../../packages/contracts/src/testing/model-fixtures.js");
+  const { collectModelRefs } = await import("../../normalizers/traceability/traceability-normalizer.js");
+  const baseline = createEmptySnapshot("source", "生成订单", ["usecase"], [{ id: "r1", type: "functional", text: "生成订单" }]).requirementBaseline!;
+  const upstream = modelFixture("requirements", "usecase");
+  if (upstream.diagramKind !== "usecase") throw new Error("fixture");
+  upstream.useCases[0]!.eventFlows = [{ id: "EF_ORDER_MAIN", name: "下单主流程", flowType: "main", steps: [{ order: 1, actor: "actor", actorAction: "提交订单" }] }];
+  const snapshot = createEmptyDesignSnapshot("nested-sources", { selectedDiagrams: ["sequence"], requirementBaseline: baseline, requirementModels: [upstream], requirementModelTraceability: [] });
+  const run = { snapshot, events: [], listeners: new Set(), terminal: false } as import("../records/run-record-store.js").RunRecord;
+  const generated = modelFixture("design", "sequence");
+  let calls = 0;
+  const result = await generateDesignModelsWithRepair(run, {
+    apiBaseUrl: "https://llm.test", apiKey: "test", model: "test", modelCapability: strictTestModelCapability("test"),
+  }, { async *streamChatCompletion(input) {
+    calls++;
+    if (calls === 2) {
+      assert.deepEqual(input.messages.map(message => message.role), ["system", "user", "assistant", "user"]);
+      assert.match(String(input.messages.at(-1)!.content), /designModelTraceability\.0\.targets\.0/);
+      assert.match(String(input.messages.at(-1)!.content), /missing-flow/);
+    }
+    yield JSON.stringify({ models: [generated], designModelTraceability: collectModelRefs([generated]).refs.map(source => ({
+      source, targets: [{ modelId: upstream.modelId, diagramKind: "usecase", elementId: calls === 1 ? "missing-flow" : "EF_ORDER_MAIN", elementKind: "eventFlow", label: "下单主流程" }],
+    })) });
+  } }, baseline, [upstream], ["sequence"], "根据已提供用例模型生成 JSON", "generate_design_sequence");
+  assert.equal(calls, 2);
+  assert.deepEqual(result.models, [generated]);
+  assert.ok(result.designModelTraceability.every(binding => binding.targets[0]!.elementId === "EF_ORDER_MAIN"));
 });

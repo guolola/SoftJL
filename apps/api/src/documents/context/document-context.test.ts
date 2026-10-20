@@ -64,9 +64,7 @@ test("software design documents omit pending traceability review appendix", () =
             label: "借书",
           },
         ],
-        mappingSource: "auto-filled-pending-review",
-        reviewStatus: "pending",
-        confidence: "low",
+        mappingSource: "llm",
         rationale: "缺失映射由系统自动补齐",
       },
     ],
@@ -204,9 +202,7 @@ test("requirements documents omit trace basis column from rule mapping tables", 
           elementId: "Book",
           label: "Book",
         },
-        mappingSource: "auto-filled-pending-review",
-        reviewStatus: "pending",
-        confidence: "low",
+        mappingSource: "llm",
         rationale:
           "未找到明确来源，系统仅按相关图类型临时补齐；请在跟踪矩阵中采纳、忽略或稍后处理。",
       },
@@ -219,8 +215,6 @@ test("requirements documents omit trace basis column from rule mapping tables", 
           label: "图书检索",
         },
         mappingSource: "llm",
-        reviewStatus: "confirmed",
-        confidence: "medium",
         rationale:
           "系统按需求规则文本和模型元素名称的相似度补齐；请在跟踪矩阵中确认是否采纳。",
       },
@@ -239,8 +233,8 @@ test("requirements documents omit trace basis column from rule mapping tables", 
     "模型元素",
   ]);
   assert.equal(traceSection.table?.headers.includes("追踪依据"), false);
-  assert.equal(traceSection.table?.rows[0]?.[1], "R2");
-  assert.deepEqual(traceSection.table?.rows[0], ["1", "R2", "图书检索"]);
+  assert.equal(traceSection.table?.rows[0]?.[1], "R1");
+  assert.deepEqual(traceSection.table?.rows[1], ["2", "R2", "图书检索"]);
   assert.equal(
     traceSection.table?.rows.flat().some((cell) =>
       INTERACTIVE_TRACE_REVIEW_PATTERN.test(cell),
@@ -450,7 +444,7 @@ test("requirements documents exclude mappings rejected by trusted coverage evide
   assert.deepEqual(traceSection.table?.rows, [["1", "R2", "搜索课程"]]);
 });
 
-test("software design class matrix excludes pending mappings", () => {
+test("software design class matrix includes declared ID mappings", () => {
   const input = startDocumentRunRequestSchema.parse({
     documentKind: "softwareDesignSpec",
     requirementText: "简单图书馆管理系统需要支持借书。",
@@ -481,9 +475,7 @@ test("software design class matrix excludes pending mappings", () => {
             label: "借书",
           },
         ],
-        mappingSource: "auto-filled-pending-review",
-        reviewStatus: "pending",
-        confidence: "low",
+        mappingSource: "llm",
         rationale:
           "未找到明确上游来源，系统仅按最接近的需求元素临时补齐；请在跟踪矩阵中采纳、忽略或稍后处理。",
       },
@@ -503,8 +495,8 @@ test("software design class matrix excludes pending mappings", () => {
   ]);
   assert.deepEqual(traceSection.table?.rows[0], [
     "1",
-    "领域概念模型",
-    "当前图暂无通过语义校验的设计追踪",
+    "BorrowingService",
+    "用例图：借书",
   ]);
   assert.equal(
     traceSection.table?.rows.flat().some((cell) =>
@@ -514,7 +506,7 @@ test("software design class matrix excludes pending mappings", () => {
   );
 });
 
-test("software design class matrix does not trust pending mapping without upstream", () => {
+test("software design class matrix presents declared source labels without review states", () => {
   const input = startDocumentRunRequestSchema.parse({
     documentKind: "softwareDesignSpec",
     requirementText: "简单图书馆管理系统需要支持借书。",
@@ -536,9 +528,7 @@ test("software design class matrix does not trust pending mapping without upstre
             label: "借书",
           },
         ],
-        mappingSource: "auto-filled-pending-review",
-        reviewStatus: "pending",
-        confidence: "low",
+        mappingSource: "llm",
         rationale:
           "未找到明确上游来源，系统仅按最接近的需求元素临时补齐；请在跟踪矩阵中采纳、忽略或稍后处理。",
       },
@@ -553,8 +543,8 @@ test("software design class matrix does not trust pending mapping without upstre
   assert.ok(traceSection);
   assert.deepEqual(traceSection.table?.rows[0], [
     "1",
-    "领域概念模型",
-    "当前图暂无通过语义校验的设计追踪",
+    "BorrowingService",
+    "用例图：借书",
   ]);
   assert.equal(
     traceSection.table?.rows.flat().some((cell) =>

@@ -89,6 +89,21 @@ describe('FloatingAlertProvider', () => {
     expect(screen.getByText('请检查项目配置后重试')).toBeInTheDocument()
   })
 
+  it('keeps alerts in a body-level live region instead of a clipped nested dialog', async () => {
+    render(<FloatingAlertProvider>
+      <div data-slot='dialog-content' data-open='' style={{ overflow: 'hidden', transform: 'translateX(1px)' }}>
+        <div data-slot='dialog-content' data-open=''><AlertTrigger /></div>
+      </div>
+    </FloatingAlertProvider>)
+    fireEvent.click(screen.getByRole('button', { name: '显示提示' }))
+    const viewport = screen.getByRole('alert').closest('[data-slot="floating-alert-viewport"]')
+    expect(viewport?.parentElement).toBe(document.body)
+    expect(viewport).toHaveAttribute('aria-live', 'polite')
+    expect(viewport?.closest('[data-slot="dialog-content"]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '关闭提示' }))
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+
   it('centers the status icon and close button alongside a message without a description', () => {
     render(<FloatingAlertProvider><AlertTrigger /></FloatingAlertProvider>)
     fireEvent.click(screen.getByRole('button', { name: '显示提示' }))

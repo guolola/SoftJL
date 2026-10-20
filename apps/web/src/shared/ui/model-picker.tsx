@@ -22,6 +22,7 @@ import {
   loadUserSettings,
 } from "../lib/user-settings";
 import { ProviderIcon } from "./provider-icon";
+import { ModelOutputModeBadge } from "./model-output-mode-badge";
 
 function getProviderModelGroups(
   modelIds: string[],
@@ -181,22 +182,7 @@ export function ModelPicker({
                   >
                     <span className="inline-flex min-w-0 items-center gap-2">
                       <span className="min-w-0 truncate">{model.shortLabel}</span>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
-                          model.structuredOutputMode === "strict_json"
-                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-                            : model.structuredOutputMode === "json_object"
-                              ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"
-                              : "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {model.structuredOutputMode === "strict_json"
-                          ? t("modelPicker.modes.strictJson")
-                          : model.structuredOutputMode === "json_object"
-                            ? t("modelPicker.modes.jsonObject")
-                            : t("modelPicker.modes.compatible")}
-                      </span>
+                      <ModelOutputModeBadge mode={model.structuredOutputMode} />
                     </span>
                     {model.id === value && (
                       <Check className="size-3.5 shrink-0 text-primary" />

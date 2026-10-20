@@ -453,7 +453,9 @@ test("workspace stages, details, tests, and account dialog fit the responsive vi
   await checkViewportMatrix(page, "account settings");
   await page.setViewportSize({ width: 360, height: 844 });
   await expect(dialog.getByRole("tablist", { name: "设置" })).toBeVisible();
-  await expect(dialog.getByRole("tablist", { name: "设置", exact: true }).getByRole("tab")).toHaveCount(7);
+  await expect(dialog.getByRole("tablist", { name: "设置", exact: true }).getByRole("tab")).toHaveCount(8);
+  await dialog.getByRole("tab", { name: "工作台偏好", exact: true }).click();
+  await expect(dialog.getByRole("switch", { name: "完成提示音", exact: true })).toBeVisible();
   await expectNoPageOverflow(page, "account settings at 360px");
   await page.screenshot({ path: info.outputPath("workspace-account-360.png"), fullPage: true });
 });

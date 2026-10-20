@@ -345,9 +345,7 @@ describe("workspace-session generation task helpers", () => {
                   label: "借书",
                 },
               ],
-              mappingSource: "auto-filled-pending-review",
-              reviewStatus: "pending",
-              confidence: "low",
+              mappingSource: "llm",
             },
           ],
           plantUml: [],
@@ -371,13 +369,12 @@ describe("workspace-session generation task helpers", () => {
       },
     );
 
-    expect(pending.title).toBe("设计模型生成：1/1 完成，1 个待确认");
+    expect(pending.title).toBe("设计模型生成");
     expect(pending.subtasks[0]).toEqual(
       expect.objectContaining({
         id: "class",
-        status: "pending_review",
-        message: "有 1 条低置信追踪关系需复核",
-        pendingReviewCount: 1,
+        status: "completed",
+        message: "已完成",
       }),
     );
   });

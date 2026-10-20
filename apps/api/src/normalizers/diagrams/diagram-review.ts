@@ -35,11 +35,10 @@ function trustedBinding(trace: unknown, model: ReviewModel, elementId: string, r
   return trace.some((entry) => {
     if (!entry || typeof entry !== "object") return false;
     const row = entry as Record<string, any>;
-    if (row.mappingSource === "auto-filled-pending-review" || row.reviewStatus === "pending" || /相似|similar|候选/i.test(row.rationale ?? "")) return false;
     if (row.source?.elementId === elementId && row.source.diagramKind === model.diagramKind && (!row.source.modelId || row.source.modelId === model.modelId) && Array.isArray(row.targets) && Array.isArray(upstreamTrace)) {
       return row.targets.some((target: Record<string, any>) => upstreamTrace.some((entry) => {
         const binding = entry as Record<string, any>;
-        return binding.ruleId === requirementId && binding.mappingSource !== "auto-filled-pending-review" && binding.reviewStatus !== "pending" && !/相似|similar|候选/i.test(binding.rationale ?? "") && binding.target?.elementId === target.elementId && binding.target.diagramKind === target.diagramKind && binding.target.modelId === target.modelId;
+        return binding.ruleId === requirementId && binding.target?.elementId === target.elementId && binding.target.diagramKind === target.diagramKind && binding.target.modelId === target.modelId;
       }));
     }
     return (row.ruleId === requirementId || row.requirementId === requirementId) &&

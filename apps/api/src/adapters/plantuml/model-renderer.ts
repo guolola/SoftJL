@@ -177,7 +177,6 @@ function render(model: AnyDiagramModel, stage: ModelingStage) {
   for (const node of getModelGraphElements(model)) if (!emitted.has(node.id)) throw new Error(`Rendering omitted node ${node.id}`);
   const edges = model.diagramKind === "sequence" || model.diagramKind === "analysis" ? model.messages : model.relationships;
   for (const edge of edges) if (!connections.has(edge.id)) throw new Error(`Rendering omitted relationship ${edge.id}`);
-  if (model.notes.length && model.diagramKind !== "function") lines.push(`legend bottom\n${model.notes.map(text).join("\n")}\nendlegend`);
   lines.push(model.diagramKind === "function" ? "@endmindmap" : "@enduml");
   const source = lines.join("\n");
   return { source, renderMapping: completeRenderMapping(model, source, { elements: [...emitted.values()], relationships: [...connections.values()], mode: "native" }) };

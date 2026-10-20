@@ -18,7 +18,6 @@ export function completeRenderMapping(model: AnyDiagramModel, source: string, ma
     auxiliary.push({ kind: "autonumber" }, { kind: "title", label: model.title });
   }
   for (const line of lines) if (line.trimStart().startsWith("note ")) auxiliary.push({ kind: "note", label: line.slice(line.indexOf(":") + 1).trim() });
-  if (lines.some((line) => line.startsWith("legend"))) auxiliary.push({ kind: "legend" });
   return {
     ...mapping, auxiliary,
     elements: mapping.elements.map((entry) => {

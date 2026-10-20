@@ -534,13 +534,6 @@ function errorForSubtask(
   return undefined;
 }
 
-function pendingReviewStageForSource(source?: { diagramKind?: string; modelId?: string }) {
-  if (!source?.diagramKind) return null;
-  return source.diagramKind === "sequence"
-    ? "generate_design_sequence"
-    : "generate_design_models";
-}
-
 function updateSubtasksFromCompletedSnapshot(
   subtasks: GenerationSubtask[],
   event: RunEventInput,
@@ -553,35 +546,6 @@ function updateSubtasksFromCompletedSnapshot(
     { error?: unknown; stage?: string }
   >;
   const completedIds = collectCompletedSubtaskIds(snapshot);
-  const pendingReviewByDiagram = new Map<string, number>();
-  if (Array.isArray(snapshot.designModelTraceability)) {
-    for (const entry of snapshot.designModelTraceability as Array<{
-      source?: { diagramKind?: string; modelId?: string };
-      mappingSource?: string;
-      reviewStatus?: string;
-    }>) {
-      if (
-        entry.mappingSource !== "auto-filled-pending-review" &&
-        entry.reviewStatus !== "pending"
-      ) {
-        continue;
-      }
-      const diagramKind = entry.source?.diagramKind;
-      const modelId = entry.source?.modelId;
-      const stage = pendingReviewStageForSource(entry.source);
-      for (const id of [modelId, diagramKind]) {
-        if (!id) continue;
-        pendingReviewByDiagram.set(id, (pendingReviewByDiagram.get(id) ?? 0) + 1);
-        if (stage) {
-          const scopedId = `${stage}:${id}`;
-          pendingReviewByDiagram.set(
-            scopedId,
-            (pendingReviewByDiagram.get(scopedId) ?? 0) + 1,
-          );
-        }
-      }
-    }
-  }
   const existingIds = new Set(subtasks.map((subtask) => subtask.id));
   const next = subtasks.map((subtask) => {
     const error = errorForSubtask(errors, subtask.id);
@@ -606,18 +570,7 @@ function updateSubtasksFromCompletedSnapshot(
         message: visualReviewDetail(visual) ?? "模型结构检查已完成",
       };
     if (completedIds.has(subtask.id) && subtask.status !== "failed") {
-      const pendingReviewCount = pendingReviewByDiagram.get(subtask.id) ?? 0;
-      const status =
-        pendingReviewCount > 0 ? ("pending_review" as const) : ("completed" as const);
-      return {
-        ...subtask,
-        status,
-        message:
-          status === "pending_review"
-            ? `有 ${pendingReviewCount} 条低置信追踪关系需复核`
-            : "已完成",
-        pendingReviewCount: pendingReviewCount || undefined,
-      };
+      return { ...subtask, status: "completed" as const, message: "已完成" };
     }
     return subtask;
   });

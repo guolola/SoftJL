@@ -107,7 +107,7 @@ const REQUIREMENT_TRACEABILITY_RULES = [
   "- 业务元素范围：功能结构图的功能节点/关系；用例图的角色/用例/关系；类图的类/接口/枚举/关系；总体业务流程的 activity/decision/object 节点及其业务流关系；部署需求模型的节点/数据库/组件/外部系统/制品/关系；原型界面关系的页面/模块/入口点/关系；需求分析模型的参与对象/消息/组合片段。",
   "- 不要为 system-boundary、swimlane、start/end/flow_final/merge/fork/join、输入输出引脚等结构元素补映射。",
   "- 如果错误提示包含非法 diagramKind，必须改成该元素实际所属的具体图类型，不允许继续返回阶段名。",
-  "- 可选字段 mappingSource/reviewStatus/confidence/rationale 只用于说明映射来源和复核状态；首次生成不得使用待确认、低置信或系统猜测的映射代替来源；只能生成有明确来源的业务内容。",
+  "- 可选字段 mappingSource/rationale 只用于说明来源；引用是否有效仅按对应模型及真实元素 id 匹配，不生成 reviewStatus 或 confidence。",
 ].join("\n");
 
 const DESIGN_TRACEABILITY_RULES = [
@@ -118,12 +118,12 @@ const DESIGN_TRACEABILITY_RULES = [
   "- targets 引用本次实际提供的直接上游，允许需求模型或设计模型；组件图、数据库设计直接引用设计类图，部署设计可引用组件图，禁止猜测未提供的需求模型。",
   "- 禁止把 requirements、requirement、design、model、traceability、page 等阶段名或页面名作为 diagramKind。",
   "- source.elementId 必须引用本次设计模型中真实存在的元素 id 或 relationship id；表字段类元素使用 tableId.columnId 形式。",
-  "- source 和每个 targets 引用必须完整包含 modelId、diagramKind、elementId、elementKind、label；elementId 使用输入上游的真实元素、事件流或步骤编号。",
+  "- source 和每个 targets 引用必须完整包含 modelId、diagramKind、elementId、elementKind、label；elementId 必须匹配对应模型内真实存在的 id，包括嵌套事件流的 id。没有独立 id 的步骤用其所属事件流 id 引用，不得把 order 顺序号当作元素 id。",
   "- 每个设计业务元素和 relationship 必须在首次生成时至少声明一个直接上游元素。程序检查引用和映射完整性，修复时在本对话中返回完整模型和全部有效来源映射。",
   "- 业务元素范围：总体架构图的包/组件/关系；用例实现设计的参与对象/消息/组合片段；设计类图的类/接口/枚举/关系；页面导航模型的页面/入口/模块及其关系；组件关系图的组件/接口/关系；部署设计的节点/数据库/组件/外部系统/制品/关系；数据库设计的表/字段/关系。",
   "- 不要为 swimlane、start/end/flow_final/merge/fork/join、输入输出引脚等结构元素补映射。",
   "- 如果错误提示包含非法 diagramKind，必须改成该元素实际所属的具体图类型，不允许继续返回阶段名。",
-  "- 可选字段 mappingSource/reviewStatus/confidence/rationale 只用于说明映射来源和复核状态；首次生成不得使用待确认、低置信或系统猜测的映射代替来源；只能生成有明确来源的业务内容。",
+  "- 可选字段 mappingSource/rationale 只用于说明来源；引用是否有效仅按对应模型及真实元素 id 匹配，不生成 reviewStatus 或 confidence。",
 ].join("\n");
 
 const DESIGN_MODEL_GENERATION_TRACEABILITY_RULES = [

@@ -368,13 +368,6 @@ function isTrustedRequirementTrace(
   input: StartDocumentRunRequest,
   entry: StartDocumentRunRequest["requirementModelTraceability"][number],
 ) {
-  if (
-    entry.reviewStatus === "pending" ||
-    entry.confidence === "low" ||
-    entry.mappingSource === "auto-filled-pending-review"
-  ) {
-    return false;
-  }
   const coverageMatrix = input.coverageMatrix;
   if (!coverageMatrix) return true;
   const requirementId =
@@ -455,9 +448,6 @@ function designTraceRows(
   const rows = scopedEntries
     .filter(
       (entry) =>
-        entry.reviewStatus !== "pending" &&
-        entry.confidence !== "low" &&
-        entry.mappingSource !== "auto-filled-pending-review" &&
         (!trustedDesignElements ||
           trustedDesignElements.has(trustedTraceRefId(entry.source))),
     )

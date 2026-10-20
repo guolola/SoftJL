@@ -114,7 +114,6 @@ function createTraceabilityCopy(t: TFunction): TraceabilityRowCopy {
       getDiagramLabel(diagramKind as DiagramType, t),
     designGroupLabel: (diagramKind) =>
       getDesignDiagramLabel(diagramKind as DesignDiagramType, t),
-    autoFilledPendingReviewNote: t("traceability.rows.autoFilledPendingReviewNote"),
     unnamedEventFlow: t("traceability.rows.unnamedEventFlow"),
     step: (order) => t(order ? "traceability.rows.stepWithOrder" : "traceability.rows.step", { order }),
     systemResponse: (response) => t("traceability.rows.systemResponse", { response }),
@@ -126,8 +125,6 @@ function createTraceabilityCopy(t: TFunction): TraceabilityRowCopy {
     missingSourceUseCaseOrEventFlow: t("traceability.rows.missingSourceUseCaseOrEventFlow"),
     sourceUseCase: (label) => t("traceability.rows.sourceUseCase", { label }),
     sourceUseCaseMissing: t("traceability.rows.sourceUseCaseMissing"),
-    pending: (note) => t("traceability.rows.pending", { note }),
-    confidence: (confidence) => t("traceability.rows.confidence", { confidence }),
     endpointDerived: t("traceability.rows.endpointDerived"),
     mappingDescription: (note) => t("traceability.rows.mappingDescription", { note }),
     sourceUseCaseRealization: (modelLabel, elementLabel) =>

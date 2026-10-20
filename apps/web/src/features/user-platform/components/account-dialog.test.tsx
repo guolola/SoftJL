@@ -222,7 +222,7 @@ describe("AccountDialog generation usage", () => {
     expect(accountDialog).toHaveClass("h-[calc(100dvh-2rem)]", "sm:h-170");
     const tabList = within(accountDialog).getByRole("tablist", { name: "设置" });
     const tabs = within(tabList).getAllByRole("tab");
-    expect(tabs.map(tab => tab.getAttribute("aria-label"))).toEqual(["主题", "布局", "语言", "个人资料", "安全设置", "登录会话", "模型配置"]);
+    expect(tabs.map(tab => tab.getAttribute("aria-label"))).toEqual(["主题", "布局", "语言", "个人资料", "安全设置", "登录会话", "工作台偏好", "模型配置"]);
     expect(within(tabList).getByRole("tab", { name: "主题" })).toHaveAttribute("aria-selected", "true");
     expect(within(tabList).queryByRole("tab", { name: "外部工具连接" })).not.toBeInTheDocument();
 
@@ -287,10 +287,12 @@ describe("AccountDialog generation usage", () => {
       String(input).includes("/api/billing/summary"),
     ).length;
     await user.click(within(accountDialog).getByRole("tab", { name: "模型配置" }));
-    expect(await within(accountDialog).findByLabelText("模型来源")).not.toBeDisabled();
-    expect(within(accountDialog).getByLabelText("默认模型")).not.toBeDisabled();
-    expect(within(accountDialog).getByLabelText("模型来源")).toHaveTextContent("课程 OpenAI");
-    expect(within(accountDialog).getByLabelText("默认模型")).toHaveTextContent("gpt-5.6");
+    const providers = await within(accountDialog).findByRole("table", { name: "模型配置" });
+    expect(within(providers).getByText("课程 OpenAI")).toBeInTheDocument();
+    expect(within(providers).getByText("gpt-5.6")).toBeInTheDocument();
+    expect(within(providers).getByRole("switch", { name: "启用 课程 OpenAI" })).toBeChecked();
+    expect(within(accountDialog).queryByLabelText("模型来源")).not.toBeInTheDocument();
+    expect(within(accountDialog).queryByRole("switch", { name: "完成提示音" })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/provider-configs"))).toHaveLength(providerRequestCount);
     expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/billing/summary"))).toHaveLength(billingRequestCount);
     expect(within(accountDialog).queryByText("暂无可用模型来源。")).not.toBeInTheDocument();
@@ -560,13 +562,13 @@ describe("AccountDialog generation usage", () => {
     expect(fetchMock.mock.calls.filter(([input, init]) => String(input).includes("/api/account/profile") && init?.method === "PATCH")).toHaveLength(0);
   });
 
-  it("saves language without resetting a model draft or issuing new preload requests", async () => {
+  it("saves language without resetting a workspace preference draft or issuing new preload requests", async () => {
     const user = userEvent.setup();
     const fetchMock = stubAccountFetch(profileResponse({ usedToday: 0, limit: null, remaining: null, windowSeconds: 86400, limited: false, scope: "user" }));
     renderAccountDialog({ onNavigate: () => {}, initialUser: baseUser });
     await user.click(screen.getByRole("button", { name: "账号" }));
     const dialog = await screen.findByRole("dialog", { name: "设置" });
-    await user.click(within(dialog).getByRole("tab", { name: "模型配置" }));
+    await user.click(within(dialog).getByRole("tab", { name: "工作台偏好" }));
     const auto = within(dialog).getByRole("switch", { name: "修改后自动重新生成规则" });
     await user.click(auto);
     const counts = fetchMock.mock.calls.length;
@@ -575,9 +577,9 @@ describe("AccountDialog generation usage", () => {
     await user.click(screen.getByRole("option", { name: "English" }));
     expect(localStorage.getItem("uml-lab-locale-preference")).not.toBe("en");
     await user.click(within(dialog).getByRole("button", { name: "保存更改" }));
-    await waitFor(() => expect(within(dialog).getByRole("tab", { name: "Model configuration" })).toBeInTheDocument());
+    await waitFor(() => expect(within(dialog).getByRole("tab", { name: "Workspace preferences" })).toBeInTheDocument());
     expect(localStorage.getItem("uml-lab-locale-preference")).toBe("en");
-    await user.click(within(dialog).getByRole("tab", { name: "Model configuration" }));
+    await user.click(within(dialog).getByRole("tab", { name: "Workspace preferences" }));
     expect(within(dialog).getByRole("switch", { name: "Regenerate rules after changes" })).toBeChecked();
     expect(fetchMock.mock.calls).toHaveLength(counts);
   });
@@ -588,7 +590,7 @@ describe("AccountDialog generation usage", () => {
     renderAccountDialog({ onNavigate: () => {}, initialUser: baseUser });
     await user.click(screen.getByRole("button", { name: "账号" }));
     const dialog = await screen.findByRole("dialog", { name: "设置" });
-    for (const name of ["主题", "布局", "语言", "个人资料", "安全设置", "登录会话", "模型配置"]) {
+    for (const name of ["主题", "布局", "语言", "个人资料", "安全设置", "登录会话", "工作台偏好", "模型配置"]) {
       await user.click(within(dialog).getByRole("tab", { name }));
       expect(dialog.querySelector('[data-page-description]')?.textContent).not.toMatch(/[。.]+$/u);
       if (name === "安全设置" || name === "登录会话") {

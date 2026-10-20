@@ -8,6 +8,7 @@ import { createStageLifecycle } from "./shared/stage-lifecycle.js";
 import { withRunReasoning } from "./shared/run-reasoning.js";
 import {
   designRequirementSources,
+  designModelTraceabilityEntrySchema,
   artifactReadyRunEventSchema,
   completedRunEventSchema,
   diagramErrorSchema,
@@ -304,7 +305,7 @@ function sequenceModelIdForUseCase(useCase: UseCaseForSequence) {
 }
 
 export function coerceSequenceModelForUseCase(
-  result: Awaited<ReturnType<typeof generateDesignModelsWithRepair>>,
+  result: Pick<Awaited<ReturnType<typeof generateDesignModelsWithRepair>>, "models" | "designModelTraceability">,
   useCase: UseCaseForSequence,
 ) {
   const sequenceModels = result.models.filter(
@@ -502,7 +503,7 @@ export async function generateDesignModelsWithRepair(
           designModelTraceability: filteredTraceability,
         },
       });
-      return { models: filteredModels, designModelTraceability: filteredTraceability };
+      return { models: filteredModels, designModelTraceability: filteredTraceability, conversation: repair };
     } catch (error) {
       logFailedStructuredOutput(
         stage,
@@ -686,17 +687,40 @@ export async function runDesignStagePipeline(
     snapshot.designModelTraceability = designModelTraceability;
     snapshot.diagramErrors = diagramErrors;
   };
-  const renderDesignModelArtifact = async <T extends DesignDiagramModelSpec>(model: T, traceability: typeof designModelTraceability, designContext: DesignDiagramModelSpec[] = []) => {
+  const renderDesignModelArtifact = async <T extends DesignDiagramModelSpec>(model: T, traceability: typeof designModelTraceability, generation: {
+    conversation: ModelGenerationConversation;
+    requirementModels: DiagramModelSpec[];
+    upstreamDesignModels: DesignDiagramModelSpec[];
+  }) => {
     throwIfRunCancelled(record);
     try {
+      const upstreamModels = [...generation.requirementModels, ...generation.upstreamDesignModels];
+      const modelTrace = (candidate: DesignDiagramModelSpec, value: unknown) => designModelTraceabilityEntrySchema.array().parse(value)
+        .filter(entry => entry.source.diagramKind === candidate.diagramKind && (!candidate.modelId || entry.source.modelId === candidate.modelId));
       const checked = await reviewRenderedArtifact({
         record, providerSettings, llmTransport, renderClient, model, mutable: true,
         basis: { stage: "design", baseline: snapshot.requirementBaseline,
-          upstreamModels: model.diagramKind === "sequence"
-            ? snapshot.requirementModels.filter((source) => source.diagramKind === "usecase" || (source.diagramKind === "analysis" && (source.sourceUseCaseId === model.sourceUseCaseId || source.modelId === `analysis:${model.sourceUseCaseId}`)))
-            : [...findRequirementModelsForDesign(snapshot.requirementModels, model.diagramKind), ...models.filter((source) => source.diagramKind === "sequence"), ...designContext],
+          upstreamModels,
           traceability, requirementTraceability: snapshot.requirementModelTraceability },
-
+        validateTraceability: (candidate, value) => assertDesignMappings([candidate as DesignDiagramModelSpec], upstreamModels, modelTrace(candidate as DesignDiagramModelSpec, value)),
+        generationRepair: {
+          conversation: generation.conversation.fork(model.modelId ?? model.diagramKind),
+          parse: (raw, current) => {
+            let parsed = parseDesignDiagramModelsResult(raw, generation.requirementModels);
+            if (current.diagramKind === "sequence") {
+              const source = generation.requirementModels.find(source => source.diagramKind === "usecase");
+              const useCase = source && useCasesFromModel(source).find(useCase => useCase.id === current.sourceUseCaseId);
+              if (!useCase) throw new Error("修复对象的上游用例不存在");
+              parsed = coerceSequenceModelForUseCase(parsed, useCase);
+            }
+            const candidates = parsed.models.filter(candidate => candidate.diagramKind === current.diagramKind && candidate.modelId === current.modelId);
+            if (candidates.length !== 1 || parsed.models.length !== 1) throw new Error("结构修复必须只返回当前模型并保持模型 ID");
+            const candidate = candidates[0]!;
+            const sources = modelTrace(candidate, parsed.designModelTraceability);
+            assertDesignMappings([candidate], upstreamModels, sources);
+            return { model: candidate, traceability: sources };
+          },
+        },
       });
       throwIfRunCancelled(record);
       // Publish the accepted tuple together; rejected candidates stay private.
@@ -822,7 +846,9 @@ export async function runDesignStagePipeline(
               result.models[0]!,
               scopedAnalysisModels,
             );
-            result.models = await Promise.all(result.models.map((model) => renderDesignModelArtifact(model, result.designModelTraceability)));
+            result.models = await Promise.all(result.models.map((model) => renderDesignModelArtifact(model, result.designModelTraceability, {
+              conversation: rawResult.conversation, requirementModels: [scopedUseCaseModel, ...scopedAnalysisModels], upstreamDesignModels: [],
+            })));
             result.designModelTraceability = designModelTraceability.filter((entry) => result.models.some((model) => model.modelId ? entry.source.modelId === model.modelId : entry.source.diagramKind === model.diagramKind)) as typeof result.designModelTraceability;
             models = mergeDesignModels(models, result.models);
             designModelTraceability = [
@@ -1021,7 +1047,7 @@ export async function runDesignStagePipeline(
             llmTransport,
             requirementBaseline,
             // First-generation declarations are retained; only direct dependencies enter the prompt.
-            sourceModels.length ? sourceModels : snapshot.requirementModels,
+            sourceModels,
             [diagram],
             buildGenerateDesignModelsPrompt(
               requirementBaseline,
@@ -1044,7 +1070,10 @@ export async function runDesignStagePipeline(
           },
         );
         throwIfRunCancelled(record);
-        result.models = await Promise.all(result.models.map((model) => renderDesignModelArtifact(model, result.designModelTraceability, designContextModels)));
+        result.models = await Promise.all(result.models.map((model) => renderDesignModelArtifact(model, result.designModelTraceability, {
+          conversation: result.conversation, requirementModels: sourceModels,
+          upstreamDesignModels: [...(diagram === "class" ? sequenceModels : []), ...designContextModels],
+        })));
         result.designModelTraceability = designModelTraceability.filter((entry) => result.models.some((model) => model.modelId ? entry.source.modelId === model.modelId : entry.source.diagramKind === model.diagramKind)) as typeof result.designModelTraceability;
         models = mergeDesignModels(models, result.models);
         designModelTraceability = [

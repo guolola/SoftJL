@@ -27,6 +27,11 @@ export async function reviewRenderedArtifact(input: {
   record: RunRecord; providerSettings: ProviderSettings; llmTransport: LlmTransport; renderClient: RenderClient;
   model: ReviewModel; rendered?: Rendered; basis?: DiagramReviewBasis; mutable?: boolean; validateModel?: (model: ReviewModel) => void;
   reconcileTraceability?: (model: ReviewModel) => unknown; timeoutMs?: number;
+  validateTraceability?: (model: ReviewModel, traceability: unknown) => void;
+  generationRepair?: {
+    conversation: ModelGenerationConversation;
+    parse: (raw: string, current: ReviewModel) => { model: ReviewModel; traceability: unknown };
+  };
 }): Promise<{ model: ReviewModel; rendered: Rendered; review: DiagramVisualReview; traceability?: unknown }> {
   const { record, providerSettings, llmTransport } = input;
   const basis = input.basis ? structuredClone(input.basis) : undefined;
@@ -36,7 +41,7 @@ export async function reviewRenderedArtifact(input: {
   const previous = readDiagramReviewCounters(record, modelId, model.diagramKind);
   const checks = previous.attempts;
   let repairs = previous.repairAttempts;
-  let correction: ModelGenerationConversation | undefined;
+  let correction = input.generationRepair?.conversation;
   let correctionError: unknown;
   const saved = "visualReviews" in record.snapshot ? record.snapshot.visualReviews?.[modelId] : undefined;
   const repairHistory: NonNullable<DiagramVisualReview["repairHistory"]> = previous.repairAttempts ? structuredClone(saved?.repairHistory ?? []) : [];
@@ -84,25 +89,30 @@ export async function reviewRenderedArtifact(input: {
     try {
       input.validateModel?.(candidate);
       const trace = target === "model" ? input.reconcileTraceability?.(candidate) ?? basis?.traceability : basis?.traceability;
+      input.validateTraceability?.(candidate, trace);
       const rebuilt = await render(candidate);
       // Commit the model, trace and render together; rejected candidates never replace the valid tuple.
       model = structuredClone(candidate); rendered = rebuilt; if (basis) basis.traceability = trace;
+      correctionError = undefined;
       history.status = "accepted"; history.changes = changes; history.reason = "程序修复通过结构、追踪校验并完成绘制"; history.afterFingerprint = fingerprint(); activity.onChunk(changes.join("；")); activity.onComplete(); return true;
-    } catch (error) { cancelOrReport(error); history.reason = String(error); stopReason = history.reason; activity.onError(); return false; }
+    } catch (error) { if (target === "model") correctionError = error; cancelOrReport(error); history.reason = String(error); stopReason = history.reason; activity.onError(); return false; }
   };
   for (;;) {
     issues = []; findings = []; structureStatus = "passed";
     progress("正在执行程序结构校验与绘制", "running");
     const authorized = basis ? deriveAuthorizedRepairs(model, basis) : undefined;
     const diagnostics = diagnosticFindings();
+    try { input.validateTraceability?.(model, basis?.traceability); } catch (error) { correctionError = error; }
     findings.push(...authorized?.findings ?? [], ...diagnostics.filter((item) => !authorized?.findings.some((proof) => proof.code === item.code)));
     if (authorized?.changes.length) {
       if (await hardRepair("model", authorized.findings.filter((item) => item.repairable), acceptRepairCandidate(authorized.expectedModel, model, authorized, basis!), authorized.changes)) continue;
-      if (input.mutable && repairs < MAX_GENERATION_REPAIR_ATTEMPTS) continue;
-      structureStatus = "failed";
-      fail(stopReason || (input.mutable ? "已达到共享 5 次修复上限，结构问题仍未修复" : "当前模型需要结构修复"));
+      if (!input.generationRepair || !input.mutable || repairs >= MAX_GENERATION_REPAIR_ATTEMPTS) {
+        if (input.mutable && repairs < MAX_GENERATION_REPAIR_ATTEMPTS) continue;
+        structureStatus = "failed";
+        fail(stopReason || (input.mutable ? "已达到共享 5 次修复上限，结构问题仍未修复" : "当前模型需要结构修复"));
+      }
     }
-    if (diagnostics.length) {
+    if (diagnostics.length || correctionError) {
       structureStatus = "failed";
       if (input.mutable && repairs < MAX_GENERATION_REPAIR_ATTEMPTS && basis) {
         const history: typeof repairHistory[number] = { round: repairs + 1, target: "model", method: "llm", issueIds: diagnostics.map((item) => item.id), beforeFingerprint: fingerprint(), status: "failed", changes: [], reason: "候选未通过" };
@@ -114,15 +124,25 @@ export async function reviewRenderedArtifact(input: {
             ], MAX_GENERATION_REPAIR_ATTEMPTS - repairs);
             correction.accept(JSON.stringify(model));
           }
-          // This late render boundary starts from the current artifact; subsequent
-          // rejected candidates remain in its own conversation for the next correction.
-          correction.prepare(correctionError ?? new ModelSemanticError(validateModelInput(model, stage)));
+          // Generated artifacts keep the exact original turns and append feedback;
+          // standalone redraws can start from their current saved artifact.
+          correction.prepare(correctionError ?? new ModelSemanticError(validateModelInput(model, stage)), input.generationRepair
+            ? `当前修复对象为 ${model.modelId ?? model.diagramKind}。保持首次生成的完整输出结构，同时返回该模型及其全部来源映射。当前模型：${JSON.stringify(model)}` : undefined);
           const candidate = await correctModel(correction.messages, (raw) => {
-            return parseJson(correction!.accept(raw)) as ReviewModel;
+            const content = correction!.accept(raw);
+            return input.generationRepair?.parse(content, model) ?? { model: parseJson(content) as ReviewModel, traceability: basis.traceability };
           }, history);
-          const accepted = acceptStructuralRepairCandidate(candidate, model, basis, input.validateModel);
-          const trace = input.reconcileTraceability?.(accepted) ?? basis.traceability;
+          const accepted = authorized?.changes.length
+            ? acceptRepairCandidate(candidate.model, model, authorized, basis, input.validateModel)
+            : diagnostics.length ? acceptStructuralRepairCandidate(candidate.model, model, basis, input.validateModel)
+            : (() => {
+              if (reviewFingerprint(candidate.model) !== reviewFingerprint(model)) throw new Error("来源修复不得改写没有结构错误的模型");
+              return structuredClone(candidate.model);
+            })();
+          const trace = input.generationRepair ? candidate.traceability : input.reconcileTraceability?.(accepted) ?? basis.traceability;
+          input.validateTraceability?.(accepted, trace);
           const nextRender = await render(accepted); model = accepted; rendered = nextRender; basis.traceability = trace;
+          correctionError = undefined;
           history.status = "accepted"; history.changes = diagnostics.map((item) => item.observation); history.reason = "候选通过结构、范围、追踪校验并完成绘制"; history.afterFingerprint = fingerprint(); continue;
         } catch (error) { correctionError = error; cancelOrReport(error); history.status = "rejected"; history.reason = String(error); stopReason = history.reason; }
         if (repairs < MAX_GENERATION_REPAIR_ATTEMPTS) continue;

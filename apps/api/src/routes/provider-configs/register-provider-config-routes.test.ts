@@ -137,6 +137,10 @@ test("regular users can read system and user-scoped provider configs without sec
     response.json().providerConfigs.map((item: { scopeType: string }) => item.scopeType),
     ["user", "system"],
   );
+  for (const config of response.json().providerConfigs) {
+    assert.equal(typeof config.updatedAt, "string");
+    assert.ok(Number.isFinite(Date.parse(config.updatedAt)));
+  }
   assert.doesNotMatch(response.body, /sk-system-secret-a91f/);
   assert.doesNotMatch(response.body, /sk-owner-secret-b52c/);
   assert.doesNotMatch(response.body, /sk-project-secret-c83d/);
@@ -215,13 +219,13 @@ test("provider config test requests reject apiKey and apiBaseUrl overrides", asy
   await app.close();
 });
 
-test("regular users create private provider configs only after a successful healthcheck", async () => {
+test("regular users save private provider configs without another upstream model call", async () => {
   const originalFetch = globalThis.fetch;
   const calls: string[] = [];
   globalThis.fetch = (async (url) => {
     calls.push(String(url));
-    return new Response(JSON.stringify({ choices: [{ message: { content: "{\"ok\":true}" } }] }), {
-      status: 200,
+    return new Response(JSON.stringify({ error: "unsupported response format" }), {
+      status: 400,
       headers: { "content-type": "application/json" },
     });
   }) as typeof fetch;
@@ -247,7 +251,7 @@ test("regular users create private provider configs only after a successful heal
     assert.equal(response.json().scopeId, owner.id);
     assert.equal(response.json().maskedKey, "sk-...9999");
     assert.doesNotMatch(response.body, /sk-owner-private-9999|apiKey/i);
-    assert.equal(calls[0], "https://api.moonshot.cn/v1/chat/completions");
+    assert.deepEqual(calls, []);
 
     const listed = await app.inject({
       method: "GET",
@@ -464,7 +468,7 @@ test("temporary provider endpoints reject unsafe base urls before saving or leak
   }
 });
 
-test("self-service provider creation rejects unsafe or failing endpoints without saving secrets", async () => {
+test("self-service provider saves reject unsafe addresses without probing public endpoints", async () => {
   const originalFetch = globalThis.fetch;
   let fetchCount = 0;
   globalThis.fetch = (async (input) => {
@@ -541,24 +545,22 @@ test("self-service provider creation rejects unsafe or failing endpoints without
 
     assert.equal(unsafe.statusCode, 400);
     assert.equal(privateDns.statusCode, 400);
-    assert.equal(failing.statusCode, 502);
-    assert.equal(redirecting.statusCode, 400);
-    assert.equal((await providerConfigs.list()).length, initialCount);
-    assert.equal(fetchCount, 2);
+    assert.equal(failing.statusCode, 201);
+    assert.equal(redirecting.statusCode, 201);
+    assert.equal((await providerConfigs.list()).length, initialCount + 2);
+    assert.equal(fetchCount, 0);
     assert.doesNotMatch(
       unsafe.body + privateDns.body + failing.body + redirecting.body,
       /sk-unsafe-1111|sk-failing-2222|sk-private-dns-3333|sk-redirect-4444/,
     );
-    assert.equal(redirecting.json().error.code, "PROVIDER_BASE_URL_NOT_ALLOWED");
-    assert.equal(failing.json().error.code, "PROVIDER_CONNECTION_FAILED");
-    assert.equal(riskEvents.length, 4);
+    assert.equal(unsafe.json().error.code, "PROVIDER_BASE_URL_NOT_ALLOWED");
+    assert.equal(privateDns.json().error.code, "PROVIDER_BASE_URL_NOT_ALLOWED");
+    assert.equal(riskEvents.length, 2);
     assert.deepEqual(
       riskEvents.map((event) => [event.eventType, event.severity, event.targetId]),
       [
         ["provider_config_create_blocked", "high", null],
         ["provider_config_create_blocked", "high", null],
-        ["provider_config_create_failed", "medium", null],
-        ["provider_config_create_failed", "medium", null],
       ],
     );
     assert.doesNotMatch(
@@ -566,7 +568,7 @@ test("self-service provider creation rejects unsafe or failing endpoints without
       /sk-unsafe-1111|sk-failing-2222|sk-private-dns-3333|sk-redirect-4444/,
     );
     assert.ok(providerConfigs.listAuditLogs().some((log) => log.action === "user.provider_config.create" && log.result === "blocked"));
-    assert.ok(providerConfigs.listAuditLogs().some((log) => log.action === "user.provider_config.create" && log.result === "failed"));
+    assert.ok(!providerConfigs.listAuditLogs().some((log) => log.action === "user.provider_config.create" && log.result === "failed"));
   } finally {
     globalThis.fetch = originalFetch;
     await app.close();
@@ -594,13 +596,43 @@ test("users cannot manage another user's private provider config", async () => {
   await app.close();
 });
 
-test("users can fully update and revoke their private provider config", async () => {
+test("provider edits still enforce address, key and model constraints without probing", async () => {
+  const { app, ownerCookie, userProvider, providerConfigs } = await createProviderRouteTestApp();
+
+  try {
+    const cases = [
+      { payload: { baseUrl: "https://private.example.test", apiKey: "sk-blocked-update" }, code: "PROVIDER_BASE_URL_NOT_ALLOWED" },
+      { payload: { baseUrl: "https://api.other.example.test" }, code: "PROVIDER_SECRET_REQUIRED" },
+      { payload: { defaultModel: "unlisted-model" }, code: "PROVIDER_MODEL_NOT_ALLOWED" },
+      { payload: { name: "" }, code: "VALIDATION_FAILED" },
+    ];
+    for (const { payload, code } of cases) {
+      const response = await app.inject({
+        method: "PATCH",
+        url: `/api/provider-configs/${userProvider.id}`,
+        headers: { cookie: ownerCookie },
+        payload,
+      });
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().error.code, code);
+      assert.doesNotMatch(response.body, /sk-blocked-update/);
+    }
+    assert.deepEqual(await providerConfigs.get(userProvider.id), userProvider);
+  } finally {
+    await app.close();
+  }
+});
+
+test("users can update and revoke their private provider config without an upstream model call", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ choices: [{ message: { content: "{\"ok\":true}" } }] }), {
-      status: 200,
+  let fetchCount = 0;
+  globalThis.fetch = (async () => {
+    fetchCount += 1;
+    return new Response(JSON.stringify({ error: "unsupported response format" }), {
+      status: 400,
       headers: { "content-type": "application/json" },
-    })) as typeof fetch;
+    });
+  }) as typeof fetch;
   const { app, ownerCookie, userProvider } = await createProviderRouteTestApp();
 
   try {
@@ -623,6 +655,7 @@ test("users can fully update and revoke their private provider config", async ()
     assert.equal(updated.json().defaultModel, "gpt-5.4");
     assert.equal(updated.json().maskedKey, "sk-...5555");
     assert.doesNotMatch(updated.body, /sk-updated-owner-5555|apiKey/i);
+    assert.equal(fetchCount, 0);
 
     const revoked = await app.inject({
       method: "POST",

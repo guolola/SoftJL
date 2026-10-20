@@ -10,7 +10,7 @@ const model = functionStructureDiagramSpecSchema.parse({ diagramKind: "function"
 test("fixed sources stay the same before and after generation, including stale models", () => {
   for (const models of [[], [model]]) for (const stale of [false, true]) {
     const result = requirementModelSources({ diagram: "function", rules, models, stale, traceability: [
-      { ruleId: "r2", target: { diagramKind: "function", elementId: "f1", elementKind: "function", label: "提交订单" }, mappingSource: "llm", reviewStatus: "confirmed" },
+      { ruleId: "r2", target: { diagramKind: "function", elementId: "f1", elementKind: "function", label: "提交订单" }, mappingSource: "llm" },
     ] });
     assert.equal(result.mode, "mapped");
     assert.deepEqual(result.rules.map(rule => rule.id), ["r1"]);

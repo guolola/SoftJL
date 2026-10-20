@@ -132,6 +132,7 @@ export const providerConfigDtoSchema = z
     status: providerConfigStatusSchema,
     riskState: providerRiskStateSchema,
     quota: z.string().trim().min(1),
+    updatedAt: isoTimestampSchema,
     lastUsedAt: optionalNullableTimestampSchema,
     scopeType: providerConfigScopeTypeSchema,
     scopeId: z.string().min(1).nullable(),

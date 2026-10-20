@@ -17,6 +17,14 @@ export class ModelGenerationConversation {
   get messages(): ChatMessage[] { return structuredClone(this.history); }
   get attempts() { return this.used; }
 
+  fork(targetId = this.targetId) {
+    // Sibling artifacts inherit every original turn and the spent budget, but
+    // their later corrections must never append to one another's histories.
+    const conversation = new ModelGenerationConversation(targetId, this.history, this.limit);
+    conversation.used = this.used;
+    return conversation;
+  }
+
   accept(raw: string): string {
     // Keep the provider's exact output in history, including invalid JSON, so the next
     // request extends the previous prefix instead of reconstructing a different draft.
@@ -28,11 +36,12 @@ export class ModelGenerationConversation {
     return JSON.stringify(value);
   }
 
-  prepare(error: unknown) {
+  prepare(error: unknown, instruction?: string) {
     if (this.used >= this.limit) throw new Error(`${this.targetId} 已达到共享 ${this.limit} 次修复调用上限`);
     this.used++;
-    this.history.push({ role: "user", content: buildModelRepairPrompt({
+    const feedback = buildModelRepairPrompt({
       error: error instanceof Error ? error.message : String(error), diagnostics: repairDiagnostics(error),
-    }) });
+    });
+    this.history.push({ role: "user", content: instruction ? `${feedback}\n${instruction}` : feedback });
   }
 }

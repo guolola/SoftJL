@@ -1131,8 +1131,8 @@ describe("TopBar", () => {
     expect(screen.getAllByText("模型配置").length).toBeGreaterThan(0);
     expect(screen.getAllByText("模型配置").length).toBeGreaterThan(0);
     expect(await screen.findByText(/课程 OpenAI 托管配置/u)).toBeInTheDocument();
-    expect(screen.getByText("修改后自动重新生成规则")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "添加自己的模型密钥" })).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "修改后自动重新生成规则" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加供应商" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重置" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "测试托管配置" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存更改" })).toBeInTheDocument();

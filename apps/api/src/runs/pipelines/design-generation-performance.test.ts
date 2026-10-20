@@ -3,7 +3,7 @@ import { strictTestModelCapability } from "../../test-fixtures/providers/model-c
 import assert from "node:assert/strict";
 import test from "node:test";
 import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
-import { deriveTableModel, designRequirementSources, designGenerationKinds, type DesignDiagramKind, type DesignDiagramModelSpec, type DiagramModelSpec, type DesignRunSnapshot } from "@uml-platform/contracts";
+import { deriveTableModel, designDependencies, designRequirementSources, designGenerationKinds, type DesignDiagramKind, type DesignDiagramModelSpec, type DiagramModelSpec, type DesignRunSnapshot } from "@uml-platform/contracts";
 import { createEmptyDesignSnapshot, createEmptySnapshot } from "../records/snapshots.js";
 import type { RunRecord } from "../records/run-record-store.js";
 import { runDesignStagePipeline } from "./design-pipeline.js";
@@ -45,7 +45,10 @@ async function runBatch(failClass = false, cancelDuringClass = false, selectedDi
       const raw = modelFixture("design", kind) as DesignDiagramModelSpec;
       const model = raw.diagramKind === "table" ? deriveTableModel(raw) : raw;
       const sourceKindsForModel = designRequirementSources[kind] ?? [];
-      const availableSources = sourceKindsForModel.length ? requirementModels.filter(model => sourceKindsForModel.includes(model.diagramKind)) : requirementModels;
+      const availableSources = [
+        ...requirementModels.filter(model => sourceKindsForModel.includes(model.diagramKind)),
+        ...snapshot.models.filter(model => (designDependencies[kind] ?? []).includes(model.diagramKind)),
+      ];
       yield JSON.stringify({ models: [model], designModelTraceability: collectModelRefs([model]).refs.map(source => ({ source, targets: [collectModelRefs(availableSources).refs[0]] })) });
     }
   } };

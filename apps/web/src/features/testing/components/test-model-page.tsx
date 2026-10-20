@@ -70,14 +70,6 @@ function scenarioFromFlow(flow: UseCaseEventFlow): TestScenarioType {
   return "exception";
 }
 
-function isTrustedRequirementTrace(entry: RequirementModelTraceabilityEntry) {
-  return (
-    entry.mappingSource !== "auto-filled-pending-review" &&
-    entry.reviewStatus !== "pending" &&
-    entry.confidence !== "low"
-  );
-}
-
 function rulesForUseCase(
   rules: RequirementRule[],
   useCase: UseCaseDiagramSpec["useCases"][number],
@@ -93,7 +85,6 @@ function rulesForUseCase(
     traceability
       .filter(
         (entry) =>
-          isTrustedRequirementTrace(entry) &&
           entry.target.diagramKind === "usecase" &&
           entry.target.elementId === useCase.id,
       )
