@@ -59,8 +59,8 @@ vi.mock("onborda", async () => {
 });
 
 const user = {
-  id: "user-1", email: "owner@example.com", username: "owner", displayName: "Owner",
-  status: "active" as const, emailVerified: true, mfaEnabled: false,
+  id: "user-1", username: "owner", displayName: "Owner",
+  status: "active" as const, mfaEnabled: false,
 };
 const session = {
   id: "session-1", userId: user.id, createdAt: "2026-01-01T00:00:00.000Z",

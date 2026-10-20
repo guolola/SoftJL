@@ -62,7 +62,7 @@ describe("ModelingContextDisplay", () => {
   it("keeps the same meter and themed detail portal in quick modeling", async () => {
     const user = userEvent.setup();
     render(<HomeDemoPortals><QuickContextDisplay modelContextWindow={1_000_000} usage={{ totalTokens: 5700, inputTokens: 5700 }} /></HomeDemoPortals>);
-    const trigger = screen.getByRole("button", { name: "Token 用量" });
+    const trigger = screen.getByRole("button", { name: "当前上下文占用" });
     expect(trigger).toHaveAttribute("data-slot", "context-display-trigger");
     expect(trigger).toHaveTextContent("5.7k / 1M");
     await user.hover(trigger);

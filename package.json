@@ -2,7 +2,7 @@
   "name": "softjl-community",
   "private": true,
   "license": "Apache-2.0",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "devDependencies": {
     "@types/node": "22.15.21",
     "concurrently": "9.1.2",
@@ -27,7 +27,7 @@
     "dev:postgres:ensure": "node scripts/dev/ensure-postgres.mjs",
     "dev:default": "npm run dev",
     "dev:api": "npm run dev --workspace @uml-platform/api",
-    "dev:api:safe": "cross-env API_PORT=4101 UML_DOCUMENT_STORAGE_DIR=.local-documents UML_ENABLE_GUEST_ACCESS=true UML_GUEST_EMAIL=guest@example.edu UML_GUEST_PASSWORD=guest UML_GUEST_DISPLAY_NAME=Guest UML_LLM_GLOBAL_CONCURRENCY=10 UML_LLM_PROVIDER_CONCURRENCY=10 UML_LLM_PROJECT_CONCURRENCY=10 UML_LLM_USER_CONCURRENCY=10 UML_LLM_RUN_CONCURRENCY=10 npm run dev:api",
+    "dev:api:safe": "cross-env API_PORT=4101 UML_DOCUMENT_STORAGE_DIR=.local-documents UML_ENABLE_GUEST_ACCESS=true UML_GUEST_USERNAME=guest UML_GUEST_PASSWORD=guest UML_GUEST_DISPLAY_NAME=Guest UML_LLM_GLOBAL_CONCURRENCY=10 UML_LLM_PROVIDER_CONCURRENCY=10 UML_LLM_PROJECT_CONCURRENCY=10 UML_LLM_USER_CONCURRENCY=10 UML_LLM_RUN_CONCURRENCY=10 npm run dev:api",
     "dev:render": "npm run dev --workspace @uml-platform/render-service",
     "build": "npm run build:packages && npm run build:apps",
     "build:packages": "npm run build:contracts && npm run build:prompts",
@@ -63,7 +63,7 @@
     "benchmark:generation": "npm run build:packages && node --import tsx apps/api/scripts/measure-generation-context.mjs",
     "demo:api": "npm run demo --workspace @uml-platform/api",
     "demo:render": "npm run demo --workspace @uml-platform/render-service",
-    "demo:api:safe": "cross-env API_PORT=4101 UML_DOCUMENT_STORAGE_DIR=.local-documents UML_ENABLE_GUEST_ACCESS=true UML_GUEST_EMAIL=guest@example.edu UML_GUEST_PASSWORD=guest UML_GUEST_DISPLAY_NAME=Guest UML_LLM_GLOBAL_CONCURRENCY=10 UML_LLM_PROVIDER_CONCURRENCY=10 UML_LLM_PROJECT_CONCURRENCY=10 UML_LLM_USER_CONCURRENCY=10 UML_LLM_RUN_CONCURRENCY=10 npm run demo:api",
+    "demo:api:safe": "cross-env API_PORT=4101 UML_DOCUMENT_STORAGE_DIR=.local-documents UML_ENABLE_GUEST_ACCESS=true UML_GUEST_USERNAME=guest UML_GUEST_PASSWORD=guest UML_GUEST_DISPLAY_NAME=Guest UML_LLM_GLOBAL_CONCURRENCY=10 UML_LLM_PROVIDER_CONCURRENCY=10 UML_LLM_PROJECT_CONCURRENCY=10 UML_LLM_USER_CONCURRENCY=10 UML_LLM_RUN_CONCURRENCY=10 npm run demo:api",
     "test:ci": "node --test scripts/ci/*.test.mjs",
     "verify": "node scripts/ci/verify.mjs"
   },

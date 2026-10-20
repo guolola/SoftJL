@@ -8,7 +8,7 @@ import { FloatingAlertProvider } from "../../../shared/ui/floating-alert";
 import { AuthPage } from "./auth-page";
 
 afterEach(async () => {
-  localStorage.removeItem("uml-auth-remembered-email");
+  localStorage.removeItem("uml-auth-remembered-username");
   localStorage.removeItem("uml-auth-remembered-password");
   vi.unstubAllGlobals();
   window.history.pushState({}, "", "/");
@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 it("removes a legacy saved password and prefills only the remembered account", () => {
-  localStorage.setItem("uml-auth-remembered-email", "teacher@example.edu");
+  localStorage.setItem("uml-auth-remembered-username", "teacher");
   localStorage.setItem("uml-auth-remembered-password", "legacy-password");
 
   render(
@@ -26,14 +26,14 @@ it("removes a legacy saved password and prefills only the remembered account", (
     </AppI18nProvider>,
   );
 
-  expect(screen.getByLabelText("邮箱或用户名")).toHaveValue("teacher@example.edu");
+  expect(screen.getByLabelText("用户名")).toHaveValue("teacher");
   expect(screen.getByLabelText("密码")).toHaveValue("");
   expect(screen.getByRole("checkbox", { name: "记住账号" })).toBeChecked();
   expect(localStorage.getItem("uml-auth-remembered-password")).toBeNull();
 });
 
 it("forgets the saved account after a successful login with remembering unchecked", async () => {
-  localStorage.setItem("uml-auth-remembered-email", "teacher@example.edu");
+  localStorage.setItem("uml-auth-remembered-username", "teacher");
   localStorage.setItem("uml-auth-remembered-password", "legacy-password");
   vi.stubGlobal("fetch", vi.fn(async () => Response.json({})));
   const onNavigate = vi.fn();
@@ -50,7 +50,7 @@ it("forgets the saved account after a successful login with remembering unchecke
   await user.click(screen.getByRole("button", { name: "登录" }));
 
   await waitFor(() => expect(onNavigate).toHaveBeenCalled());
-  expect(localStorage.getItem("uml-auth-remembered-email")).toBeNull();
+  expect(localStorage.getItem("uml-auth-remembered-username")).toBeNull();
   expect(localStorage.getItem("uml-auth-remembered-password")).toBeNull();
 });
 
@@ -75,40 +75,6 @@ it("shows student project guidance without the security footnote in both languag
     expect(screen.queryByText(removedText)).not.toBeInTheDocument();
     unmount();
   }
-});
-
-it("redirects to login after resetting a password from a reset link", async () => {
-  await i18n.changeLanguage("zh-CN");
-  window.history.pushState({}, "", "/reset-password?token=reset-token");
-  const fetchMock = vi.fn(async () =>
-    new Response(JSON.stringify({}), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }),
-  );
-  vi.stubGlobal("fetch", fetchMock);
-  const onNavigate = vi.fn();
-  const user = userEvent.setup();
-
-  render(
-    <AppI18nProvider>
-      <AuthPage path="/reset-password" onNavigate={onNavigate} />
-    </AppI18nProvider>,
-  );
-
-  await user.type(screen.getByLabelText("新密码"), "new-password-123");
-  await user.click(screen.getByRole("button", { name: "重置密码" }));
-
-  await waitFor(() => {
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/auth/reset-password"),
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ token: "reset-token", newPassword: "new-password-123" }),
-      }),
-    );
-    expect(onNavigate).toHaveBeenCalledWith("/login");
-  });
 });
 
 it("shows login-required feedback in the floating alert layer", async () => {
@@ -142,7 +108,7 @@ it("shows a localized fixed alert for login network failures without changing th
     </AppI18nProvider>,
   );
 
-  await user.type(screen.getByLabelText("邮箱或用户名"), "teacher@example.edu");
+  await user.type(screen.getByLabelText("用户名"), "teacher");
   await user.type(screen.getByLabelText("密码"), "password-123");
   await user.click(screen.getByRole("checkbox", { name: "记住账号" }));
   await user.click(screen.getByRole("button", { name: "登录" }));
@@ -151,7 +117,7 @@ it("shows a localized fixed alert for login network failures without changing th
   expect(message.closest('[aria-live="polite"]')).toHaveClass("fixed");
   expect(screen.getByTestId("auth-form-panel")).not.toContainElement(message);
   expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
-  expect(localStorage.getItem("uml-auth-remembered-email")).toBeNull();
+  expect(localStorage.getItem("uml-auth-remembered-username")).toBeNull();
   expect(localStorage.getItem("uml-auth-remembered-password")).toBeNull();
 });
 
@@ -168,11 +134,10 @@ it("keeps terms validation next to the registration checkbox", async () => {
     </AppI18nProvider>,
   );
 
-  await user.type(screen.getByLabelText("邮箱"), "teacher@example.edu");
-  await user.type(screen.getByLabelText("密码"), "password-123");
   await user.type(screen.getByLabelText("用户名"), "teacher_001");
+  await user.type(screen.getByLabelText("密码"), "password-123");
   await user.type(screen.getByLabelText("昵称"), "王老师");
-  await user.click(screen.getByRole("button", { name: "注册并发送验证邮件" }));
+  await user.click(screen.getByRole("button", { name: "注册" }));
   const error = screen.getByText("请先阅读并同意服务条款。");
   expect(error).toHaveAttribute("id", "terms-error");
   expect(screen.getByRole("checkbox", { name: /服务条款/ })).toHaveAttribute("aria-describedby", "terms-error");
@@ -180,8 +145,8 @@ it("keeps terms validation next to the registration checkbox", async () => {
 });
 
 it.each([
-  ["zh-CN", "邮箱或用户名", "密码", "登录", /请在 .+ 前完成验证。/u],
-  ["en", "Email or username", "Password", "Log in", /Complete verification before .+\./u],
+  ["zh-CN", "用户名", "密码", "登录", /请在 .+ 前完成验证。/u],
+  ["en", "Username", "Password", "Log in", /Complete verification before .+\./u],
 ] as const)("shows clear MFA expiry copy and keeps all six code slots inside the mobile form in %s", async (locale, emailLabel, passwordLabel, loginLabel, expiryCopy) => {
   saveLocalePreference(locale);
   await i18n.changeLanguage(locale);
@@ -206,7 +171,7 @@ it.each([
     </AppI18nProvider>,
   );
 
-  await user.type(screen.getByLabelText(emailLabel), "teacher@example.edu");
+  await user.type(screen.getByLabelText(emailLabel), "teacher");
   await user.type(screen.getByLabelText(passwordLabel), "password-123");
   await user.click(screen.getByRole("button", { name: loginLabel }));
 

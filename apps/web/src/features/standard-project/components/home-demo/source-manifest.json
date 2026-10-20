@@ -100,8 +100,9 @@
     "source": "packages/ui/src/components/react/assistant-ui/elements/context-display.tsx",
     "sha256": "343d1ae2760ff69c4d59138929a59067b82a8cd7e0cefd9957b88a6dac26f9a1",
     "bodySha256": "4b833622ee2d542d704bededed2f89d19fb391cf40bfbb20ae3d6e877f58cdc4",
-    "adaptedBodySha256": "4f0c50ed535d5fdb1a3403fe5c3697b264b2dddb33f8a65788594560b0d66d03",
-    "structureSha256": "32762f9fb70d58c2f257aaa85906356a465783243d916b169b1855ad6752389d"
+    "adaptedBodySha256": "2f4ded2fe8f508ebd69b32592c871d9d74cbc8592e99279bd63c327b1d09e95b",
+    "structureSha256": "32762f9fb70d58c2f257aaa85906356a465783243d916b169b1855ad6752389d",
+    "adaptedStructureSha256": "6046b80b699a97eefcbf581c965bab4e4290768a3d3e5c1ed1ea0f8e592c6311"
   },
   {
     "file": "source/elements/context-display.aui.tsx",

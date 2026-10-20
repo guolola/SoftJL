@@ -6,7 +6,7 @@ const scalarKeys = [
   "generationDiagnostics", "_offlineDemoFixture", "tokenUsage", "publicationSkipped",
 ];
 const arrayKeys = ["rules", "models", "requirementModels", "plantUml", "svgArtifacts", "sections"];
-const columns = [...scalarKeys, ...arrayKeys, "requirementText", "providerSettings", "coverageMatrix", "traceabilityMatrix", "designModelTraceability", "contextModel", "contextSvg", "contextPlantUml", "businessFlow", "implementationPlan"];
+const columns = ["standardRun", ...scalarKeys, ...arrayKeys, "requirementText", "providerSettings", "coverageMatrix", "traceabilityMatrix", "designModelTraceability", "contextModel", "contextSvg", "contextPlantUml", "businessFlow", "implementationPlan"];
 const field = (key: string) => `summary."${key}"`;
 
 function compactArray(key: string, fields: string[], extra = "'{}'::jsonb") {
@@ -26,6 +26,11 @@ export const RUN_SUMMARY_SNAPSHOT_SQL = `
     ${scalarKeys.map(key => `('${key}', ${field(key)})`).join(",")}) as entry(k, v)
     where v is not null), '{}'::jsonb)
   || jsonb_build_object(
+    'standardRun', case when summary."standardRun" is not null then
+      jsonb_build_object('operation', summary."standardRun"->'operation', 'model', summary."standardRun"->'model',
+        'providerConfigId', summary."standardRun"->'providerConfigId', 'baseline', '{}'::jsonb,
+        'artifacts', coalesce((select jsonb_agg(item - 'svg') from jsonb_array_elements(summary."standardRun"->'artifacts') item), '[]'::jsonb))
+      else 'null'::jsonb end,
     'error', summary."error", 'currentStage', summary."currentStage",
     'summaryRequirementTextLength', length(summary."requirementText" #>> '{}'),
     'providerSettings', jsonb_strip_nulls(jsonb_build_object(

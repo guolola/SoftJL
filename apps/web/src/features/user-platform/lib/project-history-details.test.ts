@@ -1,6 +1,6 @@
 // Verifies business categories follow explicit run intent regardless of execution stage.
 import { describe, expect, it } from "vitest";
-import { getHistoryOperation, historyDiagramLabel, historyRetryTargets } from "./project-history-details";
+import { getHistoryOperation, hasHistoryRetryFailure, historyDiagramLabel, historyRetryTargets } from "./project-history-details";
 import { createDesignRunSnapshot, createRunSnapshot } from "../../../test/contract-fixtures";
 import type { DiagramModelSpec } from "@uml-platform/contracts";
 import { i18n } from "../../../shared/i18n/i18n";
@@ -8,6 +8,7 @@ import type { PlatformRunSummary } from "../services/platform-api";
 
 describe("getHistoryOperation", () => {
   it.each([
+    [{ operationType: "quick_modeling", stage: "completed" }, "quick"],
     [{ operationType: "requirement_extraction", stage: "completed" }, "rules"],
     [{ operationType: "requirement_modeling", stage: "extract_rules" }, "requirements"],
     [{ operationType: "feasibility_analysis", stage: "generate_business_flow" }, "feasibility"],
@@ -44,4 +45,8 @@ it.each([false, true])("resolves per-use-case labels without displaying technica
   const label = historyDiagramLabel(`${design ? "sequence" : "analysis"}:UC-DIAL`, design, i18n.t, snapshot);
   expect(label).toBe(`${design ? "用例实现设计" : "需求分析模型"}：拨号`);
   expect(historyDiagramLabel(`${design ? "sequence" : "analysis"}:missing-id`, design, i18n.t, snapshot)).not.toContain("missing-id");
+});
+
+it("keeps failed quick turns in conversation recovery rather than engineering retry", () => {
+  expect(hasHistoryRetryFailure({ runId: "quick", operationType: "quick_modeling", status: "failed" })).toBe(false);
 });

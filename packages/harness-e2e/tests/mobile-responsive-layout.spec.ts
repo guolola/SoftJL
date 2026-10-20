@@ -5,6 +5,199 @@ import { mockProjectApi, projectId } from "./fixtures/project-workspace";
 
 const widths = [360, 375, 768, 1440] as const;
 
+test("project cards expand without page shifts and keep overlays above the header", async ({ page }, info) => {
+  await mockProjectApi(page);
+  await page.route("**/api/projects", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      projects: Array.from({ length: 8 }, (_, index) => ({
+        id: `compact-project-${index}`,
+        projectMode: "professional",
+        name: `布局验收项目 ${index + 1}`,
+        status: "active",
+        backgroundKey: "booking",
+        ownerUserId: "user-1",
+        ownerAvatarUrl: "/avatars/genshin-furina.svg",
+        updatedAt: "2026-09-22T02:00:00.000Z",
+        memberCount: 1,
+        memberPreviews: [],
+      })),
+    }),
+  }));
+  await page.setViewportSize({ width: 1920, height: 800 });
+  await page.goto("/projects");
+  const cards = page.getByTestId("projects-card-grid").getByRole("button");
+  await expect(cards).toHaveCount(8);
+  const initialGrid = (await page.getByTestId("projects-card-grid").boundingBox())!;
+  expect((await cards.nth(3).boundingBox())!.y).toBe((await cards.nth(0).boundingBox())!.y);
+  const initialScrollY = await page.evaluate(() => window.scrollY);
+  // Sample every frame: a final-position check alone misses scrollbar jumps during the morph.
+  await page.evaluate(() => {
+    const state = {
+      running: true,
+      frames: [] as { x: number; width: number; scrollY: number }[],
+      entryFrames: [] as { x: number; y: number; width: number; height: number; textHeight: number }[],
+    };
+    (window as any).__projectLayoutCheck = state;
+    const sample = () => {
+      if (!state.running) return;
+      const box = document.querySelector('[data-testid="projects-card-grid"]')!.getBoundingClientRect();
+      state.frames.push({ x: box.x, width: box.width, scrollY });
+      const modal = document.querySelector<HTMLElement>('[role="dialog"]');
+      const entry = modal?.querySelector<HTMLElement>('a[href]');
+      if (modal && entry) {
+        const modalBox = modal.getBoundingClientRect();
+        // Once the surface reaches its natural size, its child must not continue drifting or scaling.
+        if (Math.abs(modalBox.width - modal.offsetWidth) < 0.5 && Math.abs(modalBox.height - modal.offsetHeight) < 0.5 && Number(getComputedStyle(entry).opacity) >= 0.99) {
+          const bounds = entry.getBoundingClientRect();
+          state.entryFrames.push({ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, textHeight: entry.firstElementChild!.getBoundingClientRect().height });
+        }
+      }
+      requestAnimationFrame(sample);
+    };
+    sample();
+  });
+  await page.screenshot({ path: info.outputPath("project-cards-desktop.png"), fullPage: true });
+  const previewTrigger = page.getByRole("button", { name: "查看项目 布局验收项目 1", exact: true });
+  await previewTrigger.click();
+  const preview = page.getByRole("dialog", { name: "布局验收项目 1", exact: true });
+  await expect(preview).toBeVisible();
+  await expect(preview.getByRole("link", { name: "进入项目 布局验收项目 1" })).toBeVisible();
+  await expect(preview.getByRole("link", { name: "进入项目 布局验收项目 1" })).toHaveCSS("opacity", "1");
+  await expect.poll(async () => Math.round((await preview.boundingBox())!.width)).toBe(500);
+  // Measure after the shared-layout scale settles, rather than during the cover morph.
+  const entry = preview.getByRole("link", { name: "进入项目 布局验收项目 1" });
+  await expect.poll(async () => (await entry.boundingBox())!.width).toBeCloseTo(104, 0);
+  await expect.poll(async () => (await entry.boundingBox())!.height).toBeCloseTo(44, 0);
+  // Paint order at the header proves the backdrop covers it, even while the modal layer catches clicks.
+  expect(await page.locator('[data-slot="sidebar-inset"] > header').evaluate((header) => {
+    const rect = header.getBoundingClientRect();
+    const stack = document.elementsFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    const backdropIndex = stack.findIndex((node) => node.getAttribute('data-testid') === 'project-preview-backdrop');
+    const headerIndex = stack.findIndex((node) => header === node || header.contains(node));
+    return backdropIndex >= 0 && headerIndex > backdropIndex;
+  })).toBe(true);
+  const memberAvatar = preview.getByLabel(/^成员头像 /).first();
+  const avatarBounds = (await memberAvatar.boundingBox())!;
+  const entryBounds = (await entry.boundingBox())!;
+  expect(entryBounds.x).toBeGreaterThan(avatarBounds.x + avatarBounds.width);
+  expect(entryBounds.y + entryBounds.height / 2 - avatarBounds.y - avatarBounds.height / 2).toBeCloseTo(-4, 0);
+  expect(await memberAvatar.evaluate((element) => {
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.maskImage !== 'none' || Number(style.opacity) < 1) return true;
+    }
+    return false;
+  })).toBe(false);
+  await memberAvatar.hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip.locator(':scope > div')).toHaveCSS('opacity', '1');
+  expect(await tooltip.evaluate((element) => {
+    // Hit testing ignores pointer-events:none; enable it only for this paint-order probe.
+    const previous = element.style.pointerEvents;
+    element.style.pointerEvents = 'auto';
+    const rect = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    element.style.pointerEvents = previous;
+    return hit !== null && element.contains(hit);
+  })).toBe(true);
+  await page.screenshot({ path: info.outputPath("project-preview-desktop.png") });
+  await page.evaluate(() => {
+    const state = { running: true, frames: [] as number[] };
+    (window as any).__tooltipExitCheck = state;
+    const sample = () => {
+      if (!state.running) return;
+      const avatar = document.querySelector('[role="dialog"] [aria-label^="成员头像"]')!;
+      if (!avatar.hasAttribute('aria-describedby')) {
+        const bubble = document.querySelector('[role="tooltip"] > div');
+        state.frames.push(bubble ? Number(getComputedStyle(bubble).opacity) : 0);
+      }
+      requestAnimationFrame(sample);
+    };
+    sample();
+  });
+  await preview.getByRole('link').hover();
+  await expect(tooltip).toHaveCount(0);
+  // Watch past the former spring's first rebound, which flashed again after reaching zero opacity.
+  await page.waitForTimeout(700);
+  const exitFrames = await page.evaluate(() => {
+    const state = (window as any).__tooltipExitCheck;
+    state.running = false;
+    return state.frames as number[];
+  });
+  expect(exitFrames.length).toBeGreaterThan(0);
+  let lowestOpacity = 1;
+  for (const opacity of exitFrames) {
+    expect(opacity - lowestOpacity).toBeLessThan(0.01);
+    lowestOpacity = Math.min(lowestOpacity, opacity);
+  }
+  await expect(tooltip).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
+  await expect(previewTrigger).toBeFocused();
+  const frames = await page.evaluate(() => {
+    const state = (window as any).__projectLayoutCheck;
+    state.running = false;
+    return state as {
+      frames: { x: number; width: number; scrollY: number }[];
+      entryFrames: { x: number; y: number; width: number; height: number; textHeight: number }[];
+    };
+  });
+  for (const frame of frames.frames) {
+    expect(Math.abs(frame.x - initialGrid.x)).toBeLessThan(1);
+    expect(Math.abs(frame.width - initialGrid.width)).toBeLessThan(1);
+    expect(frame.scrollY).toBe(initialScrollY);
+  }
+  expect(frames.entryFrames.length).toBeGreaterThan(0);
+  const settledEntry = frames.entryFrames.at(-1)!;
+  for (const frame of frames.entryFrames) {
+    expect(Math.abs(frame.x - settledEntry.x)).toBeLessThan(1);
+    expect(Math.abs(frame.y - settledEntry.y)).toBeLessThan(1);
+    expect(frame.width).toBeCloseTo(104, 0);
+    expect(frame.height).toBeCloseTo(44, 0);
+    expect(frame.textHeight).toBeCloseTo(20, 0);
+  }
+  for (const width of [1920, 1440, 1024]) {
+    await page.setViewportSize({ width, height: 1080 });
+    // Desktop fills the available width with compact cards.
+    await expect.poll(async () => (await cards.first().boundingBox())!.width).toBeLessThan(384);
+    await expectNoPageOverflow(page, `compact project cards at ${width}px`);
+  }
+  await cards.last().scrollIntoViewIfNeeded();
+  const scrolledPosition = await page.evaluate(() => window.scrollY);
+  expect(scrolledPosition).toBeGreaterThan(0);
+  await cards.last().click();
+  const lastPreview = page.getByRole("dialog", { name: "布局验收项目 8", exact: true });
+  await expect(lastPreview.getByRole("link")).toHaveCSS("opacity", "1");
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolledPosition);
+  await page.keyboard.press("Escape");
+  await expect(lastPreview).toBeHidden();
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolledPosition);
+  await page.setViewportSize({ width: 360, height: 844 });
+  const first = (await cards.nth(0).boundingBox())!;
+  const second = (await cards.nth(1).boundingBox())!;
+  expect(second.y).toBeGreaterThan(first.y);
+  expect(Math.abs(first.x - second.x)).toBeLessThan(1);
+  await expectNoPageOverflow(page, "single-column mobile project cards");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await previewTrigger.click();
+  await expect(preview).toBeVisible();
+  await expect(preview.getByRole('link')).toHaveCSS('opacity', '1');
+  await expect(preview.getByRole('link')).toBeVisible();
+  const previewBounds = (await preview.boundingBox())!;
+  expect(previewBounds.x).toBeGreaterThanOrEqual(0);
+  expect(previewBounds.x + previewBounds.width).toBeLessThanOrEqual(360);
+  await expectNoPageOverflow(page, "expanded mobile project card");
+  await page.screenshot({ path: info.outputPath("project-preview-mobile.png") });
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(preview).toBeHidden();
+  await previewTrigger.click();
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
+});
+
 test("template page scroll keeps the workspace header visible", async ({ page }) => {
   await mockProjectApi(page);
   await page.route("**/api/auth/me", async (route) => {
@@ -12,7 +205,7 @@ test("template page scroll keeps the workspace header visible", async ({ page })
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        user: { id: "user-1", email: "layout@example.test", displayName: "Layout Reviewer", status: "active", emailVerified: true, mfaEnabled: false },
+        user: { id: "user-1", username: "layout", displayName: "Layout Reviewer", status: "active", mfaEnabled: false },
         session: { id: "session-layout", userId: "user-1", createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86_400_000).toISOString(), lastSeenAt: new Date().toISOString(), ipAddress: "127.0.0.1", userAgent: "Playwright" },
       }),
     });
@@ -88,7 +281,7 @@ test("community entry, dashboard, projects, and MFA fit the mobile viewport", as
           id: projectId,
           name: "座位预约系统",
           description: "移动端布局验收项目",
-          visibility: "private",
+
           status: "active",
           ownerUserId: "user-1",
           ownerDisplayName: "Model Nav Reviewer",
@@ -151,7 +344,7 @@ test("community entry, dashboard, projects, and MFA fit the mobile viewport", as
     });
   });
   await page.goto("/login");
-  await page.getByLabel("邮箱或用户名").fill("mobile@example.test");
+  await page.getByLabel("用户名").fill("mobile");
   await page.locator("#auth-password").fill("not-a-real-password");
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page.locator('[data-slot="input-otp-group"]')).toBeVisible();

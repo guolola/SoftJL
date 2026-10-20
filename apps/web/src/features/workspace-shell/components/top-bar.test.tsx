@@ -741,11 +741,10 @@ describe("TopBar", () => {
         return new Response(JSON.stringify({
           user: {
             id: "user-avatar",
-            email: "avatar@example.com",
+            username: "avatar",
             displayName: "Avatar User",
             avatarUrl: null,
             status: "active",
-            emailVerified: true,
             mfaEnabled: false,
           },
           session: {
@@ -764,11 +763,10 @@ describe("TopBar", () => {
         return new Response(JSON.stringify({
           user: {
             id: "user-avatar",
-            email: "avatar@example.com",
+            username: "avatar",
             displayName: "Avatar User",
             avatarUrl: null,
             status: "active",
-            emailVerified: true,
             mfaEnabled: false,
           },
           session: {
@@ -827,11 +825,10 @@ describe("TopBar", () => {
       const method = init?.method ?? "GET";
       const baseUser = {
         id: "user-avatar",
-        email: "avatar@example.com",
+        username: "avatar",
         displayName: "Avatar User",
         avatarUrl: null,
         status: "active",
-        emailVerified: true,
         mfaEnabled: false,
       };
       const session = {
@@ -913,11 +910,10 @@ describe("TopBar", () => {
     };
     const baseUser = {
       id: "user-avatar",
-      email: "avatar@example.com",
+      username: "avatar",
       displayName: "Avatar User",
       avatarUrl: null,
       status: "active",
-      emailVerified: true,
       mfaEnabled: false,
     };
     const currentSession = {
@@ -1003,7 +999,7 @@ describe("TopBar", () => {
             {
               id: "login-success",
               userId: "user-avatar",
-              email: "avatar@example.com",
+              username: "avatar",
               outcome: "success",
               ipAddress: "203.0.113.10",
               locationLabel: "中国 北京",
@@ -1014,7 +1010,7 @@ describe("TopBar", () => {
             {
               id: "login-failure",
               userId: "user-avatar",
-              email: "avatar@example.com",
+              username: "avatar",
               outcome: "failure",
               ipAddress: "203.0.113.66",
               locationLabel: "中国 天津",
@@ -1025,7 +1021,7 @@ describe("TopBar", () => {
             {
               id: "login-success-2",
               userId: "user-avatar",
-              email: "avatar@example.com",
+              username: "avatar",
               outcome: "success",
               ipAddress: "203.0.113.11",
               locationLabel: "中国 北京",
@@ -1036,7 +1032,7 @@ describe("TopBar", () => {
             {
               id: "login-success-3",
               userId: "user-avatar",
-              email: "avatar@example.com",
+              username: "avatar",
               outcome: "success",
               ipAddress: "203.0.113.12",
               locationLabel: "中国 北京",
@@ -1047,7 +1043,7 @@ describe("TopBar", () => {
             {
               id: "login-success-4",
               userId: "user-avatar",
-              email: "avatar@example.com",
+              username: "avatar",
               outcome: "success",
               ipAddress: "203.0.113.13",
               locationLabel: "中国 北京",
@@ -1058,7 +1054,7 @@ describe("TopBar", () => {
             {
               id: "login-success-overflow",
               userId: "user-avatar",
-              email: "avatar@example.com",
+              username: "avatar",
               outcome: "success",
               ipAddress: "203.0.113.14",
               locationLabel: "中国 北京",
@@ -1072,7 +1068,7 @@ describe("TopBar", () => {
       if (url.includes("/api/account/mfa/setup") && method === "POST") {
         return new Response(JSON.stringify({
           secret: "JBSWY3DPEHPK3PXP",
-          otpauthUri: "otpauth://totp/UML:avatar@example.com?secret=JBSWY3DPEHPK3PXP&issuer=UML",
+          otpauthUri: "otpauth://totp/UML:avatar?secret=JBSWY3DPEHPK3PXP&issuer=UML",
           expiresAt: "2026-05-23T12:00:00.000Z",
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -1107,8 +1103,8 @@ describe("TopBar", () => {
     await user.click(screen.getByRole("tab", { name: "个人资料" }));
     expect(screen.getByText("个人资料信息")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Avatar User")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("avatar@example.com")).toBeInTheDocument();
-    expect(screen.getByText("邮箱已验证")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("avatar")).toBeInTheDocument();
+    expect(screen.queryByText("用户名已验证")).not.toBeInTheDocument();
     expect(screen.getAllByText("正常").length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("tab", { name: "安全设置" }));
@@ -1158,11 +1154,10 @@ describe("TopBar", () => {
     };
     const baseUser = {
       id: "user-password",
-      email: "password@example.com",
+      username: "password",
       displayName: "Password User",
       avatarUrl: null,
       status: "active",
-      emailVerified: true,
       mfaEnabled: false,
     };
     const currentSession = {
@@ -1236,7 +1231,7 @@ describe("TopBar", () => {
             },
           ],
           plantUml: {
-            usecase: "@startuml\nactor 用户\n@enduml",
+            usecase: "@startuml\nactor 用户\n",
           },
           generatedDiagramTypes: ["usecase"],
         }),

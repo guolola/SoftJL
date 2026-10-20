@@ -1,4 +1,5 @@
 // Wires assembled server dependencies into HTTP route modules without owning route behavior.
+import { registerInboxRoutes } from "../routes/inbox/register-inbox-routes.js";
 import { join } from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { readSessionCookie } from "../auth/session-cookie.js";
@@ -19,7 +20,6 @@ import { registerRunRoutes } from "../routes/runs/register-run-routes.js";
 import { registerFeasibilityRoutes } from "../routes/feasibility/register-feasibility-routes.js";
 import type { RunAccessContext } from "../routes/runs/run-access.js";
 import type { DocumentLibrary } from "../documents/library/document-library.js";
-import type { MailAdapter } from "../mail/mail-adapter.js";
 import type { ProviderConfigStore } from "../provider-configs/provider-config-store.js";
 import type { ProviderUsageTracker } from "../provider-configs/provider-usage-tracker.js";
 import type { RunRecordStore } from "../runs/records/run-record-store.js";
@@ -46,7 +46,6 @@ export type RegisterApiRoutesOptions = {
     healthPayload: HealthPayload;
     versionPayload: VersionPayload;
     authStore: AuthStore;
-    mailAdapter: MailAdapter;
     generationUsage: GenerationUsageService;
     nodeEnv: string | null;
     runs: RunRecordStore;
@@ -64,7 +63,7 @@ export type RegisterApiRoutesOptions = {
     databaseProbe?: () => Promise<void>;
     testRunAccessContext?: RunAccessContext;
 };
-export function registerApiRoutes({ app, healthPayload, versionPayload, authStore, mailAdapter, generationUsage, nodeEnv, runs, documentLibrary, providerConfigs, providerUsageTracker, llmScheduler, runQueue, llmTransport, renderClient, pngRenderClient, pdfRenderClient, systemNoticeStore, analyticsStore, databaseProbe, testRunAccessContext, }: RegisterApiRoutesOptions) {
+export function registerApiRoutes({ app, healthPayload, versionPayload, authStore, generationUsage, nodeEnv, runs, documentLibrary, providerConfigs, providerUsageTracker, llmScheduler, runQueue, llmTransport, renderClient, pngRenderClient, pdfRenderClient, systemNoticeStore, analyticsStore, databaseProbe, testRunAccessContext, }: RegisterApiRoutesOptions) {
     const activeUserIdFromRequest = async (request: FastifyRequest) => {
         const sessionId = readSessionCookie(request);
         const session = sessionId ? await authStore.getActiveSession(sessionId) : null;
@@ -80,12 +79,12 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
         return Boolean(member && hasProjectPermission(member.role, permission));
     };
     const modelCatalog = createModelCatalog(app, nodeEnv);
-    registerStandardProjectRoutes({ app, authStore, llmTransport, llmScheduler, renderClient, pngRenderClient, modelCatalog, providerConfigs, providerUsageTracker, generationUsage, analyticsStore, documentLibrary });
+    registerStandardProjectRoutes({ app, runs, authStore, llmTransport, llmScheduler, renderClient, pngRenderClient, modelCatalog, providerConfigs, providerUsageTracker, generationUsage, analyticsStore, documentLibrary });
     registerHealthRoutes({ app, healthPayload, versionPayload });
+    registerInboxRoutes({ app, authStore });
     registerAuthRoutes({
         app,
         authStore,
-        mailAdapter,
     });
     registerAccountRoutes({
         app,
@@ -97,7 +96,6 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
     registerProjectRoutes({
         app,
         authStore,
-        mailAdapter,
         nodeEnv,
     });
     registerDashboardRoutes({ app, authStore, runs, documentLibrary });
@@ -159,7 +157,7 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
                 const userId = user?.status === "active" ? user.id : null;
                 return {
                     userId: userId ?? testRunAccessContext?.userId,
-                    email: user?.status === "active" ? user.email : testRunAccessContext?.email,
+                    username: user?.status === "active" ? user.username : testRunAccessContext?.username,
                     projectId: typeof projectIdHeader === "string" && projectIdHeader.trim()
                         ? projectIdHeader.trim()
                         : testRunAccessContext?.projectId,

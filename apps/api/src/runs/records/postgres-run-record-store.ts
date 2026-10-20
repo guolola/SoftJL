@@ -61,7 +61,7 @@ function requiredTimestamp(value: Date | string | null | undefined) {
 }
 
 function readModel(snapshot: RunRecord["snapshot"]) {
-  const settings: unknown = "providerSettings" in snapshot ? snapshot.providerSettings : undefined;
+  const settings: unknown = "standardRun" in snapshot && snapshot.standardRun ? snapshot.standardRun : "providerSettings" in snapshot ? snapshot.providerSettings : undefined;
   if (!settings || typeof settings !== "object" || !("model" in settings)) {
     return null;
   }
@@ -70,7 +70,7 @@ function readModel(snapshot: RunRecord["snapshot"]) {
 }
 
 function readProviderConfigId(snapshot: RunRecord["snapshot"]) {
-  const settings: unknown = "providerSettings" in snapshot ? snapshot.providerSettings : undefined;
+  const settings: unknown = "standardRun" in snapshot && snapshot.standardRun ? snapshot.standardRun : "providerSettings" in snapshot ? snapshot.providerSettings : undefined;
   if (!settings || typeof settings !== "object" || !("providerConfigId" in settings)) {
     return null;
   }
@@ -336,6 +336,10 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
         (row.timing_events ?? []).map(item => { runEventMetadataSchema.parse(item.event); return item.event; }),
         (row.timing_events ?? []).map(item => item.at)),
     }));
+  }
+
+  async flushRun(runId: string) {
+    await this.chains.get(runId);
   }
 
   async flush() {

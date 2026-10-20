@@ -6,7 +6,6 @@ import { ModelSemanticError } from "@uml-platform/contracts";
 import { normalizeWorkspaceModelState } from "../../normalizers/workspace/model-state.js";
 
 import {
-  projectInvitationAcceptResponseSchema,
   projectInvitationCreateRequestSchema,
   projectInvitationResponseSchema,
   projectCreateRequestSchema,
@@ -29,12 +28,6 @@ import {
 import { toProjectMemberDto } from "../../auth/dto.js";
 import type { AuthStore } from "../../auth/in-memory-auth-store.js";
 import {
-  buildTokenMail,
-  createMailAdapterFromEnv,
-  type MailAdapter,
-} from "../../mail/mail-adapter.js";
-import {
-  devTokenPayload,
   isWorkspaceSourceRunConstraintError,
   projectListPayload,
   projectPayload,
@@ -43,6 +36,7 @@ import {
   toProjectInvitationDto,
 } from "../../projects/project-route-payloads.js";
 import { requireProjectSettingsContext } from "../../projects/project-settings-access.js";
+import { resolveRegisteredProjectInvitee } from "../../projects/project-invitation-eligibility.js";
 
 function isSchemaError(error: unknown): error is z.ZodError {
   // Contracts may resolve a workspace-local Zod copy, so constructor identity alone is insufficient.
@@ -58,12 +52,10 @@ const projectWorkspaceSaveRequestSchema = z.object({
 export function registerProjectRoutes({
   app,
   authStore,
-  mailAdapter = createMailAdapterFromEnv(),
   nodeEnv = process.env.NODE_ENV ?? null,
 }: {
   app: FastifyInstance;
   authStore: AuthStore;
-  mailAdapter?: MailAdapter;
   nodeEnv?: string | null;
 }) {
   app.get("/api/projects", async (request, reply) => {
@@ -93,7 +85,6 @@ export function registerProjectRoutes({
       ownerUserId: auth.user.id,
       name: input.name,
       description: input.description,
-      visibility: input.visibility,
       retentionPolicy: input.retentionPolicy ?? "manual",
       backgroundKey: input.backgroundKey ?? null,
     });
@@ -435,37 +426,34 @@ export function registerProjectRoutes({
     );
     if (isProjectPermissionError(context)) return context;
 
-    const input = projectInvitationCreateRequestSchema.parse(request.body);
-    if (await authStore.findProjectMemberByEmail(projectId, input.email)) {
+    const parsedInput = projectInvitationCreateRequestSchema.safeParse(request.body);
+    if (!parsedInput.success) {
+      reply.code(400);
+      return createHttpErrorResponse(reply, { issues: parsedInput.error.issues });
+    }
+    const input = parsedInput.data;
+    const invitee = await resolveRegisteredProjectInvitee(authStore, context.user, input.username);
+    if ("error" in invitee) {
+      reply.code(400);
+      return invitee;
+    }
+    if (await authStore.findProjectMemberByUsername(projectId, input.username)) {
       reply.code(409);
-      return createHttpErrorResponse(reply);
+      return { error: { code: "PROJECT_INVITATION_ALREADY_EXISTS", category: "conflict", retryable: false } };
     }
 
     const now = new Date().toISOString();
     const member = await authStore.createMember({
       projectId,
-      userId: null,
-      email: input.email,
-      displayName: null,
+      userId: invitee.user.id,
+      username: input.username,
+      displayName: invitee.user.displayName,
       role: input.role,
       status: "invited",
       invitedByUserId: context.user.id,
       invitedAt: now,
       joinedAt: null,
     });
-    const invitationToken = await authStore.createProjectInvitationToken({
-      projectMemberId: member.id,
-      createdByUserId: context.user.id,
-    });
-    await mailAdapter.send(
-      buildTokenMail({
-        email: member.email,
-        purpose: "project_invitation",
-        token: invitationToken.token,
-        expiresAt: invitationToken.expiresAt,
-        projectName: context.project.name,
-      }),
-    );
 
     await authStore.recordAuditLog({
       actorUserId: context.user.id,
@@ -479,9 +467,7 @@ export function registerProjectRoutes({
     return projectInvitationResponseSchema.parse({
       invitation: toProjectInvitationDto({
         member,
-        expiresAt: invitationToken.expiresAt,
       }),
-      ...devTokenPayload(invitationToken.token, invitationToken.expiresAt, nodeEnv),
     });
   });
 
@@ -501,25 +487,19 @@ export function registerProjectRoutes({
       );
       if (isProjectPermissionError(context)) return context;
 
-      const member = await authStore.getMember(invitationId);
+      let member = await authStore.getMember(invitationId);
       if (!member || member.projectId !== projectId || member.status !== "invited") {
         reply.code(404);
         return createHttpErrorResponse(reply);
       }
 
-      const invitationToken = await authStore.createProjectInvitationToken({
-        projectMemberId: member.id,
-        createdByUserId: context.user.id,
-      });
-      await mailAdapter.send(
-        buildTokenMail({
-          email: member.email,
-          purpose: "project_invitation",
-          token: invitationToken.token,
-          expiresAt: invitationToken.expiresAt,
-          projectName: context.project.name,
-        }),
-      );
+      const invitee = await resolveRegisteredProjectInvitee(authStore, context.user, member.username);
+      if ("error" in invitee) {
+        reply.code(400);
+        return invitee;
+      }
+        member = await authStore.refreshProjectInvitation(member.id);
+      if (!member) { reply.code(409); return createHttpErrorResponse(reply); }
       await authStore.recordAuditLog({
         actorUserId: context.user.id,
         action: "project.invitation.resend",
@@ -531,9 +511,7 @@ export function registerProjectRoutes({
       return projectInvitationResponseSchema.parse({
         invitation: toProjectInvitationDto({
           member,
-          expiresAt: invitationToken.expiresAt,
         }),
-        ...devTokenPayload(invitationToken.token, invitationToken.expiresAt, nodeEnv),
       });
     },
   );
@@ -560,8 +538,7 @@ export function registerProjectRoutes({
         return createHttpErrorResponse(reply);
       }
 
-      await authStore.revokeProjectInvitationTokens(member.id);
-      await authStore.deleteMember(member.id);
+      await authStore.updateMember(member.id, { status: "revoked" });
       await authStore.recordAuditLog({
         actorUserId: context.user.id,
         action: "project.invitation.revoke",
@@ -575,55 +552,6 @@ export function registerProjectRoutes({
     },
   );
 
-  app.get("/api/invitations/:token", async (request, reply) => {
-    const { token } = request.params as { token: string };
-    const invitation = await authStore.findActiveProjectInvitationToken(token);
-    if (!invitation) {
-      reply.code(404);
-      return createHttpErrorResponse(reply);
-    }
-
-    return projectInvitationResponseSchema.parse({
-      invitation: toProjectInvitationDto({
-        member: invitation.member,
-        project: invitation.project,
-        expiresAt: invitation.token.expiresAt,
-      }),
-      expiresAt: invitation.token.expiresAt,
-    });
-  });
-
-  app.post("/api/invitations/:token/accept", async (request, reply) => {
-    const { token } = request.params as { token: string };
-    const auth = await requireAuth(request, reply, authStore);
-    if (isAuthError(auth)) {
-      reply.code(401);
-      return createHttpErrorResponse(reply);
-    }
-
-    const result = await authStore.acceptProjectInvitationToken(token, auth.user);
-    if (!result) {
-      reply.code(400);
-      return createHttpErrorResponse(reply);
-    }
-    if ("error" in result) {
-      reply.code(403);
-      return createHttpErrorResponse(reply);
-    }
-
-    await authStore.recordAuditLog({
-      actorUserId: auth.user.id,
-      action: "project.invitation.accept",
-      targetType: "project_member",
-      targetId: result.member.id,
-      outcome: "success",
-    });
-
-    return projectInvitationAcceptResponseSchema.parse({
-      member: toProjectMemberDto(result.member),
-    });
-  });
-
   app.post("/api/projects/:projectId/members", async (request, reply) => {
     const { projectId } = request.params as { projectId: string };
     const context = await requireProjectPermission(
@@ -635,24 +563,34 @@ export function registerProjectRoutes({
     );
     if (isProjectPermissionError(context)) return context;
 
-    const input = projectMemberInviteRequestSchema.parse(request.body);
-    if (await authStore.findProjectMemberByEmail(projectId, input.email)) {
+    const parsedInput = projectMemberInviteRequestSchema.safeParse(request.body);
+    if (!parsedInput.success) {
+      reply.code(400);
+      return createHttpErrorResponse(reply, { issues: parsedInput.error.issues });
+    }
+    const input = parsedInput.data;
+    const invitee = await resolveRegisteredProjectInvitee(authStore, context.user, input.username);
+    if ("error" in invitee) {
+      reply.code(400);
+      return invitee;
+    }
+    if (await authStore.findProjectMemberByUsername(projectId, input.username)) {
       reply.code(409);
-      return createHttpErrorResponse(reply);
+      return { error: { code: "PROJECT_INVITATION_ALREADY_EXISTS", category: "conflict", retryable: false } };
     }
 
-    const user = await authStore.findUserByEmail(input.email);
+    const user = invitee.user;
     const now = new Date().toISOString();
     const member = await authStore.createMember({
       projectId,
-      userId: user?.id ?? null,
-      email: input.email,
-      displayName: user?.displayName ?? null,
+      userId: user.id,
+      username: input.username,
+      displayName: user.displayName,
       role: input.role,
-      status: user ? "active" : "invited",
+      status: "active",
       invitedByUserId: context.user.id,
       invitedAt: now,
-      joinedAt: user ? now : null,
+      joinedAt: now,
     });
 
     await authStore.recordAuditLog({

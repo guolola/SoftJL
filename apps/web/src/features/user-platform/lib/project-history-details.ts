@@ -1,15 +1,16 @@
-// Maps persisted run intent and snapshot artifacts to the five history operations.
+// Maps persisted run intent and snapshot artifacts to current history operations.
 import type { TFunction } from "i18next";
 import { getModelTaskLabel } from "../../../entities/diagram/model";
 import type { RunHistorySnapshot } from "../../../entities/run-history";
 import type { FeasibilityRunSnapshot } from "@uml-platform/contracts";
 import type { PlatformRunSummary } from "../services/platform-api";
 
-export const HISTORY_OPERATIONS = ["rules", "feasibility", "requirements", "design", "document"] as const;
+export const HISTORY_OPERATIONS = ["quick", "rules", "feasibility", "requirements", "design", "document"] as const;
 export type HistoryOperation = typeof HISTORY_OPERATIONS[number];
 
 export function getHistoryOperation(run: PlatformRunSummary): HistoryOperation | null {
   const operations = {
+    quick_modeling: "quick",
     requirement_extraction: "rules", requirement_modeling: "requirements",
     feasibility_analysis: "feasibility", design_modeling: "design", document_generation: "document",
     unknown: null,
@@ -26,6 +27,7 @@ export function historyDiagramLabel(id: string, design: boolean, t: TFunction, s
 }
 
 export function hasHistoryRetryFailure(run: PlatformRunSummary) {
+  if (run.operationType === "quick_modeling") return false;
   return run.status === "failed" || (run.status === "completed" && run.terminal !== false &&
     (run.diagramErrorSummary ?? []).some((item) => item.error?.retryable));
 }

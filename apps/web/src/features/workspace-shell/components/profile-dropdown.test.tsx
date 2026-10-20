@@ -6,12 +6,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { i18n } from '../../../shared/i18n';
 import { ProfileDropdown } from './profile-dropdown';
 describe('header profile dropdown', () => {
-    it('shows the available entries in order and opens each destination', async () => {
-        const onAccount = vi.fn();
-        const onNavigate = vi.fn();
-        const user = userEvent.setup();
-        render(<I18nextProvider i18n={i18n}>
-      <ProfileDropdown user={{ id: 'user-1', username: 'header-user', displayName: '顶栏用户', email: 'header@example.test', status: 'active', emailVerified: true, mfaEnabled: false }} onAccount={onAccount} onNavigate={onNavigate}/>
+  it('shows the available entries in order and opens each destination', async () => {
+    const onAccount = vi.fn();
+    const onNavigate = vi.fn();
+    const user = userEvent.setup();
+    render(<I18nextProvider i18n={i18n}>
+      <ProfileDropdown user={{ id: 'user-1', username: 'header-user', displayName: '顶栏用户', status: 'active', mfaEnabled: false }} onAccount={onAccount} onNavigate={onNavigate} />
     </I18nextProvider>);
         const openMenu = async () => {
             await user.click(screen.getByRole('button', { name: i18n.t('auth.account') }));

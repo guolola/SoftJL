@@ -3,7 +3,7 @@ import type { Queryable, TransactionPool } from "./transactions.js";
 import { currentSchemaSql } from "./current-schema.js";
 
 export const migrationTableName = "schema_migrations";
-export const migrations = [{ id: "current_platform_schema_v2", sql: currentSchemaSql }] as const;
+export const migrations = [{ id: "current_platform_schema_v3", sql: currentSchemaSql }] as const;
 
 const OBSOLETE_SCHEMA_MESSAGE = "Database schema is obsolete; initialize a clean database with the current schema.";
 

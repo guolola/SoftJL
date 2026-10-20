@@ -19,13 +19,14 @@ test.beforeEach(async ({ page }) => {
     const pathname = new URL(route.request().url()).pathname;
     let body: unknown = {};
     if (pathname === '/api/auth/me' || pathname === '/api/account/profile') body = {
-      user: { id: 'welcome-owner', email: 'welcome@example.test', displayName: '项目负责人', status: 'active', emailVerified: true, mfaEnabled: false },
+      user: { id: 'welcome-owner', username: 'welcome', displayName: '项目负责人', status: 'active', mfaEnabled: false },
       session: { id: 'welcome-session', userId: 'welcome-owner', createdAt: summary.generatedAt, expiresAt: '2027-10-10T00:00:00Z', lastSeenAt: summary.generatedAt },
     };
     else if (pathname === '/api/dashboard/summary') body = summary;
     else if (pathname === '/api/projects') body = { projects: [] };
     else if (pathname === '/api/account/onboarding') body = { emptyWorkspace: 'completed', firstProject: 'completed', firstProjectId: 'p-0' };
-    else if (pathname === '/api/system-notices') body = { generatedAt: summary.generatedAt, notices: [], unreadCount: 0 };
+    else if (pathname === "/api/inbox") body = { messages: [], unreadCount: 0 };
+        else if (pathname === '/api/system-notices') body = { generatedAt: summary.generatedAt, notices: [], unreadCount: 0 };
     else if (pathname === '/api/provider-configs') body = { generatedAt: summary.generatedAt, providerConfigs: [] };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });

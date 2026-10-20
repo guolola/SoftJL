@@ -7,9 +7,10 @@ import { cn } from "../../../shared/ui/utils";
 
 type ProjectMode = "standard" | "professional";
 
-export function ProjectModeStep({ value, onChange }: {
+export function ProjectModeSelector({ value, onChange, disabled = false }: {
   value: ProjectMode;
   onChange: (mode: ProjectMode) => void;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -18,7 +19,7 @@ export function ProjectModeStep({ value, onChange }: {
         <h3 id="project-mode-label" className="font-medium">{t("projects.createForm.mode.label")}</h3>
         <p className="text-sm text-muted-foreground">{t("projects.createForm.mode.intro")}</p>
       </div>
-      <RadioGroup aria-labelledby="project-mode-label" value={value} onValueChange={onChange} className="grid gap-3 sm:grid-cols-2">
+      <RadioGroup aria-labelledby="project-mode-label" value={value} onValueChange={onChange} disabled={disabled} className="grid gap-3 sm:grid-cols-2">
         {(["standard", "professional"] as const).map(mode => {
           const selected = value === mode;
           const Illustration = mode === "standard" ? ChatIllustrations09 : BeamIllustrations31;

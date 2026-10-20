@@ -22,7 +22,7 @@ export type GenerationLimitDecision = {
 
 export type GenerationUsageIdentity = {
   userId: string;
-  email?: string | null;
+  username?: string | null;
   ipAddress?: string | null;
 };
 
@@ -33,13 +33,13 @@ export type GenerationUsageRecordInput = GenerationUsageIdentity & {
 
 type MemoryUsageEvent = {
   userId: string;
-  email: string | null;
+  username: string | null;
   ipAddress: string | null;
   taskType: ProviderTaskType;
   createdAt: string;
 };
 
-const DEFAULT_GUEST_EMAIL = "guest@example.edu";
+const DEFAULT_GUEST_USERNAME = "guest";
 const DEFAULT_GUEST_DAILY_LIMIT = 5;
 const DEFAULT_WINDOW_SECONDS = 60 * 60 * 24;
 const GENERATION_TASK_TYPES = new Set<ProviderTaskType>([
@@ -50,8 +50,8 @@ const GENERATION_TASK_TYPES = new Set<ProviderTaskType>([
 ]);
 const GENERATION_TASK_TYPE_LIST = Array.from(GENERATION_TASK_TYPES);
 
-function normalizeEmail(email: string | null | undefined) {
-  return email?.trim().toLowerCase() ?? null;
+function normalizeUsername(username: string | null | undefined) {
+  return username?.trim().toLowerCase() ?? null;
 }
 
 function normalizeIpAddress(ipAddress: string | null | undefined) {
@@ -68,7 +68,7 @@ function readPositiveInteger(value: unknown, fallback: number) {
 }
 
 export function createGenerationUsageService({
-  guestEmail = process.env.UML_GUEST_EMAIL ?? DEFAULT_GUEST_EMAIL,
+  guestUsername = process.env.UML_GUEST_USERNAME ?? DEFAULT_GUEST_USERNAME,
   guestDailyLimit = readPositiveInteger(
     process.env.UML_GUEST_DAILY_LIMIT,
     DEFAULT_GUEST_DAILY_LIMIT,
@@ -80,17 +80,17 @@ export function createGenerationUsageService({
   providerUsageTracker,
   now = () => new Date(),
 }: {
-  guestEmail?: string;
+  guestUsername?: string;
   guestDailyLimit?: number;
   guestWindowSeconds?: number;
   providerUsageTracker?: ProviderUsageTracker;
   now?: () => Date;
 } = {}) {
   const memoryEvents: MemoryUsageEvent[] = [];
-  const normalizedGuestEmail = normalizeEmail(guestEmail) ?? DEFAULT_GUEST_EMAIL;
+  const normalizedGuestUsername = normalizeUsername(guestUsername) ?? DEFAULT_GUEST_USERNAME;
 
-  function isGuest(identity: Pick<GenerationUsageIdentity, "email">) {
-    return normalizeEmail(identity.email) === normalizedGuestEmail;
+  function isGuest(identity: Pick<GenerationUsageIdentity, "username">) {
+    return normalizeUsername(identity.username) === normalizedGuestUsername;
   }
 
   function policyFor(identity: GenerationUsageIdentity) {
@@ -189,7 +189,7 @@ export function createGenerationUsageService({
       }
       memoryEvents.push({
         userId: input.userId,
-        email: normalizeEmail(input.email),
+        username: normalizeUsername(input.username),
         ipAddress: normalizeIpAddress(input.ipAddress),
         taskType: input.taskType,
         createdAt: now().toISOString(),

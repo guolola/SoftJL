@@ -195,7 +195,7 @@ export const demoWorkbenchData: WorkbenchData = {
       avatar: '',
       fallback: 'AL',
       user: '图书馆系统',
-      email: 'Amanda Lee',
+      username: 'Amanda Lee',
       role: 'admin',
       plan: 'enterprise',
       status: 'active'
@@ -205,7 +205,7 @@ export const demoWorkbenchData: WorkbenchData = {
       avatar: '',
       fallback: 'SK',
       user: '校园钱包',
-      email: 'Sam Kim',
+      username: 'Sam Kim',
       role: 'editor',
       plan: 'team',
       status: 'active'
@@ -215,7 +215,7 @@ export const demoWorkbenchData: WorkbenchData = {
       avatar: '',
       fallback: 'JW',
       user: '诊所预约',
-      email: 'Jenny Wilson',
+      username: 'Jenny Wilson',
       role: 'maintainer',
       plan: 'company',
       status: 'pending'
@@ -225,7 +225,7 @@ export const demoWorkbenchData: WorkbenchData = {
       avatar: '',
       fallback: 'RC',
       user: '物流中枢',
-      email: 'Robert Chen',
+      username: 'Robert Chen',
       role: 'author',
       plan: 'basic',
       status: 'inactive'
@@ -235,7 +235,7 @@ export const demoWorkbenchData: WorkbenchData = {
       avatar: '',
       fallback: 'MG',
       user: '在线教学平台',
-      email: 'Maya Gonzalez',
+      username: 'Maya Gonzalez',
       role: 'subscriber',
       plan: 'team',
       status: 'active'
@@ -245,7 +245,7 @@ export const demoWorkbenchData: WorkbenchData = {
       avatar: '',
       fallback: 'OS',
       user: '研究档案',
-      email: 'Olivia Sparks',
+      username: 'Olivia Sparks',
       role: 'editor',
       plan: 'enterprise',
       status: 'pending'
@@ -255,7 +255,7 @@ export const demoWorkbenchData: WorkbenchData = {
       avatar: '',
       fallback: 'HL',
       user: '智慧食堂',
-      email: 'Howard Lloyd',
+      username: 'Howard Lloyd',
       role: 'admin',
       plan: 'company',
       status: 'active'

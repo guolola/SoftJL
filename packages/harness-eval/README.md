@@ -27,7 +27,7 @@ API 模式先启动核心服务，使用有权限的账号创建专用评估项�
 | `UML_EVAL_API_BASE_URL` | API 根地址，默认本机 `4101` |
 | `UML_EVAL_PROJECT_ID` | 当前账号有生成权限的专用项目 |
 | `UML_EVAL_PROVIDER_CONFIG_ID`、`UML_EVAL_MODEL` | 已保存的供应商配置及其可用模型 |
-| `UML_EVAL_EMAIL`、`UML_EVAL_PASSWORD` | 登录并在评估后注销工具创建的会话 |
+| `UML_EVAL_USERNAME`、`UML_EVAL_PASSWORD` | 登录并在评估后注销工具创建的会话 |
 | `UML_EVAL_SESSION_COOKIE` | 可选完整 Cookie 请求头；优先使用，工具不注销借用的会话；启用 MFA 时先完成正常登录 |
 | `UML_EVAL_ATTEMPTS` | 每个夹具尝试次数，默认 `5`，范围 `1–100` |
 | `UML_EVAL_TIMEOUT_MS`、`UML_EVAL_POLL_MS` | 单次运行超时与轮询间隔，默认 `180000` / `1000` 毫秒 |

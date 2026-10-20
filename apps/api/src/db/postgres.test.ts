@@ -65,22 +65,22 @@ class FakePool {
 test("database url is read from DATABASE_URL and blank values are ignored", () => {
   assert.equal(getDatabaseUrl({ DATABASE_URL: "   " }), null);
   assert.equal(
-    getDatabaseUrl({ DATABASE_URL: " postgres://user:pass@localhost:5432/app " }),
-    "postgres://user:pass@localhost:5432/app",
+    getDatabaseUrl({ DATABASE_URL: " postgres://user:pass:5432/app " }),
+    "postgres://user:pass:5432/app",
   );
 });
 
 test("postgres pool is created from DATABASE_URL without connecting eagerly", () => {
   const pool = createPostgresPoolFromEnv({
-    DATABASE_URL: "postgres://user:pass@localhost:5432/app",
+    DATABASE_URL: "postgres://user:pass:5432/app",
   });
 
-  assert.equal(pool.options.connectionString, "postgres://user:pass@localhost:5432/app");
+  assert.equal(pool.options.connectionString, "postgres://user:pass:5432/app");
   void pool.end();
 });
 
 test("the current schema has one installation baseline without historical transforms", () => {
-  assert.deepEqual(migrations.map((entry) => entry.id), ["current_platform_schema_v2"]);
+  assert.deepEqual(migrations.map((entry) => entry.id), ["current_platform_schema_v3"]);
   assert.doesNotMatch(currentSchemaSql, /alter table|update users|update projects|delete from|strip_retired|RUN_LEGACY_FAILURE/i);
 });
 
@@ -88,10 +88,11 @@ test("deployment compatibility checks leave empty, current and obsolete database
   for (const scenario of [
     { tables: [], ids: [], status: "empty" },
     { tables: ["schema_migrations"], ids: [], status: "empty" },
-    { tables: ["schema_migrations", "projects"], ids: ["current_platform_schema_v2"], status: "current" },
+    { tables: ["schema_migrations", "projects"], ids: ["current_platform_schema_v3"], status: "current" },
     { tables: ["schema_migrations", "projects"], ids: ["current_platform_schema_v1"], status: null },
+    { tables: ["schema_migrations", "projects"], ids: ["current_platform_schema_v2"], status: null },
     { tables: ["schema_migrations", "projects"], ids: ["001_user_admin_platform_base"], status: null },
-    { tables: ["schema_migrations", "projects"], ids: ["current_platform_schema_v2", "old"], status: null },
+    { tables: ["schema_migrations", "projects"], ids: ["current_platform_schema_v3", "old"], status: null },
     { tables: ["schema_migrations", "projects"], ids: [], status: null },
     { tables: ["projects"], ids: [], status: null },
   ]) {
@@ -120,10 +121,10 @@ test("clean installation creates the complete schema and current constraints", a
     for (const name of ["users", "projects", "run_records", "run_events", "document_records", "document_record_versions", "billing_usage_reservations", "billing_entitlement_ledger", "mcp_connections", "prompt_runtime_versions", "user_onboarding_state", "llm_request_telemetry", "admin_invitations"]) assert.ok(names.has(name), name);
     const columns = await database.query<{ column_name: string; is_nullable: string }>("select column_name, is_nullable from information_schema.columns where table_name = 'projects'");
     assert.equal(columns.rows.find((row) => row.column_name === "project_mode")?.is_nullable, "NO");
-    for (const name of ["organization_id", "course_id", "class_id", "team_id"]) assert.equal(columns.rows.some((row) => row.column_name === name), false, name);
+    for (const name of ["organization_id", "course_id", "class_id", "team_id", "visibility"]) assert.equal(columns.rows.some((row) => row.column_name === name), false, name);
     const indexes = await database.query<{ indexname: string }>("select indexname from pg_indexes where schemaname = 'public'");
     for (const name of ["billing_reversal_ledger_unique", "billing_reservations_ledger_entry_idx", "llm_telemetry_project_run_idx", "run_records_error_code_idx"]) assert.ok(indexes.rows.some((row) => row.indexname === name), name);
-    await database.exec("insert into users(id,email,username,display_name,password_hash) values('u','u@example.test','user','User','hash')");
+    await database.exec("insert into users(id,username,display_name,password_hash) values('u','user','User','hash')");
     await assert.rejects(database.exec("insert into projects(id,name,owner_user_id) values('p','Project','u')"), /project_mode/);
     await assert.rejects(database.exec("insert into projects(id,name,owner_user_id,project_mode) values('p','Project','u','obsolete')"), /check constraint/);
     await database.exec("insert into projects(id,name,owner_user_id,project_mode) values('s','Standard','u','standard'),('p','Professional','u','professional')");
@@ -133,7 +134,7 @@ test("clean installation creates the complete schema and current constraints", a
     // Exercise the real parameter bindings after removing project and usage hierarchy columns.
     const db = database as unknown as Queryable;
     const repository = createPostgresAuthRepository(db);
-    const { project, ownerMember } = await repository.createProject({ ownerUserId: "u", name: "Shared project", description: null, projectMode: "standard", visibility: "private" });
+    const { project, ownerMember } = await repository.createProject({ ownerUserId: "u", name: "Shared project", description: null, projectMode: "standard" });
     assert.equal(ownerMember.role, "owner");
     const updated = await repository.updateProject(project.id, { name: "Renamed", backgroundKey: "booking", retentionPolicy: "one_year_365_days" });
     assert.equal(updated?.name, "Renamed");

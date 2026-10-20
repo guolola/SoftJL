@@ -19,7 +19,7 @@ function makeProject(overrides: Partial<PlatformProject> = {}): PlatformProject 
     id: "p1",
     name: "Library System",
     description: null,
-    visibility: "private",
+
     status: "active",
     ownerUserId: "u1",
     ownerDisplayName: "Amanda Lee",
@@ -50,7 +50,7 @@ describe("buildWorkbenchData", () => {
   it("aggregates KPIs, timeline, weekly, funnel and table rows from real runs", () => {
     const projects = [
       makeProject(),
-      makeProject({ id: "p2", name: "Campus Wallet", visibility: "private", memberCount: 2 }),
+      makeProject({ id: "p2", name: "Campus Wallet",  memberCount: 2 }),
     ];
     const runsByProject: ProjectRuns[] = [
       {
@@ -95,7 +95,7 @@ describe("buildWorkbenchData", () => {
 
 describe("projectToItem", () => {
   it("maps visibility/status onto the datatable enums", () => {
-    const item = projectToItem(makeProject({ visibility: "private", status: "archived" }), NOW);
+    const item = projectToItem(makeProject({  status: "archived" }), NOW);
     expect(item.role).toBe("admin");
     expect(item.plan).toBe("basic");
     expect(item.fallback).toBe("AL");

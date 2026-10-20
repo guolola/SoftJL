@@ -9,9 +9,9 @@ import { createEmptySnapshot } from "../../runs/records/snapshots.js";
 const now = new Date("2026-10-05T00:30:00+08:00");
 function fixture() {
   const store = createInMemoryAuthStore();
-  const user = store.createUser({ email: "dashboard@example.test", displayName: "Dashboard", passwordHash: "test" })!;
+  const user = store.createUser({ username: "dashboard", displayName: "Dashboard", passwordHash: "test" })!;
   const sources = Array.from({ length: 7 }, (_, i) => {
-    const { project } = store.createProject({ ownerUserId: user.id, name: `Project ${i}`, description: null, visibility: "private" });
+    const { project } = store.createProject({ ownerUserId: user.id, name: `Project ${i}`, description: null });
     if (i === 6) project.status = "archived";
     return { project, owner: user, members: store.listProjectMembers(project.id), documents: [{ id: "doc-1", status: "active" as const, documentKind: "requirementsSpec" as const }, { id: "doc-1", status: "active" as const, documentKind: "requirementsSpec" as const }, { id: "doc-2", status: "deleted" as const, documentKind: "requirementsSpec" as const }] };
   });

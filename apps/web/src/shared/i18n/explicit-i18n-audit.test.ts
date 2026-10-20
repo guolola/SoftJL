@@ -18,7 +18,7 @@ const explicitlyLocalizedUiFiles = [
   "features/documents/components/deleted-documents.tsx",
   "features/user-platform/components/project-members.tsx",
   "features/user-platform/components/project-new-page.tsx",
-  "features/user-platform/components/invitation-accept-page.tsx",
+  "features/user-platform/components/default-avatar-picker.tsx",
   "features/user-platform/components/mfa-setup-panel.tsx",
 ];
 

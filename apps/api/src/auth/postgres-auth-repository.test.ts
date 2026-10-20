@@ -1,6 +1,7 @@
 // Verifies the PostgreSQL auth repository adapter contract before routes adopt it.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { defaultAvatarSchema } from "@uml-platform/contracts";
 import { createPostgresAuthRepository } from "./postgres-auth-repository.js";
 import type { Queryable } from "../db/transactions.js";
 
@@ -22,12 +23,10 @@ class CapturingClient implements Queryable {
 
 const userRow = {
   id: "user-1",
-  email: "owner@example.com",
-  username: "owner_user",
+  username: "owner",
   display_name: "Owner User",
   avatar_url: null,
   status: "active",
-  email_verified: true,
   mfa_enabled: false,
   system_roles: ["super-admin"],
   password_hash: "hash",
@@ -52,7 +51,7 @@ const projectRow = {
   id: "project-1",
   name: "Project One",
   description: null,
-  visibility: "private",
+
   status: "active",
   owner_user_id: "user-1",
   retention_policy: "manual", background_key: null,
@@ -71,7 +70,7 @@ const memberRow = {
   id: "member-1",
   project_id: "project-1",
   user_id: "user-1",
-  email: "owner@example.com",
+  username: "owner",
   display_name: "Owner User",
   role: "owner",
   status: "active",
@@ -93,55 +92,27 @@ const auditLogRow = {
   created_at: "2026-05-22T00:00:00.000Z",
 };
 
-test("postgres auth repository creates users with normalized email and JSON system roles", async () => {
+test("postgres auth repository creates users with normalized username and JSON system roles", async () => {
   const client = new CapturingClient();
   client.nextRows = [userRow];
 
   const repository = createPostgresAuthRepository(client);
   const user = await repository.createUser({
-    email: " Owner@Example.COM ",
+    username: " Owner ",
     displayName: "Owner User",
     passwordHash: "hash",
     systemRoles: ["super-admin"],
   });
 
-  assert.equal(user.email, "owner@example.com");
+  assert.equal(user.username, "owner");
   assert.equal(user.displayName, "Owner User");
   assert.deepEqual(user.systemRoles, ["super-admin"]);
   assert.match(client.calls[0]?.sql ?? "", /insert into users/i);
   assert.doesNotMatch(client.calls[0]?.sql ?? "", /gen_random_uuid/i);
   assert.match(String(client.calls[0]?.params[0] ?? ""), /^[0-9a-f-]{36}$/i);
-  assert.deepEqual(client.calls[0]?.params.slice(1, 6), [
-    "owner@example.com",
-    "owner",
-    "Owner User",
-    "hash",
-    ["super-admin"],
-  ]);
-  assert.deepEqual(client.calls[0]?.params.slice(6, 8), [
-    "active",
-    true,
-  ]);
-});
-
-test("postgres auth repository creates unverified users in pending email verification status", async () => {
-  const client = new CapturingClient();
-  client.nextRows = [{ ...userRow, status: "pending_email_verification", email_verified: false }];
-
-  const repository = createPostgresAuthRepository(client);
-  const user = await repository.createUser({
-    email: "verify@example.com",
-    displayName: "Verify User",
-    passwordHash: "hash",
-    emailVerified: false,
-  });
-
-  assert.equal(user?.status, "pending_email_verification");
-  assert.equal(user?.emailVerified, false);
-  assert.deepEqual(client.calls[0]?.params.slice(6, 8), [
-    "pending_email_verification",
-    false,
-  ]);
+  assert.deepEqual(client.calls[0]?.params.slice(1, 6), ["owner", "Owner User", "hash", ["super-admin"], "active"]);
+  assert.match(client.calls[0]?.sql ?? "", /status, avatar_url/u);
+  assert.ok(defaultAvatarSchema.safeParse(client.calls[0]?.params[6]).success);
 });
 
 test("postgres auth repository creates users with explicit username", async () => {
@@ -150,7 +121,6 @@ test("postgres auth repository creates users with explicit username", async () =
 
   const repository = createPostgresAuthRepository(client);
   const user = await repository.createUser({
-    email: " Owner@Example.COM ",
     username: "Owner_User",
     displayName: "Owner User",
     passwordHash: "hash",
@@ -158,7 +128,23 @@ test("postgres auth repository creates users with explicit username", async () =
   });
 
   assert.equal(user?.username, "owner_user");
-  assert.equal(client.calls[0]?.params[2], "owner_user");
+  assert.equal(client.calls[0]?.params[1], "owner_user");
+});
+
+test("postgres user creation persists a random bundled avatar and reads it back unchanged", async () => {
+  const client = new CapturingClient();
+  let storedAvatar: unknown;
+  client.query = async (sql: string, params: readonly unknown[] = []) => {
+    client.calls.push({ sql, params });
+    if (/insert into users/iu.test(sql)) storedAvatar = params[6];
+    return { rows: [{ ...userRow, avatar_url: storedAvatar }], rowCount: 1 };
+  };
+  const repository = createPostgresAuthRepository(client);
+  const created = await repository.createUser({ username: "owner_user", displayName: "Owner User", passwordHash: "hash" });
+  assert.ok(created);
+  assert.ok(defaultAvatarSchema.safeParse(created.avatarUrl).success);
+  const restored = await repository.getUser(created.id);
+  assert.equal(restored?.avatarUrl, created.avatarUrl);
 });
 
 test("postgres auth repository returns null when unique user creation conflicts", async () => {
@@ -166,7 +152,7 @@ test("postgres auth repository returns null when unique user creation conflicts"
   const repository = createPostgresAuthRepository(client);
 
   const user = await repository.createUser({
-    email: "taken@example.com",
+    username: "taken",
     displayName: "Taken User",
     passwordHash: "hash",
   });
@@ -174,17 +160,15 @@ test("postgres auth repository returns null when unique user creation conflicts"
   assert.equal(user, null);
 });
 
-test("postgres auth repository maps snake_case rows when finding users by email", async () => {
+test("postgres auth repository maps snake_case rows when finding users by username", async () => {
   const client = new CapturingClient();
   client.nextRows = [
     {
       id: "user-2",
-      email: "viewer@example.com",
       username: "viewer_user",
       display_name: "Viewer",
       avatar_url: "https://example.com/avatar.png",
       status: "active",
-      email_verified: false,
       mfa_enabled: false,
       system_roles: [],
       password_hash: "hash",
@@ -195,13 +179,12 @@ test("postgres auth repository maps snake_case rows when finding users by email"
   ];
 
   const repository = createPostgresAuthRepository(client);
-  const user = await repository.findUserByEmail(" Viewer@Example.COM ");
+  const user = await repository.findUserByUsername(" Viewer ");
 
   assert.equal(user?.id, "user-2");
-  assert.equal(user?.emailVerified, false);
   assert.equal(user?.lastLoginAt, "2026-05-22T00:01:00.000Z");
-  assert.match(client.calls[0]?.sql ?? "", /where email = \$1/i);
-  assert.equal(client.calls[0]?.params[0], "viewer@example.com");
+  assert.match(client.calls[0]?.sql ?? "", /where username = \$1/i);
+  assert.equal(client.calls[0]?.params[0], "viewer");
 });
 
 test("postgres auth repository updates and lists users using auth store record shape", async () => {
@@ -222,7 +205,7 @@ test("postgres auth repository updates and lists users using auth store record s
 
   assert.equal(updated?.displayName, "Updated Owner");
   assert.equal(byId?.id, "user-1");
-  assert.equal(users[0]?.email, "owner@example.com");
+  assert.equal(users[0]?.username, "owner");
   assert.match(client.calls[0]?.sql ?? "", /update users/i);
   assert.match(client.calls[2]?.sql ?? "", /from users/i);
 });
@@ -271,7 +254,7 @@ test("postgres auth repository creates a project and owner membership together",
     ownerUserId: "user-1",
     name: "Project One",
     description: null,
-    visibility: "private",
+
   });
 
   assert.equal(result.project.id, "project-1");
@@ -359,10 +342,10 @@ test("postgres workspace reads and writes preserve explicit rules without migrat
   assert.deepEqual(state.rules, expected);
 });
 
-test("postgres auth repository manages project members with normalized invite email", async () => {
+test("postgres auth repository manages project members with normalized invite username", async () => {
   const client = new CapturingClient();
   client.queueRows(
-    [{ ...memberRow, email: "invitee@example.com", role: "viewer", status: "invited" }],
+    [{ ...memberRow, username: "invitee", role: "viewer", status: "invited" }],
     [memberRow],
     [memberRow],
     [memberRow],
@@ -376,7 +359,7 @@ test("postgres auth repository manages project members with normalized invite em
   const created = await repository.createMember({
     projectId: "project-1",
     userId: null,
-    email: " Invitee@Example.COM ",
+    username: " Invitee ",
     displayName: null,
     role: "viewer",
     status: "invited",
@@ -385,23 +368,23 @@ test("postgres auth repository manages project members with normalized invite em
     joinedAt: null,
   });
   const active = await repository.findProjectMember("project-1", "user-1");
-  const byEmail = await repository.findProjectMemberByEmail("project-1", " Owner@Example.COM ");
+  const byUsername = await repository.findProjectMemberByUsername("project-1", " Owner ");
   const byId = await repository.getMember("member-1");
   const listed = await repository.listProjectMembers("project-1");
   const updated = await repository.updateMember("member-1", { role: "editor" });
   const ownerCount = await repository.countOwners("project-1");
   const deleted = await repository.deleteMember("member-1");
 
-  assert.equal(created.email, "invitee@example.com");
+  assert.equal(created.username, "invitee");
   assert.equal(active?.id, "member-1");
-  assert.equal(byEmail?.id, "member-1");
+  assert.equal(byUsername?.id, "member-1");
   assert.equal(byId?.id, "member-1");
   assert.equal(listed[0]?.projectId, "project-1");
   assert.equal(updated?.role, "owner");
   assert.equal(ownerCount, 1);
   assert.equal(deleted, true);
   assert.match(client.calls[0]?.sql ?? "", /insert into project_members/i);
-  assert.equal(client.calls[0]?.params[3], "invitee@example.com");
+  assert.equal(client.calls[0]?.params[3], "invitee");
   assert.match(client.calls[7]?.sql ?? "", /delete from project_members/i);
 });
 

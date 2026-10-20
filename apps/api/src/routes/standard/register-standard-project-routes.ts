@@ -29,6 +29,9 @@ import { registerProjectModelContextRoutes } from "../projects/register-project-
 import { validModelingImage } from "../../runs/providers/modeling-input-validation.js";
 import { applyConversationRevision, resolveConversationRevision } from "../../runs/records/standard-conversation-revision.js";
 
+import { createRunRecordStore, type RunRecordStore } from "../../runs/records/run-record-store.js";
+import { startStandardRunRecord, syncStandardRunRecord } from "../../runs/records/standard-run-record.js";
+
 const commandSchema = z.object({
   operation: z.enum(["chat", "edit", "regenerate", "prepare", "generate", "retry", "resume", "tests", "requirementsSpec", "softwareDesignSpec"]),
   messageId: z.string().min(1).max(160).optional(), expectedHeadId: z.string().min(1).max(160).optional(), language: z.enum(["zh-CN", "en"]).optional(),
@@ -45,6 +48,7 @@ const publicState = ({ piSession: _privateSession, acceptedCommands: _receipts, 
 const active = (state: StandardProjectState) => state.run?.status === "running";
 
 export function registerStandardProjectRoutes(deps: {
+  runs?: RunRecordStore;
   app: FastifyInstance; authStore: AuthStore; llmTransport: LlmTransport; renderClient: RenderClient;
   pngRenderClient: PngRenderClient; llmScheduler: LlmScheduler; providerConfigs: ProviderConfigStore;
   providerUsageTracker?: ProviderUsageTracker; generationUsage?: GenerationUsageService;
@@ -53,6 +57,7 @@ export function registerStandardProjectRoutes(deps: {
   modelCatalog?: ModelCatalog;
 }) {
   const { app, authStore } = deps;
+  const runs = deps.runs ?? createRunRecordStore();
   const path = "/api/projects/:projectId/standard";
   const controllers = new Map<string, AbortController>();
   const processStartedAt = Date.now() - process.uptime() * 1000;
@@ -70,6 +75,7 @@ export function registerStandardProjectRoutes(deps: {
     // Only reconcile runs older than this process. A live start may be between its database commit and controller registration.
     if (state.run?.status === "running" && !controllers.has(state.run.id) && Date.parse(state.run.startedAt) < processStartedAt) {
       state = await recoverInterruptedStandardRun(authStore, projectId, context.user.id, state.run.id);
+      await syncStandardRunRecord(runs, state);
     }
     return { state: publicState(state) };
   });
@@ -89,6 +95,7 @@ export function registerStandardProjectRoutes(deps: {
       }
       interruptStandardRunMessages(state, "已按你的要求停止本轮生成。");
     });
+    await syncStandardRunRecord(runs, state);
     return { state: publicState(state) };
   });
   app.patch(path, async (request, reply) => {
@@ -146,7 +153,7 @@ export function registerStandardProjectRoutes(deps: {
     if (!["prepare", "chat", "edit", "regenerate", "resume"].includes(command.operation) && !current.outline) return reply.code(400).send(createHttpErrorResponse(reply));
     if (command.operation === "retry" && !current.diagrams[command.diagramId ?? ""]) return reply.code(400).send(createHttpErrorResponse(reply));
     const metadata = { projectId, userId: context.user.id, createdAt: new Date().toISOString() };
-    const runAccessGuard = { resolveRunAccess: async () => ({ userId: context.user.id, email: context.user.email }) };
+    const runAccessGuard = { resolveRunAccess: async () => ({ userId: context.user.id, username: context.user.username }) };
     const generationGate = await checkGenerationUsageLimit({ generationUsage: deps.generationUsage, runAccessGuard, request, reply });
     if (generationGate !== true) return generationGate;
     const resolution = await resolveProviderSettingsForRun({ providerSettings: command.providerSettings, metadata, providerConfigs: deps.providerConfigs });
@@ -163,12 +170,15 @@ export function registerStandardProjectRoutes(deps: {
     if (providerGate !== true) return providerGate;
     const runId = randomUUID();
     let initial: StandardProjectState;
+    let acceptedPrevious: StandardProjectState = current;
     try {
       initial = await updateStandardState(authStore, projectId, context.user.id, state => {
         // Compare-and-swap also protects simultaneous starts from different browser tabs.
         if (command.requestId && state.acceptedCommands?.includes(command.requestId)) throw new Error("command-already-accepted");
         if (active(state)) throw new Error("项目正在生成，请稍后重试");
         if (command.operation === "resume" && state.run?.id !== command.resumeRunId) throw new Error("原任务已变化，请刷新后继续");
+        // Capture the CAS winner: provider gates may have outlived another completed command.
+        acceptedPrevious = structuredClone(state);
         applyConversationRevision(state, command);
         if (!state.description) state.description = context.project.description ?? "";
         state.run = { id: runId, operation: command.operation === "resume" ? current.run!.operation : command.operation, status: "running", startedAt: new Date().toISOString(), requestId: command.requestId,
@@ -178,16 +188,32 @@ export function registerStandardProjectRoutes(deps: {
         // Acknowledgement includes the durable turn; the background pipeline reuses it by id.
         if (["chat", "edit", "regenerate"].includes(command.operation)) prepareStandardAgentTurn(projectId, command, state);
       });
+      await startStandardRunRecord({ runs, state: initial, previous: acceptedPrevious, projectId, userId: context.user.id,
+        providerConfigId, model: resolution.providerSettings.model });
     } catch (error) {
 
       if (error instanceof Error && error.message === "command-already-accepted") return { state: publicState(readStandardState((await authStore.getProjectWorkspace(projectId)).state)) };
+      // A failed history commit must not leave a project permanently marked as running.
+      await updateStandardState(authStore, projectId, context.user.id, state => {
+        if (state.run?.id === runId) state.run = { ...state.run, status: "failed", finishedAt: new Date().toISOString(), error: "任务记录保存失败，请重新发送消息" };
+      });
       return reply.code(409).send(createHttpErrorResponse(reply));
     }
     const controller = new AbortController(); controllers.set(runId, controller);
-    const save = (update: (state: StandardProjectState) => void) => updateStandardState(authStore, projectId, context.user.id, state => {
-      if (state.run?.id !== runId || !active(state)) throw new Error("任务已结束或被替换");
-      update(state);
-    });
+    // Keep each worker's accepted transition and history projection ordered within this turn.
+    let saveQueue: Promise<unknown> = Promise.resolve();
+    const save = (update: (state: StandardProjectState) => void) => {
+      const next = saveQueue.then(async () => {
+        const saved = await updateStandardState(authStore, projectId, context.user.id, state => {
+          if (state.run?.id !== runId || !active(state)) throw new Error("任务已结束或被替换");
+          update(state);
+        });
+        await syncStandardRunRecord(runs, saved);
+        return saved;
+      });
+      saveQueue = next.catch(() => undefined);
+      return next;
+    };
     const scheduled = createScheduledLlmTransport({ transport: deps.llmTransport, scheduler: deps.llmScheduler,
       context: { runId, projectId, userId: context.user.id, providerConfigId, model: resolution.providerSettings.model, taskType }, analyticsStore: deps.analyticsStore });
     let confirmed: Promise<unknown> | undefined;

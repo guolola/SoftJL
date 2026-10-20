@@ -1,16 +1,21 @@
 // Covers project index pagination, sorting, card presentation, and accessible navigation.
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthenticatedRouteSessionProvider } from "./authenticated-route-session";
 import { ProjectsIndexPage } from "./projects-index-page";
 import { formatProjectDateTimeMinute } from "../lib/project-presentation";
 
+// Real layout/exit animation is covered in the browser; JSDOM has no animation completion events.
+vi.mock("motion/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("motion/react")>();
+  return { ...actual, AnimatePresence: ({ children }) => children };
+});
+
 function mockProjectList(count: number) {
   const projects = Array.from({ length: count }, (_, index) => ({ projectMode: "professional",
     id: `project-${index + 1}`,
     name: `项目${String(index + 1).padStart(2, "0")}`,
-    visibility: "private",
     memberCount: index % 2 === 1 ? 2 : 1,
     status: index < 2 ? "archived" : "active",
     ownerUserId: "owner-user",
@@ -22,9 +27,42 @@ function mockProjectList(count: number) {
   })));
 }
 
+function projectCards() {
+  return within(screen.getByTestId("projects-card-grid")).getAllByRole("button");
+}
+
 describe("ProjectsIndexPage", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it.each([0, 15])("reserves only an existing scrollbar and restores page styles on close and unmount (%spx)", async (scrollbarWidth) => {
+    mockProjectList(1);
+    const root = document.documentElement;
+    const previousOverflow = document.body.style.overflow;
+    const previousGutter = root.style.scrollbarGutter;
+    const widthSpy = vi.spyOn(root, "clientWidth", "get").mockReturnValue(window.innerWidth - scrollbarWidth);
+    const user = userEvent.setup();
+    const view = render(<ProjectsIndexPage onNavigate={() => {}} />);
+    try {
+      const trigger = await screen.findByRole("button", { name: "查看项目 项目01" });
+      await user.click(trigger);
+      expect(document.body.style.overflow).toBe("hidden");
+      expect(root.style.scrollbarGutter).toBe(scrollbarWidth ? "stable" : previousGutter);
+      await user.keyboard("{Escape}");
+      expect(document.body.style.overflow).toBe(previousOverflow);
+      expect(root.style.scrollbarGutter).toBe(previousGutter);
+      expect(trigger).toHaveFocus();
+      await user.click(trigger);
+      view.unmount();
+      expect(document.body.style.overflow).toBe(previousOverflow);
+      expect(root.style.scrollbarGutter).toBe(previousGutter);
+    } finally {
+      view.unmount();
+      widthSpy.mockRestore();
+      document.body.style.overflow = previousOverflow;
+      root.style.scrollbarGutter = previousGutter;
+    }
   });
 
   it("paginates sorted cards with page numbers, boundary guards, and working project links", async () => {
@@ -34,7 +72,7 @@ describe("ProjectsIndexPage", () => {
     render(<ProjectsIndexPage onNavigate={onNavigate} />);
 
     expect(await screen.findByLabelText("1-12 / 25")).toHaveTextContent("共 25 个项目");
-    expect(screen.getAllByRole("article")).toHaveLength(12);
+    expect(projectCards()).toHaveLength(12);
     expect(screen.getByRole("heading", { name: "项目25" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "项目13" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
@@ -44,12 +82,17 @@ describe("ProjectsIndexPage", () => {
     expect(screen.getByRole("button", { name: "第 2 页" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("heading", { name: "项目13" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "项目25" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "进入项目 项目13" }));
+    await user.click(screen.getByRole("button", { name: "查看项目 项目13" }));
+    const preview = await screen.findByRole("dialog", { name: "项目13" });
+    expect(onNavigate).not.toHaveBeenCalled();
+    await user.click(within(preview).getByRole("link", { name: "进入项目 项目13" }));
     expect(onNavigate).toHaveBeenCalledWith("/projects/project-13");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(screen.getByLabelText("25-25 / 25")).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(projectCards()).toHaveLength(1);
     expect(screen.getByRole("heading", { name: "项目01" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "上一页" }));
@@ -67,11 +110,11 @@ describe("ProjectsIndexPage", () => {
 
     await user.type(screen.getByRole("textbox", { name: "搜索项目" }), "项目0");
     expect(screen.getByLabelText("1-9 / 9")).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(9);
+    expect(projectCards()).toHaveLength(9);
     expect(screen.getByRole("heading", { name: "项目01" })).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "搜索项目" }), "不存在");
     expect(screen.queryByRole("heading", { name: "没有匹配的项目" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^查看项目 / })).not.toBeInTheDocument();
     expect(screen.getByTestId("projects-filter-panel")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "pagination" })).not.toBeInTheDocument();
 
@@ -86,14 +129,14 @@ describe("ProjectsIndexPage", () => {
     await user.click(screen.getByRole("button", { name: "第 2 页" }));
     await user.click(screen.getByRole("button", { name: "归档项目" }));
     expect(screen.getByLabelText("1-2 / 2")).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(projectCards()).toHaveLength(2);
 
     await user.click(screen.getByRole("button", { name: "全部项目" }));
     await user.click(screen.getByRole("button", { name: "第 2 页" }));
     await user.click(screen.getByRole("combobox", { name: "排序方式" }));
     await user.click(await screen.findByRole("option", { name: "项目名称" }));
     expect(screen.getByLabelText("1-12 / 30")).toBeInTheDocument();
-    expect(screen.getAllByRole("article").map((card) => within(card).getByRole("heading").textContent))
+    expect(projectCards().map((card) => within(card).getByRole("heading").textContent))
       .toEqual(Array.from({ length: 12 }, (_, index) => `项目${String(index + 1).padStart(2, "0")}`));
   });
 
@@ -106,16 +149,16 @@ describe("ProjectsIndexPage", () => {
     await user.click(screen.getByRole("combobox", { name: "每页条数" }));
     await user.click(await screen.findByRole("option", { name: "24" }));
     expect(screen.getByLabelText("1-24 / 25")).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(24);
+    expect(projectCards()).toHaveLength(24);
     expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "下一页" }));
-    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(projectCards()).toHaveLength(1);
     screen.getByRole("combobox", { name: "每页条数" }).focus();
     await user.keyboard("{ArrowDown}");
     await user.click(await screen.findByRole("option", { name: "48" }));
     expect(screen.getByLabelText("1-25 / 25")).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(25);
+    expect(projectCards()).toHaveLength(25);
     expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
   });
@@ -128,7 +171,7 @@ describe("ProjectsIndexPage", () => {
     if (status === 200) await screen.findByRole("heading", { name: "从一句需求到完整的工程交付" });
     else await screen.findByRole("alert");
     expect(screen.queryByRole("navigation", { name: "pagination" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^查看项目 / })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "查看引导" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "还没有项目" })).not.toBeInTheDocument();
     if (status !== 200) {
@@ -157,7 +200,7 @@ describe("ProjectsIndexPage", () => {
       { id: "never-generated", name: "尚未生成", updatedAt: "2026-06-23T00:00:00.000Z", lastGeneratedAt: null },
       { id: "older-generation", name: "较早生成", updatedAt: "2026-06-22T00:00:00.000Z", lastGeneratedAt: "2026-06-20T00:00:00.000Z" },
       { id: "latest-generation", name: "最新生成", updatedAt: "2026-06-21T00:00:00.000Z", lastGeneratedAt: "2026-06-21T00:00:00.000Z" },
-    ].map((project) => ({ ...project, visibility: "private", status: "active", ownerUserId: "owner-user" }));
+    ].map((project) => ({ ...project,  status: "active", ownerUserId: "owner-user" }));
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ projects }), {
       status: 200, headers: { "Content-Type": "application/json" },
     })));
@@ -166,14 +209,14 @@ describe("ProjectsIndexPage", () => {
 
     await screen.findByRole("heading", { name: "最新生成" });
     expect(screen.getByLabelText("排序方式")).toHaveTextContent("最近生成");
-    expect(screen.getAllByRole("article").map((card) => within(card).getByRole("heading").textContent))
+    expect(projectCards().map((card) => within(card).getByRole("heading").textContent))
       .toEqual(["最新生成", "较早生成", "尚未生成"]);
   });
 
   it.each([
-    ["professional", "工程建模"],
-    ["standard", "快速建模"],
-  ])("renders %s cards with a gradient mode badge and no active status label", async (projectMode, modeLabel) => {
+    ["professional", "工程建模", "from-cyan-600", "to-indigo-600"],
+    ["standard", "快速建模", "from-indigo-500", "to-pink-500"],
+  ])("expands a %s project cover into its full details and restores focus on close", async (projectMode, modeLabel, gradientFrom, gradientTo) => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://127.0.0.1:4101");
       if (url.pathname === "/api/projects") {
@@ -185,7 +228,6 @@ describe("ProjectsIndexPage", () => {
                 projectMode,
                 name: "课程预约系统",
                 description: "用于课程实验的预约项目",
-                visibility: "private",
                 status: "active",
                 ownerUserId: "owner-user",
                 ownerDisplayName: "Owner User",
@@ -219,11 +261,9 @@ describe("ProjectsIndexPage", () => {
         value={{
           user: {
             id: "owner-user",
-            email: "owner@example.com",
             username: "owner",
             displayName: "Owner User",
             status: "active",
-            emailVerified: true,
             mfaEnabled: false,
           },
           session: {
@@ -241,7 +281,7 @@ describe("ProjectsIndexPage", () => {
       </AuthenticatedRouteSessionProvider>,
     );
 
-    const card = await screen.findByRole("article");
+    const card = await screen.findByRole("button", { name: "查看项目 课程预约系统" });
     const filterPanel = screen.getByTestId("projects-filter-panel");
     expect(within(filterPanel).getByRole("group", { name: "项目范围" })).toHaveClass(
       "grid-cols-4",
@@ -252,29 +292,45 @@ describe("ProjectsIndexPage", () => {
       "flex-1",
     );
     expect(within(filterPanel).getByLabelText("排序方式")).toHaveClass("w-28", "shrink-0");
-    expect(card).toHaveAttribute("data-slot", "perspective-card");
+    expect(card).toHaveClass("p-4", "hover:bg-neutral-50", "rounded-xl");
     expect(card).toHaveAttribute("data-background-key", "booking");
-    expect(within(card).queryByText("进行中")).not.toBeInTheDocument();
+    expect(within(card).queryByText(modeLabel)).not.toBeInTheDocument();
     expect(within(card).getByText("用于课程实验的预约项目")).toHaveAttribute("title", "用于课程实验的预约项目");
-    const modeBadge = within(card).getByText(modeLabel);
-    expect(modeBadge).toHaveAttribute("data-slot", "badge");
-    expect(modeBadge).toHaveClass(
-      "rounded-sm", "border-transparent", "bg-linear-to-r", "from-indigo-500",
-      "to-pink-500", "bg-size-[105%]", "bg-center", "text-white",
-    );
-    expect(modeBadge.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
-    expect(within(card).getByRole("button", { name: /进入项目/u })).toBeInTheDocument();
-    expect(card).toHaveTextContent(`最近更新：${formatProjectDateTimeMinute("2026-06-21T08:09:30.000Z")}`);
-    expect(card).not.toHaveTextContent(":30");
-    expect(card.querySelector("img")).toHaveAttribute(
+    expect(within(card).queryByRole("button", { name: "进入项目 课程预约系统" })).not.toBeInTheDocument();
+    const trigger = card;
+    trigger.focus();
+    await userEvent.keyboard("{Enter}");
+    const preview = await screen.findByRole("dialog", { name: "课程预约系统" });
+    expect(within(preview).getByText(modeLabel)).toHaveClass("bg-linear-to-r", gradientFrom, gradientTo);
+    expect(within(preview).getByText(modeLabel).querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    const modeBadge = within(preview).getByText(modeLabel);
+    const ownerRow = within(preview).getByText("负责人：Owner User").closest("p")!;
+    expect(modeBadge.parentElement).toBe(ownerRow.parentElement);
+    expect(modeBadge.compareDocumentPosition(ownerRow) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    const projectEntry = within(preview).getByRole("link", { name: "进入项目 课程预约系统" });
+    expect(projectEntry).toHaveClass("rounded-full", "bg-primary", "relative", "-top-1", "h-auto", "gap-1", "px-4!", "py-3");
+    expect(projectEntry).toHaveClass("transition-[background-color,color,border-color,box-shadow]");
+    expect(projectEntry).not.toHaveClass("transition-all");
+    expect(projectEntry.querySelector('[aria-hidden="true"]')).toHaveClass("size-3");
+    expect(preview).toHaveTextContent(`最近更新：${formatProjectDateTimeMinute("2026-06-21T08:09:30.000Z")}`);
+    for (const label of ["负责人：Owner User", "1 位成员", `最近更新：${formatProjectDateTimeMinute("2026-06-21T08:09:30.000Z")}`]) {
+      expect(within(preview).getByText(label).closest("p")?.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    }
+    expect(preview.querySelector("img")).toHaveAttribute(
       "src",
       expect.stringContaining("cover-19"),
     );
-    const memberTrigger = within(card).getByLabelText("成员头像 Owner User");
+    const memberTrigger = within(preview).getByLabelText("成员头像 Owner User");
+    expect(projectEntry.parentElement).toHaveClass("flex", "items-center", "justify-between");
+    expect(projectEntry.parentElement).toContainElement(memberTrigger);
     expect(memberTrigger).toHaveAttribute("tabindex", "0");
+    expect(memberTrigger.querySelector('[data-slot="avatar"]')).toHaveAttribute("data-size", "default");
     await userEvent.hover(memberTrigger);
     const tooltip = await screen.findByRole("tooltip");
     expect(within(tooltip).getByText("Owner User")).toBeInTheDocument();
     expect(within(tooltip).getByText("所有者")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
   });
 });

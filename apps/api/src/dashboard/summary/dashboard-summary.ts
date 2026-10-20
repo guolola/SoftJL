@@ -62,7 +62,7 @@ export function buildDashboardSummary(user: UserRecord, sources: ProjectSource[]
   const members = new Map<string, DashboardSummary["members"][number]>();
   const projects = sources.filter(source => accessible.has(source.project.id)).map(({ project, members: projectMembers, owner, documents, workspace }) => {
     const active = projectMembers.filter(member => member.status === "active" && member.userId);
-    for (const member of active) members.set(member.userId!, { userId: member.userId!, displayName: member.displayName || member.email.split("@")[0], avatarUrl: member.avatarUrl ?? null });
+    for (const member of active) members.set(member.userId!, { userId: member.userId!, displayName: member.displayName || member.username.split("@")[0], avatarUrl: member.avatarUrl ?? null });
     const projectRuns = runs.filter(run => run.projectId === project.id);
     const totals = aggregate(projectRuns);
     const durations = projectRuns.filter(run => run.status === "completed").map(dashboardDuration).filter((duration): duration is number => duration !== null);

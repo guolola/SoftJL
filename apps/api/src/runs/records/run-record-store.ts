@@ -41,6 +41,8 @@ export type RunRecordStore = Map<string, RunRecord> & {
   refreshProject?: (projectId: string) => Promise<void>;
   listRecords?: (projectIds?: string[]) => Promise<RunRecord[]>;
   release?: (runId: string) => void;
+  /** Wait only for this run before acknowledging a durable workspace transition. */
+  flushRun?: (runId: string) => Promise<void>;
 };
 
 export interface RunRecordReadOptions {

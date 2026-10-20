@@ -54,7 +54,7 @@ type StartProjectRunActionPipeline = (input: {
 type RunAccessResolver = {
   resolveRunAccess(request: FastifyRequest): Promise<{
     userId?: string;
-    email?: string | null;
+    username?: string | null;
   }>;
 };
 

@@ -224,7 +224,7 @@ test("contracts describe structured model rerender requests", () => {
   assert.equal(request.model.diagramKind, "usecase");
 
   const response = renderStructuredModelResponseSchema.parse({
-    plantUmlSource: "@startuml\nactor 教师\n@enduml",
+    plantUmlSource: "@startuml\nactor 教师\n",
     svg: "<svg><text>教师</text></svg>",
     renderMeta: {
       engine: "plantuml",
@@ -496,7 +496,7 @@ test("contracts validate representative stage payloads", () => {
     kind: "render_error",
     diagramKind: "navigation",
     rawOutputTruncated: false,
-    plantUmlSource: "@startuml\nstart\n@enduml",
+    plantUmlSource: "@startuml\nstart\n",
     errorMessage: "Syntax Error? (line 2)",
     createdAt: new Date().toISOString(),
   });
@@ -566,7 +566,7 @@ test("contracts validate representative stage payloads", () => {
         attempt: 1,
         kind: "plantuml_source",
         diagramKind: "usecase",
-        plantUmlSource: "@startuml\n@enduml",
+        plantUmlSource: "@startuml\n",
         createdAt: new Date().toISOString(),
       },
     ],
@@ -718,7 +718,7 @@ test("contracts accept existing design context for incremental design runs", () 
       {
         diagramKind: "sequence",
         modelId: "sequence:uc_borrow",
-        source: "@startuml\n@enduml",
+        source: "@startuml\n",
       },
     ],
     existingDesignSvgArtifacts: [
@@ -887,18 +887,16 @@ test("start run contracts accept optional project context", () => {
 test("contracts describe user, session, admin, and account security DTOs", () => {
   const user = userDtoSchema.parse({
     id: "user-1",
-    email: "owner@example.com",
     username: "owner_user",
     displayName: "Owner User",
     avatarUrl: null,
     status: "active",
-    emailVerified: true,
     systemRoles: ["super_admin"],
     createdAt: "2026-05-22T00:00:00.000Z",
     updatedAt: "2026-05-22T00:00:00.000Z",
     lastLoginAt: null,
   });
-  assert.equal(user.email, "owner@example.com");
+  assert.equal(user.username, "owner_user");
 
   const session = authSessionResponseSchema.parse({
     user,
@@ -964,7 +962,6 @@ test("contracts describe user, session, admin, and account security DTOs", () =>
   );
   assert.throws(() =>
     authRegisterRequestSchema.parse({
-      email: "bad-email",
       username: "bad user",
       password: "short",
       displayName: "",
@@ -972,12 +969,12 @@ test("contracts describe user, session, admin, and account security DTOs", () =>
   );
   assert.equal(
     authLoginRequestSchema.parse({
-      identifier: "OWNER@EXAMPLE.COM",
+      identifier: "OWNER",
       password: "password-123",
     }).identifier,
-    "owner@example.com",
+    "owner",
   );
-  assert.equal(authLoginRequestSchema.safeParse({ email: "old@example.com", password: "password-123" }).success, false);
+  assert.equal(authLoginRequestSchema.safeParse({ username: "old", password: "password-123" }).success, false);
   assert.throws(() =>
     accountSecurityUpdateRequestSchema.parse({
       currentPassword: "password-123",
@@ -990,12 +987,10 @@ test("contracts describe admin session RBAC and capabilities", () => {
   const response = adminSessionResponseSchema.parse({
     user: {
       id: "admin-1",
-      email: "admin@example.com",
       username: "admin_user",
       displayName: "Admin User",
       avatarUrl: null,
       status: "active",
-      emailVerified: true,
       mfaEnabled: false,
       systemRoles: ["super_admin"],
       createdAt: "2026-05-22T00:00:00.000Z",
@@ -1203,7 +1198,7 @@ test("contracts describe project, member, role, and permission DTOs", () => {
     id: "project-1",
     name: "课程 UML 项目",
     description: null,
-    visibility: "private",
+
     status: "active",
     ownerUserId: "user-1",
     ownerDisplayName: "Owner User",
@@ -1230,7 +1225,7 @@ test("contracts describe project, member, role, and permission DTOs", () => {
     createdAt: "2026-05-22T00:00:00.000Z",
     updatedAt: "2026-05-22T00:00:00.000Z",
   });
-  assert.equal(project.visibility, "private");
+  assert.equal(Object.hasOwn(project, "visibility"), false);
   assert.equal(project.ownerDisplayName, "Owner User");
   assert.equal(project.memberCount, 4);
   assert.equal(project.memberPreviews?.[1]?.displayName, "Editor User");
@@ -1240,13 +1235,13 @@ test("contracts describe project, member, role, and permission DTOs", () => {
     description: "",
   });
   assert.equal(createRequest.name, "新项目");
-  assert.equal(createRequest.visibility, "private");
+  assert.equal(Object.hasOwn(createRequest, "visibility"), false);
 
   const member = projectMemberDtoSchema.parse({
     id: "member-1",
     projectId: project.id,
     userId: "user-1",
-    email: "owner@example.com",
+    username: "owner",
     displayName: "Owner User",
     avatarUrl: "https://example.com/owner.png",
     role: "owner",
@@ -1266,13 +1261,13 @@ test("contracts describe project, member, role, and permission DTOs", () => {
   assert.equal(projectMemberRolePermissions.viewer.includes("manage_documents"), false);
 
   const invite = projectMemberInviteRequestSchema.parse({
-    email: "EDITOR@EXAMPLE.COM",
+    username: "EDITOR",
     role: "editor",
   });
-  assert.equal(invite.email, "editor@example.com");
+  assert.equal(invite.username, "editor");
   assert.throws(() =>
     projectMemberInviteRequestSchema.parse({
-      email: "viewer@example.com",
+      username: "viewer",
       role: "owner",
     }),
   );

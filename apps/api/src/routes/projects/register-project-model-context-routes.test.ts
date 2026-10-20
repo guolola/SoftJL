@@ -11,9 +11,9 @@ import { registerProjectModelContextRoutes } from "./register-project-model-cont
 test("engineering model context returns only capacity and capabilities after project authorization", async t => {
   const app = Fastify(); t.after(() => app.close());
   const authStore = createInMemoryAuthStore();
-  const user = authStore.createUser({ email: "capacity@context.test", displayName: "Owner", passwordHash: "test" })!;
+  const user = authStore.createUser({ username: "capacity", displayName: "Owner", passwordHash: "test" })!;
   const cookie = `uml_session=${authStore.createSession({ userId: user.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
-  const project = authStore.createProject({ ownerUserId: user.id, name: "Engineering", description: null, visibility: "private", projectMode: "professional" }).project;
+  const project = authStore.createProject({ ownerUserId: user.id, name: "Engineering", description: null,  projectMode: "professional" }).project;
   const providerConfigs = createProviderConfigStore({ secret: "test" });
   const provider = providerConfigs.create({ name: "provider", baseUrl: "https://llm.test", apiKey: "test", defaultModel: "model", allowedModels: ["model"], createdBy: "test" });
   const catalog = new ModelCatalog("unused.json");

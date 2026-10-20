@@ -15,8 +15,8 @@ export function invitationToMember(
     id: invitation.id,
     projectId,
     userId: "",
-    email: invitation.email,
-    displayName: invitation.email,
+    username: invitation.username,
+    displayName: invitation.username,
     role: invitation.role,
     status: invitation.status,
     invitedAt: invitation.invitedAt ?? null,
@@ -40,7 +40,7 @@ export function memberRoleLabel(role: string, t?: TFunction) {
 }
 
 export function memberInitials(member: PlatformProjectMember) {
-  const label = member.displayName || member.email || "成员";
+  const label = member.displayName || member.username || "成员";
   const parts = label.split(/[\s._-]+/u).filter(Boolean);
   if (parts.length >= 2) return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
   return label.slice(0, 2).toUpperCase();
@@ -209,7 +209,7 @@ export function getProjectRunOperatorLabel(
   if (!operator) return "未知成员";
   const member = members.find((item) => item.userId === operator);
   if (member) {
-    return member.displayName?.trim() || member.email?.trim() || `未知成员 ${shortIdentifier(operator)}`;
+    return member.displayName?.trim() || member.username?.trim() || `未知成员 ${shortIdentifier(operator)}`;
   }
   if (isUuidLike(operator)) return `未知成员 ${shortIdentifier(operator)}`;
   return operator;
@@ -225,7 +225,7 @@ export function getProjectRunOperatorSearchText(
     operator,
     getProjectRunOperatorLabel(run, members),
     member?.displayName,
-    member?.email,
+    member?.username,
   ]
     .filter(Boolean)
     .join(" ")

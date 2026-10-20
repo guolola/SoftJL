@@ -16,9 +16,9 @@ test("evaluator logs in, authorizes fixture inputs and polling, and revokes its 
   const directory = mkdtempSync(join(tmpdir(), "softjl-eval-auth-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const authStore = createInMemoryAuthStore();
-  const user = await authStore.createUser({ email: "evaluator@example.test", displayName: "Evaluator", passwordHash: hashPassword("evaluation-password"), emailVerified: true });
+  const user = await authStore.createUser({ username: "evaluator", displayName: "Evaluator", passwordHash: hashPassword("evaluation-password") });
   assert.ok(user);
-  const { project } = await authStore.createProject({ ownerUserId: user.id, name: "Evaluation", visibility: "private" });
+  const { project } = await authStore.createProject({ ownerUserId: user.id, name: "Evaluation" });
   const providers = createProviderConfigStore({ secret: "isolated-evaluation-secret" });
   const provider = providers.create({ name: "Fixture provider", baseUrl: "https://api.openai.com", apiKey: "fixture-not-a-real-key", defaultModel: "fixture-model", allowedModels: ["fixture-model"], createdBy: user.id, scopeType: "user", scopeId: user.id });
   const records = createRunRecordStore();
@@ -41,7 +41,7 @@ test("evaluator logs in, authorizes fixture inputs and polling, and revokes its 
     }
     return new Response(result.statusCode === 204 ? null : result.body, { status: result.statusCode, headers: responseHeaders });
   };
-  const env = { UML_EVAL_PROJECT_ID: project.id, UML_EVAL_PROVIDER_CONFIG_ID: provider.id, UML_EVAL_MODEL: "fixture-model", UML_EVAL_EMAIL: user.email, UML_EVAL_PASSWORD: "evaluation-password", UML_EVAL_TIMEOUT_MS: "10000", UML_EVAL_POLL_MS: "0" };
+  const env = { UML_EVAL_PROJECT_ID: project.id, UML_EVAL_PROVIDER_CONFIG_ID: provider.id, UML_EVAL_MODEL: "fixture-model", UML_EVAL_USERNAME: user.username, UML_EVAL_PASSWORD: "evaluation-password", UML_EVAL_TIMEOUT_MS: "10000", UML_EVAL_POLL_MS: "0" };
   const client = await createEvaluationApiClient(env, send);
   const snapshot = await client.run({ requirementText: "用户登录后可以查看订单并提交取消申请。", selectedDiagrams: [] });
   // Invalid model output intentionally terminates the real pipeline; all transport and authorization are real.
@@ -71,7 +71,7 @@ test("evaluator logs in, authorizes fixture inputs and polling, and revokes its 
 });
 
 test("evaluator explains MFA and does not expose server response secrets", async () => {
-  const env = { UML_EVAL_PROJECT_ID: "project", UML_EVAL_PROVIDER_CONFIG_ID: "provider", UML_EVAL_MODEL: "model", UML_EVAL_EMAIL: "eval@example.test", UML_EVAL_PASSWORD: "password" };
+  const env = { UML_EVAL_PROJECT_ID: "project", UML_EVAL_PROVIDER_CONFIG_ID: "provider", UML_EVAL_MODEL: "model", UML_EVAL_USERNAME: "evaluator", UML_EVAL_PASSWORD: "password" };
   await assert.rejects(() => createEvaluationApiClient(env, async () => new Response("private-challenge", { status: 202 })), /UML_EVAL_SESSION_COOKIE/);
   await assert.rejects(() => createEvaluationApiClient(env, async () => new Response("private-provider-details", { status: 403 })), (error: Error) => error.message.includes("HTTP 403") && !error.message.includes("private"));
 });

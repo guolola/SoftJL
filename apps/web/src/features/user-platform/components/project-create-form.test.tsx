@@ -1,5 +1,5 @@
-// Covers optional manual backgrounds and the project creation payloads.
-import { render, screen, waitFor } from "@testing-library/react";
+// Covers creation details, automatic default backgrounds, and submission guards.
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { floatingAlert as toast } from "../../../shared/ui/floating-alert";
@@ -35,7 +35,6 @@ describe("ProjectCreateForm", () => {
               id: "project-created",
               name: "测试项目",
               description: null,
-              visibility: "private",
               status: "active",
               ownerUserId: "owner-user",
               backgroundKey: JSON.parse(String(init.body)).backgroundKey ?? null,
@@ -54,43 +53,39 @@ describe("ProjectCreateForm", () => {
     return fetchMock;
   }
 
-  it("chooses a default once and keeps it fixed when typing a project title", async () => {
+  it("assigns a default background without showing a background picker during creation", async () => {
     const user = userEvent.setup();
-    stubCreateProjectFetch();
-
+    const fetchMock = stubCreateProjectFetch();
     render(<ProjectCreateForm onNavigate={() => {}} />);
 
-    const nameInput = screen.getByLabelText("项目名称");
-    expect(nameInput).toHaveValue("");
-    const previewSource = screen.getByTestId("project-background-preview-image").getAttribute("src");
-    expect(screen.getByRole("button", { name: "下一步" })).toBeDisabled();
-    await user.clear(nameInput);
-    await user.type(nameInput, "质量追溯系统 UML 实验");
+    expect(screen.queryByText("项目背景")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /选择背景图/u })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("project-background-preview-image")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建并进入项目" })).toBeDisabled();
+    await user.type(screen.getByLabelText("项目名称"), "订单系统");
+    await user.type(screen.getByLabelText("项目描述"), "订单管理");
+    await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
 
-    expect(screen.queryByText("质量追溯系统")).not.toBeInTheDocument();
-    expect(screen.queryByText("自动匹配")).not.toBeInTheDocument();
-    expect(screen.queryByText(/命中：/u)).not.toBeInTheDocument();
-    expect(screen.queryByRole("listbox", { name: "项目背景图" })).not.toBeInTheDocument();
-    expect(screen.queryByTestId("project-background-gallery")).not.toBeInTheDocument();
-    expect(screen.getByTestId("project-background-preview-image")).toHaveAttribute("src", previewSource);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true));
+    const call = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    const payload = JSON.parse(String(call?.[1]?.body));
+    expect(payload).toMatchObject({ name: "订单系统", description: "订单管理", projectMode: "standard" });
+    expect(PROJECT_BACKGROUND_OPTIONS.map(({ key }) => key)).toContain(payload.backgroundKey);
   });
 
-  it.each([["仅成员可见", "private"], ["公开可见", "public"]])("submits %s without silently remapping visibility", async (label, value) => {
+  it("creates invitation-only projects without visibility or hierarchy settings", async () => {
     const user = userEvent.setup();
     const fetchMock = stubCreateProjectFetch();
     render(<ProjectCreateForm onNavigate={() => {}} />);
     await user.type(screen.getByLabelText("项目名称"), "权限测试");
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
     expect(screen.queryByRole("button", { name: "课程班级可见" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: label }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    expect(screen.getByText(label)).toBeVisible();
+    expect(screen.queryByRole("group", { name: "可见性" })).not.toBeInTheDocument();
+    expect(screen.getByText("项目仅对已加入的成员开放，创建后可邀请协作者。")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true));
     const call = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     const payload = JSON.parse(String(call?.[1]?.body));
-    expect(payload.visibility).toBe(value);
+    expect(payload).not.toHaveProperty("visibility");
     for (const field of ["organizationId", "courseId", "classId", "teamId"]) {
       expect(payload).not.toHaveProperty(field);
     }
@@ -98,58 +93,34 @@ describe("ProjectCreateForm", () => {
     expect(PROJECT_BACKGROUND_OPTIONS.map(({ key }) => key)).toContain(JSON.parse(String(call?.[1]?.body)).backgroundKey);
   });
 
-  it("submits a manual project background selection", async () => {
+  it("guards empty names and duplicate submissions while locking the form during creation", async () => {
     const user = userEvent.setup();
     const fetchMock = stubCreateProjectFetch();
-
-    render(<ProjectCreateForm onNavigate={() => {}} />);
-
-    expect(screen.queryByRole("button", { name: /预约预订系统/u })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /选择背景图/u }));
-    const background = await screen.findByRole("button", { name: "选择背景图 19" });
-    expect(background).toHaveTextContent("");
-    expect(screen.queryByRole("button", { name: "自动匹配" })).not.toBeInTheDocument();
-    await user.click(background);
-    const previewSource = screen.getByTestId("project-background-preview-image").getAttribute("src");
+    let finishCreation!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { finishCreation = resolve; }));
+    const { container } = render(<ProjectCreateForm onNavigate={() => {}} />);
+    const form = container.querySelector("form")!;
+    fireEvent.submit(form);
+    expect(fetchMock).not.toHaveBeenCalled();
     await user.type(screen.getByLabelText("项目名称"), "订单系统");
-    expect(screen.getByTestId("project-background-preview-image")).toHaveAttribute("src", previewSource);
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: /创建并进入项目/u }));
-
-    await waitFor(() => {
-      const createCall = fetchMock.mock.calls.find(([input, init]) => {
-        const url = new URL(String(input), "http://127.0.0.1:4101");
-        return url.pathname === "/api/projects" && init?.method === "POST";
-      });
-      expect(createCall).toBeTruthy();
-      expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({
-        backgroundKey: "booking",
-        projectMode: "standard",
-      });
-    });
-  });
-
-  it("lets users remove a manual background without restoring automatic matching", async () => {
-    const user = userEvent.setup();
-    stubCreateProjectFetch();
-    render(<ProjectCreateForm onNavigate={() => {}} />);
-    await user.type(screen.getByLabelText("项目名称"), "ERP 企业资源计划");
-    await user.click(screen.getByRole("button", { name: "选择背景图" }));
-    await user.click(await screen.findByRole("button", { name: "选择背景图 1" }));
-    expect(screen.getByTestId("project-background-preview-image")).toHaveAttribute("src", expect.stringContaining("cover-01"));
-    await user.click(screen.getByRole("button", { name: "选择背景图" }));
-    await user.click(await screen.findByRole("button", { name: "不使用背景图" }));
-    expect(screen.queryByTestId("project-background-preview-image")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
+    expect(screen.getByLabelText("项目名称")).toBeDisabled();
+    expect(screen.getByLabelText("项目描述")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建并进入项目" })).toBeDisabled();
+    fireEvent.submit(form);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    finishCreation(new Response(JSON.stringify({ project: {
+      id: "project-created", projectMode: "standard", name: "订单系统", description: null,
+      status: "active", ownerUserId: "owner-user", updatedAt: "2026-06-21T00:00:00.000Z",
+    } }), { status: 201, headers: { "Content-Type": "application/json" } }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
   });
 
   it("lets the creator explicitly select professional mode", async () => {
     const user = userEvent.setup(); const fetchMock = stubCreateProjectFetch();
     render(<ProjectCreateForm onNavigate={() => {}} />);
     await user.type(screen.getByLabelText("项目名称"), "订单系统");
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    expect(screen.queryByLabelText("项目名称")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("项目名称")).toHaveValue("订单系统");
     expect(screen.getByRole("radio", { name: "快速建模" })).toBeChecked();
     const quickCard = screen.getByRole("radio", { name: "快速建模" }).closest("label")!;
     const engineeringCard = screen.getByRole("radio", { name: "工程建模" }).closest("label")!;
@@ -163,26 +134,28 @@ describe("ProjectCreateForm", () => {
     expect(screen.getByText("聊天式")).toBeVisible();
     expect(screen.getByText("工作流式")).toBeVisible();
     await user.click(screen.getByRole("radio", { name: "工程建模" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
     const call = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(JSON.parse(String(call?.[1]?.body)).projectMode).toBe("professional");
   });
 
-  it("preserves the chosen mode and project details when navigating back", async () => {
+  it("shows every field together and preserves mode and details while editing", async () => {
     const user = userEvent.setup();
     stubCreateProjectFetch();
     render(<ProjectCreateForm onNavigate={() => {}} />);
-    expect(screen.queryByRole("radio", { name: "快速建模" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("项目名称")).toBeVisible();
+    expect(screen.getByLabelText("项目描述")).toBeVisible();
+    expect(screen.getByRole("radio", { name: "快速建模" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "工程建模" })).toBeVisible();
+    expect(screen.queryByRole("list", { name: "创建项目步骤" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下一步" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上一步" })).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("项目名称"), "订单系统");
-    await user.click(screen.getByRole("button", { name: "下一步" }));
     screen.getByRole("radio", { name: "快速建模" }).focus();
     await user.keyboard("{ArrowRight}");
     expect(screen.getByRole("radio", { name: "工程建模" })).toBeChecked();
-    await user.click(screen.getByRole("button", { name: "上一步" }));
+    await user.type(screen.getByLabelText("项目描述"), "订单管理");
     expect(screen.getByLabelText("项目名称")).toHaveValue("订单系统");
-    await user.click(screen.getByRole("button", { name: "下一步" }));
     expect(screen.getByRole("radio", { name: "工程建模" })).toBeChecked();
   });
 
@@ -195,9 +168,6 @@ describe("ProjectCreateForm", () => {
     render(<ProjectCreateForm onNavigate={onNavigate} />);
 
     await user.type(screen.getByLabelText("项目名称"), "订单系统");
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
 
     await waitFor(() => {
@@ -214,9 +184,6 @@ describe("ProjectCreateForm", () => {
     const onNavigate = vi.fn();
     const { unmount } = render(<ProjectCreateForm onNavigate={onNavigate} />);
     await user.type(screen.getByLabelText("项目名称"), "订单系统");
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     unmount();

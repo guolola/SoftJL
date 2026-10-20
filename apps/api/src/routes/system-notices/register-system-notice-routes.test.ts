@@ -1,4 +1,4 @@
-// Verifies system notice public visibility, read receipts, and admin CRUD permissions.
+// Verifies authenticated notice visibility and personal read/dismiss receipts.
 import assert from "node:assert/strict";
 import test from "node:test";
 import Fastify from "fastify";
@@ -24,17 +24,17 @@ async function createNoticeRouteTestApp() {
   const app = Fastify({ logger: false });
   const authStore = createInMemoryAuthStore();
   const user = authStore.createUser({
-    email: "user@example.com",
+    username: "user",
     displayName: "User",
     passwordHash: "hash",
   });
   const other = authStore.createUser({
-    email: "other@example.com",
+    username: "other",
     displayName: "Other",
     passwordHash: "hash",
   });
   const admin = authStore.createUser({
-    email: "admin@example.com",
+    username: "admin",
     displayName: "Admin",
     passwordHash: "hash",
     systemRoles: ["super_admin"],
@@ -81,6 +81,7 @@ async function createNoticeRouteTestApp() {
     admin,
     userCookie: await sessionCookie(authStore, user.id),
     otherCookie: await sessionCookie(authStore, other.id),
+    systemNotices,
     adminCookie: await sessionCookie(authStore, admin.id, "uml_admin_session"),
   };
 }
@@ -135,4 +136,34 @@ test("system notice read receipts are scoped to the current user", async () => {
   assert.equal(otherList.json().unreadCount, 2);
 
   await app.close();
+});
+
+test("dismissed notices stay hidden only for the current user, including read responses", async () => {
+  const { app, userCookie, otherCookie, systemNotices } = await createNoticeRouteTestApp();
+  try {
+    const initial = await app.inject({ method: "GET", url: "/api/system-notices", headers: { cookie: userCookie } });
+    const id = initial.json().notices[0].id;
+    const url = `/api/system-notices/${id}/dismiss`;
+    assert.equal((await app.inject({ method: "POST", url })).statusCode, 401);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const dismissed = await app.inject({ method: "POST", url, headers: { cookie: userCookie } });
+      assert.equal(dismissed.statusCode, 200);
+      assert.equal(dismissed.json().notices.length, 1);
+      assert.equal(dismissed.json().unreadCount, 1);
+    }
+    const refreshed = await app.inject({ method: "GET", url: "/api/system-notices", headers: { cookie: userCookie } });
+    assert.equal(refreshed.json().notices.some((notice: { id: string }) => notice.id === id), false);
+    const read = await app.inject({ method: "POST", url: "/api/system-notices/read", headers: { cookie: userCookie }, payload: {} });
+    assert.equal(read.json().notices.length, 1);
+    assert.equal(read.json().unreadCount, 0);
+    const other = await app.inject({ method: "GET", url: "/api/system-notices", headers: { cookie: otherCookie } });
+    assert.equal(other.json().notices.length, 2);
+    assert.equal(other.json().unreadCount, 2);
+    const allNotices = await systemNotices.listAll();
+    assert.equal(allNotices.length, 3);
+    const draftId = allNotices.find(notice => notice.status === "draft")!.id;
+    for (const unknown of [draftId, "missing"]) {
+      assert.equal((await app.inject({ method: "POST", url: `/api/system-notices/${unknown}/dismiss`, headers: { cookie: userCookie } })).statusCode, 404);
+    }
+  } finally { await app.close(); }
 });

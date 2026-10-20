@@ -13,7 +13,7 @@ const icons = ["anthropic", "deepseek", "google", "groq", "kimi", "meta", "mistr
 // refreshes its memoized options when metadata changes, without remounting inputs.
 export function configureHomeModels(settings: ReturnType<typeof loadUserSettings>, context: ModelContextSettings, locked: boolean, usage?: StandardTokenUsage) {
   selectionLocked = locked;
-  contextUsesBudget = !context?.capacity.context;
+  contextUsesBudget = !context?.capacity.context || context.contextBudget < context.capacity.context;
   MODELS.splice(0, MODELS.length, ...settings.providerModelOptions.map(value => {
     const metadata = context?.model === value ? context.capacity : undefined;
     const match = icons.find(icon => value.toLowerCase().includes(icon))
@@ -21,7 +21,7 @@ export function configureHomeModels(settings: ReturnType<typeof loadUserSettings
     return { value, name: metadata?.name ?? value, disabled: false,
       // Unknown providers use the upstream project's own neutral GitHub mark.
       icon: `/assistant-ui/icons/${match ?? "github"}.svg`,
-      contextWindow: metadata?.context ?? (context?.model === value ? context.contextBudget : undefined) ?? (usage?.model === value ? usage.contextBudget : undefined), reasoning: metadata?.capabilities?.reasoning === true };
+      contextWindow: (context?.model === value ? context.contextBudget : undefined) ?? metadata?.context ?? (usage?.model === value ? usage.contextBudget : undefined), reasoning: metadata?.capabilities?.reasoning === true };
   }));
   return JSON.stringify(MODELS);
 }

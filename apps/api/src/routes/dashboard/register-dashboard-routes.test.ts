@@ -15,10 +15,10 @@ test("requires login and aggregates only active memberships, including archived 
   const documentLibrary = { async listAllDocuments(options: { projectId: string }) { documentCalls.push(options.projectId); return []; } } as unknown as DocumentLibrary;
   registerDashboardRoutes({ app, authStore, runs, documentLibrary });
   assert.equal((await app.inject({ url: "/api/dashboard/summary" })).statusCode, 401);
-  const user = authStore.createUser({ email: "reader@example.test", displayName: "Reader", passwordHash: "test" })!;
-  const other = authStore.createUser({ email: "other@example.test", displayName: "Other", passwordHash: "test" })!;
+  const user = authStore.createUser({ username: "reader", displayName: "Reader", passwordHash: "test" })!;
+  const other = authStore.createUser({ username: "other", displayName: "Other", passwordHash: "test" })!;
   const session = authStore.createSession({ userId: user.id, ipAddress: null, userAgent: null });
-  const projects = Array.from({ length: 8 }, (_, i) => authStore.createProject({ ownerUserId: i === 7 ? other.id : user.id, name: `P${i}`, description: null, visibility: "private" }).project);
+  const projects = Array.from({ length: 8 }, (_, i) => authStore.createProject({ ownerUserId: i === 7 ? other.id : user.id, name: `P${i}`, description: null }).project);
   projects[6].status = "archived";
   authStore.saveProjectWorkspace({ projectId: projects[0].id, baseVersion: 0, updatedByUserId: user.id,
     state: { models: { "analysis:a": { diagramKind: "analysis" }, "analysis:b": { diagramKind: "analysis" }, usecase: { diagramKind: "usecase" } } } });

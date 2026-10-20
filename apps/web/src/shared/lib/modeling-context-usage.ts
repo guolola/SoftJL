@@ -1,6 +1,8 @@
 // Shares provider token usage and meter semantics between quick and engineering modeling.
 export type TokenUsage = {
   totalTokens?: number;
+  /** Distinguishes the last provider call from the live session context total. */
+  breakdownScope?: "lastCall";
   inputTokens?: number;
   cachedInputTokens?: number;
   outputTokens?: number;

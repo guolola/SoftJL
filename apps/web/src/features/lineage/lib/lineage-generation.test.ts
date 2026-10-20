@@ -5,7 +5,7 @@ import { projectLineageGeneration, formatGenerationDuration, type GenerationWork
 import type { LineageGraph, LineageNode } from './lineage-graph-model';
 import type { PlatformProjectMember } from '../../user-platform/services/platform-api';
 const at = (ms: number) => new Date(Date.UTC(2026, 9, 9) + ms).toISOString();
-const member: PlatformProjectMember = { id: 'member', projectId: 'project', userId: 'alice', displayName: 'Alice Wang', email: 'alice@example.test', avatarUrl: '/avatar.png', role: 'owner', status: 'active' };
+const member: PlatformProjectMember = { id: 'member', projectId: 'project', userId: 'alice', displayName: 'Alice Wang', username: 'alice', avatarUrl: '/avatar.png', role: 'owner', status: 'active' };
 const node = (overrides: Partial<LineageNode> = {}): LineageNode => ({ id: 'node', kind: 'requirement-model', stage: 'requirement-models', stageLabel: '', label: 'Function', eyebrow: '', description: '', status: 'current', reason: '', actionLabel: '', hasViewableArtifact: true, upstreamIds: [], downstreamIds: [], recentEvents: [], payload: { diagramKind: 'function' }, ...overrides });
 const graph = (entry = node()): LineageGraph => ({ nodes: [entry], edges: [], summary: { total: 1, current: 1, stale: 0, error: 0, interrupted: 0, running: 0, notGenerated: 0 }, defaultSelectedNodeId: null });
 const rule = { id: 'r1', type: "functional" as const, text: 'Users log in',  };

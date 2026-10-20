@@ -10,7 +10,7 @@ import type {
 export interface RunAccessContext {
   userId?: string;
   projectId?: string;
-  email?: string | null;
+  username?: string | null;
 }
 
 export interface RunAccessGuard {

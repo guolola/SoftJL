@@ -1,5 +1,5 @@
 // Persists only the login identifier and removes passwords saved by older clients.
-const REMEMBERED_LOGIN_IDENTIFIER_KEY = "uml-auth-remembered-email";
+const REMEMBERED_LOGIN_IDENTIFIER_KEY = "uml-auth-remembered-username";
 const LEGACY_REMEMBERED_LOGIN_PASSWORD_KEY = "uml-auth-remembered-password";
 
 export function clearLegacyRememberedLoginPassword() {
@@ -14,7 +14,9 @@ export function clearLegacyRememberedLoginPassword() {
 export function readRememberedLoginIdentifier() {
   if (typeof window === "undefined") return "";
   try {
-    return window.localStorage.getItem(REMEMBERED_LOGIN_IDENTIFIER_KEY) ?? "";
+    const value = window.localStorage.getItem(REMEMBERED_LOGIN_IDENTIFIER_KEY)?.trim().toLowerCase() ?? "";
+    if (!/^[a-z0-9_]{3,32}$/u.test(value)) { window.localStorage.removeItem(REMEMBERED_LOGIN_IDENTIFIER_KEY); return ""; }
+    return value;
   } catch {
     return "";
   }

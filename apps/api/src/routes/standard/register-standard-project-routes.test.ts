@@ -14,13 +14,14 @@ import { join, resolve, sep } from "node:path";
 import { createStandardProjectState, type StandardProjectState } from "@uml-platform/contracts";
 import { ModelCatalog } from "../../provider-configs/model-catalog.js";
 import { restoreStandardSession } from "../../runs/records/standard-agent-session.js";
+import { createRunRecordStore } from "../../runs/records/run-record-store.js";
 import { conversationTurnMarker } from "../../runs/records/standard-conversation-revision.js";
 
 test("model context reads canonical catalog capacity without requiring output metadata or starting a paid call", async t => {
   const app = Fastify(); const authStore = createInMemoryAuthStore();
-  const owner = authStore.createUser({ email: "capacity@standard.test", displayName: "Owner", passwordHash: "test" })!;
+  const owner = authStore.createUser({ username: "capacity", displayName: "Owner", passwordHash: "test" })!;
   const cookie = `uml_session=${authStore.createSession({ userId: owner.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
-  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Capacity", description: null, visibility: "private", projectMode: "standard" });
+  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Capacity", description: null,  projectMode: "standard" });
   const providerConfigs = createProviderConfigStore({ secret: "test" }); const model = "deepseek-v4.1-flash";
   const config = providerConfigs.create({ name: "test", baseUrl: "https://ai.comfly.org", apiKey: "test", defaultModel: model, allowedModels: [model], createdBy: "test" });
   const dir = await mkdtemp(join(tmpdir(), "uml-context-route-"));
@@ -40,7 +41,7 @@ test("model context reads canonical catalog capacity without requiring output me
   assert.equal(response.statusCode, 200, response.body);
   assert.equal(response.json().capacity.context, 1000000); assert.equal(response.json().capacity.output, null);
   assert.equal(response.json().capacity.source, "modelpedia"); assert.equal(response.json().contextBudget, 1000000); assert.equal(calls, 0);
-  const engineering = authStore.createProject({ ownerUserId: owner.id, name: "Engineering", description: null, visibility: "private", projectMode: "professional" }).project;
+  const engineering = authStore.createProject({ ownerUserId: owner.id, name: "Engineering", description: null,  projectMode: "professional" }).project;
   const sharedUrl = `/api/projects/${engineering.id}/model-context?${new URLSearchParams({ providerConfigId: config.id, model })}`;
   const shared = await app.inject({ url: sharedUrl, headers: { cookie } });
   assert.equal(shared.statusCode, 200, shared.body);
@@ -51,15 +52,16 @@ test("model context reads canonical catalog capacity without requiring output me
 
 test("acknowledges chat with its durable user message before model execution and never duplicates retries", async t => {
   const app = Fastify(); const authStore = createInMemoryAuthStore();
-  const owner = authStore.createUser({ email: "ack@standard.test", displayName: "Owner", passwordHash: "test" })!;
+  const owner = authStore.createUser({ username: "ack", displayName: "Owner", passwordHash: "test" })!;
   const cookie = `uml_session=${authStore.createSession({ userId: owner.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
-  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Chat", description: null, visibility: "private", projectMode: "standard" });
+  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Chat", description: null,  projectMode: "standard" });
   const providerConfigs = createProviderConfigStore({ secret: "test" });
   const config = providerConfigs.create({ name: "test", baseUrl: "https://example.test", apiKey: "test", defaultModel: "test", allowedModels: ["test"], createdBy: "test" });
   const scheduler = createInMemoryLlmScheduler();
+  const runs = createRunRecordStore();
   // Stop at the scheduling boundary: this test must never contact an external provider.
   scheduler.run = async () => { throw new Error("test queue stopped"); };
-  registerStandardProjectRoutes({ app, authStore, providerConfigs, llmScheduler: scheduler,
+  registerStandardProjectRoutes({ app, runs, authStore, providerConfigs, llmScheduler: scheduler,
     llmTransport: { async *streamChatCompletion() { throw new Error("unexpected model call"); } },
     renderClient: async () => { throw new Error("unexpected rendering"); }, pngRenderClient: async () => { throw new Error("unexpected rendering"); } });
   t.after(() => app.close());
@@ -78,15 +80,28 @@ test("acknowledges chat with its durable user message before model execution and
   assert.equal(acknowledged.acceptedCommands, undefined);
   const repeated = await app.inject({ method: "POST", url, headers: { cookie }, payload });
   assert.equal(repeated.statusCode, 200);
+  assert.equal(runs.size, 1);
+  const run = [...runs.values()][0];
+  assert.equal(run.snapshot.runId, acknowledged.run.id);
+  assert.equal(run.snapshot.operationType, "quick_modeling");
+  assert.equal(run.metadata?.projectId, project.id);
+  assert.equal(run.metadata?.userId, owner.id);
+  // Failed model calls still occupy the same accepted-message task.
+  for (let i = 0; i < 100 && !run.terminal; i++) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(run.snapshot.status, "failed");
+  assert.ok(run.metadata?.completedAt);
+  const second = await app.inject({ method: "POST", url, headers: { cookie }, payload: { ...payload, requestId: "22222222-2222-4222-8222-222222222222", message: "再来一条消息" } });
+  assert.equal(second.statusCode, 202, second.body);
+  assert.equal(runs.size, 2);
   const persisted = (await app.inject({ url, headers: { cookie } })).json().state;
-  assert.equal(persisted.conversation.filter((message: { role: string }) => message.role === "user").length, 1);
+  assert.equal(persisted.conversation.filter((message: { role: string }) => message.role === "user").length, 2);
 });
 
 test("revision commands require current history, valid user content and stored attachment capabilities before starting a model call", async t => {
   const app = Fastify(); const authStore = createInMemoryAuthStore();
-  const owner = authStore.createUser({ email: "revision@standard.test", displayName: "Owner", passwordHash: "test" })!;
+  const owner = authStore.createUser({ username: "revision", displayName: "Owner", passwordHash: "test" })!;
   const cookie = `uml_session=${authStore.createSession({ userId: owner.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
-  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Revision", description: null, visibility: "private", projectMode: "standard" });
+  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Revision", description: null,  projectMode: "standard" });
   const providerConfigs = createProviderConfigStore({ secret: "test" });
   const config = providerConfigs.create({ name: "test", baseUrl: "https://ai.comfly.org", apiKey: "test", defaultModel: "test", allowedModels: ["test"], createdBy: "test" });
   const providerSettings = { providerConfigId: config.id, model: "test" };
@@ -117,8 +132,8 @@ test("revision commands require current history, valid user content and stored a
 
 test("ordinary endpoints require membership and trusted ordinary mode, preserve questions, and prevent forged state", async t => {
   const app = Fastify(); const authStore = createInMemoryAuthStore();
-  const owner = authStore.createUser({ email: "owner@standard.test", displayName: "Owner", passwordHash: "test" })!;
-  const other = authStore.createUser({ email: "other@standard.test", displayName: "Other", passwordHash: "test" })!;
+  const owner = authStore.createUser({ username: "owner", displayName: "Owner", passwordHash: "test" })!;
+  const other = authStore.createUser({ username: "other", displayName: "Other", passwordHash: "test" })!;
   const cookie = `uml_session=${authStore.createSession({ userId: owner.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
   const outsider = `uml_session=${authStore.createSession({ userId: other.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
   const providerConfigs = createProviderConfigStore({ secret: "test" });
@@ -140,7 +155,7 @@ test("ordinary endpoints require membership and trusted ordinary mode, preserve 
   const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "普通版" } });
   assert.equal(created.statusCode, 201); assert.equal(created.json().project.projectMode, "standard");
   const projectId = created.json().project.id;
-  const { project: pro } = authStore.createProject({ ownerUserId: owner.id, name: "旧项目", description: null, visibility: "private" });
+  const { project: pro } = authStore.createProject({ ownerUserId: owner.id, name: "旧项目", description: null });
   const path = `/api/projects/${projectId}/standard`;
   const capacityUrl = `${path.replace(/\/standard$/, "")}/model-context?providerConfigId=${config.id}&model=test`;
   assert.equal((await app.inject({ url: capacityUrl })).statusCode, 401);
@@ -211,9 +226,9 @@ test("ordinary endpoints require membership and trusted ordinary mode, preserve 
 
 test("stop preserves completed artifacts and continuation resumes only the saved unfinished scope", async t => {
   const app = Fastify(); const authStore = createInMemoryAuthStore();
-  const owner = authStore.createUser({ email: "resume@standard.test", displayName: "Owner", passwordHash: "test" })!;
+  const owner = authStore.createUser({ username: "resume", displayName: "Owner", passwordHash: "test" })!;
   const cookie = `uml_session=${authStore.createSession({ userId: owner.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
-  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Recovery", description: "system", visibility: "private", projectMode: "standard" });
+  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Recovery", description: "system",  projectMode: "standard" });
   const providerConfigs = createProviderConfigStore({ secret: "test" });
   const config = providerConfigs.create({ name: "test", baseUrl: "https://ai.comfly.org", apiKey: "test", defaultModel: "test", allowedModels: ["test"], createdBy: "test" });
   const providerSettings = { providerConfigId: config.id, model: "test" };
@@ -259,9 +274,9 @@ test("stop preserves completed artifacts and continuation resumes only the saved
 // A real service replacement must unlock the persisted run without sending another model request.
 test("reconciles a run left by a previous process and preserves its completed artifacts and continuation scope", async t => {
   const app = Fastify(); const authStore = createInMemoryAuthStore();
-  const owner = authStore.createUser({ email: "restart@standard.test", displayName: "Owner", passwordHash: "test" })!;
+  const owner = authStore.createUser({ username: "restart", displayName: "Owner", passwordHash: "test" })!;
   const cookie = `uml_session=${authStore.createSession({ userId: owner.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
-  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Restart", description: "Saved requirements", visibility: "private", projectMode: "standard" });
+  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Restart", description: "Saved requirements",  projectMode: "standard" });
   const workspace = authStore.getProjectWorkspace(project.id);
   const state: StandardProjectState = { ...createStandardProjectState("Saved requirements"),
     run: { id: "previous-process-run", operation: "chat", status: "running", startedAt: new Date(Date.now() - process.uptime() * 1000 - 60000).toISOString(), work: { ids: ["class"] } },

@@ -45,7 +45,6 @@ import {
 import {
   AuthenticatedRoute,
   AuthPage,
-  InvitationAcceptPage,
   ProjectNewPage,
   ProjectWorkspaceDrawer,
   ProjectSectionPage,
@@ -503,9 +502,6 @@ export function Shell({ initialPath }: { initialPath?: string }) {
     if (route.kind === "auth") {
       return <AuthPage key={route.path} path={route.path} onNavigate={navigate} />;
     }
-    if (route.kind === "invitation-accept") {
-      return <InvitationAcceptPage onNavigate={navigate} />;
-    }
     if (route.kind === "dashboard") {
       return <DashboardPage onNavigate={navigate} />;
     }
@@ -550,7 +546,6 @@ export function Shell({ initialPath }: { initialPath?: string }) {
     route.kind !== "project-workspace" &&
     route.kind !== "legacy-redirect" &&
     route.kind !== "auth" &&
-    route.kind !== "invitation-accept" &&
     route.kind !== "not-found";
   const renderPlatformLayout = (content: ReactNode) => (
     <DefaultPagesLayout

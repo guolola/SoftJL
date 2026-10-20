@@ -41,8 +41,8 @@ export function ProjectBackgroundPicker({
 
   return (
     <div className="grid gap-3">
-      <Card className="gap-0 py-0 overflow-hidden">
-        <div className="relative aspect-[16/7] min-h-28 overflow-hidden bg-muted">
+      <Card className="w-full max-w-xs gap-0 py-0 overflow-hidden">
+        <div className="relative aspect-[16/7] overflow-hidden bg-muted">
           {selectedBackground && <img
             data-testid="project-background-preview-image"
             src={selectedBackground.imageUrl}

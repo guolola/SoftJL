@@ -15,4 +15,7 @@ export const systemNoticeApi = {
       body: JSON.stringify(noticeIds?.length ? { noticeIds } : {}),
     });
   },
+  dismiss(id: string) {
+    return requestJson<SystemNoticeListResponse>(`/api/system-notices/${encodeURIComponent(id)}/dismiss`, { method: "POST" });
+  },
 };

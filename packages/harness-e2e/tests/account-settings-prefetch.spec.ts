@@ -77,10 +77,9 @@ test("preloads global settings before the tab is selected without duplicate requ
       json({
         user: {
           id: "user-1",
-          email: "model-nav@example.test",
+          username: "model_nav",
           displayName: "Model Nav Reviewer",
           status: "active",
-          emailVerified: true,
           mfaEnabled: false,
         },
         session: {

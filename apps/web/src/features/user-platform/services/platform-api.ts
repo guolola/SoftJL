@@ -32,12 +32,10 @@ export function notifyAuthSessionChanged() {
 
 export interface PlatformUser {
   id: string;
-  email: string;
   username: string;
   displayName: string;
   avatarUrl?: string | null;
   status: string;
-  emailVerified: boolean;
   mfaEnabled: boolean;
   systemRoles?: string[];
 }
@@ -47,7 +45,6 @@ export interface PlatformProject {
   id: string;
   name: string;
   description: string | null;
-  visibility: string;
   status: string;
   ownerUserId: string;
   ownerDisplayName?: string | null;
@@ -74,7 +71,7 @@ export interface PlatformProjectMember {
   id: string;
   projectId: string;
   userId: string;
-  email: string;
+  username: string;
   displayName: string;
   avatarUrl?: string | null;
   role: string;
@@ -86,7 +83,7 @@ export interface PlatformProjectMember {
 export interface PlatformProjectInvitation {
   id: string;
   projectId: string;
-  email: string;
+  username: string;
   role: string;
   status: "invited" | "active" | "expired" | "revoked" | string;
   invitedAt?: string | null;
@@ -227,7 +224,7 @@ export interface PlatformAccountSession {
 export interface PlatformLoginEvent {
   id: string;
   userId: string | null;
-  email: string | null;
+  username: string | null;
   outcome: "success" | "failure";
   ipAddress: string | null;
   userAgent: string | null;
@@ -505,11 +502,9 @@ export const platformApi = {
     });
   },
   register(input: {
-    email: string;
     username: string;
     password: string;
     displayName: string;
-    invitationToken?: string;
   }) {
     return requestJson<PlatformSessionResponse>("/api/auth/register", {
       method: "POST",
@@ -521,46 +516,11 @@ export const platformApi = {
       method: "POST",
     });
   },
-  verifyEmail(input: { token: string }) {
-    return requestJson<{ message?: string; user?: PlatformUser }>("/api/auth/verify-email", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-  },
-  resendVerification(input: { email: string }) {
-    return requestJson<{ message: string }>("/api/auth/resend-verification", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-  },
-  forgotPassword(input: { email: string }) {
-    return requestJson<{ message: string }>("/api/auth/forgot-password", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-  },
-  resetPassword(input: { token: string; newPassword: string }) {
-    return requestJson<{ message: string }>("/api/auth/reset-password", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-  },
   verifyMfa(input: { challengeId: string; code: string }) {
     return requestJson<PlatformSessionResponse>("/api/auth/mfa/verify", {
       method: "POST",
       body: JSON.stringify(input),
     });
-  },
-  inspectInvitation(token: string) {
-    return requestJson<{ invitation: PlatformProjectInvitation; expiresAt: string }>(
-      `/api/invitations/${encodeURIComponent(token)}`,
-    );
-  },
-  acceptInvitation(token: string) {
-    return requestJson<{ message?: string; member?: PlatformProjectMember }>(
-      `/api/invitations/${encodeURIComponent(token)}/accept`,
-      { method: "POST" },
-    );
   },
   listAccountSessions() {
     return requestJson<{ sessions: PlatformAccountSession[] }>(
@@ -602,7 +562,6 @@ export const platformApi = {
     projectMode?: "standard" | "professional";
     name: string;
     description: string | null;
-    visibility?: string;
     retentionPolicy?: string;
     backgroundKey?: ProjectBackgroundKey | null;
   }) {
@@ -629,7 +588,6 @@ export const platformApi = {
     input: {
       name?: string;
       description?: string | null;
-      visibility?: string;
       status?: string;
       retentionPolicy?: string;
       backgroundKey?: ProjectBackgroundKey | null;
@@ -682,7 +640,7 @@ export const platformApi = {
   },
   inviteProjectMember(
     projectId: string,
-    input: { email: string; role: string },
+    input: { username: string; role: string },
   ) {
     return requestJson<{ invitation?: PlatformProjectInvitation; member?: PlatformProjectMember }>(
       `/api/projects/${projectId}/invitations`,

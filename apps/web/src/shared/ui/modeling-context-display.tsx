@@ -54,7 +54,7 @@ export function ContextDisplayRoot({ modelContextWindow, children, usage, resetK
     if (used) return t("standardProject.tokens.used", { count: Number(used[1]) });
     const keys: Record<string, string> = {
       "Context usage": "usageLabel", "Not reported": "unknown", Unknown: "unknownCapacity",
-      Input: "inputShort", "Cached input": "cacheReadShort", Output: "output", Reasoning: "reasoningShort",
+      "Last call": "lastCall", Input: "inputShort", "Cached input": "cacheReadShort", Output: "output", Reasoning: "reasoningShort",
     };
     return keys[value] ? t(`standardProject.tokens.${keys[value]}`) : value;
   }, [t]);
@@ -114,6 +114,7 @@ export function ContextDisplayContent({ side = "top", className }: { side?: Pres
               style={{ "--usage-width": `${percent}%` } as CSSProperties} />
           </div>
           {segments.length > 0 && <div className="mt-3 grid gap-1.5">
+            {usage?.breakdownScope === "lastCall" && <p className="text-muted-foreground">{translate("Last call")}</p>}
             {segments.map((segment) => <div key={segment.label} className="flex items-baseline justify-between gap-6">
               <span className="text-muted-foreground">{translate(segment.label)}</span>
               <span className="font-mono tabular-nums">{formatTokenCount(segment.tokens)}</span>

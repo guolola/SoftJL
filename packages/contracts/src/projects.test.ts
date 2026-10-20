@@ -33,12 +33,14 @@ test("project backgrounds accept only the current twenty-one gallery selections"
   assert.equal(projectUpdateRequestSchema.safeParse({ backgroundKey: "procurement" }).success, false);
 });
 
-test("project contracts reject removed hierarchy fields and team visibility", () => {
-  for (const field of ["organizationId", "courseId", "classId", "teamId"]) {
+test("project contracts reject removed hierarchy and visibility fields", () => {
+  for (const field of ["organizationId", "courseId", "classId", "teamId", "visibility"]) {
     assert.equal(projectCreateRequestSchema.safeParse({ name: "Project", [field]: "obsolete" }).success, false);
     assert.equal(projectUpdateRequestSchema.safeParse({ [field]: null }).success, false);
     assert.equal(field in projectDtoSchema.shape, false);
   }
-  assert.equal(projectCreateRequestSchema.safeParse({ name: "Project", visibility: "team" }).success, false);
+  for (const visibility of ["private", "public", "team"]) {
+    assert.equal(projectCreateRequestSchema.safeParse({ name: "Project", visibility }).success, false);
+  }
   assert.equal(projectUpdateRequestSchema.safeParse({ visibility: "team" }).success, false);
 });

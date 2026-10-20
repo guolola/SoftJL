@@ -43,12 +43,12 @@ async function createProviderRouteTestApp() {
   const app = Fastify({ logger: false });
   const authStore = createInMemoryAuthStore();
   const owner = authStore.createUser({
-    email: "owner@example.com",
+    username: "owner",
     displayName: "Owner User",
     passwordHash: hashPassword("password-123"),
   });
   const outsider = authStore.createUser({
-    email: "outsider@example.com",
+    username: "outsider",
     displayName: "Outside User",
     passwordHash: hashPassword("password-123"),
   });
@@ -58,7 +58,7 @@ async function createProviderRouteTestApp() {
     ownerUserId: owner.id,
     name: "Provider Project",
     description: null,
-    visibility: "private",
+
   });
   const providerConfigs = createProviderConfigStore({
     secret: "route-test-secret",

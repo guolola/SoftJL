@@ -17,8 +17,6 @@ export type StaticProject = {
   owner: string;
   ownerUserId: string;
   isOwnedByCurrentUser: boolean;
-  visibilityKind: PlatformProject["visibility"];
-  visibility: string;
   status: string;
   statusLabel: string;
   updatedAt: string;
@@ -48,7 +46,7 @@ export const PROJECT_SCOPE_OPTIONS = [
 ] as const;
 
 function displayNameFromUser(user: PlatformUser | null | undefined) {
-  return user?.displayName?.trim() || user?.email?.split("@")[0] || user?.id || "";
+  return user?.displayName?.trim() || user?.username?.split("@")[0] || user?.id || "";
 }
 
 function compactOwnerLabel(ownerUserId: string) {
@@ -129,15 +127,6 @@ function projectMemberPreviewsFromApi(
   });
 }
 
-function projectVisibilityLabel(visibility: PlatformProject["visibility"], locale: string) {
-  if (locale === "en") {
-    if (visibility === "private") return "Members only";
-    return "Public";
-  }
-  if (visibility === "private") return "仅成员可见";
-  return "公开可见";
-}
-
 function projectStatusLabel(status: string, locale: string) {
   if (locale === "en") {
     if (status === "archived") return "Archived";
@@ -167,8 +156,6 @@ export function projectFromApi(
     owner: ownerName,
     ownerUserId: project.ownerUserId,
     isOwnedByCurrentUser: currentUser?.id === project.ownerUserId,
-    visibilityKind: project.visibility,
-    visibility: projectVisibilityLabel(project.visibility, locale),
     status: project.status,
     statusLabel: projectStatusLabel(project.status, locale),
     updatedAt: new Date(project.updatedAt).toLocaleString(locale),
@@ -178,7 +165,6 @@ export function projectFromApi(
       project.name,
       project.description,
       project.status,
-      project.visibility,
       project.ownerUserId,
       ownerName,
       ...members.map((member) => member.label),

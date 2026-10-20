@@ -1,231 +1,188 @@
-import { render, screen, waitFor } from "@testing-library/react";
+// Verifies the uploaded dropdown's layout and its real inbox/announcement interactions.
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import confetti from "canvas-confetti";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { InboxMessage, SystemNoticeDto } from "@uml-platform/contracts";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SystemNoticeButton } from "./system-notice-dialog";
+import { inboxApi } from "../inbox-api";
+import { systemNoticeApi } from "../system-notice-api";
 import { i18n } from "../../../shared/i18n/i18n";
 import { FloatingAlertProvider } from "../../../shared/ui/floating-alert";
+import motion from "./notification-motion.module.css";
 
-vi.mock("canvas-confetti", () => ({
-  default: vi.fn(),
-}));
+vi.mock("../inbox-api", () => ({ inboxApi: { list: vi.fn(), act: vi.fn() } }));
+vi.mock("../system-notice-api", () => ({ systemNoticeApi: { listPublished: vi.fn(), markRead: vi.fn(), dismiss: vi.fn() } }));
 
-const publishedNoticeResponse = {
-  generatedAt: "2026-06-05T00:00:00.000Z",
-  unreadCount: 2,
-  notices: [
-    {
-      id: "notice-important",
-      title: "重要通知：公司主体变更及对公账号更新",
-      type: "important",
-      icon: "!",
-      contentBlocks: [
-        { kind: "paragraph", text: "大家好，请注意以下关键信息。" },
-        { kind: "list_item", text: "确认新主体信息。" },
-      ],
-      status: "published",
-      publishedAt: "2026-05-22T07:00:00.000Z",
-      createdAt: "2026-05-22T07:00:00.000Z",
-      updatedAt: "2026-05-22T07:00:00.000Z",
-      unread: true,
-    },
-    {
-      id: "notice-model",
-      title: "MiniMax M3 模型上线",
-      type: "model_update",
-      icon: null,
-      contentBlocks: [],
-      status: "published",
-      publishedAt: "2026-06-01T09:00:00.000Z",
-      createdAt: "2026-06-01T09:00:00.000Z",
-      updatedAt: "2026-06-01T09:00:00.000Z",
-      unread: true,
-    },
-  ],
+const invitation: InboxMessage = {
+  id: "project:invitation-1", invitationId: "invitation-1", kind: "project",
+  sender: { username: "owner_user", displayName: "项目负责人", avatarUrl: null },
+  project: { id: "project-1", name: "课程实验" }, role: "member",
+  status: "pending", createdAt: "2026-10-19T00:00:00.000Z", unread: true,
 };
+const notices: SystemNoticeDto[] = [
+  { id: "notice-1", title: "平台维护公告", type: "important", icon: "!", status: "published",
+    contentBlocks: [{ kind: "paragraph", text: "第一条公告的完整内容。" }],
+    publishedAt: "2026-10-18T00:00:00.000Z", createdAt: "2026-10-18T00:00:00.000Z", updatedAt: "2026-10-18T00:00:00.000Z", unread: true },
+  { id: "notice-2", title: "模型更新公告", type: "model_update", icon: null, status: "published",
+    contentBlocks: [{ kind: "paragraph", text: "第二条公告的独立内容。" }],
+    publishedAt: "2026-10-19T00:00:00.000Z", createdAt: "2026-10-19T00:00:00.000Z", updatedAt: "2026-10-19T00:00:00.000Z", unread: true },
+];
+const noticeResponse = (items = notices) => ({ generatedAt: "2026-10-19T00:00:00.000Z", unreadCount: items.filter(item => item.unread).length, notices: items });
 
-afterEach(() => {
-  void i18n.changeLanguage("zh-CN");
-  vi.unstubAllGlobals();
-  vi.mocked(confetti).mockClear();
+beforeEach(async () => {
+  vi.resetAllMocks();
+  await i18n.changeLanguage("zh-CN");
+  vi.mocked(inboxApi.list).mockResolvedValue({ messages: [invitation], unreadCount: 1 });
+  vi.mocked(systemNoticeApi.listPublished).mockResolvedValue(noticeResponse());
+  vi.mocked(systemNoticeApi.markRead).mockImplementation(async ids => noticeResponse(notices.map(notice => ({ ...notice, unread: !ids?.includes(notice.id) }))));
+  vi.mocked(systemNoticeApi.dismiss).mockImplementation(async id => noticeResponse(notices.filter(notice => notice.id !== id)));
+  vi.mocked(inboxApi.act).mockImplementation(async (message, action) => ({
+    messages: action === "dismiss" ? [] : [{ ...message, unread: false, status: action === "accept" ? "accepted" : action === "decline" ? "declined" : message.status }], unreadCount: 0,
+  }));
 });
 
-describe("SystemNoticeButton", () => {
-  it("opens the system notice timeline and persists read state", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      if (url.includes("/api/system-notices/read") && method === "POST") {
-        return new Response(
-          JSON.stringify({
-            ...publishedNoticeResponse,
-            unreadCount: 0,
-            notices: publishedNoticeResponse.notices.map((notice) => ({
-              ...notice,
-              unread: false,
-            })),
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      if (url.includes("/api/system-notices") && method === "GET") {
-        return new Response(JSON.stringify(publishedNoticeResponse), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ message: "unexpected" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+async function openNotifications() {
+  const user = userEvent.setup();
+  render(<FloatingAlertProvider><SystemNoticeButton className="size-9" /></FloatingAlertProvider>);
+  await user.click(await screen.findByRole("button", { name: "系统通知，3 条未读" }));
+  await screen.findByRole("tab", { name: "消息" });
+  return user;
+}
 
-    const user = userEvent.setup();
-    render(<FloatingAlertProvider><SystemNoticeButton className="size-9" /></FloatingAlertProvider>);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "系统通知，2 条未读" }),
-      ).toBeInTheDocument();
-    });
-    const unreadDot = screen.getByRole("button", { name: "系统通知，2 条未读" })
-      .querySelector("[data-slot='notification-unread-dot']");
-    expect(screen.getByRole("button", { name: "系统通知，2 条未读" })).toHaveClass("size-9");
-    expect(unreadDot).toHaveClass(
-      "right-0.5",
-      "top-1",
-      "animate-bounce",
-      "bg-sky-600",
-      "dark:bg-sky-400",
-      "motion-reduce:animate-none",
-    );
-    expect(screen.queryByRole("button", { name: "后台通知配置" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "系统通知，2 条未读" }));
-
-    expect(await screen.findByRole("dialog", { name: "系统通知" })).toBeInTheDocument();
-    expect(screen.getByText("MiniMax M3 模型上线")).toBeInTheDocument();
-    expect(screen.getByText("确认新主体信息。")).toBeInTheDocument();
-    expect(screen.getByText("重要")).toHaveAttribute("data-variant", "destructive");
-    expect(screen.getByText("模型")).toHaveAttribute("data-variant", "secondary");
-    const dots = screen.getAllByTestId("system-notice-dot");
-    expect(dots.find((dot) => dot.dataset.noticeType === "important")).toHaveClass("bg-destructive");
-    expect(dots.find((dot) => dot.dataset.noticeType === "model_update")).toHaveClass("bg-info");
-
-    await user.click(screen.getByRole("button", { name: "已阅览" }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "系统通知" })).not.toBeInTheDocument();
-    });
-    expect(screen.getByRole("button", { name: "系统通知" }).querySelector("[data-slot='notification-unread-dot']")).toBeNull();
-    expect(confetti).toHaveBeenCalledTimes(5);
-    expect(confetti).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        origin: { y: 0.7 },
-        particleCount: 50,
-        spread: 26,
-        startVelocity: 55,
-      }),
-    );
-    expect(confetti).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        origin: { y: 0.7 },
-        particleCount: 40,
-        spread: 60,
-      }),
-    );
-    expect(confetti).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({
-        origin: { y: 0.7 },
-        particleCount: 70,
-        spread: 100,
-        decay: 0.91,
-        scalar: 0.8,
-      }),
-    );
-    expect(confetti).toHaveBeenNthCalledWith(
-      4,
-      expect.objectContaining({
-        origin: { y: 0.7 },
-        particleCount: 20,
-        spread: 120,
-        startVelocity: 25,
-        decay: 0.92,
-        scalar: 1.2,
-      }),
-    );
-    expect(confetti).toHaveBeenNthCalledWith(
-      5,
-      expect.objectContaining({
-        origin: { y: 0.7 },
-        particleCount: 20,
-        spread: 120,
-        startVelocity: 45,
-      }),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/system-notices/read"),
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-
-  it("keeps the dialog open and skips confetti when read state fails", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      if (url.includes("/api/system-notices/read") && method === "POST") {
-        return new Response(JSON.stringify({ message: "read failed" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (url.includes("/api/system-notices") && method === "GET") {
-        return new Response(JSON.stringify(publishedNoticeResponse), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ message: "unexpected" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const user = userEvent.setup();
-    render(<FloatingAlertProvider><SystemNoticeButton className="size-10" /></FloatingAlertProvider>);
-
-    await screen.findByRole("button", { name: "系统通知，2 条未读" });
-    await user.click(screen.getByRole("button", { name: "系统通知，2 条未读" }));
-    expect(await screen.findByRole("dialog", { name: "系统通知" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "已阅览" }));
-
-    expect(await screen.findByText("服务暂时不可用，请稍后重试。")).toBeInTheDocument();
-    expect(screen.queryByText(/read failed/u)).not.toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "系统通知" })).toBeInTheDocument();
-    expect(confetti).not.toHaveBeenCalled();
-  });
-
-  it("localizes notice chrome while preserving notice content", async () => {
+describe("uploaded notification dropdown", () => {
+  it("translates the two tabs as Messages and Announcements in English", async () => {
     await i18n.changeLanguage("en");
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(
-      JSON.stringify(publishedNoticeResponse),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    )));
-
     const user = userEvent.setup();
     render(<FloatingAlertProvider><SystemNoticeButton /></FloatingAlertProvider>);
-    await user.click(await screen.findByRole("button", { name: "System notices, 2 unread" }));
+    await user.click(await screen.findByRole("button", { name: "System notices, 3 unread" }));
+    expect(await screen.findByRole("tab", { name: "Messages" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Announcements" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Inbox|General/u })).not.toBeInTheDocument();
+  });
 
-    expect(await screen.findByRole("dialog", { name: "System notices" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Mark as read" })).toBeInTheDocument();
-    expect(screen.getByText("Important")).toBeInTheDocument();
-    expect(screen.getByText("重要通知：公司主体变更及对公账号更新")).toBeInTheDocument();
-    expect(screen.getByText("大家好，请注意以下关键信息。")).toBeInTheDocument();
+  it("uses the original menu, line tabs, separators and invitation row spacing", async () => {
+    await openNotifications();
+    const unreadDot = screen.getByRole("button", { name: "系统通知，3 条未读" }).querySelector("[data-slot='notification-unread-dot']");
+    expect(unreadDot).toHaveClass(motion.unreadDot, "bg-sky-600", "dark:bg-sky-400");
+    expect(screen.getByRole("button", { name: "系统通知，3 条未读" }).querySelector("svg")).toHaveClass(motion.bell);
+    const menu = screen.getByRole("menu");
+    expect(menu).toHaveAttribute("data-slot", "dropdown-menu-content");
+    expect(menu).toHaveClass("w-full", "max-w-xs", "sm:max-w-122");
+    expect(screen.getByRole("tablist")).toHaveAttribute("data-variant", "line");
+    expect(screen.getByRole("tab", { name: "消息" })).toHaveClass("group-data-[orientation=horizontal]/tabs:after:-bottom-1");
+    expect(menu.querySelector("[data-slot=dropdown-menu-label]")).toHaveClass("flex", "flex-col", "pb-0");
+    expect(menu.querySelector("[data-slot=dropdown-menu-separator]")).toHaveClass("mt-0", "h-0.5");
+    const message = screen.getByTestId("inbox-message");
+    expect(message).toHaveClass("items-start", "gap-3", "px-2", "py-3", "text-base");
+    expect(message.querySelector("[data-slot=avatar]")).toHaveClass("size-9.5");
+    expect(screen.getByRole("button", { name: "拒绝" }).parentElement).toHaveClass("mt-3", "gap-4");
+    expect(screen.getByRole("button", { name: "接受" })).toHaveClass("text-primary-foreground!");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("平台维护公告")).not.toBeInTheDocument();
+  });
+
+  it.each([["接受", "accept", "已接受"], ["拒绝", "decline", "已拒绝"]] as const)("sends %s once without activating the parent message", async (label, action, status) => {
+    const user = await openNotifications();
+    await user.click(screen.getByRole("button", { name: label }));
+    expect(await screen.findByText(status)).toBeInTheDocument();
+    expect(inboxApi.act).toHaveBeenCalledExactlyOnceWith(invitation, action);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "接受" })).not.toBeInTheDocument();
+    if (action === "accept") expect(screen.getByRole("link", { name: "打开项目" })).toHaveAttribute("href", "/projects/project-1");
+    await user.click(screen.getByRole("button", { name: "移除消息：课程实验" }));
+    expect(await screen.findByText("暂无消息。")).toBeInTheDocument();
+    expect(vi.mocked(inboxApi.act).mock.calls.at(-1)?.[1]).toBe("dismiss");
+  });
+
+  it("uses a refresh icon and reloads both feeds without closing the dropdown", async () => {
+    const user = await openNotifications();
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    await waitFor(() => expect(refresh).toBeEnabled());
+    expect(refresh.querySelector(".lucide-refresh-cw")).not.toBeNull();
+    expect(refresh.querySelector(".lucide-settings")).toBeNull();
+    vi.mocked(inboxApi.list).mockClear().mockResolvedValue({ messages: [], unreadCount: 0 });
+    vi.mocked(systemNoticeApi.listPublished).mockClear().mockResolvedValue(noticeResponse([{ ...notices[0]!, title: "刷新后的公告", unread: false }]));
+    await user.click(refresh);
+    expect(await screen.findByText("暂无消息。")).toBeInTheDocument();
+    expect(inboxApi.list).toHaveBeenCalledTimes(1);
+    expect(systemNoticeApi.listPublished).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "系统通知" }).querySelector("[data-slot='notification-unread-dot']")).toBeNull();
+    expect(screen.getByRole("button", { name: "系统通知" }).querySelector("svg")).not.toHaveClass(motion.bell);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "公告" }));
+    expect(screen.getByText("刷新后的公告")).toBeInTheDocument();
+  });
+
+  it("opens only the selected announcement and marks only that announcement read", async () => {
+    const user = await openNotifications();
+    await user.click(screen.getByRole("tab", { name: "公告" }));
+    expect(screen.queryByTestId("inbox-message")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: /平台维护公告/ }));
+    const dialog = await screen.findByRole("dialog", { name: "平台维护公告" });
+    expect(within(dialog).getByText("第一条公告的完整内容。")).toBeInTheDocument();
+    expect(within(dialog).queryByText("第二条公告的独立内容。")).not.toBeInTheDocument();
+    expect(systemNoticeApi.markRead).toHaveBeenCalledExactlyOnceWith(["notice-1"]);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("dismisses an announcement without opening it, and keeps it hidden on refresh", async () => {
+    const user = await openNotifications();
+    await user.click(screen.getByRole("tab", { name: "公告" }));
+    await user.click(screen.getByRole("button", { name: "移除公告：平台维护公告" }));
+    await waitFor(() => expect(screen.queryByText("平台维护公告")).not.toBeInTheDocument());
+    expect(systemNoticeApi.dismiss).toHaveBeenCalledExactlyOnceWith("notice-1");
+    expect(systemNoticeApi.markRead).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    vi.mocked(systemNoticeApi.listPublished).mockResolvedValue(noticeResponse([notices[1]!]));
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled());
+    expect(screen.queryByText("平台维护公告")).not.toBeInTheDocument();
+    expect(screen.getByText("模型更新公告")).toBeInTheDocument();
+  });
+
+  it("does not reinsert a dismissed announcement when an earlier refresh finishes late", async () => {
+    const user = await openNotifications();
+    await user.click(screen.getByRole("tab", { name: "公告" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled());
+    let finishRefresh!: (value: ReturnType<typeof noticeResponse>) => void;
+    vi.mocked(systemNoticeApi.listPublished).mockImplementationOnce(() => new Promise(resolve => { finishRefresh = resolve; }));
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    await user.click(screen.getByRole("button", { name: "移除公告：平台维护公告" }));
+    await waitFor(() => expect(screen.queryByText("平台维护公告")).not.toBeInTheDocument());
+    await act(async () => { finishRefresh(noticeResponse()); });
+    expect(screen.queryByText("平台维护公告")).not.toBeInTheDocument();
+    expect(screen.getByText("模型更新公告")).toBeInTheDocument();
+  });
+
+  it("retains an announcement and reports the error if dismissal fails", async () => {
+    vi.mocked(systemNoticeApi.dismiss).mockRejectedValue(new Error("dismiss failed"));
+    const user = await openNotifications();
+    await user.click(screen.getByRole("tab", { name: "公告" }));
+    await user.click(screen.getByRole("button", { name: "移除公告：平台维护公告" }));
+    expect(await screen.findByText("操作失败，请重试。")).toBeInTheDocument();
+    expect(screen.getByText("平台维护公告")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps announcement access when inbox loading fails", async () => {
+    vi.mocked(inboxApi.list).mockRejectedValue(new Error("inbox unavailable"));
+    const user = userEvent.setup();
+    render(<FloatingAlertProvider><SystemNoticeButton /></FloatingAlertProvider>);
+    await user.click(await screen.findByRole("button", { name: "系统通知，2 条未读" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "公告" }));
+    expect(screen.getByText("平台维护公告")).toBeInTheDocument();
+    expect(screen.queryByText("inbox unavailable")).not.toBeInTheDocument();
+  });
+
+  it("keeps the selected announcement open if persisting its read state fails", async () => {
+    vi.mocked(systemNoticeApi.markRead).mockRejectedValue(new Error("read failed"));
+    const user = await openNotifications();
+    await user.click(screen.getByRole("tab", { name: "公告" }));
+    await user.click(screen.getByRole("menuitem", { name: /模型更新公告/ }));
+    expect(await screen.findByRole("dialog", { name: "模型更新公告" })).toBeInTheDocument();
+    await waitFor(() => expect(systemNoticeApi.markRead).toHaveBeenCalledWith(["notice-2"]));
+    expect(screen.getByText("第二条公告的独立内容。")).toBeInTheDocument();
   });
 });

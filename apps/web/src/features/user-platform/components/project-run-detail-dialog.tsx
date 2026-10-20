@@ -59,6 +59,11 @@ export function ProjectRunDetailDialog({ projectId, run, onClose }: {
     (output) => output.kind === kind && (id === undefined || output.id === id),
   );
   if (snapshot) {
+    // Quick history lists only artifacts attributed to this accepted message.
+    if (operation === "quick" && "standardRun" in snapshot && snapshot.standardRun) {
+      outputs.push(...snapshot.standardRun.artifacts.filter(item => snapshot.outputManifest.some(output => output.id === item.id))
+        .map(item => item.title));
+    }
     if (operation === "rules" && "rules" in snapshot) {
       outputs.push(...snapshot.rules.filter((rule) => accepted("rule", rule.id)).map((rule) => `${rule.id} · ${rule.text}`));
     }

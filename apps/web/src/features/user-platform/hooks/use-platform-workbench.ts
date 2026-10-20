@@ -328,13 +328,8 @@ export function buildWorkbenchData(
   };
 }
 
-// Maps a project onto the datatable-user Item union. role/plan/billing are user-management enums
-// reused presentationally: visibility->role, status->plan, member-count->billing.
+// Maps accessible project metadata onto the shared workbench table presentation.
 export function projectToItem(project: PlatformProject, now: Date = new Date()): WorkbenchData["tableRows"][number] {
-  const roleByVisibility: Record<string, WorkbenchData["tableRows"][number]["role"]> = {
-    private: "admin",
-    public: "subscriber",
-  };
   const planByStatus: Record<string, WorkbenchData["tableRows"][number]["plan"]> = {
     active: "enterprise",
     archived: "basic",
@@ -352,8 +347,8 @@ export function projectToItem(project: PlatformProject, now: Date = new Date()):
     avatar: project.ownerAvatarUrl ?? "",
     fallback: initialsFromName(project.ownerDisplayName ?? project.name),
     user: project.name,
-    email: project.ownerDisplayName || project.visibility,
-    role: roleByVisibility[project.visibility] ?? "editor",
+    username: project.ownerDisplayName || project.ownerUserId,
+    role: "admin",
     plan: planByStatus[project.status] ?? "company",
     status,
   };

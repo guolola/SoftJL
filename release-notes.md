@@ -1,73 +1,53 @@
-<!-- 记录当前社区版本的可发布说明、优化证据、功能边界与升级要求。 -->
+<!-- 记录社区版当前发布内容、链路收益、功能边界及部署要求。 -->
 
-# SoftJL Community v2.2.0
+# SoftJL Community v2.2.1
 
 ## 更新重点
 
-本次重点修复来源补齐和生成成果同步，减少重复生成，让结果及时可见：
+- **用户名账号与站内邀请**：使用用户名注册和登录，无需邮箱验证；按已注册用户名邀请成员，接收者在通知中心接受或拒绝。邀请校验拦截自己、无效用户名和未注册账号，决定只允许接收者执行一次。
+- **通知中心**：合并项目邀请与公告，支持个人已读和移除状态；移除不影响其他用户。重发邀请后恢复显示与未读状态，PostgreSQL 中的决定和回执在重启后继续保留。
+- **默认头像与账号界面**：新账号及缺少头像的账号自动分配头像，保留已有自选图片，并可在账号页切换。同步项目卡片、模式徽标和交互提示的界面改进。项目创建简化为单页表单，移除可见性设置，访问统一由成员关系控制。
+- **快速建模任务记录**：每条已接受的消息保存独立任务，在确认请求前持久化记录；图表、测试和文档只归属本轮新增或修改的成果，沿用内容不重复记入。本轮失败或停止后仍保留已完成成果。
+- **项目历史完整展示**：快速建模进入独立历史分类，显示模型与本轮已接受成果；失败任务通过快速建模会话继续，避免误用工程建模的重试入口。
 
-- **缺失映射单独补齐**：只请求缺失业务元素及必要引用，不重写已通过的模型和映射；校验返回引用、类型和置信状态，拒绝越界修改或虚构来源。来源完整时不增加调用，补齐与结构修复共享次数上限。
-- **连续成果即时显示**：需求分析模型分批返回时持续更新工作区与侧栏；可行性空白补充表单与默认空值保持同一口径，避免第一项成果保存后阻止后续成果发布。用户修改仍受版本保护。
-- **映射比例统一**：矩阵展示元素映射率，按当前范围全部元素计算，搜索和分页不改变结果；需求分析总览复用单模型的来源记录。
-- **输入提示补齐**：说明 TXT、Markdown 与 PNG、JPEG、WebP 的支持条件，图片仍要求模型具备视觉能力。
+- **项目展开卡片**：展开查看封面、项目资料与成员后进入项目；支持键盘、外部点击及移动端关闭，保持滚动位置，修复遮罩层级和头像提示退出闪烁。
+- **实时上下文占用**：快速建模的占用比例使用当前会话测量和实际运行预算，单次供应商调用单独显示；压缩期间不沿用旧占用值，模型未报告时保持未知。
 
-## 生成链路优化
+## 生成链路与消耗
 
-继续优化“输入 → 生成 → 校验 → 修复 → 重试”的链路，减少重复上下文与整段重生成，让独立任务更早产出结果。
+本次优化集中在“接收命令 → 持久化任务 → 有序保存成果 → 停止与恢复 → 查看历史”的链路：
 
-- **上下文按任务取用**：审查只携带当前任务的依赖；单用例保留目标及关联用例，约束、边界和待确认来源继续保留。
-- **修复从整段重写转向字段补丁**：本地处理可确定的 JSON 标点问题；模型修复携带诊断、字段约束、引用索引与基础版本。拒绝越界或过期补丁，无法定位时只扩大到当前产物。
-- **独立分支并行、失败实例重试**：设计分支按依赖推进；单个用例失败不阻塞其他独立成果，重试保留已成功模型。输入变化后阻止旧任务覆盖新工作区。
-- **限制重复尝试**：重试请求带标识，普通项目对话压缩保留历史；修改指定图表时不重复生成其他图表。
-- **进度链路减负**：任务抽屉只保留生命周期、子任务状态和结果计数，过滤供应商正文、推理片段与输入图片，避免长输出在进度状态中累积和反复渲染。
-- **消耗可核对**：任务历史汇总供应商实际报告的 Token，包括修复、失败与取消后已发出的调用。缓存输入不重复相加，未报告的用量保持缺失。
+- 保存任务后再确认接收，重复请求复用已有命令记录，减少因刷新或重发造成的重复生成。
+- 同一轮工作区保存与历史投影按顺序完成，避免并发保存让状态与成果错位；取消后的延迟保存不能把任务恢复为运行中。
+- 只记录本轮变化的成果，历史摘要不携带 SVG 正文、会话私有上下文或文档正文，减少历史列表传输和解析负担。
+- 延续按任务裁剪上下文、字段补丁修复、缺失映射单独补齐、独立分支并行和失败实例重试，并保留供应商实际报告的 Token 汇总。
 
-这些机制减少不必要的输入和工作，有助于缩短等待。实际总耗时、总 Token 与费用仍取决于需求规模、供应商、模型、并发限制和修复结果，本版本不公布未经实测的线上降幅。
+这些机制减少重复工作和恢复成本，有助于缩短等待、控制不必要的 Token 消耗。本版本没有新增线上总耗时或总 Token 降幅结论；真实效果取决于项目规模、模型、供应商、并发和修复结果。
 
-## 可复现的输入样本
+`npm run benchmark:generation` 可复现既有的本地输入范围样本：20 个用例、8 个无关模型，使用 `cl100k_base` 分词，不调用远端模型。单用例审查输入从 6,637 缩减至 422 Token，字段修复输入从 8,096 缩减至 641 Token。该结果仅表示同一合成样本的输入范围缩减，不代表本次版本相对上一版本的新增收益，也不等于线上总耗时、全部调用总 Token 或计费降幅。
 
-运行 `npm run benchmark:generation`。样本包含 20 个用例、8 个无关模型及一个错误关系端点，使用本地 `cl100k_base` 分词器；不会调用供应商。
+## 功能边界
 
-| 输入范围 | 未按任务裁剪的样本 | 当前范围选择或字段修复 | 输入缩减 |
-| --- | ---: | ---: | ---: |
-| 单用例审查上下文 | 6,637 Token | 422 Token | 93.6% |
-| 关系端点修复上下文 | 8,096 Token | 641 Token | 92.1% |
+保留快速建模、工程建模、自带模型服务配置、账号认证、项目权限、供应商密钥加密、DOCX 内置预览与下载，以及由部署者启用并明确授权范围的 MCP。继续排除平台计费、支付、充值额度、运营后台、官网宣传首页和官网自动生产部署。
 
-这是**同一合成样本的输入范围对比**，不是版本间的线上总消耗对比，也不包含模型输出、后续修复、网络延迟或计费。脚本同时检查目标用例及依赖仍存在、业务规则保留、修复目标可定位且原模型未被改写。缺失映射补齐可能增加必要调用，其收益在于保留已有成果并缩小每次修复范围；不承诺所有任务的总 Token 都下降。真实效果应使用同一项目、模型、供应商及并发配置，记录完整任务耗时、全部调用的输入/输出用量、失败率与人工检查结果后比较。
-
-## 功能对齐
-
-- 移除组织、课程、班级、团队的页面、接口、项目关联字段、数据表以及对应权限和配额。项目可见性统一为私有或公开，协作通过项目成员邀请完成。
-- 新建项目可选择普通版或专业版，模式创建后固定，两者均可使用自己的模型服务。
-- 普通版支持持续对话、追问、目标图表生成与修改、消息编辑和重新生成、停止及恢复、会话压缩、附件能力检查，以及按需生成测试和说明书。
-- 专业版保留规则确认、三项可行性分析、完整需求及设计模型、测试、覆盖与追踪、三类工程说明书。
-- 模型输入区统一模型选择、推理与附件能力提示；容量目录提供已知模型的参考容量，资料缺失时明确显示运行预算。
-- 文档使用内置 DOCX 预览与下载，无需 OnlyOffice；下载后使用 Word 兼容编辑器修改。
-- MCP 支持读取普通项目成果及专业项目实施依据；继续由部署者启用，并明确选择授权项目或账号范围。
-- 持久会话恢复保留系统指令、消息修订与压缩用量，重启后继续使用当前分支及已保存的项目约束。
-
-社区版继续排除平台计费、支付、充值额度、运营后台、官网宣传首页和官网自动生产部署。保留社区版已升级的依赖版本、自部署入口、账号认证、项目权限与供应商密钥加密。
-
-## 运行依赖
-
-普通项目使用维护中的 `@earendil-works` SDK 1.3.0，最低 Node.js 版本为 22.19.0；不沿用已弃用的旧包名。供应商凭据和模型目录保存在内存中，会话只开放平台提供的项目工具，不加载 API 主机上的个人配置、扩展或终端工具。锁文件固定本轮验证的依赖版本。
+组织、课程、班级、团队及其关联字段、权限和配额保持移除；项目可见性字段已移除，统一通过成员邀请协作，仅已加入成员可访问。
 
 ## 部署要求
 
-1. 首次部署准备空数据库并配置 `DATABASE_URL`。本版本采用 `current_platform_schema_v2`，已采用该基线的数据库可继续使用；v1 及旧迁移链数据库会被拒绝，不自动升级或清空数据。
-2. 使用 Node.js 22.19+，运行 `npm ci`、共享包与应用构建。
-3. 直接采用官网当前 `current_platform_schema_v2` 安装基线，移除旧社区迁移链与历史数据修补代码。新建项目必须明确选择普通版或专业版。
-4. 旧迁移记录与历史模型格式不再兼容；启动会拒绝旧库，不执行旧库升级。可用 `node apps/api/dist/db/migrate.js --check` 只读检查目标库，初始化使用 `node apps/api/dist/db/migrate.js`。
-5. 文档预览不再依赖 OnlyOffice，原编辑服务器配置不参与当前预览链路。MCP、PostgreSQL、队列和模型凭据按部署环境配置。
+1. 使用 Node.js 22.19+，运行 `npm ci` 并构建共享包和应用。
+2. 本版本采用 `current_platform_schema_v3`，包含用户名账号和站内通知回执。首次安装使用空数据库；已经使用该基线的数据库可继续使用。
+3. **v2.2.0 的 v2 基线及其他旧数据库不能直接升级**。旧库会被明确拒绝，不会自动迁移或清空；部署前准备新的空数据库并配置 `DATABASE_URL`。不再保留旧邮箱字段、邮件邀请令牌和历史迁移兼容链。
+4. 构建后可先用 `node apps/api/dist/db/migrate.js --check` 只读检查目标库，再用 `node apps/api/dist/db/migrate.js` 初始化。
+5. SMTP、邮箱验证、邮件找回密码和邮件邀请链接不再参与账号流程。可选本地访客账号使用 `UML_GUEST_USERNAME` 配置；供应商加密密钥和持久化目录按部署环境维护。
 
-## 验证入口
+## 验证
 
-共享契约、提示词、API、Web、渲染服务、脚本、构建和类型检查分别使用根目录已有命令。新增的固定样本对比使用 `npm run benchmark:generation`；文档检查使用 `npm run audit:docs`。
+使用共享契约、API、Web 和浏览器回归验证账号、邀请权限、通知回执、快速建模成果归属与历史展示；数据库行为由 PGlite 使用当前 SQL 基线验证。类型检查、代码规范、生产构建及 `npm run audit:docs` 为发布检查入口。
 
-模拟供应商测试验证流程约束与修复边界，不证明远端模型质量、真实总耗时或实际费用。发布前仍需用自己的供应商验收普通项目工具调用、专业项目生成和 DOCX 预览。
+模拟供应商与本地输入样本用于验证流程约束，不证明远端模型质量、真实线上耗时或费用。实际供应商工具调用、图表质量和 DOCX 预览仍需在部署环境验收。
 
 ## English summary
 
-v2.2.0 improves source mapping completion and generated artifact synchronization. Missing provenance is completed through bounded requests that preserve accepted models and mappings; complete mappings need no extra call. Cumulative previews and feasibility results stay synchronized, and mapping rates remain consistent across scoped views, searches and pages. Scoped context and field patches continue to reduce repeated work.
+v2.2.1 adds expandable project previews and live session context occupancy, and aligns username accounts, in-app invitations, personal notification receipts, default avatars and durable quick-modeling task history. Each accepted turn retains only its own changed diagrams, tests and documents, including partial outputs after failure or cancellation. Quick turns appear in project history and continue through the conversation workflow. Existing scoped context and focused repair optimizations remain available; no new production speed or total-token reduction is claimed.
 
-The reproducible fixture above measures local input tokens only; it is not a production speed or billing benchmark. Mapping completion can add necessary calls, so total tokens are not guaranteed to decrease on every task. New installations use an empty database with `current_platform_schema_v2`; existing databases on that baseline remain usable. Historical migration chains and model formats are no longer supported. Billing, operations administration and hosted deployment remain excluded.
+Install with Node.js 22.19+ and an empty database using `current_platform_schema_v3`. Databases on older baselines, including v2.2.0's v2 baseline, are rejected without migration or deletion. SMTP and email-token account flows are retired. Community BYOK, project authorization, optional explicitly scoped MCP and built-in DOCX preview remain; billing and operations administration remain excluded.

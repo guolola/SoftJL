@@ -1,23 +1,9 @@
 // Owns the authenticated projects index, filters, and create-project dialog composition.
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../../../shared/ui/alert";
 import { Card } from "../../../shared/ui/card";
-import { PerspectiveCard } from "../../../shared/ui/interactive-card";
-import { AnimatedTooltip } from "../../../shared/ui/motion-tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Archive,
-  ArrowRight,
-  Clock3,
-  GitBranch,
-  Lock,
-  MessagesSquare,
-  Plus,
-  Search,
-  UserRound,
-  Users,
-} from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "../../../shared/ui/badge";
 import { Button } from "../../../shared/ui/button";
 import { RainbowButton } from "../../../shared/ui/rainbow-button";
 import {
@@ -45,20 +31,19 @@ import {
 } from "../services/platform-api";
 import { useAuthenticatedRouteSession } from "./authenticated-route-session";
 import { ProjectCreateForm } from "./project-create-form";
+import { ProjectExpandableCards } from "./project-expandable-cards";
 import ProjectsEmptyBento from "./bento-grid-25/projects-empty-bento";
 
 type Navigate = (path: string) => void;
 
 const STABLE_PLATFORM_SCROLL_CLASS =
   "min-h-0 min-w-0 w-full overflow-x-clip bg-background";
-// Keep the provider-free translation fallback stable across loading state updates.
-const fallbackTranslate = appI18n.t.bind(appI18n);
 
 export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
   const { t: translate, i18n: activeI18n } = useTranslation();
   const hasProviderResources =
     typeof activeI18n.exists === "function" && activeI18n.exists("projects.openProject");
-  const t = hasProviderResources ? translate : fallbackTranslate;
+  const t = hasProviderResources ? translate : appI18n.t.bind(appI18n);
   const failureTranslation = useRef(t);
   failureTranslation.current = t;
   const language = hasProviderResources
@@ -323,116 +308,7 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
         )}
 
         {!authRequired && !forbidden && !listError && projects.length > 0 && visibleProjects.length > 0 && (
-          <div
-            data-testid="projects-card-grid"
-            data-mobile-card-density="two-column"
-            className="grid grid-cols-2 gap-3 md:gap-5 xl:grid-cols-3 xl:gap-6"
-          >
-            {pagedProjects.map((project) => (
-              <PerspectiveCard
-                key={project.id}
-                data-background-key={project.background?.key}
-                className={
-                  project.status === "archived"
-                    ? "group flex min-h-[174px] flex-col opacity-75 md:min-h-[287px]"
-                    : "group flex min-h-[182px] flex-col md:min-h-[303px]"
-                }
-              >
-                <div className="relative aspect-video w-full overflow-hidden border-b border-border/60 bg-muted">
-                  {project.background && <img
-                    src={project.background.imageUrl}
-                    alt=""
-                    className="size-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.02] motion-reduce:transform-none motion-reduce:transition-none"
-                    loading="lazy"
-                  />}
-                  <div className="absolute inset-0 bg-gradient-to-t from-background/35 to-transparent" />
-                </div>
-                <div className="relative z-10 flex flex-1 flex-col gap-2 p-4 md:p-5">
-                  <div className="flex min-w-0 flex-col items-start justify-between gap-2 sm:flex-row md:gap-3">
-                    <h2 className="line-clamp-2 min-w-0 w-full flex-1 text-[15px] font-semibold leading-5 text-foreground sm:w-auto md:text-xl md:leading-7">
-                      {project.name}
-                    </h2>
-                    <Badge className="ml-auto h-auto gap-1.5 rounded-sm border-transparent bg-linear-to-r from-indigo-500 to-pink-500 bg-size-[105%] bg-center px-2 py-1 text-xs text-white md:px-2.5 md:text-sm">
-                      {project.projectMode === "standard" ? <MessagesSquare className="size-4" aria-hidden="true" /> : <GitBranch className="size-4" aria-hidden="true" />}
-                      {t(`projects.createForm.mode.${project.projectMode === "standard" ? "standard" : "professional"}`)}
-                    </Badge>
-                  </div>
-                  <p title={project.description} className="min-h-5 min-w-0 max-w-full truncate text-xs leading-5 text-muted-foreground md:text-sm">
-                    {project.description}
-                  </p>
-                  <div className="grid gap-1 pt-0.5 text-[12px] leading-4 text-muted-foreground md:gap-2 md:pt-2 md:text-sm md:leading-5">
-                    {project.status === "archived" && <Badge variant="outline" className="w-fit">{project.statusLabel}</Badge>}
-                    <span className="flex min-w-0 items-center gap-1.5 md:gap-2">
-                      <UserRound className="size-3.5 shrink-0" />
-                      <span className="min-w-0 truncate">
-                        {t("projects.ownerPrefix", { owner: project.owner })}
-                      </span>
-                    </span>
-                    <span className="flex min-w-0 items-center gap-1.5 md:gap-2">
-                      {project.status === "archived" ? (
-                        <Archive className="size-3.5 shrink-0" />
-                      ) : project.visibilityKind === "private" ? (
-                        <Lock className="size-3.5 shrink-0" />
-                      ) : (
-                        <Users className="size-3.5 shrink-0" />
-                      )}
-                      <span className="min-w-0 truncate">{project.visibility}</span>
-                    </span>
-                    <span className="flex min-w-0 items-center gap-1.5 md:gap-2">
-                      <Clock3 className="size-3.5 shrink-0" />
-                      <span className="min-w-0 truncate">
-                        {t("projects.updatedPrefix", { date: project.updatedAtDisplay })}
-                      </span>
-                    </span>
-                  </div>
-                </div>
-                <div className="relative z-10 mt-auto flex items-center justify-between gap-2 border-t border-border/60 bg-muted/20 px-4 py-3">
-                  <div className="flex items-start">
-                    {project.status === "archived" ? (
-                      <span className="line-clamp-2 font-mono text-[10px] font-medium leading-4 text-muted-foreground md:text-xs">
-                        {t("projects.lastUpdatedPrefix", { date: project.updatedAtDisplay })}
-                      </span>
-                    ) : (
-                      <>
-                        <AnimatedTooltip
-                          items={project.members.map((member) => ({
-                            id: `${project.id}:${member.id}`,
-                            image: member.avatarUrl,
-                            fallback: member.initial,
-                            name: member.label,
-                            designation: String(t(`projectShell.membersUi.roles.${member.role}`, {
-                              defaultValue: member.role,
-                            })),
-                            ariaLabel: String(t("projects.memberAvatar", { name: member.label })),
-                          }))}
-                        />
-                        {project.memberCount > project.members.length && (
-                          <span
-                            aria-label={t("projects.otherMembers", {
-                              count: project.memberCount - project.members.length,
-                            })}
-                            className="mr-[-8px] inline-flex size-7 items-center justify-center rounded-full border-2 border-card bg-secondary text-[11px] font-semibold text-muted-foreground md:size-8 md:text-xs"
-                          >
-                            +{project.memberCount - project.members.length}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-7 shrink-0 px-0 text-sm leading-5 md:text-base"
-                    onClick={() => onNavigate(`/projects/${project.id}`)}
-                  >
-                    {t("projects.openProject")}
-                    <span className="sr-only"> {project.name}</span>
-                    <ArrowRight className="size-4" />
-                  </Button>
-                </div>
-              </PerspectiveCard>
-            ))}
-          </div>
+          <ProjectExpandableCards projects={pagedProjects} onNavigate={onNavigate} />
         )}
 
         {!authRequired && !forbidden && !listError && visibleProjects.length > 0 && (

@@ -59,7 +59,6 @@ import { PageFrame, SectionCard } from "./project-page-layout";
 import { ProjectSettings } from "./project-settings";
 import { buildLoginRedirectPath } from "../lib/auth-page-routing";
 export { AuthPage } from "./auth-page";
-export { InvitationAcceptPage } from "./invitation-accept-page";
 export { ProjectNewPage } from "./project-new-page";
 export { ProjectsIndexPage } from "./projects-index-page";
 

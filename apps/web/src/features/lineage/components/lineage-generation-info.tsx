@@ -7,7 +7,7 @@ import { memberInitials } from '../../user-platform/lib/project-workspace-presen
 import { formatGenerationDuration, type GenerationInfo, type NodeGenerationInfo } from '../lib/lineage-generation';
 export function GenerationStamp({ info, representative, showDuration = true }: { info?: GenerationInfo; representative?: boolean; showDuration?: boolean }) {
   const { t, i18n } = useTranslation();
-  const name = info?.member?.displayName || info?.member?.email || t('lineage.generation.unknownPerson');
+  const name = info?.member?.displayName || info?.member?.username || t('lineage.generation.unknownPerson');
   const duration = !info?.generated ? t('lineage.statuses.not_generated') : info.durationMs === undefined ? t('lineage.generation.unrecorded') : formatGenerationDuration(info.durationMs, i18n.resolvedLanguage ?? 'en');
   const scope = t('lineage.generation.' + (info?.scope === 'rules-batch' ? 'rulesBatch' : 'elapsed'));
   return <div className='flex min-w-0 items-center gap-1.5'>

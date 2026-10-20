@@ -6,7 +6,7 @@ import { I18nextProvider } from 'react-i18next';
 import { i18n } from '../../../shared/i18n';
 import { GenerationStamp, GenerationDetails } from './lineage-generation-info';
 import type { GenerationInfo } from '../lib/lineage-generation';
-const info: GenerationInfo = { instanceId: 'one', label: 'Login sequence', generated: true, scope: 'instance', durationMs: 200, member: { id: 'member', projectId: 'project', userId: 'alice', displayName: 'Alice Wang', email: 'alice@example.test', role: 'owner', status: 'active' } };
+const info: GenerationInfo = { instanceId: 'one', label: 'Login sequence', generated: true, scope: 'instance', durationMs: 200, member: { id: 'member', projectId: 'project', userId: 'alice', displayName: 'Alice Wang', username: 'alice', role: 'owner', status: 'active' } };
 beforeEach(async () => { await i18n.changeLanguage('zh-CN'); });
 describe('lineage generation information', () => {
   it('shows a person avatar fallback, sub-second elapsed time, and the name on hover', async () => {

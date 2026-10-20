@@ -1,5 +1,6 @@
 // Provides first-phase in-memory identity, session, project, membership, and audit records.
 import { createHash, randomUUID } from "node:crypto";
+import { randomDefaultAvatar } from "./default-avatar.js";
 import {
   projectMemberRolePermissions,
   type AdminRole,
@@ -11,7 +12,6 @@ import {
   type ProjectMemberStatus,
   type ProjectPermission,
   type ProjectStatus,
-  type ProjectVisibility,
   type UserStatus,
   type OnboardingStateResponse,
   type OnboardingTour,
@@ -20,12 +20,10 @@ import {
 
 export type UserRecord = {
   id: string;
-  email: string;
   username: string;
   displayName: string;
   avatarUrl: string | null;
   status: UserStatus;
-  emailVerified: boolean;
   mfaEnabled: boolean;
   mfaSecret: string | null;
   mfaPendingSecret: string | null;
@@ -53,7 +51,6 @@ export type ProjectRecord = {
   id: string;
   name: string;
   description: string | null;
-  visibility: ProjectVisibility;
   status: ProjectStatus;
   ownerUserId: string;
   retentionPolicy: ProjectRetentionPolicy;
@@ -79,7 +76,7 @@ export type ProjectMemberRecord = {
   id: string;
   projectId: string;
   userId: string | null;
-  email: string;
+  username: string;
   displayName: string | null;
   avatarUrl?: string | null;
   role: ProjectMemberRole;
@@ -102,7 +99,7 @@ export type AuditLogInput = {
 
 export type LoginEventInput = {
   userId: string | null;
-  email: string | null;
+  username: string | null;
   outcome: "success" | "failure";
   ipAddress: string | null;
   userAgent: string | null;
@@ -111,7 +108,7 @@ export type LoginEventInput = {
 
 type AuthTokenRecord = {
   id: string;
-  type: "email_verification" | "password_reset" | "mfa_challenge";
+  type: "mfa_challenge";
   userId: string;
   tokenHash: string;
   expiresAt: string;
@@ -119,23 +116,12 @@ type AuthTokenRecord = {
   createdAt: string;
 };
 
-type ProjectInvitationTokenRecord = {
-  id: string;
-  projectMemberId: string;
-  tokenHash: string;
-  expiresAt: string;
-  revokedAt: string | null;
-  acceptedAt: string | null;
-  createdByUserId: string;
-  createdAt: string;
-};
-
 export type AdminInvitationRecord = {
   id: string;
-  email: string;
+  username: string;
   displayName: string | null;
   role: Exclude<AdminRole, "super_admin">;
-  status: "pending" | "accepted" | "revoked" | "expired";
+  status: "pending" | "accepted" | "declined" | "revoked" | "expired";
   invitedByUserId: string;
   acceptedByUserId: string | null;
   expiresAt: string;
@@ -145,15 +131,12 @@ export type AdminInvitationRecord = {
   updatedAt: string;
 };
 
-type StoredAdminInvitationRecord = AdminInvitationRecord & { tokenHash: string };
+type StoredAdminInvitationRecord = AdminInvitationRecord;
 
 export type AuthStore = ReturnType<typeof createInMemoryAuthStore>;
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
-const EMAIL_VERIFICATION_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;
-const PASSWORD_RESET_TOKEN_TTL_MS = 1000 * 60 * 60;
 const MFA_CHALLENGE_TOKEN_TTL_MS = 1000 * 60 * 5;
-const PROJECT_INVITATION_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const ADMIN_INVITATION_TOKEN_TTL_MS = 1000 * 60 * 60 * 72;
 
 function hashToken(token: string) {
@@ -162,7 +145,6 @@ function hashToken(token: string) {
 
 export function createInMemoryAuthStore() {
   const users = new Map<string, UserRecord>();
-  const usersByEmail = new Map<string, string>();
   const usersByUsername = new Map<string, string>();
   const sessions = new Map<string, SessionRecord>();
   const projects = new Map<string, ProjectRecord>();
@@ -172,85 +154,26 @@ export function createInMemoryAuthStore() {
   const auditLogs: AuditLogDto[] = [];
   const loginEvents: LoginEventDto[] = [];
   const authTokens = new Map<string, AuthTokenRecord>();
-  const projectInvitationTokens = new Map<string, ProjectInvitationTokenRecord>();
+  const inboxReceipts = new Map<string, { userId: string; messageId: string; readAt: string; dismissedAt: string | null }>();
   const adminInvitations = new Map<string, StoredAdminInvitationRecord>();
 
   function now() {
     return new Date().toISOString();
   }
 
-  function normalizeEmail(email: string) {
-    return email.trim().toLowerCase();
-  }
-
   function normalizeUsername(username: string) {
     return username.trim().toLowerCase();
   }
 
-  function usernameFromEmail(email: string) {
-    const base = normalizeEmail(email)
-      .split("@")[0]
-      ?.replace(/[^a-z0-9_]+/gu, "_")
-      .replace(/^_+|_+$/gu, "")
-      .slice(0, 32);
-    const safeBase = base && base.length >= 3 ? base : "user";
-    let candidate = safeBase;
-    let suffix = 1;
-    while (usersByUsername.has(candidate)) {
-      const suffixText = String(suffix);
-      candidate = `${safeBase.slice(0, 32 - suffixText.length)}${suffixText}`;
-      suffix += 1;
-    }
-    return candidate;
-  }
-
-  function createUser(input: {
-    email: string;
-    username?: string;
-    displayName: string;
-    passwordHash: string;
-    systemRoles?: AdminRole[];
-    status?: UserStatus;
-    emailVerified?: boolean;
-  }) {
-    const email = normalizeEmail(input.email);
-    if (usersByEmail.has(email)) return null;
-    const username = input.username
-      ? normalizeUsername(input.username)
-      : usernameFromEmail(email);
+  function createUser(input: { username: string; displayName: string; passwordHash: string; systemRoles?: AdminRole[]; status?: UserStatus }) {
+    const username = normalizeUsername(input.username);
+    if (!/^[a-z0-9_]{3,32}$/u.test(username)) throw new Error("Invalid username");
     if (usersByUsername.has(username)) return null;
-
     const createdAt = now();
-    const emailVerified = input.emailVerified ?? true;
-    const user: UserRecord = {
-      id: randomUUID(),
-      email,
-      username,
-      displayName: input.displayName,
-      avatarUrl: null,
-      status:
-        input.status ??
-        (emailVerified ? "active" : "pending_email_verification"),
-      emailVerified,
-      mfaEnabled: false,
-      mfaSecret: null,
-      mfaPendingSecret: null,
-      mfaPendingExpiresAt: null,
-      systemRoles: input.systemRoles ?? [],
-      passwordHash: input.passwordHash,
-      createdAt,
-      updatedAt: createdAt,
-      lastLoginAt: null,
-    };
+    const user: UserRecord = { id: randomUUID(), username, displayName: input.displayName, avatarUrl: randomDefaultAvatar(), status: input.status ?? "active", mfaEnabled: false, mfaSecret: null, mfaPendingSecret: null, mfaPendingExpiresAt: null, systemRoles: input.systemRoles ?? [], passwordHash: input.passwordHash, createdAt, updatedAt: createdAt, lastLoginAt: null };
     users.set(user.id, user);
-    usersByEmail.set(user.email, user.id);
-    usersByUsername.set(user.username, user.id);
+    usersByUsername.set(username, user.id);
     return user;
-  }
-
-  function findUserByEmail(email: string) {
-    const userId = usersByEmail.get(normalizeEmail(email));
-    return userId ? users.get(userId) ?? null : null;
   }
 
   function findUserByUsername(username: string) {
@@ -258,13 +181,19 @@ export function createInMemoryAuthStore() {
     return userId ? users.get(userId) ?? null : null;
   }
 
-  function findUserByLoginIdentifier(identifier: string) {
-    const value = identifier.trim();
-    return value.includes("@") ? findUserByEmail(value) : findUserByUsername(value);
-  }
-
   function listUsers() {
     return [...users.values()];
+  }
+
+  function assignMissingDefaultAvatars() {
+    let updatedCount = 0;
+    for (const user of users.values()) {
+      if (user.avatarUrl?.trim()) continue;
+      user.avatarUrl = randomDefaultAvatar();
+      user.updatedAt = now();
+      updatedCount += 1;
+    }
+    return updatedCount;
   }
 
   function getUser(userId: string) {
@@ -280,7 +209,6 @@ export function createInMemoryAuthStore() {
         | "avatarUrl"
         | "passwordHash"
         | "status"
-        | "emailVerified"
         | "systemRoles"
         | "mfaEnabled"
         | "mfaSecret"
@@ -412,43 +340,6 @@ export function createInMemoryAuthStore() {
     return record;
   }
 
-  function createEmailVerificationToken(userId: string) {
-    return createAuthToken(
-      "email_verification",
-      userId,
-      EMAIL_VERIFICATION_TOKEN_TTL_MS,
-    );
-  }
-
-  function verifyEmailToken(token: string) {
-    const record = consumeAuthToken("email_verification", token);
-    if (!record) return null;
-    const user = getUser(record.userId);
-    if (!user) return null;
-    return updateUser(record.userId, {
-      // Verification is the state transition from pending signup to an active account.
-      emailVerified: true,
-      status: user.status === "pending_email_verification" ? "active" : user.status,
-    });
-  }
-
-  function createPasswordResetToken(email: string) {
-    const user = findUserByEmail(email);
-    if (!user) return null;
-    return {
-      ...createAuthToken("password_reset", user.id, PASSWORD_RESET_TOKEN_TTL_MS),
-      userId: user.id,
-    };
-  }
-
-  function resetPasswordWithToken(token: string, passwordHash: string) {
-    const record = consumeAuthToken("password_reset", token);
-    if (!record) return null;
-    const user = updateUser(record.userId, { passwordHash });
-    if (!user) return null;
-    return { user, revokedSessionCount: revokeSessionsForUser(user.id) };
-  }
-
   function createMfaChallenge(userId: string) {
     return createAuthToken("mfa_challenge", userId, MFA_CHALLENGE_TOKEN_TTL_MS);
   }
@@ -459,8 +350,7 @@ export function createInMemoryAuthStore() {
   }
 
   function publicAdminInvitation(record: StoredAdminInvitationRecord): AdminInvitationRecord {
-    const { tokenHash: _tokenHash, ...invitation } = record;
-    return { ...invitation };
+    return { ...record };
   }
 
   function listAdminInvitations() {
@@ -476,30 +366,28 @@ export function createInMemoryAuthStore() {
   }
 
   function createAdminInvitation(input: {
-    email: string;
+    username: string;
     displayName?: string | null;
     role: Exclude<AdminRole, "super_admin">;
     invitedByUserId: string;
   }) {
-    const email = normalizeEmail(input.email);
+    const username = normalizeUsername(input.username);
     listAdminInvitations();
     const duplicate = [...adminInvitations.values()].find(
       (candidate) =>
-        candidate.email === email &&
+        candidate.username === username &&
         candidate.role === input.role &&
         candidate.status === "pending" &&
         !candidate.revokedAt &&
         Date.parse(candidate.expiresAt) > Date.now(),
     );
     if (duplicate) return null;
-    const token = randomUUID();
     const createdAt = now();
     const record: StoredAdminInvitationRecord = {
       id: randomUUID(),
-      email,
+      username,
       displayName: input.displayName?.trim() || null,
       role: input.role,
-      tokenHash: hashToken(token),
       status: "pending",
       invitedByUserId: input.invitedByUserId,
       acceptedByUserId: null,
@@ -510,31 +398,22 @@ export function createInMemoryAuthStore() {
       updatedAt: createdAt,
     };
     adminInvitations.set(record.id, record);
-    return { invitation: publicAdminInvitation(record), token };
+    return { invitation: publicAdminInvitation(record) };
   }
 
-  function findActiveAdminInvitationToken(token: string) {
-    const tokenHash = hashToken(token);
-    const record = [...adminInvitations.values()].find(
-      (candidate) =>
-        candidate.tokenHash === tokenHash &&
-        candidate.status === "pending" &&
-        !candidate.revokedAt &&
-        !candidate.acceptedAt &&
-        Date.parse(candidate.expiresAt) > Date.now(),
-    );
-    return record ? publicAdminInvitation(record) : null;
+  function getPendingAdminInvitation(id: string) {
+    listAdminInvitations();
+    const record = adminInvitations.get(id);
+    return record?.status === "pending" ? publicAdminInvitation(record) : null;
   }
 
   function resendAdminInvitation(id: string, invitedByUserId: string) {
     const record = adminInvitations.get(id);
     if (!record || record.status !== "pending" || record.revokedAt || record.acceptedAt) return null;
-    const token = randomUUID();
-    record.tokenHash = hashToken(token);
     record.invitedByUserId = invitedByUserId;
     record.expiresAt = new Date(Date.now() + ADMIN_INVITATION_TOKEN_TTL_MS).toISOString();
     record.updatedAt = now();
-    return { invitation: publicAdminInvitation(record), token };
+    return { invitation: publicAdminInvitation(record) };
   }
 
   function revokeAdminInvitation(id: string) {
@@ -546,14 +425,14 @@ export function createInMemoryAuthStore() {
     return publicAdminInvitation(record);
   }
 
-  function acceptAdminInvitation(token: string, userId: string) {
-    const invitation = findActiveAdminInvitationToken(token);
+  function acceptAdminInvitation(id: string, userId: string) {
+    const invitation = getPendingAdminInvitation(id);
     if (!invitation) return null;
     const record = adminInvitations.get(invitation.id);
     const user = users.get(userId);
     if (!record || !user) return null;
-    if (normalizeEmail(user.email) !== record.email) {
-      return { error: "email_mismatch" as const, invitation };
+    if (normalizeUsername(user.username) !== record.username) {
+      return { error: "username_mismatch" as const, invitation };
     }
     const acceptedAt = now();
     record.status = "accepted";
@@ -561,90 +440,9 @@ export function createInMemoryAuthStore() {
     record.acceptedByUserId = user.id;
     record.updatedAt = acceptedAt;
     updateUser(user.id, {
-      emailVerified: true,
-      status: user.status === "pending_email_verification" ? "active" : user.status,
       systemRoles: [...new Set([...user.systemRoles, record.role])],
     });
     return { invitation: publicAdminInvitation(record), user: getUser(user.id)! };
-  }
-
-  function revokeProjectInvitationTokens(projectMemberId: string) {
-    const revokedAt = now();
-    let revokedCount = 0;
-    for (const record of projectInvitationTokens.values()) {
-      if (
-        record.projectMemberId === projectMemberId &&
-        !record.revokedAt &&
-        !record.acceptedAt
-      ) {
-        record.revokedAt = revokedAt;
-        revokedCount += 1;
-      }
-    }
-    return revokedCount;
-  }
-
-  function createProjectInvitationToken(input: {
-    projectMemberId: string;
-    createdByUserId: string;
-  }) {
-    revokeProjectInvitationTokens(input.projectMemberId);
-    const createdAt = now();
-    const token = randomUUID();
-    const record: ProjectInvitationTokenRecord = {
-      id: randomUUID(),
-      projectMemberId: input.projectMemberId,
-      tokenHash: hashToken(token),
-      expiresAt: new Date(Date.now() + PROJECT_INVITATION_TOKEN_TTL_MS).toISOString(),
-      revokedAt: null,
-      acceptedAt: null,
-      createdByUserId: input.createdByUserId,
-      createdAt,
-    };
-    projectInvitationTokens.set(record.id, record);
-    return { token, expiresAt: record.expiresAt };
-  }
-
-  function findActiveProjectInvitationToken(token: string) {
-    const tokenHash = hashToken(token);
-    const record = [...projectInvitationTokens.values()].find(
-      (candidate) =>
-        candidate.tokenHash === tokenHash &&
-        !candidate.revokedAt &&
-        !candidate.acceptedAt &&
-        Date.parse(candidate.expiresAt) > Date.now(),
-    );
-    if (!record) return null;
-
-    const member = members.get(record.projectMemberId);
-    if (!member || member.status !== "invited") return null;
-    const project = projects.get(member.projectId);
-    if (!project || project.status === "deleted") return null;
-
-    return { token: record, member, project };
-  }
-
-  function acceptProjectInvitationToken(
-    token: string,
-    user: Pick<UserRecord, "id" | "email" | "displayName">,
-  ) {
-    const invitation = findActiveProjectInvitationToken(token);
-    if (!invitation) return null;
-    if (invitation.member.email !== normalizeEmail(user.email)) {
-      return { error: "email_mismatch" as const, invitation };
-    }
-
-    invitation.token.acceptedAt = now();
-    // Accepting an invitation is the membership lifecycle boundary from invited to active.
-    const member = updateMember(invitation.member.id, {
-      userId: user.id,
-      displayName: user.displayName,
-      status: "active",
-      joinedAt: invitation.token.acceptedAt,
-    });
-    if (!member) return null;
-
-    return { member, project: invitation.project };
   }
 
   function createProject(input: {
@@ -652,7 +450,6 @@ export function createInMemoryAuthStore() {
     ownerUserId: string;
     name: string;
     description: string | null;
-    visibility: ProjectVisibility;
     retentionPolicy?: ProjectRetentionPolicy;
     backgroundKey?: ProjectBackgroundKey | null;
   }) {
@@ -662,7 +459,6 @@ export function createInMemoryAuthStore() {
       id: randomUUID(),
       name: input.name,
       description: input.description,
-      visibility: input.visibility,
       status: "active",
       ownerUserId: input.ownerUserId,
       retentionPolicy: input.retentionPolicy ?? "manual",
@@ -686,7 +482,7 @@ export function createInMemoryAuthStore() {
     const member = createMember({
       projectId: project.id,
       userId: owner?.id ?? null,
-      email: owner?.email ?? "",
+      username: owner?.username ?? "",
       displayName: owner?.displayName ?? null,
       role: "owner",
       status: "active",
@@ -751,7 +547,6 @@ export function createInMemoryAuthStore() {
         ProjectRecord,
         | "name"
         | "description"
-        | "visibility"
         | "status"
         | "ownerUserId"
         | "retentionPolicy"
@@ -833,11 +628,11 @@ export function createInMemoryAuthStore() {
     return member ? withMemberUserProfile(member) : null;
   }
 
-  function findProjectMemberByEmail(projectId: string, email: string) {
-    const normalized = normalizeEmail(email);
+  function findProjectMemberByUsername(projectId: string, username: string) {
+    const normalized = normalizeUsername(username);
     const member =
       [...members.values()].find(
-        (member) => member.projectId === projectId && member.email === normalized,
+        (member) => member.projectId === projectId && member.username === normalized,
       ) ?? null;
     return member ? withMemberUserProfile(member) : null;
   }
@@ -892,7 +687,7 @@ export function createInMemoryAuthStore() {
     const entry: LoginEventDto = {
       id: randomUUID(),
       userId: input.userId,
-      email: input.email ? normalizeEmail(input.email) : null,
+      username: input.username ? normalizeUsername(input.username) : null,
       outcome: input.outcome,
       ipAddress: input.ipAddress,
       userAgent: input.userAgent,
@@ -929,12 +724,45 @@ export function createInMemoryAuthStore() {
     return Boolean(user && user.systemRoles.some((role) => roles.includes(role)));
   }
 
+
+  function listMemberInvitations(userId?: string) {
+    return [...members.values()].filter(member => member.invitedByUserId && (!userId || member.userId === userId)).map(withMemberUserProfile);
+  }
+  function refreshProjectInvitation(id: string) {
+    const member = members.get(id);
+    if (!member || member.status !== "invited") return null;
+    member.invitedAt = now(); member.updatedAt = member.invitedAt;
+    // A resent invitation must clear the recipient-specific read/dismiss receipt.
+    if (member.userId) inboxReceipts.delete(`${member.userId}:project:${id}`);
+    return withMemberUserProfile(member);
+  }
+  function respondToProjectInvitation(id: string, userId: string, accept: boolean) {
+    const member = members.get(id), user = users.get(userId);
+    if (!member || !user || member.userId !== userId || member.status !== "invited" || !member.invitedAt || Date.parse(member.invitedAt) <= Date.now() - 7 * 86400000 || projects.get(member.projectId)?.status === "deleted") return null;
+    // Only the invited user may cross the pending -> joined/declined boundary.
+    return updateMember(id, { status: accept ? "active" : "declined", displayName: user.displayName, joinedAt: accept ? now() : null });
+  }
+  function declineAdminInvitation(id: string, userId: string) {
+    const invitation = getPendingAdminInvitation(id), user = users.get(userId);
+    if (!invitation || !user || invitation.username !== user.username) return null;
+    const record = adminInvitations.get(id)!;
+    record.status = "declined"; record.updatedAt = now();
+    return publicAdminInvitation(record);
+  }
+  function listInboxReceipts(userId: string) {
+    return [...inboxReceipts.values()].filter(receipt => receipt.userId === userId);
+  }
+  function recordInboxReceipt(userId: string, messageId: string, dismissed = false) {
+    const key = `${userId}:${messageId}`, current = inboxReceipts.get(key);
+    const receipt = { userId, messageId, readAt: current?.readAt ?? now(), dismissedAt: dismissed ? now() : current?.dismissedAt ?? null };
+    inboxReceipts.set(key, receipt); return receipt;
+  }
   return {
+    listMemberInvitations, refreshProjectInvitation, respondToProjectInvitation, declineAdminInvitation, listInboxReceipts, recordInboxReceipt,
     createUser,
-    findUserByEmail,
     findUserByUsername,
-    findUserByLoginIdentifier,
     listUsers,
+    assignMissingDefaultAvatars,
     getUser,
     updateUser,
     createSession,
@@ -943,22 +771,14 @@ export function createInMemoryAuthStore() {
     listActiveSessionsForUser,
     revokeOtherSessions,
     revokeSessionsForUser,
-    createEmailVerificationToken,
-    verifyEmailToken,
-    createPasswordResetToken,
-    resetPasswordWithToken,
     createMfaChallenge,
     consumeMfaChallenge,
     listAdminInvitations,
     createAdminInvitation,
-    findActiveAdminInvitationToken,
+    getPendingAdminInvitation,
     resendAdminInvitation,
     revokeAdminInvitation,
     acceptAdminInvitation,
-    createProjectInvitationToken,
-    findActiveProjectInvitationToken,
-    revokeProjectInvitationTokens,
-    acceptProjectInvitationToken,
     createProject,
     getProject,
     getProjectWorkspace,
@@ -970,7 +790,7 @@ export function createInMemoryAuthStore() {
     listProjects,
     createMember,
     findProjectMember,
-    findProjectMemberByEmail,
+    findProjectMemberByUsername,
     getMember,
     listProjectMembers,
     updateMember,

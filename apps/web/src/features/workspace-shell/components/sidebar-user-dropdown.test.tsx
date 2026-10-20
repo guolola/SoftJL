@@ -11,8 +11,8 @@ import { AUTH_SESSION_CHANGED_EVENT, platformApi, type PlatformAccountProfileRes
 import { floatingAlert } from '../../../shared/ui/floating-alert';
 import { SidebarUserDropdown } from './sidebar-user-dropdown';
 const profile: PlatformAccountProfileResponse = {
-    user: { id: 'user-1', username: 'sidebar-user', displayName: '侧栏用户', email: 'sidebar@example.test', avatarUrl: null, status: 'active', emailVerified: true, mfaEnabled: false },
-    session: { id: 'session-1', userId: 'user-1', createdAt: '', expiresAt: '', lastSeenAt: '', ipAddress: null, userAgent: null },
+  user: { id: 'user-1', username: 'sidebar-user', displayName: '侧栏用户', avatarUrl: null, status: 'active', mfaEnabled: false },
+  session: { id: 'session-1', userId: 'user-1', createdAt: '', expiresAt: '', lastSeenAt: '', ipAddress: null, userAgent: null },
 };
 function SidebarControls() {
     const { openMobile, setOpenMobile, setOpen } = useSidebar();
@@ -49,7 +49,7 @@ describe('sidebar user dropdown', () => {
         const { user, onOpenAccount, onNavigate } = renderSidebar();
         const trigger = screen.getByRole('button', { name: '账号：侧栏用户' });
         expect(trigger.closest('[data-slot="sidebar-footer"]')).not.toBeNull();
-        expect(within(trigger).getByText(profile.user.email)).toBeInTheDocument();
+        expect(within(trigger).getByText(profile.user.username)).toBeInTheDocument();
         let menu = await openMenu(user);
         expect(within(menu).getByText(profile.user.displayName)).toBeInTheDocument();
         expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual([

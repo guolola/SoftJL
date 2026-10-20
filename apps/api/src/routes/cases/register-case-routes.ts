@@ -55,7 +55,6 @@ export function registerCaseRoutes({
       ownerUserId: auth.user.id,
       name: template.title,
       description: template.description,
-      visibility: "private",
       retentionPolicy: "manual",
       backgroundKey: template.backgroundKey,
     });

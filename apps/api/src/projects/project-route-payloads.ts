@@ -91,18 +91,16 @@ export function projectWorkspacePayload(
 
 export function toProjectInvitationDto(input: {
   member: Parameters<typeof toProjectMemberDto>[0];
-  expiresAt: string;
   project?: Parameters<typeof toProjectDto>[0];
 }) {
   return projectInvitationDtoSchema.parse({
     id: input.member.id,
     projectId: input.member.projectId,
-    email: input.member.email,
+    username: input.member.username,
     role: input.member.role,
     status: input.member.status,
     invitedByUserId: input.member.invitedByUserId,
     invitedAt: input.member.invitedAt,
-    expiresAt: input.expiresAt,
     createdAt: input.member.createdAt,
     updatedAt: input.member.updatedAt,
     project: input.project ? toProjectDto(input.project) : undefined,
@@ -124,7 +122,7 @@ export function projectPayload(input: {
 }
 
 function displayNameFromMember(member: ProjectMemberRecord) {
-  return member.displayName?.trim() || member.email.split("@")[0] || member.userId || null;
+  return member.displayName?.trim() || member.username.split("@")[0] || member.userId || null;
 }
 
 function activeMemberPreviewSort(project: ProjectRecord) {
@@ -148,7 +146,7 @@ export async function projectListPayload(
   const ownerUser = await authStore.getUser(project.ownerUserId);
   const ownerDisplayName = ownerMember
     ? displayNameFromMember(ownerMember)
-    : ownerUser?.displayName ?? ownerUser?.email ?? null;
+    : ownerUser?.displayName ?? ownerUser?.username ?? null;
 
   return projectDtoSchema.parse({
     ...project,

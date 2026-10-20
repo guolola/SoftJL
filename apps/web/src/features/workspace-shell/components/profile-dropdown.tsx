@@ -8,7 +8,7 @@ import { AccountMenuItems } from './account-menu-items';
 
 export function ProfileDropdown({ user, onAccount, onNavigate }: { user: PlatformUser | null; onAccount: () => void; onNavigate: (path: string) => void }) {
   const { t } = useTranslation();
-  const name = user?.displayName || user?.email || t('auth.login');
+  const name = user?.displayName || user?.username || t('auth.login');
   const avatar = (large = false) => <Avatar className={large ? 'size-10' : undefined}>
     <AvatarImage src={user?.avatarUrl ?? undefined} alt={name} />
     <AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback>
@@ -23,7 +23,7 @@ export function ProfileDropdown({ user, onAccount, onNavigate }: { user: Platfor
         <div className="relative">{avatar(true)}{user && <span className="ring-card absolute right-0 bottom-0 block size-2 rounded-full bg-success ring-2" />}</div>
         <div className="flex min-w-0 flex-1 flex-col items-start">
           <span className="text-foreground max-w-full truncate text-base font-semibold">{name}</span>
-          <span className="text-muted-foreground max-w-full truncate text-sm">{user?.email}</span>
+          <span className="text-muted-foreground max-w-full truncate text-sm">{user?.username}</span>
         </div>
       </DropdownMenuLabel></DropdownMenuGroup>
       <DropdownMenuSeparator />

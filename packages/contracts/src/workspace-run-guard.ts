@@ -105,6 +105,7 @@ export function workspaceGuardConflicts(record: RunRecord, state: State, include
 }
 
 export function retryInputProblem(record: RunRecord, state?: State) {
+  if (object(record.snapshot).operationType === "quick_modeling") return "请在快速建模项目中继续或重新发送消息。";
   const source = record.snapshot;
   // Retries must not translate outdated records into apparently current queued runs.
   try {

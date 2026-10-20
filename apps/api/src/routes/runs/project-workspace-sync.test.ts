@@ -106,17 +106,16 @@ async function createWorkspaceSyncFixture() {
   const authStore = createInMemoryAuthStore();
   const runs = new Map<string, RunRecord>();
   const user = await authStore.createUser({
-    email: "workspace-sync@example.com",
+    username: "workspace_sync",
     displayName: "Workspace Sync",
     passwordHash: "test",
-    emailVerified: true,
   });
   assert.ok(user);
   const { project } = await authStore.createProject({
     ownerUserId: user.id,
     name: "Workspace Sync Project",
     description: null,
-    visibility: "private",
+
   });
   return {
     authStore,
@@ -561,7 +560,7 @@ test("publishes an accepted feasibility branch before the remaining work complet
     diagramKind: "context", modelId: "context", title: "系统环境图", summary: "环境", notes: [],
     system: { id: "system", name: "文章系统", sourceRequirementIds: [] }, people: [], externalSystems: [], relationships: [],
   };
-  snapshot.contextPlantUml = { diagramKind: "context", modelId: "context", source: "@startuml\n@enduml" };
+  snapshot.contextPlantUml = { diagramKind: "context", modelId: "context", source: "@startuml\n" };
   snapshot.contextSvg = { diagramKind: "context", modelId: "context", svg: "<svg />", renderMeta: businessFlow.svg.renderMeta };
   snapshot.outputManifest.push({ id: "context", kind: "context" });
   snapshot.status = "completed";

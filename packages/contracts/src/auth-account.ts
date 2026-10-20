@@ -1,5 +1,6 @@
 // Defines user, session, auth, account profile, MFA, and security request schemas shared by API and clients.
 import { z } from "zod";
+import { avatarUrlSchema, avatarUpdateUrlSchema } from "./avatars.js";
 import {
   adminCapabilitySchema,
   adminDataScopeSchema,
@@ -9,21 +10,15 @@ import {
 
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const optionalNullableTimestampSchema = isoTimestampSchema.nullable();
-const emailAddressSchema = z
-  .string()
-  .trim()
-  .email()
-  .transform((value) => value.toLowerCase());
 const publicNameSchema = z.string().trim().min(1).max(120);
 const passwordSchema = z.string().min(8).max(128);
-const usernameSchema = z
+export const usernameSchema = z
   .string()
   .trim()
   .toLowerCase()
   .regex(/^[a-z0-9_]{3,32}$/u);
 
 export const userStatusSchema = z.enum([
-  "pending_email_verification",
   "active",
   "disabled",
   "locked",
@@ -33,12 +28,10 @@ export type UserStatus = z.infer<typeof userStatusSchema>;
 export const userDtoSchema = z
   .object({
     id: z.string().min(1),
-    email: emailAddressSchema,
     username: usernameSchema,
     displayName: publicNameSchema,
-    avatarUrl: z.string().url().nullable(),
+    avatarUrl: avatarUrlSchema.nullable(),
     status: userStatusSchema,
-    emailVerified: z.boolean(),
     mfaEnabled: z.boolean().default(false),
     systemRoles: z.array(adminRoleSchema).default([]),
     createdAt: isoTimestampSchema,
@@ -64,22 +57,15 @@ export const sessionDtoSchema = z
 export type SessionDto = z.infer<typeof sessionDtoSchema>;
 
 export const authRegisterRequestSchema = z.object({
-  email: emailAddressSchema,
   username: usernameSchema,
   password: passwordSchema,
   displayName: publicNameSchema,
-});
+}).strict();
 export type AuthRegisterRequest = z.infer<typeof authRegisterRequestSchema>;
 
-const loginIdentifierSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(128)
-  .transform((value) => value.toLowerCase());
 export const authLoginRequestSchema = z
   .object({
-    identifier: loginIdentifierSchema,
+    identifier: usernameSchema,
     password: z.string().min(1).max(128),
   })
   .strict();
@@ -106,35 +92,6 @@ export const authMfaVerifyRequestSchema = z
   })
   .strict();
 export type AuthMfaVerifyRequest = z.infer<typeof authMfaVerifyRequestSchema>;
-
-export const authVerifyEmailRequestSchema = z.object({
-  token: z.string().trim().min(16).max(256),
-});
-export type AuthVerifyEmailRequest = z.infer<
-  typeof authVerifyEmailRequestSchema
->;
-
-export const authResendVerificationRequestSchema = z.object({
-  email: emailAddressSchema,
-});
-export type AuthResendVerificationRequest = z.infer<
-  typeof authResendVerificationRequestSchema
->;
-
-export const authForgotPasswordRequestSchema = z.object({
-  email: emailAddressSchema,
-});
-export type AuthForgotPasswordRequest = z.infer<
-  typeof authForgotPasswordRequestSchema
->;
-
-export const authResetPasswordRequestSchema = z.object({
-  token: z.string().trim().min(16).max(256),
-  newPassword: passwordSchema,
-});
-export type AuthResetPasswordRequest = z.infer<
-  typeof authResetPasswordRequestSchema
->;
 
 export const authSessionResponseSchema = z.object({
   user: userDtoSchema,
@@ -205,7 +162,7 @@ export const loginEventDtoSchema = z
   .object({
     id: z.string().min(1),
     userId: z.string().min(1).nullable(),
-    email: emailAddressSchema.nullable(),
+    username: usernameSchema.nullable(),
     outcome: z.enum(["success", "failure"]),
     ipAddress: z.string().min(1).nullable(),
     userAgent: z.string().min(1).nullable(),
@@ -262,15 +219,7 @@ export type AccountMfaConfirmRequest = z.infer<
 
 export const accountProfileUpdateRequestSchema = z.object({
   displayName: publicNameSchema.optional(),
-  avatarUrl: z
-    .string()
-    .trim()
-    .url()
-    .refine((value) => new URL(value).protocol === "https:", {
-      message: "Avatar URL must use HTTPS",
-    })
-    .nullable()
-    .optional(),
+  avatarUrl: avatarUpdateUrlSchema.nullable().optional(),
 });
 export type AccountProfileUpdateRequest = z.infer<
   typeof accountProfileUpdateRequestSchema

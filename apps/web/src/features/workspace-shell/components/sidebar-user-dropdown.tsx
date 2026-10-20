@@ -27,7 +27,7 @@ export function SidebarUserDropdown({
   const [loggingOut, setLoggingOut] = useState(false);
   const logoutPending = useRef(false);
   const user = session?.user;
-  const name = user?.displayName || user?.email || t('auth.login');
+  const name = user?.displayName || user?.username || t('auth.login');
   const avatar = () => (
     <Avatar className="rounded-lg after:rounded-[inherit]">
       <AvatarImage src={user?.avatarUrl ?? undefined} alt={name} className="rounded-[inherit]" />
@@ -37,7 +37,7 @@ export function SidebarUserDropdown({
   const identity = () => (
     <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
       <span className="truncate font-medium">{name}</span>
-      <span className="text-muted-foreground truncate text-xs">{user?.email}</span>
+      <span className="text-muted-foreground truncate text-xs">{user?.username}</span>
     </div>
   );
   const select = (action: () => void) => {

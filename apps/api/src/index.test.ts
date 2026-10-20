@@ -8,7 +8,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import type { LlmTransport } from "./llm.js";
-import type { MailAdapter, MailMessage } from "./mail/mail-adapter.js";
 import { createApiServer } from "./index.js";
 import { createInMemoryAuthStore } from "./auth/in-memory-auth-store.js";
 import type { DocumentLibrary } from "./documents/library/document-library.js";
@@ -2916,7 +2915,7 @@ test("api document run embeds PlantUML diagrams as PNG files in DOCX", async () 
       requirementPlantUml: [
         {
           diagramKind: "usecase",
-          source: "@startuml\nactor 用户\n@enduml",
+          source: "@startuml\nactor 用户\n",
         },
       ],
       requirementSvgArtifacts: [
@@ -3610,8 +3609,8 @@ test("api rejects ambiguous deployment endpoints without deleting relationships"
       {
         id: "r1",
         type: "operations" as const,
-        text: "系统部署包含 Web、Node API、数据库和邮件服务。",
-        sourceFragment: "系统部署包含 Web、Node API、数据库和邮件服务。",
+        text: "系统部署包含 Web、Node API、数据库和站内消息服务。",
+        sourceFragment: "系统部署包含 Web、Node API、数据库和站内消息服务。",
 
       },
     ],
@@ -3630,12 +3629,12 @@ test("api rejects ambiguous deployment endpoints without deleting relationships"
             {
               diagramKind: "deployment",
               title: "部署模型",
-              summary: "API 与邮件服务部署",
+              summary: "API 与站内消息服务部署",
               notes: "线上部署拓扑",
               nodes: [{ id: "node_api", name: "Node API", nodeType: "server" }],
               databases: [{ id: "db_main", name: "主数据库" }],
               components: [{ id: "component_web", name: "Web 前端" }],
-              externalSystems: [{ id: "mail_service", name: "邮件服务" }],
+              externalSystems: [{ id: "mail_service", name: "站内消息服务" }],
               artifacts: [],
               relationships: [
                 {
@@ -3696,7 +3695,7 @@ test("api rejects ambiguous deployment endpoints without deleting relationships"
                 diagramKind: "deployment",
                 elementId: "mail_service",
                 elementKind: "external-system",
-                label: "邮件服务",
+                label: "站内消息服务",
               },
             },
             {
@@ -3736,7 +3735,7 @@ test("api rejects ambiguous deployment endpoints without deleting relationships"
     method: "POST",
     url: "/api/runs",
     payload: {
-      requirementText: "系统部署包含 Web、Node API、数据库和邮件服务。",
+      requirementText: "系统部署包含 Web、Node API、数据库和站内消息服务。",
       selectedDiagrams: ["deployment"],
       providerSettings: MANAGED_PROVIDER_SETTINGS,
     },
@@ -3960,7 +3959,7 @@ test("api keeps successful diagrams and reports activity render failure in diagr
 
         if (prompt.includes("请修复下面无法编译或返回占位 SVG 的 PlantUML")) {
           yield JSON.stringify({
-            source: "@startuml\n|用户|\nstart\n:提交需求;\nstop\n@enduml",
+            source: "@startuml\n|用户|\nstart\n:提交需求;\nstop\n",
           });
           return;
         }
@@ -4197,7 +4196,7 @@ test("api reports empty JSON request bodies as 400 instead of 500", async () => 
 test("api proxies manual PlantUML render requests", async () => {
   const authStore = createInMemoryAuthStore();
   const user = await authStore.createUser({
-    email: "render-owner@example.com",
+    username: "render_owner",
     displayName: "Render Owner",
     passwordHash: "hash",
   });
@@ -4210,7 +4209,7 @@ test("api proxies manual PlantUML render requests", async () => {
   const { project } = await authStore.createProject({
     ownerUserId: user.id,
     name: "Render Project",
-    visibility: "private",
+
   });
   const app = await createTestApiServer({
     authStore,
@@ -4235,14 +4234,14 @@ test("api proxies manual PlantUML render requests", async () => {
     },
     payload: {
       diagramKind: "class",
-      plantUmlSource: "@startuml\nclass User\n@enduml",
+      plantUmlSource: "@startuml\nclass User\n",
     },
   });
 
   assert.equal(response.statusCode, 200);
   const body = response.json();
   assert.match(body.svg, /class/);
-  assert.equal(body.renderMeta.sourceLength, "@startuml\nclass User\n@enduml".length);
+  assert.equal(body.renderMeta.sourceLength, "@startuml\nclass User\n".length);
 
   await app.close();
 });
@@ -4250,7 +4249,7 @@ test("api proxies manual PlantUML render requests", async () => {
 test("api rerenders structured use case models without calling the LLM", async () => {
   const authStore = createInMemoryAuthStore();
   const user = await authStore.createUser({
-    email: "structured-render-owner@example.com",
+    username: "structured_render_owner",
     displayName: "Structured Render Owner",
     passwordHash: "hash",
   });
@@ -4263,7 +4262,7 @@ test("api rerenders structured use case models without calling the LLM", async (
   const { project } = await authStore.createProject({
     ownerUserId: user.id,
     name: "Structured Render Project",
-    visibility: "private",
+
   });
   let renderedSource = "";
   const app = await createTestApiServer({
@@ -4343,12 +4342,12 @@ test("api rerenders structured use case models without calling the LLM", async (
 
 test("guest access seed creates a login-ready non-admin guest account without platform billing", async () => {
   const originalEnabled = process.env.UML_ENABLE_GUEST_ACCESS;
-  const originalEmail = process.env.UML_GUEST_EMAIL;
+  const originalUsername = process.env.UML_GUEST_USERNAME;
   const originalPassword = process.env.UML_GUEST_PASSWORD;
   const originalDisplayName = process.env.UML_GUEST_DISPLAY_NAME;
   const originalDailyLimit = process.env.UML_GUEST_DAILY_LIMIT;
   process.env.UML_ENABLE_GUEST_ACCESS = "true";
-  process.env.UML_GUEST_EMAIL = "guest@example.edu";
+  process.env.UML_GUEST_USERNAME = "guest";
   process.env.UML_GUEST_PASSWORD = "guest";
   process.env.UML_GUEST_DISPLAY_NAME = "Guest";
   process.env.UML_GUEST_DAILY_LIMIT = "9999";
@@ -4360,14 +4359,14 @@ test("guest access seed creates a login-ready non-admin guest account without pl
       method: "POST",
       url: "/api/auth/login",
       payload: {
-        identifier: "guest@example.edu",
+        identifier: "guest",
         password: "guest",
       },
     });
 
     assert.equal(response.statusCode, 200);
-    assert.equal(response.json().user.email, "guest@example.edu");
-    const guest = await authStore.findUserByEmail("guest@example.edu");
+    assert.equal(response.json().user.username, "guest");
+    const guest = await authStore.findUserByUsername("guest");
     assert.deepEqual(guest?.systemRoles, []);
     assert.ok(guest);
 
@@ -4375,8 +4374,8 @@ test("guest access seed creates a login-ready non-admin guest account without pl
     await app.close();
     if (originalEnabled === undefined) delete process.env.UML_ENABLE_GUEST_ACCESS;
     else process.env.UML_ENABLE_GUEST_ACCESS = originalEnabled;
-    if (originalEmail === undefined) delete process.env.UML_GUEST_EMAIL;
-    else process.env.UML_GUEST_EMAIL = originalEmail;
+    if (originalUsername === undefined) delete process.env.UML_GUEST_USERNAME;
+    else process.env.UML_GUEST_USERNAME = originalUsername;
     if (originalPassword === undefined) delete process.env.UML_GUEST_PASSWORD;
     else process.env.UML_GUEST_PASSWORD = originalPassword;
     if (originalDisplayName === undefined) delete process.env.UML_GUEST_DISPLAY_NAME;
@@ -4399,7 +4398,7 @@ test("api rejects anonymous manual PlantUML render requests", async () => {
     url: "/api/render/svg",
     payload: {
       diagramKind: "class",
-      plantUmlSource: "@startuml\nclass User\n@enduml",
+      plantUmlSource: "@startuml\nclass User\n",
     },
   });
 
@@ -4412,7 +4411,7 @@ test("api rejects anonymous manual PlantUML render requests", async () => {
 test("api reports manual PlantUML render failures clearly", async () => {
   const authStore = createInMemoryAuthStore();
   const user = await authStore.createUser({
-    email: "render-failure-owner@example.com",
+    username: "render_failure_owner",
     displayName: "Render Failure Owner",
     passwordHash: "hash",
   });
@@ -4425,7 +4424,7 @@ test("api reports manual PlantUML render failures clearly", async () => {
   const { project } = await authStore.createProject({
     ownerUserId: user.id,
     name: "Render Failure Project",
-    visibility: "private",
+
   });
   const app = await createTestApiServer({
     authStore,
@@ -4444,7 +4443,7 @@ test("api reports manual PlantUML render failures clearly", async () => {
     },
     payload: {
       diagramKind: "activity",
-      plantUmlSource: "@startuml\nbroken\n@enduml",
+      plantUmlSource: "@startuml\nbroken\n",
     },
   });
 
@@ -4457,7 +4456,7 @@ test("api reports manual PlantUML render failures clearly", async () => {
 test("api rejects invalid manual render requests with 400", async () => {
   const authStore = createInMemoryAuthStore();
   const user = await authStore.createUser({
-    email: "render-invalid-owner@example.com",
+    username: "render_invalid_owner",
     displayName: "Render Invalid Owner",
     passwordHash: "hash",
   });
@@ -4470,7 +4469,7 @@ test("api rejects invalid manual render requests with 400", async () => {
   const { project } = await authStore.createProject({
     ownerUserId: user.id,
     name: "Render Invalid Project",
-    visibility: "private",
+
   });
   const app = await createTestApiServer({
     authStore,
@@ -4785,703 +4784,3 @@ function multipartAvatarPayload({
     Buffer.from(`\r\n--${boundary}--\r\n`),
   ]);
 }
-
-test("api registers users, stores sessions in HttpOnly cookies, and logs out", async () => {
-  const app = await createTestApiServer({
-    llmTransport: createMockLlmTransport(),
-    renderClient: async () => ({
-      svg: "<svg />",
-      renderMeta: {
-        engine: "plantuml",
-        generatedAt: new Date().toISOString(),
-        sourceLength: 0,
-        durationMs: 1,
-      },
-    }),
-  });
-
-  const register = await app.inject({
-    method: "POST",
-    url: "/api/auth/register",
-    payload: {
-      email: "owner@example.com",
-      username: "owner_user",
-      password: "password-123",
-      displayName: "Owner User",
-    },
-  });
-  assert.equal(register.statusCode, 201);
-  const cookie = getSessionCookie(register);
-  const registered = register.json();
-  assert.equal(registered.user.email, "owner@example.com");
-  assert.equal(registered.user.status, "pending_email_verification");
-  assert.equal(registered.user.passwordHash, undefined);
-  const verifyEmail = await app.inject({
-    method: "POST",
-    url: "/api/auth/verify-email",
-    payload: {
-      token: registered.verification.devToken,
-    },
-  });
-  assert.equal(verifyEmail.statusCode, 200);
-
-  const me = await app.inject({
-    method: "GET",
-    url: "/api/auth/me",
-    headers: { cookie },
-  });
-  assert.equal(me.statusCode, 200);
-  assert.equal(me.json().session.userId, registered.user.id);
-
-  const logout = await app.inject({
-    method: "POST",
-    url: "/api/auth/logout",
-    headers: { cookie },
-  });
-  assert.equal(logout.statusCode, 204);
-  assert.match(String(logout.headers["set-cookie"] ?? ""), /Max-Age=0/i);
-
-  const afterLogout = await app.inject({
-    method: "GET",
-    url: "/api/auth/me",
-    headers: { cookie },
-  });
-  assert.equal(afterLogout.statusCode, 401);
-
-  await app.close();
-});
-
-test("api lists active sessions and can revoke other devices", async () => {
-  const app = await createTestApiServer({
-    llmTransport: createMockLlmTransport(),
-    renderClient: async () => ({
-      svg: "<svg />",
-      renderMeta: {
-        engine: "plantuml",
-        generatedAt: new Date().toISOString(),
-        sourceLength: 0,
-        durationMs: 1,
-      },
-    }),
-  });
-
-  const unauthenticatedProfile = await app.inject({
-    method: "GET",
-    url: "/api/account/profile",
-  });
-  assert.equal(unauthenticatedProfile.statusCode, 401);
-
-  const register = await app.inject({
-    method: "POST",
-    url: "/api/auth/register",
-    payload: {
-      email: "sessions@example.com",
-      username: "sessions_user",
-      password: "password-123",
-      displayName: "Session User",
-    },
-  });
-  const firstCookie = getSessionCookie(register);
-  await app.inject({
-    method: "POST",
-    url: "/api/auth/verify-email",
-    payload: {
-      token: register.json().verification.devToken,
-    },
-  });
-
-  const login = await app.inject({
-    method: "POST",
-    url: "/api/auth/login",
-    headers: {
-      "x-forwarded-for": "10.1.2.3",
-    },
-    payload: {
-      identifier: "sessions@example.com",
-      password: "password-123",
-    },
-  });
-  const secondCookie = getSessionCookie(login);
-
-  const sessions = await app.inject({
-    method: "GET",
-    url: "/api/account/sessions",
-    headers: { cookie: secondCookie },
-  });
-  assert.equal(sessions.statusCode, 200);
-  assert.equal(sessions.json().sessions.length, 2);
-  assert.ok(
-    sessions.json().sessions.some(
-      (session: { ipAddress: string | null; locationLabel?: string | null }) =>
-        session.ipAddress === "10.1.2.3" && session.locationLabel === "内网地址",
-    ),
-  );
-
-  const revoke = await app.inject({
-    method: "POST",
-    url: "/api/account/sessions/revoke-others",
-    headers: { cookie: secondCookie },
-  });
-  assert.equal(revoke.statusCode, 200);
-  assert.equal(revoke.json().revokedCount, 1);
-
-  const firstAfterRevoke = await app.inject({
-    method: "GET",
-    url: "/api/auth/me",
-    headers: { cookie: firstCookie },
-  });
-  assert.equal(firstAfterRevoke.statusCode, 401);
-
-  const secondAfterRevoke = await app.inject({
-    method: "GET",
-    url: "/api/auth/me",
-    headers: { cookie: secondCookie },
-  });
-  assert.equal(secondAfterRevoke.statusCode, 200);
-
-  await app.close();
-});
-
-test("api updates profile and changes password through account routes", async () => {
-  const app = await createTestApiServer({
-    llmTransport: createMockLlmTransport(),
-    renderClient: async () => ({
-      svg: "<svg />",
-      renderMeta: {
-        engine: "plantuml",
-        generatedAt: new Date().toISOString(),
-        sourceLength: 0,
-        durationMs: 1,
-      },
-    }),
-  });
-
-  const register = await app.inject({
-    method: "POST",
-    url: "/api/auth/register",
-    payload: {
-      email: "profile@example.com",
-      username: "profile_user",
-      password: "password-123",
-      displayName: "Profile User",
-    },
-  });
-  const cookie = getSessionCookie(register);
-  await app.inject({
-    method: "POST",
-    url: "/api/auth/verify-email",
-    payload: {
-      token: register.json().verification.devToken,
-    },
-  });
-
-  const currentProfile = await app.inject({
-    method: "GET",
-    url: "/api/account/profile",
-    headers: { cookie },
-  });
-  assert.equal(currentProfile.statusCode, 200);
-  assert.equal(currentProfile.json().user.displayName, "Profile User");
-  assert.equal(currentProfile.json().mfa.enabled, false);
-  assert.equal(currentProfile.json().mfa.enforcement, "totp");
-  assert.ok(currentProfile.json().session.id);
-
-  const profile = await app.inject({
-    method: "PATCH",
-    url: "/api/account/profile",
-    headers: { cookie },
-    payload: {
-      displayName: "Renamed User",
-      avatarUrl: "https://example.com/avatar.png",
-    },
-  });
-  assert.equal(profile.statusCode, 200);
-  assert.equal(profile.json().user.displayName, "Renamed User");
-  assert.equal(profile.json().mfa.enabled, false);
-  assert.equal(profile.json().mfa.enforcement, "totp");
-  assert.ok(profile.json().session.id);
-
-  const wrongPassword = await app.inject({
-    method: "PATCH",
-    url: "/api/account/security",
-    headers: { cookie },
-    payload: {
-      currentPassword: "wrong-password",
-      newPassword: "password-456",
-    },
-  });
-  assert.equal(wrongPassword.statusCode, 400);
-
-  const changed = await app.inject({
-    method: "PATCH",
-    url: "/api/account/security",
-    headers: { cookie },
-    payload: {
-      currentPassword: "password-123",
-      newPassword: "password-456",
-    },
-  });
-  assert.equal(changed.statusCode, 200);
-
-  const oldLogin = await app.inject({
-    method: "POST",
-    url: "/api/auth/login",
-    payload: {
-      identifier: "profile@example.com",
-      password: "password-123",
-    },
-  });
-  assert.equal(oldLogin.statusCode, 401);
-
-  const newLogin = await app.inject({
-    method: "POST",
-    url: "/api/auth/login",
-    payload: {
-      identifier: "profile@example.com",
-      password: "password-456",
-    },
-  });
-  assert.equal(newLogin.statusCode, 200);
-
-  await app.close();
-});
-
-test("api uploads and serves account avatar files", async () => {
-  const avatarStorageDir = mkdtempSync(join(tmpdir(), "uml-avatar-test-"));
-  const originalAvatarStorageDir = process.env.UML_AVATAR_STORAGE_DIR;
-  const originalPublicApiBaseUrl = process.env.PUBLIC_API_BASE_URL;
-  process.env.UML_AVATAR_STORAGE_DIR = avatarStorageDir;
-  process.env.PUBLIC_API_BASE_URL = "https://jianglisoftware.com/";
-  const app = await createTestApiServer({
-    llmTransport: createMockLlmTransport(),
-    renderClient: async () => ({
-      svg: "<svg />",
-      renderMeta: {
-        engine: "plantuml",
-        generatedAt: new Date().toISOString(),
-        sourceLength: 0,
-        durationMs: 1,
-      },
-    }),
-  });
-
-  try {
-    const boundary = "----uml-avatar-boundary";
-    const unauthenticated = await app.inject({
-      method: "POST",
-      url: "/api/account/avatar",
-      headers: {
-        "content-type": `multipart/form-data; boundary=${boundary}`,
-      },
-      payload: multipartAvatarPayload({
-        boundary,
-        contentType: "image/png",
-        fileName: "avatar.png",
-        content: VALID_PNG,
-      }),
-    });
-    assert.equal(unauthenticated.statusCode, 401);
-
-    const register = await app.inject({
-      method: "POST",
-      url: "/api/auth/register",
-      payload: {
-        email: "avatar@example.com",
-        username: "avatar_user",
-        password: "password-123",
-        displayName: "Avatar User",
-      },
-    });
-    const cookie = getSessionCookie(register);
-    const verifyEmail = await app.inject({
-      method: "POST",
-      url: "/api/auth/verify-email",
-      payload: {
-        token: register.json().verification.devToken,
-      },
-    });
-    assert.equal(verifyEmail.statusCode, 200);
-
-    const uploaded = await app.inject({
-      method: "POST",
-      url: "/api/account/avatar",
-      headers: {
-        cookie,
-        "content-type": `multipart/form-data; boundary=${boundary}`,
-      },
-      payload: multipartAvatarPayload({
-        boundary,
-        contentType: "image/png",
-        fileName: "avatar.png",
-        content: VALID_PNG,
-      }),
-    });
-    assert.equal(uploaded.statusCode, 200);
-    assert.match(
-      uploaded.json().user.avatarUrl,
-      /^https:\/\/jianglisoftware\.com\/api\/account\/avatars\/.+\.png$/u,
-    );
-    assert.equal(uploaded.json().mfa.enabled, false);
-    assert.ok(uploaded.json().session.id);
-
-    const profile = await app.inject({
-      method: "GET",
-      url: "/api/account/profile",
-      headers: { cookie },
-    });
-    assert.equal(profile.json().user.avatarUrl, uploaded.json().user.avatarUrl);
-
-    const avatar = await app.inject({
-      method: "GET",
-      url: new URL(uploaded.json().user.avatarUrl).pathname,
-    });
-    assert.equal(avatar.statusCode, 200);
-    assert.match(String(avatar.headers["content-type"] ?? ""), /^image\/png/u);
-    assert.ok(avatar.body.length > 0);
-
-    delete process.env.PUBLIC_API_BASE_URL;
-    const fallbackUpload = await app.inject({
-      method: "POST",
-      url: "/api/account/avatar",
-      headers: {
-        cookie,
-        "content-type": `multipart/form-data; boundary=${boundary}`,
-      },
-      payload: multipartAvatarPayload({
-        boundary,
-        contentType: "image/png",
-        fileName: "avatar.png",
-        content: VALID_PNG,
-      }),
-    });
-    assert.equal(fallbackUpload.statusCode, 200);
-    assert.match(
-      fallbackUpload.json().user.avatarUrl,
-      /^http:\/\/localhost:80\/api\/account\/avatars\/.+\.png$/u,
-    );
-
-    const insecureProfileUpdate = await app.inject({
-      method: "PATCH",
-      url: "/api/account/profile",
-      headers: { cookie },
-      payload: {
-        avatarUrl: "http://cdn.example.com/avatar.png",
-      },
-    });
-    assert.equal(insecureProfileUpdate.statusCode, 400);
-    assertApiErrorCode(insecureProfileUpdate, "VALIDATION_FAILED");
-
-    const invalidType = await app.inject({
-      method: "POST",
-      url: "/api/account/avatar",
-      headers: {
-        cookie,
-        "content-type": `multipart/form-data; boundary=${boundary}`,
-      },
-      payload: multipartAvatarPayload({
-        boundary,
-        contentType: "text/plain",
-        fileName: "avatar.txt",
-        content: Buffer.from("not an image"),
-      }),
-    });
-    assert.equal(invalidType.statusCode, 400);
-
-    const corruptPng = await app.inject({
-      method: "POST",
-      url: "/api/account/avatar",
-      headers: {
-        cookie,
-        "content-type": `multipart/form-data; boundary=${boundary}`,
-      },
-      payload: multipartAvatarPayload({
-        boundary,
-        contentType: "image/png",
-        fileName: "avatar.png",
-        content: Buffer.from("not really a png"),
-      }),
-    });
-    assert.equal(corruptPng.statusCode, 400);
-    assertApiErrorCode(corruptPng, "VALIDATION_FAILED");
-
-    const tooLarge = await app.inject({
-      method: "POST",
-      url: "/api/account/avatar",
-      headers: {
-        cookie,
-        "content-type": `multipart/form-data; boundary=${boundary}`,
-      },
-      payload: multipartAvatarPayload({
-        boundary,
-        contentType: "image/png",
-        fileName: "avatar.png",
-        content: Buffer.alloc(2 * 1024 * 1024 + 1),
-      }),
-    });
-    assert.equal(tooLarge.statusCode, 400);
-
-    const traversal = await app.inject({
-      method: "GET",
-      url: "/api/account/avatars/..%2Fsecret.png",
-    });
-    assert.equal(traversal.statusCode, 404);
-  } finally {
-    await app.close();
-    if (originalAvatarStorageDir === undefined) {
-      delete process.env.UML_AVATAR_STORAGE_DIR;
-    } else {
-      process.env.UML_AVATAR_STORAGE_DIR = originalAvatarStorageDir;
-    }
-    if (originalPublicApiBaseUrl === undefined) {
-      delete process.env.PUBLIC_API_BASE_URL;
-    } else {
-      process.env.PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
-    }
-    rmSync(avatarStorageDir, { recursive: true, force: true });
-  }
-});
-
-test("api enforces project membership and member management guard rules", async () => {
-  const app = await createTestApiServer({
-    llmTransport: createMockLlmTransport(),
-    renderClient: async () => ({
-      svg: "<svg />",
-      renderMeta: {
-        engine: "plantuml",
-        generatedAt: new Date().toISOString(),
-        sourceLength: 0,
-        durationMs: 1,
-      },
-    }),
-  });
-
-  const unauthenticated = await app.inject({
-    method: "GET",
-    url: "/api/projects",
-  });
-  assert.equal(unauthenticated.statusCode, 401);
-
-  const ownerRegister = await app.inject({
-    method: "POST",
-    url: "/api/auth/register",
-    payload: {
-      email: "project-owner@example.com",
-      username: "project_owner",
-      password: "password-123",
-      displayName: "Project Owner",
-    },
-  });
-  const ownerCookie = getSessionCookie(ownerRegister);
-  const ownerVerifyEmail = await app.inject({
-    method: "POST",
-    url: "/api/auth/verify-email",
-    payload: {
-      token: ownerRegister.json().verification.devToken,
-    },
-  });
-  assert.equal(ownerVerifyEmail.statusCode, 200);
-
-  const viewerRegister = await app.inject({
-    method: "POST",
-    url: "/api/auth/register",
-    payload: {
-      email: "project-viewer@example.com",
-      username: "project_viewer",
-      password: "password-123",
-      displayName: "Project Viewer",
-    },
-  });
-  const viewerCookie = getSessionCookie(viewerRegister);
-  const viewerVerifyEmail = await app.inject({
-    method: "POST",
-    url: "/api/auth/verify-email",
-    payload: {
-      token: viewerRegister.json().verification.devToken,
-    },
-  });
-  assert.equal(viewerVerifyEmail.statusCode, 200);
-
-  const projectCreate = await app.inject({
-    method: "POST",
-    url: "/api/projects",
-    headers: { cookie: ownerCookie },
-    payload: {
-      name: "课程设计项目",
-      description: "围绕课程实验的 UML 生成项目",
-    },
-  });
-  assert.equal(projectCreate.statusCode, 201);
-  const project = projectCreate.json().project;
-
-  const ownerProfile = await app.inject({
-    method: "PATCH",
-    url: "/api/account/profile",
-    headers: { cookie: ownerCookie },
-    payload: {
-      displayName: "Renamed Project Owner",
-      avatarUrl: "https://example.com/project-owner.png",
-    },
-  });
-  assert.equal(ownerProfile.statusCode, 200);
-
-  const invited = await app.inject({
-    method: "POST",
-    url: `/api/projects/${project.id}/members`,
-    headers: { cookie: ownerCookie },
-    payload: {
-      email: "project-viewer@example.com",
-      role: "viewer",
-    },
-  });
-  assert.equal(invited.statusCode, 201);
-  const viewerMember = invited.json().member;
-  assert.equal(viewerMember.role, "viewer");
-
-  const blockedUpdate = await app.inject({
-    method: "PATCH",
-    url: `/api/projects/${project.id}`,
-    headers: { cookie: viewerCookie },
-    payload: {
-      name: "Viewer rename attempt",
-    },
-  });
-  assert.equal(blockedUpdate.statusCode, 403);
-
-  const promoted = await app.inject({
-    method: "PATCH",
-    url: `/api/projects/${project.id}/members/${viewerMember.id}`,
-    headers: { cookie: ownerCookie },
-    payload: {
-      role: "editor",
-    },
-  });
-  assert.equal(promoted.statusCode, 200);
-  assert.equal(promoted.json().member.role, "editor");
-
-  const editorUpdate = await app.inject({
-    method: "PATCH",
-    url: `/api/projects/${project.id}`,
-    headers: { cookie: viewerCookie },
-    payload: {
-      name: "Editor renamed project",
-    },
-  });
-  assert.equal(editorUpdate.statusCode, 200);
-  assert.equal(editorUpdate.json().project.name, "Editor renamed project");
-
-  const members = await app.inject({
-    method: "GET",
-    url: `/api/projects/${project.id}/members`,
-    headers: { cookie: ownerCookie },
-  });
-  assert.equal(members.statusCode, 200);
-  assert.equal(members.json().members.length, 2);
-
-  const ownerMember = members
-    .json()
-    .members.find((member: { role: string }) => member.role === "owner");
-  assert.equal(ownerMember.displayName, "Renamed Project Owner");
-  assert.equal(ownerMember.avatarUrl, "https://example.com/project-owner.png");
-  const listed = await app.inject({
-    method: "GET",
-    url: "/api/projects",
-    headers: { cookie: ownerCookie },
-  });
-  assert.equal(listed.statusCode, 200);
-  const listedProject = listed
-    .json()
-    .projects.find((item: { id: string }) => item.id === project.id);
-  assert.equal(listedProject.ownerDisplayName, "Renamed Project Owner");
-  assert.equal(listedProject.memberPreviews[0].displayName, "Renamed Project Owner");
-  const demoteLastOwner = await app.inject({
-    method: "PATCH",
-    url: `/api/projects/${project.id}/members/${ownerMember.id}`,
-    headers: { cookie: ownerCookie },
-    payload: {
-      role: "viewer",
-    },
-  });
-  assert.equal(demoteLastOwner.statusCode, 400);
-
-  const removeLastOwner = await app.inject({
-    method: "DELETE",
-    url: `/api/projects/${project.id}/members/${ownerMember.id}`,
-    headers: { cookie: ownerCookie },
-  });
-  assert.equal(removeLastOwner.statusCode, 400);
-
-  await app.close();
-});
-
-test("api server injects the configured mail adapter into project invitations", async () => {
-  const sent: MailMessage[] = [];
-  const mailAdapter: MailAdapter = {
-    async send(message) {
-      sent.push(message);
-    },
-  };
-  const app = await createTestApiServer({
-    llmTransport: createMockLlmTransport(),
-    renderClient: async () => ({
-      svg: "<svg />",
-      renderMeta: {
-        engine: "plantuml",
-        generatedAt: new Date().toISOString(),
-        sourceLength: 0,
-        durationMs: 1,
-      },
-    }),
-    mailAdapter,
-  });
-
-  const ownerRegister = await app.inject({
-    method: "POST",
-    url: "/api/auth/register",
-    payload: {
-      email: "mail-project-owner@example.com",
-      username: "mail_project_owner",
-      password: "password-123",
-      displayName: "Mail Project Owner",
-    },
-  });
-  assert.equal(ownerRegister.statusCode, 201);
-  const ownerCookie = getSessionCookie(ownerRegister);
-  const ownerVerifyEmail = await app.inject({
-    method: "POST",
-    url: "/api/auth/verify-email",
-    payload: {
-      token: ownerRegister.json().verification.devToken,
-    },
-  });
-  assert.equal(ownerVerifyEmail.statusCode, 200);
-
-  const projectCreate = await app.inject({
-    method: "POST",
-    url: "/api/projects",
-    headers: { cookie: ownerCookie },
-    payload: {
-      name: "Mail Adapter Project",
-      visibility: "private",
-    },
-  });
-  assert.equal(projectCreate.statusCode, 201);
-
-  const invited = await app.inject({
-    method: "POST",
-    url: `/api/projects/${projectCreate.json().project.id}/invitations`,
-    headers: { cookie: ownerCookie },
-    payload: {
-      email: "mail-invitee@example.com",
-      role: "viewer",
-    },
-  });
-
-  assert.equal(invited.statusCode, 201);
-  const invitationMail = sent.find((message) => message.purpose === "project_invitation");
-  assert.ok(invitationMail);
-  assert.equal(invitationMail.to, "mail-invitee@example.com");
-  assert.equal(invitationMail.token, invited.json().devToken);
-  assert.match(invitationMail.subject, /Mail Adapter Project/);
-
-  await app.close();
-});

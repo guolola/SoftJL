@@ -49,11 +49,11 @@ async function createTestApp(renderClient: RenderClient = mockRenderClient) {
 
 async function registerUser(input: {
   authStore: AuthStore;
-  email: string;
+  username: string;
   displayName: string;
 }) {
   const user = await input.authStore.createUser({
-    email: input.email,
+    username: input.username,
     displayName: input.displayName,
     passwordHash: "test-password-hash",
   });
@@ -123,7 +123,7 @@ test("case project creation rejects unknown case ids", async () => {
   const { app, authStore } = await createTestApp();
   const owner = await registerUser({
     authStore,
-    email: "case-owner@example.com",
+    username: "case_owner",
     displayName: "Case Owner",
   });
 
@@ -143,7 +143,7 @@ test("case project creation seeds every marketing case workspace", async () => {
     const { app, authStore } = await createTestApp();
     const owner = await registerUser({
       authStore,
-      email: `${caseId}@example.com`,
+      username: caseId.replaceAll("-", "_"),
       displayName: "Case Owner",
     });
 
@@ -157,7 +157,7 @@ test("case project creation seeds every marketing case workspace", async () => {
     const body = response.json();
     assert.equal(body.project.name, title);
     assert.doesNotMatch(body.project.description, /示例|样例/u);
-    assert.equal(body.project.visibility, "private");
+    assert.equal(Object.hasOwn(body.project, "visibility"), false);
     assert.equal(body.currentUserRole, "owner");
     assert.equal((await authStore.getProject(body.project.id))?.backgroundKey, backgroundKey);
 
@@ -247,7 +247,7 @@ test("case project creation does not create a project when template rendering fa
   const { app, authStore } = await createTestApp(failingRenderClient);
   const owner = await registerUser({
     authStore,
-    email: "render-failure@example.com",
+    username: "render_failure",
     displayName: "Render Failure",
   });
 

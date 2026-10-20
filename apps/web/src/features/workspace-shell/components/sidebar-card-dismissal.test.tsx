@@ -10,7 +10,7 @@ import { SidebarCodingAgentCard } from './sidebar-coding-agent-card';
 import { SidebarPromotionalVideoCard } from './sidebar-promotional-video-card';
 
 const profile: PlatformAccountProfileResponse = {
-  user: { id: 'user-1', username: 'sidebar-user', displayName: '侧栏用户', email: 'sidebar@example.test', avatarUrl: null, status: 'active', emailVerified: true, mfaEnabled: false },
+  user: { id: 'user-1', username: 'sidebar-user', displayName: '侧栏用户', avatarUrl: null, status: 'active', mfaEnabled: false },
   session: { id: 'session-1', userId: 'user-1', createdAt: '', expiresAt: '', lastSeenAt: '', ipAddress: null, userAgent: null },
 };
 

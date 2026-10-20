@@ -10,7 +10,7 @@ export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 export const ACCOUNT_SESSION_RECORD_LIMIT = 5;
 
 export function initials(user: PlatformUser | null) {
-  const label = user?.displayName || user?.email || "登录";
+  const label = user?.displayName || user?.username || "登录";
   return label.trim().slice(0, 1).toUpperCase();
 }
 

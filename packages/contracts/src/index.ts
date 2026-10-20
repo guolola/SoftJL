@@ -16,6 +16,7 @@ export type {
   AdminRole,
 } from "./admin-rbac.js";
 export * from "./auth-account.js";
+export * from "./avatars.js";
 export * from "./api-errors.js";
 export * from "./dashboard.js";
 export * from "./documents.js";
@@ -55,3 +56,4 @@ export * from "./generation-policy.js";
 export * from "./current-workspace.js";
 
 export * from "./legacy-code-retirement.js";
+export * from "./inbox.js";

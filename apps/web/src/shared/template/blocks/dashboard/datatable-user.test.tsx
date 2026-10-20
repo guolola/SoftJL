@@ -8,8 +8,8 @@ import { i18n } from '@/shared/i18n'
 import UserDatatable, { type Item } from './datatable-user'
 
 const rows: Item[] = [
-  { id: 'one', avatar: '', fallback: 'ON', user: '订单系统', email: 'Guest', role: 'editor', plan: 'enterprise', status: 'pending' },
-  { id: 'two', avatar: '', fallback: 'LI', user: '图书馆系统', email: 'Owner', role: 'admin', plan: 'team', status: 'active' },
+  { id: 'one', avatar: '', fallback: 'ON', user: '订单系统', username: 'Guest', role: 'editor', plan: 'enterprise', status: 'pending' },
+  { id: 'two', avatar: '', fallback: 'LI', user: '图书馆系统', username: 'Owner', role: 'admin', plan: 'team', status: 'active' },
 ]
 
 afterEach(async () => {

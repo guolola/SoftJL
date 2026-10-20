@@ -6,6 +6,7 @@ import type { LlmScheduler } from "./adapters/llm/llm-scheduler.js";
 import { DEFAULT_HOST, DEFAULT_PORT, RELEASE_STARTED_AT, } from "./server/defaults.js";
 import { createConfiguredFastifyApp } from "./server/fastify-app.js";
 import { isMainModule, resolveRuntimeCwd } from "./server/runtime.js";
+import { seedDemoNotices } from "./server/bootstrap-notices.js";
 import { seedGuestUser } from "./server/bootstrap-users.js";
 import { seedDemoProvider } from "./server/bootstrap-provider.js";
 import { registerApiRoutes, type RunAccessContext, } from "./server/register-routes.js";
@@ -13,7 +14,6 @@ import { createApiPersistence } from "./server/persistence.js";
 import { createApiExternalAdapters } from "./server/external-adapters.js";
 import type { AuthStore } from "./auth/in-memory-auth-store.js";
 import type { DocumentLibrary } from "./documents/library/document-library.js";
-import type { MailAdapter } from "./mail/mail-adapter.js";
 import type { ProviderConfigStore } from "./provider-configs/provider-config-store.js";
 import { createGenerationUsageService } from "./generation/generation-usage.js";
 import type { SystemNoticeStore } from "./system-notices/records/system-notice-store.js";
@@ -32,7 +32,6 @@ export async function createApiServer(options?: {
     authStore?: AuthStore;
     runRecordStore?: RunRecordStore;
     documentLibrary?: DocumentLibrary;
-    mailAdapter?: MailAdapter;
     llmScheduler?: LlmScheduler;
     testRunAccessContext?: RunAccessContext;
     nodeEnv?: string | null;
@@ -44,14 +43,13 @@ export async function createApiServer(options?: {
     // without a browser session. Production never accepts this synthetic context.
     const testRunAccessContext = runtimeNodeEnv === "production" ? undefined : options?.testRunAccessContext;
     const app = await createConfiguredFastifyApp();
-    const { llmTransport, llmScheduler, renderServiceBaseUrl, renderClient, pngRenderClient, pdfRenderClient, mailAdapter, } = createApiExternalAdapters({
+    const { llmTransport, llmScheduler, renderServiceBaseUrl, renderClient, pngRenderClient, pdfRenderClient, } = createApiExternalAdapters({
         llmTransport: options?.llmTransport,
         llmScheduler: options?.llmScheduler,
         renderServiceBaseUrl: options?.renderServiceBaseUrl,
         renderClient: options?.renderClient,
         pngRenderClient: options?.pngRenderClient,
         pdfRenderClient: options?.pdfRenderClient,
-        mailAdapter: options?.mailAdapter,
     });
     const { pool, authStore, providerConfigs, runs, documentLibrary, providerUsageTracker, systemNoticeStore, analyticsStore, } = await createApiPersistence({
         nodeEnv: runtimeNodeEnv,
@@ -81,6 +79,7 @@ export async function createApiServer(options?: {
     const generationUsage = createGenerationUsageService({ providerUsageTracker });
     const providerSeedMessage = await seedDemoProvider(providerConfigs, runtimeNodeEnv);
     if (providerSeedMessage) app.log.info(providerSeedMessage);
+    if (pool) await seedDemoNotices(systemNoticeStore, runtimeNodeEnv);
     const guestUserId = await seedGuestUser(authStore);
     const healthPayload = () => ({
         status: "ok",
@@ -104,7 +103,6 @@ export async function createApiServer(options?: {
         healthPayload,
         versionPayload,
         authStore,
-        mailAdapter,
         generationUsage,
         nodeEnv: runtimeNodeEnv,
         analyticsStore,

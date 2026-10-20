@@ -19,14 +19,14 @@ export type { ContextDisplayRootProps, PresetProps, TokenUsage } from "../../../
 function ContextDisplayRoot(props: ContextDisplayRootProps) {
   useHomeLocale();
   const portalContainer = useHomePortal();
-  return <SharedRoot {...props} translate={homeText} portalContainer={portalContainer} />;
+  return <SharedRoot {...props} preserveLastUsage={false} translate={homeText} portalContainer={portalContainer} />;
 }
 
 function withHomeContext(Preset: FC<PresetProps>): FC<PresetProps> {
   return function HomeContextPreset(props) {
     useHomeLocale(true);
     const portalContainer = useHomePortal();
-    return <Preset {...props} translate={homeText} portalContainer={portalContainer} />;
+    return <Preset {...props} preserveLastUsage={false} translate={homeText} portalContainer={portalContainer} />;
   };
 }
 

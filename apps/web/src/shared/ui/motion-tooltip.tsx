@@ -1,9 +1,9 @@
-// Renders keyboard-accessible avatar tooltips with bounded Motion micro-interactions.
+// Adapts shadcn Studio tooltip-16 with accessible triggers and portal positioning for project cards.
 'use client'
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/shared/ui/avatar'
 import { cn } from '@/shared/ui/utils'
@@ -20,14 +20,22 @@ export type AnimatedTooltipItem = {
 function AnimatedTooltipAvatar({
   item,
   reduceMotion,
+  tooltipClassName,
+  avatarSize,
 }: {
   item: AnimatedTooltipItem
   reduceMotion: boolean | null
+  tooltipClassName?: string
+  avatarSize: 'default' | 'sm' | 'lg'
 }) {
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 0, top: 0 })
   const triggerRef = useRef<HTMLSpanElement>(null)
   const tooltipId = useId()
+  const x = useMotionValue(0)
+  const springConfig = { stiffness: 100, damping: 5 }
+  const rotate = useSpring(useTransform(x, [-100, 100], [-45, 45]), springConfig)
+  const translateX = useSpring(useTransform(x, [-100, 100], [-50, 50]), springConfig)
 
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect()
@@ -36,6 +44,7 @@ function AnimatedTooltipAvatar({
   }, [])
 
   const showTooltip = () => {
+    x.set(0)
     updatePosition()
     setOpen(true)
   }
@@ -53,15 +62,12 @@ function AnimatedTooltipAvatar({
 
   return (
     <>
-      <motion.span
+      <span
         ref={triggerRef}
         tabIndex={0}
         aria-label={item.ariaLabel ?? `${item.name}, ${item.designation}`}
         aria-describedby={open ? tooltipId : undefined}
-        className='relative inline-flex cursor-default rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50'
-        whileHover={reduceMotion ? undefined : { y: -5, scale: 1.06 }}
-        whileFocus={reduceMotion ? undefined : { y: -5, scale: 1.06 }}
-        transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+        className='relative inline-flex cursor-default rounded-full outline-none hover:z-1 focus-visible:z-1 focus-visible:ring-3 focus-visible:ring-ring/50'
         onMouseEnter={showTooltip}
         onMouseLeave={() => setOpen(false)}
         onFocus={showTooltip}
@@ -70,30 +76,44 @@ function AnimatedTooltipAvatar({
           if (event.key === 'Escape') setOpen(false)
         }}
       >
-        <Avatar size='sm' className='ring-2 ring-card'>
+        <Avatar
+          size={avatarSize}
+          className='ring-background relative ring-2 transition-all duration-300 ease-in-out hover:z-1 hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none'
+          onMouseMove={(event) => {
+            if (reduceMotion) return
+            // Use the avatar bounds so image/fallback children share the same pointer origin.
+            const bounds = event.currentTarget.getBoundingClientRect()
+            x.set(event.clientX - bounds.left - bounds.width / 2)
+          }}
+        >
           {item.image ? <AvatarImage src={item.image} alt={item.name} /> : null}
-          <AvatarFallback>{item.fallback}</AvatarFallback>
+          <AvatarFallback className='text-xs'>{item.fallback}</AvatarFallback>
         </Avatar>
-      </motion.span>
+      </span>
+      {/* Cards clip their contents; keep the floating tooltip outside that boundary. */}
       {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
+        <AnimatePresence mode='popLayout'>
           {open && (
             <div
               id={tooltipId}
               role='tooltip'
-              className='pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-[calc(100%+10px)]'
+              className={cn('pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-[calc(100%+8px)]', tooltipClassName)}
               style={{ left: position.left, top: position.top }}
             >
               <motion.div
-                initial={reduceMotion ? false : { opacity: 0, y: 4, scale: 0.85 }}
+                initial={reduceMotion ? false : { opacity: 0, y: 20, scale: 0.6 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4, scale: 0.85 }}
-                transition={{ duration: reduceMotion ? 0 : 0.18, ease: 'easeOut' }}
-                className='relative grid min-w-max justify-items-center gap-0.5 rounded-md bg-foreground px-3 py-2 text-xs text-background shadow-md'
+                // A spring can rebound above zero opacity after disappearing, producing a second flash.
+                exit={reduceMotion ? { opacity: 0 } : {
+                  opacity: 0, y: 20, scale: 0.6,
+                  transition: { type: 'tween', duration: 0.12, ease: 'easeOut' },
+                }}
+                transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 260, damping: 10 }}
+                style={{ translateX: reduceMotion ? 0 : translateX, rotate: reduceMotion ? 0 : rotate, whiteSpace: 'nowrap' }}
+                className='relative flex flex-col items-center justify-center rounded-md bg-foreground px-4 py-2 text-xs text-background shadow-xl'
               >
-                <span className='font-medium'>{item.name}</span>
-                <span className='text-[11px] text-background/70'>{item.designation}</span>
-                <span className='absolute -bottom-1 size-2 rotate-45 bg-foreground' aria-hidden='true' />
+                <span className='relative z-1 text-base font-semibold'>{item.name}</span>
+                <span className='text-xs text-background/80'>{item.designation}</span>
               </motion.div>
             </div>
           )}
@@ -107,16 +127,20 @@ function AnimatedTooltipAvatar({
 export function AnimatedTooltip({
   items,
   className,
+  tooltipClassName,
+  avatarSize = 'sm',
 }: {
   items: AnimatedTooltipItem[]
   className?: string
+  tooltipClassName?: string
+  avatarSize?: 'default' | 'sm' | 'lg'
 }) {
   const reduceMotion = useReducedMotion()
 
   return (
     <div className={cn('flex items-center -space-x-2', className)}>
       {items.map((item) => (
-        <AnimatedTooltipAvatar key={item.id} item={item} reduceMotion={reduceMotion} />
+        <AnimatedTooltipAvatar key={item.id} item={item} reduceMotion={reduceMotion} tooltipClassName={tooltipClassName} avatarSize={avatarSize} />
       ))}
     </div>
   )

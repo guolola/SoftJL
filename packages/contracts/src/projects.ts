@@ -1,14 +1,11 @@
 // Project, membership, and invitation contract schemas shared by API and web clients.
 import { z } from "zod";
+import { usernameSchema } from "./auth-account.js";
+import { avatarUrlSchema } from "./avatars.js";
 
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const optionalNullableTimestampSchema = isoTimestampSchema.nullable();
 
-const emailAddressSchema = z
-  .string()
-  .trim()
-  .email()
-  .transform((value) => value.toLowerCase());
 const publicNameSchema = z.string().trim().min(1).max(120);
 const optionalDescriptionSchema = z.preprocess(
   (value) => {
@@ -18,9 +15,6 @@ const optionalDescriptionSchema = z.preprocess(
   },
   z.string().min(1).max(2000).nullable(),
 );
-
-export const projectVisibilitySchema = z.enum(["private", "public"]);
-export type ProjectVisibility = z.infer<typeof projectVisibilitySchema>;
 
 // The project mode is immutable and must be explicit in persisted records and responses.
 export const projectModeSchema = z.enum(["standard", "professional"]);
@@ -67,7 +61,7 @@ export type ProjectBackgroundKey = z.infer<typeof projectBackgroundKeySchema>;
 export const projectMemberRoleSchema = z.enum(["owner", "editor", "viewer"]);
 export type ProjectMemberRole = z.infer<typeof projectMemberRoleSchema>;
 
-export const projectMemberStatusSchema = z.enum(["invited", "active"]);
+export const projectMemberStatusSchema = z.enum(["invited", "active", "declined", "revoked", "expired"]);
 export type ProjectMemberStatus = z.infer<typeof projectMemberStatusSchema>;
 
 const optionalProjectBackgroundKeySchema = z
@@ -83,11 +77,10 @@ export const projectDtoSchema = z
     id: z.string().min(1),
     name: publicNameSchema,
     description: optionalDescriptionSchema,
-    visibility: projectVisibilitySchema,
     status: projectStatusSchema,
     ownerUserId: z.string().min(1),
     ownerDisplayName: publicNameSchema.nullable().optional(),
-    ownerAvatarUrl: z.string().url().nullable().optional(),
+    ownerAvatarUrl: avatarUrlSchema.nullable().optional(),
     memberCount: z.number().int().min(0).optional(),
     memberPreviews: z
       .array(
@@ -96,7 +89,7 @@ export const projectDtoSchema = z
             id: z.string().min(1),
             userId: z.string().min(1).nullable(),
             displayName: publicNameSchema.nullable(),
-            avatarUrl: z.string().url().nullable().optional(),
+            avatarUrl: avatarUrlSchema.nullable().optional(),
             role: projectMemberRoleSchema,
             status: projectMemberStatusSchema,
           })
@@ -115,7 +108,6 @@ export const projectCreateRequestSchema = z.object({
   projectMode: projectModeSchema.default("standard"),
   name: publicNameSchema,
   description: optionalDescriptionSchema.default(null),
-  visibility: projectVisibilitySchema.default("private"),
   retentionPolicy: projectRetentionPolicySchema.default("manual").optional(),
   backgroundKey: optionalProjectBackgroundKeySchema,
 }).strict();
@@ -125,7 +117,6 @@ export const projectUpdateRequestSchema = z
   .object({
     name: publicNameSchema.optional(),
     description: optionalDescriptionSchema.optional(),
-    visibility: projectVisibilitySchema.optional(),
     status: z.enum(["active", "archived"]).optional(),
     retentionPolicy: projectRetentionPolicySchema.optional(),
     backgroundKey: optionalProjectBackgroundKeySchema,
@@ -187,9 +178,9 @@ export const projectMemberDtoSchema = z
     id: z.string().min(1),
     projectId: z.string().min(1),
     userId: z.string().min(1).nullable(),
-    email: emailAddressSchema,
+    username: usernameSchema,
     displayName: publicNameSchema.nullable(),
-    avatarUrl: z.string().url().nullable().optional(),
+    avatarUrl: avatarUrlSchema.nullable().optional(),
     role: projectMemberRoleSchema,
     status: projectMemberStatusSchema,
     invitedByUserId: z.string().min(1).nullable(),
@@ -203,7 +194,7 @@ export type ProjectMemberDto = z.infer<typeof projectMemberDtoSchema>;
 
 export const projectMemberInviteRequestSchema = z
   .object({
-    email: emailAddressSchema,
+    username: usernameSchema,
     role: z.enum(["editor", "viewer"]).default("viewer"),
   })
   .strict();
@@ -249,7 +240,7 @@ export type ProjectMemberResponse = z.infer<typeof projectMemberResponseSchema>;
 
 export const projectInvitationCreateRequestSchema = z
   .object({
-    email: emailAddressSchema,
+    username: usernameSchema,
     role: z.enum(["editor", "viewer"]).default("viewer"),
   })
   .strict();
@@ -261,12 +252,11 @@ export const projectInvitationDtoSchema = z
   .object({
     id: z.string().min(1),
     projectId: z.string().min(1),
-    email: emailAddressSchema,
+    username: usernameSchema,
     role: projectMemberRoleSchema,
     status: projectMemberStatusSchema,
     invitedByUserId: z.string().min(1).nullable(),
     invitedAt: optionalNullableTimestampSchema,
-    expiresAt: isoTimestampSchema,
     createdAt: isoTimestampSchema,
     updatedAt: isoTimestampSchema,
     project: projectDtoSchema.optional(),
@@ -277,8 +267,6 @@ export type ProjectInvitationDto = z.infer<typeof projectInvitationDtoSchema>;
 export const projectInvitationResponseSchema = z
   .object({
     invitation: projectInvitationDtoSchema,
-    expiresAt: isoTimestampSchema,
-    devToken: z.string().min(1).optional(),
   })
   .strict();
 export type ProjectInvitationResponse = z.infer<

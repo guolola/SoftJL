@@ -63,7 +63,7 @@ export type Item = {
   avatar: string
   fallback: string
   user: string
-  email: string
+  username: string
   role: 'admin' | 'author' | 'editor' | 'maintainer' | 'subscriber'
   plan: 'basic' | 'company' | 'enterprise' | 'team'
   status: 'active' | 'inactive' | 'pending'
@@ -102,7 +102,7 @@ const createColumns = (t: TableTranslation): ColumnDef<Item>[] => [
         </Avatar>
         <div className='flex flex-col'>
           <span className='font-medium'>{row.getValue('user')}</span>
-          <span className='text-muted-foreground'>{row.original.email}</span>
+          <span className='text-muted-foreground'>{row.original.username}</span>
         </div>
       </div>
     ),

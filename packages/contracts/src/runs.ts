@@ -301,7 +301,21 @@ export const requirementInputScreeningSchema = z.object({
 });
 export type RequirementInputScreening = z.infer<typeof requirementInputScreeningSchema>;
 
+// Quick turns share the durable run lifecycle, but retain only their own safe output projection.
+const standardRunRecordSchema = z.object({
+  operation: z.string().min(1),
+  providerConfigId: z.string().min(1), model: z.string().min(1),
+  baseline: z.record(z.string()),
+  artifacts: z.array(z.object({
+    id: z.string(), type: z.string(), title: z.string(),
+    diagramKind: z.string().optional(), modelId: z.string().optional(),
+    sourceLength: z.number().nonnegative().optional(),
+    previewAvailable: z.boolean(), svg: z.string().optional(),
+  })),
+});
+
 export const runSnapshotSchema = z.object({
+  standardRun: standardRunRecordSchema.optional(),
   ...runOutputFields,
   runId: z.string().min(1),
   requirementText: z.string(),

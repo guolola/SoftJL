@@ -3,6 +3,7 @@ import { z } from "zod";
 import { modelCapacitySchema } from "./model-catalog.js";
 
 export const runOperationTypeSchema = z.enum([
+  "quick_modeling",
   "requirement_extraction",
   "requirement_modeling",
   "feasibility_analysis",
@@ -13,6 +14,7 @@ export const runOperationTypeSchema = z.enum([
 export type RunOperationType = z.infer<typeof runOperationTypeSchema>;
 export const runOutputReferenceSchema = z.object({
   kind: z.enum([
+    "test",
     "rule",
     "model",
     "coverageMatrix",

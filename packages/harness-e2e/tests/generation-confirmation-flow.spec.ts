@@ -31,7 +31,7 @@ for (const theme of ["light", "dark"]) {
       await page.route(`**/api/projects/${projectId}`, route => route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
-          project: { id: projectId, name: "座位预约系统", status: "active", visibility: "private", ownerUserId: "user-1" },
+          project: { id: projectId, name: "座位预约系统", status: "active",  ownerUserId: "user-1" },
           capabilities: ["update_project", "start_runs"], generationExecutionMode: "offline-demo",
         }),
       }));

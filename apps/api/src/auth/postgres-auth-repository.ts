@@ -1,5 +1,7 @@
 // Adapts PostgreSQL auth/project rows to the existing auth store record shape.
 import { createHash, randomUUID } from "node:crypto";
+import { randomDefaultAvatar } from "./default-avatar.js";
+import { DEFAULT_AVATARS } from "@uml-platform/contracts";
 import type {
   AdminRole,
   AuditLogDto,
@@ -12,10 +14,9 @@ import type {
   ProjectMemberStatus,
   ProjectRetentionPolicy,
   ProjectStatus,
-  ProjectVisibility,
   UserStatus,
 } from "@uml-platform/contracts";
-import { projectModeSchema, projectVisibilitySchema } from "@uml-platform/contracts";
+import { projectModeSchema } from "@uml-platform/contracts";
 import type { Queryable } from "../db/transactions.js";
 import type {
   AdminInvitationRecord,
@@ -30,12 +31,10 @@ import type {
 
 type UserRow = {
   id: string;
-  email: string;
   username: string;
   display_name: string;
   avatar_url: string | null;
   status: UserStatus;
-  email_verified: boolean;
   mfa_enabled: boolean;
   mfa_secret: string | null;
   mfa_pending_secret: string | null;
@@ -77,7 +76,6 @@ type ProjectRow = {
   id: string;
   name: string;
   description: string | null;
-  visibility: ProjectVisibility;
   status: ProjectStatus;
   owner_user_id: string;
   retention_policy: ProjectRetentionPolicy;
@@ -90,7 +88,7 @@ type ProjectMemberRow = {
   id: string;
   project_id: string;
   user_id: string | null;
-  email: string;
+  username: string;
   display_name: string | null;
   avatar_url: string | null;
   role: ProjectMemberRole;
@@ -116,7 +114,7 @@ type AuditLogRow = {
 type LoginEventRow = {
   id: string;
   user_id: string | null;
-  email: string | null;
+  username: string | null;
   outcome: "success" | "failure";
   ip_address: string | null;
   user_agent: string | null;
@@ -126,27 +124,17 @@ type LoginEventRow = {
 
 type AuthTokenRow = {
   id: string;
-  type: "email_verification" | "password_reset" | "mfa_challenge";
+  type: "mfa_challenge";
   user_id: string;
   expires_at: string | Date;
 };
 
-type ProjectInvitationTokenRow = {
-  id: string;
-  project_member_id: string;
-  expires_at: string | Date;
-  revoked_at: string | Date | null;
-  accepted_at: string | Date | null;
-  created_by_user_id: string;
-  created_at: string | Date;
-};
-
 type AdminInvitationRow = {
   id: string;
-  email: string;
+  username: string;
   display_name: string | null;
   role: Exclude<AdminRole, "super_admin">;
-  status: "pending" | "accepted" | "revoked" | "expired";
+  status: "pending" | "accepted" | "declined" | "revoked" | "expired";
   invited_by_user_id: string;
   accepted_by_user_id: string | null;
   expires_at: string | Date;
@@ -166,27 +154,11 @@ type ProjectWorkspaceRow = {
 };
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
-const EMAIL_VERIFICATION_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;
-const PASSWORD_RESET_TOKEN_TTL_MS = 1000 * 60 * 60;
 const MFA_CHALLENGE_TOKEN_TTL_MS = 1000 * 60 * 5;
-const PROJECT_INVITATION_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const ADMIN_INVITATION_TOKEN_TTL_MS = 1000 * 60 * 60 * 72;
-
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
-}
 
 function normalizeUsername(username: string) {
   return username.trim().toLowerCase();
-}
-
-function usernameFromEmail(email: string) {
-  const normalized = normalizeEmail(email)
-    .split("@")[0]
-    ?.replace(/[^a-z0-9_]+/gu, "_")
-    .replace(/^_+|_+$/gu, "")
-    .slice(0, 32);
-  return normalized && normalized.length >= 3 ? normalized : "user";
 }
 
 function hashToken(token: string) {
@@ -200,12 +172,10 @@ function toIsoString(value: string | Date) {
 function mapUserRow(row: UserRow): UserRecord {
   return {
     id: row.id,
-    email: row.email,
     username: row.username,
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
     status: row.status,
-    emailVerified: row.email_verified,
     mfaEnabled: row.mfa_enabled,
     mfaSecret: row.mfa_secret,
     mfaPendingSecret: row.mfa_pending_secret,
@@ -224,7 +194,7 @@ function mapLoginEventRow(row: LoginEventRow): LoginEventDto {
   return {
     id: row.id,
     userId: row.user_id,
-    email: row.email,
+    username: row.username,
     outcome: row.outcome,
     ipAddress: row.ip_address,
     userAgent: row.user_agent,
@@ -252,7 +222,6 @@ function mapProjectRow(row: ProjectRow): ProjectRecord {
     id: row.id,
     name: row.name,
     description: row.description,
-    visibility: projectVisibilitySchema.parse(row.visibility),
     status: row.status,
     ownerUserId: row.owner_user_id,
     retentionPolicy: row.retention_policy,
@@ -267,7 +236,7 @@ function mapProjectMemberRow(row: ProjectMemberRow): ProjectMemberRecord {
     id: row.id,
     projectId: row.project_id,
     userId: row.user_id,
-    email: row.email,
+    username: row.username,
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
     role: row.role,
@@ -280,22 +249,10 @@ function mapProjectMemberRow(row: ProjectMemberRow): ProjectMemberRecord {
   };
 }
 
-function mapProjectInvitationTokenRow(row: ProjectInvitationTokenRow) {
-  return {
-    id: row.id,
-    projectMemberId: row.project_member_id,
-    expiresAt: toIsoString(row.expires_at),
-    revokedAt: row.revoked_at ? toIsoString(row.revoked_at) : null,
-    acceptedAt: row.accepted_at ? toIsoString(row.accepted_at) : null,
-    createdByUserId: row.created_by_user_id,
-    createdAt: toIsoString(row.created_at),
-  };
-}
-
 function mapAdminInvitationRow(row: AdminInvitationRow): AdminInvitationRecord {
   return {
     id: row.id,
-    email: row.email,
+    username: row.username,
     displayName: row.display_name,
     role: row.role,
     status: row.status,
@@ -346,12 +303,10 @@ function mapAuditLogRow(row: AuditLogRow): AuditLogDto {
 
 const userColumns = `
   id,
-  email,
   username,
   display_name,
   avatar_url,
   status,
-  email_verified,
   mfa_enabled,
   mfa_secret,
   mfa_pending_secret,
@@ -379,7 +334,6 @@ const projectColumns = `
   id,
   name,
   description,
-  visibility,
   status,
   owner_user_id,
   retention_policy,
@@ -392,7 +346,7 @@ const projectMemberColumns = `
   id,
   project_id,
   user_id,
-  email,
+  username,
   coalesce(
     (select users.display_name from users where users.id = project_members.user_id),
     project_members.display_name
@@ -421,7 +375,7 @@ const auditLogColumns = `
 const loginEventColumns = `
   id,
   user_id,
-  email,
+  username,
   outcome,
   ip_address,
   user_agent,
@@ -429,19 +383,10 @@ const loginEventColumns = `
   created_at
 `;
 
-const projectInvitationTokenColumns = `
-  id,
-  project_member_id,
-  expires_at,
-  revoked_at,
-  accepted_at,
-  created_by_user_id,
-  created_at
-`;
 
 const adminInvitationColumns = `
   id,
-  email,
+  username,
   display_name,
   role,
   status,
@@ -486,7 +431,7 @@ export function createPostgresAuthRepository(db: Queryable) {
           id,
           project_id,
           user_id,
-          email,
+          username,
           display_name,
           role,
           status,
@@ -501,7 +446,7 @@ export function createPostgresAuthRepository(db: Queryable) {
         randomUUID(),
         input.projectId,
         input.userId,
-        normalizeEmail(input.email),
+        normalizeUsername(input.username),
         input.displayName,
         input.role,
         input.status,
@@ -515,89 +460,51 @@ export function createPostgresAuthRepository(db: Queryable) {
   }
 
   return {
+
+    async listMemberInvitations(userId?: string) {
+      const result = await db.query<ProjectMemberRow>(`select ${projectMemberColumns} from project_members where invited_by_user_id is not null and ($1::text is null or user_id = $1) order by invited_at desc`, [userId ?? null]);
+      return result.rows.map(mapProjectMemberRow);
+    },
+    async refreshProjectInvitation(id: string) {
+      const result = await db.query<ProjectMemberRow>(`update project_members set invited_at = now(), updated_at = now() where id = $1 and status = 'invited' returning ${projectMemberColumns}`, [id]);
+      if (result.rows[0]) await db.query(`delete from inbox_receipts where message_id = $1`, [`project:${id}`]);
+      return result.rows[0] ? mapProjectMemberRow(result.rows[0]) : null;
+    },
+    async respondToProjectInvitation(id: string, userId: string, accept: boolean) {
+      // Conditional update consumes a pending invitation once and binds it to the session user.
+      const result = await db.query<ProjectMemberRow>(`update project_members set status = $3, joined_at = case when $3 = 'active' then now() else null end, updated_at = now()
+        where id = $1 and user_id = $2 and status = 'invited' and invited_at > now() - interval '7 days'
+        and exists (select 1 from projects where projects.id = project_members.project_id and projects.status <> 'deleted') returning ${projectMemberColumns}`, [id, userId, accept ? "active" : "declined"]);
+      return result.rows[0] ? mapProjectMemberRow(result.rows[0]) : null;
+    },
+    async declineAdminInvitation(id: string, userId: string) {
+      const result = await db.query<AdminInvitationRow>(`update admin_invitations set status = 'declined', updated_at = now() where id = $1 and status = 'pending' and expires_at > now() and username = (select username from users where id = $2) returning ${adminInvitationColumns}`, [id, userId]);
+      return result.rows[0] ? mapAdminInvitationRow(result.rows[0]) : null;
+    },
+    async listInboxReceipts(userId: string) {
+      const result = await db.query<{ user_id: string; message_id: string; read_at: string | Date; dismissed_at: string | Date | null }>(`select user_id, message_id, read_at, dismissed_at from inbox_receipts where user_id = $1`, [userId]);
+      return result.rows.map(row => ({ userId: row.user_id, messageId: row.message_id, readAt: toIsoString(row.read_at), dismissedAt: row.dismissed_at ? toIsoString(row.dismissed_at) : null }));
+    },
+    async recordInboxReceipt(userId: string, messageId: string, dismissed = false) {
+      await db.query(`insert into inbox_receipts (user_id, message_id, read_at, dismissed_at) values ($1, $2, now(), case when $3 then now() else null end)
+        on conflict (user_id, message_id) do update set read_at = coalesce(inbox_receipts.read_at, excluded.read_at), dismissed_at = coalesce(excluded.dismissed_at, inbox_receipts.dismissed_at)`, [userId, messageId, dismissed]);
+    },
     auditLogs,
 
-    async createUser(input: {
-      email: string;
-      username?: string;
-      displayName: string;
-      passwordHash: string;
-      systemRoles?: AdminRole[];
-      status?: UserStatus;
-      emailVerified?: boolean;
-    }) {
-      const email = normalizeEmail(input.email);
-      const username = input.username
-        ? normalizeUsername(input.username)
-        : usernameFromEmail(email);
-      const emailVerified = input.emailVerified ?? true;
-      const status =
-        input.status ??
-        (emailVerified ? "active" : "pending_email_verification");
+    async createUser(input: { username: string; displayName: string; passwordHash: string; systemRoles?: AdminRole[]; status?: UserStatus }) {
+      const username = normalizeUsername(input.username);
+      if (!/^[a-z0-9_]{3,32}$/u.test(username)) throw new Error("Invalid username");
       const result = await db.query<UserRow>(
-        `
-          insert into users (
-            id,
-            email,
-            username,
-            display_name,
-            password_hash,
-            system_roles,
-            status,
-            email_verified
-          )
-          values ($1, $2, $3, $4, $5, $6, $7, $8)
-          on conflict do nothing
-          returning ${userColumns}
-        `,
-        [
-          randomUUID(),
-          email,
-          username,
-          input.displayName,
-          input.passwordHash,
-          input.systemRoles ?? [],
-          status,
-          emailVerified,
-        ],
+        `insert into users (id, username, display_name, password_hash, system_roles, status, avatar_url)
+         values ($1, $2, $3, $4, $5, $6, $7) on conflict do nothing returning ${userColumns}`,
+        [randomUUID(), username, input.displayName, input.passwordHash, input.systemRoles ?? [], input.status ?? "active", randomDefaultAvatar()],
       );
-
-      return result.rows[0] ? mapUserRow(result.rows[0]) : null;
-    },
-
-    async findUserByEmail(email: string) {
-      const result = await db.query<UserRow>(
-        `
-          select ${userColumns}
-          from users
-          where email = $1
-          limit 1
-        `,
-        [normalizeEmail(email)],
-      );
-
       return result.rows[0] ? mapUserRow(result.rows[0]) : null;
     },
 
     async findUserByUsername(username: string) {
-      const result = await db.query<UserRow>(
-        `
-          select ${userColumns}
-          from users
-          where username = $1
-          limit 1
-        `,
-        [normalizeUsername(username)],
-      );
-
+      const result = await db.query<UserRow>(`select ${userColumns} from users where username = $1 limit 1`, [normalizeUsername(username)]);
       return result.rows[0] ? mapUserRow(result.rows[0]) : null;
-    },
-
-    async findUserByLoginIdentifier(identifier: string) {
-      const value = identifier.trim();
-      return value.includes("@")
-        ? this.findUserByEmail(value)
-        : this.findUserByUsername(value);
     },
 
     async listUsers() {
@@ -610,6 +517,19 @@ export function createPostgresAuthRepository(db: Queryable) {
       );
 
       return result.rows.map(mapUserRow);
+    },
+
+    async assignMissingDefaultAvatars() {
+      // Recheck emptiness in the UPDATE so concurrent profile edits are never overwritten.
+      // PostgreSQL evaluates random() per row; subsequent startups leave assigned avatars intact.
+      const result = await db.query(
+        `update users
+         set avatar_url = ($1::text[])[1 + floor(random() * cardinality($1::text[]))::int],
+             updated_at = now()
+         where avatar_url is null or btrim(avatar_url) = ''`,
+        [DEFAULT_AVATARS],
+      );
+      return result.rowCount ?? 0;
     },
 
     async getUser(userId: string) {
@@ -635,7 +555,6 @@ export function createPostgresAuthRepository(db: Queryable) {
           | "avatarUrl"
           | "passwordHash"
           | "status"
-          | "emailVerified"
           | "systemRoles"
           | "mfaEnabled"
           | "mfaSecret"
@@ -644,49 +563,12 @@ export function createPostgresAuthRepository(db: Queryable) {
         >
       >,
     ) {
-      const result = await db.query<UserRow>(
-        `
-          update users
-          set
-            display_name = case when $2 then $3 else display_name end,
-            avatar_url = case when $4 then $5 else avatar_url end,
-            password_hash = case when $6 then $7 else password_hash end,
-            status = case when $8 then $9 else status end,
-            email_verified = case when $10 then $11 else email_verified end,
-            system_roles = case when $12 then $13 else system_roles end,
-            mfa_enabled = case when $14 then $15 else mfa_enabled end,
-            mfa_secret = case when $16 then $17 else mfa_secret end,
-            mfa_pending_secret = case when $18 then $19 else mfa_pending_secret end,
-            mfa_pending_expires_at = case when $20 then $21 else mfa_pending_expires_at end,
-            updated_at = now()
-          where id = $1
-          returning ${userColumns}
-        `,
-        [
-          userId,
-          Object.hasOwn(patch, "displayName"),
-          patch.displayName ?? null,
-          Object.hasOwn(patch, "avatarUrl"),
-          patch.avatarUrl ?? null,
-          Object.hasOwn(patch, "passwordHash"),
-          patch.passwordHash ?? null,
-          Object.hasOwn(patch, "status"),
-          patch.status ?? null,
-          Object.hasOwn(patch, "emailVerified"),
-          patch.emailVerified ?? null,
-          Object.hasOwn(patch, "systemRoles"),
-          patch.systemRoles ?? null,
-          Object.hasOwn(patch, "mfaEnabled"),
-          patch.mfaEnabled ?? null,
-          Object.hasOwn(patch, "mfaSecret"),
-          patch.mfaSecret ?? null,
-          Object.hasOwn(patch, "mfaPendingSecret"),
-          patch.mfaPendingSecret ?? null,
-          Object.hasOwn(patch, "mfaPendingExpiresAt"),
-          patch.mfaPendingExpiresAt ?? null,
-        ],
-      );
-
+      const columns = { displayName: "display_name", avatarUrl: "avatar_url", passwordHash: "password_hash", status: "status", systemRoles: "system_roles", mfaEnabled: "mfa_enabled", mfaSecret: "mfa_secret", mfaPendingSecret: "mfa_pending_secret", mfaPendingExpiresAt: "mfa_pending_expires_at" } as const;
+      const entries = Object.entries(patch).filter(([key]) => key in columns);
+      if (entries.length === 0) return this.getUser(userId);
+      const values: unknown[] = [userId, ...entries.map(([, value]) => value)];
+      const assignments = entries.map(([key], index) => `${columns[key as keyof typeof columns]} = $${index + 2}`);
+      const result = await db.query<UserRow>(`update users set ${assignments.join(", ")}, updated_at = now() where id = $1 returning ${userColumns}`, values);
       return result.rows[0] ? mapUserRow(result.rows[0]) : null;
     },
 
@@ -815,105 +697,6 @@ export function createPostgresAuthRepository(db: Queryable) {
       return Number(result.rows[0]?.revoked_count ?? 0);
     },
 
-    async createEmailVerificationToken(userId: string) {
-      const token = randomUUID();
-      const expiresAt = new Date(
-        Date.now() + EMAIL_VERIFICATION_TOKEN_TTL_MS,
-      ).toISOString();
-      await db.query(
-        `
-          insert into auth_tokens (
-            id,
-            type,
-            user_id,
-            token_hash,
-            expires_at
-          )
-          values ($1, 'email_verification', $2, $3, $4)
-        `,
-        [randomUUID(), userId, hashToken(token), expiresAt],
-      );
-      return { token, expiresAt };
-    },
-
-    async verifyEmailToken(token: string) {
-      const result = await db.query<AuthTokenRow>(
-        `
-          update auth_tokens
-          set used_at = now()
-          where id = (
-            select id
-            from auth_tokens
-            where type = 'email_verification'
-              and token_hash = $1
-              and used_at is null
-              and expires_at > now()
-            limit 1
-          )
-          returning id, type, user_id, expires_at
-        `,
-        [hashToken(token)],
-      );
-      const tokenRow = result.rows[0];
-      if (!tokenRow) return null;
-      const user = await this.getUser(tokenRow.user_id);
-      if (!user) return null;
-      return this.updateUser(tokenRow.user_id, {
-        // Verification is the state transition from pending signup to an active account.
-        emailVerified: true,
-        status: user.status === "pending_email_verification" ? "active" : user.status,
-      });
-    },
-
-    async createPasswordResetToken(email: string) {
-      const user = await this.findUserByEmail(email);
-      if (!user) return null;
-      const token = randomUUID();
-      const expiresAt = new Date(
-        Date.now() + PASSWORD_RESET_TOKEN_TTL_MS,
-      ).toISOString();
-      await db.query(
-        `
-          insert into auth_tokens (
-            id,
-            type,
-            user_id,
-            token_hash,
-            expires_at
-          )
-          values ($1, 'password_reset', $2, $3, $4)
-        `,
-        [randomUUID(), user.id, hashToken(token), expiresAt],
-      );
-      return { token, expiresAt, userId: user.id };
-    },
-
-    async resetPasswordWithToken(token: string, passwordHash: string) {
-      const result = await db.query<AuthTokenRow>(
-        `
-          update auth_tokens
-          set used_at = now()
-          where id = (
-            select id
-            from auth_tokens
-            where type = 'password_reset'
-              and token_hash = $1
-              and used_at is null
-              and expires_at > now()
-            limit 1
-          )
-          returning id, type, user_id, expires_at
-        `,
-        [hashToken(token)],
-      );
-      const tokenRow = result.rows[0];
-      if (!tokenRow) return null;
-      const user = await this.updateUser(tokenRow.user_id, { passwordHash });
-      if (!user) return null;
-      const revokedSessionCount = await this.revokeSessionsForUser(user.id);
-      return { user, revokedSessionCount };
-    },
-
     async createMfaChallenge(userId: string) {
       const token = randomUUID();
       const expiresAt = new Date(
@@ -969,69 +752,66 @@ export function createPostgresAuthRepository(db: Queryable) {
     },
 
     async createAdminInvitation(input: {
-      email: string;
+      username: string;
       displayName?: string | null;
       role: Exclude<AdminRole, "super_admin">;
       invitedByUserId: string;
     }) {
-      const email = normalizeEmail(input.email);
+      const username = normalizeUsername(input.username);
       await db.query(
         `update admin_invitations set status = 'expired', updated_at = now()
          where status = 'pending' and expires_at <= now()`,
       );
       const duplicate = await db.query<{ id: string }>(
         `select id from admin_invitations
-         where lower(email) = $1 and role = $2 and status = 'pending'
+         where lower(username) = $1 and role = $2 and status = 'pending'
            and revoked_at is null and accepted_at is null and expires_at > now()
          limit 1`,
-        [email, input.role],
+        [username, input.role],
       );
       if (duplicate.rows[0]) return null;
-      const token = randomUUID();
       const expiresAt = new Date(Date.now() + ADMIN_INVITATION_TOKEN_TTL_MS).toISOString();
       const result = await db.query<AdminInvitationRow>(
         `insert into admin_invitations (
-           id, email, display_name, role, token_hash, status,
+           id, username, display_name, role, status,
            invited_by_user_id, expires_at
-         ) values ($1, $2, $3, $4, $5, 'pending', $6, $7)
+         ) values ($1, $2, $3, $4, 'pending', $5, $6)
          returning ${adminInvitationColumns}`,
         [
           randomUUID(),
-          email,
+          username,
           input.displayName?.trim() || null,
           input.role,
-          hashToken(token),
           input.invitedByUserId,
           expiresAt,
         ],
       );
-      return { invitation: mapAdminInvitationRow(result.rows[0]), token };
+      return { invitation: mapAdminInvitationRow(result.rows[0]) };
     },
 
-    async findActiveAdminInvitationToken(token: string) {
+    async getPendingAdminInvitation(id: string) {
       const result = await db.query<AdminInvitationRow>(
         `select ${adminInvitationColumns}
          from admin_invitations
-         where token_hash = $1 and status = 'pending'
+         where id = $1 and status = 'pending'
            and revoked_at is null and accepted_at is null and expires_at > now()
          limit 1`,
-        [hashToken(token)],
+        [id],
       );
       return result.rows[0] ? mapAdminInvitationRow(result.rows[0]) : null;
     },
 
     async resendAdminInvitation(id: string, invitedByUserId: string) {
-      const token = randomUUID();
       const expiresAt = new Date(Date.now() + ADMIN_INVITATION_TOKEN_TTL_MS).toISOString();
       const result = await db.query<AdminInvitationRow>(
         `update admin_invitations
-         set token_hash = $2, invited_by_user_id = $3, expires_at = $4, updated_at = now()
+         set invited_by_user_id = $2, expires_at = $3, updated_at = now()
          where id = $1 and status = 'pending' and revoked_at is null and accepted_at is null
          returning ${adminInvitationColumns}`,
-        [id, hashToken(token), invitedByUserId, expiresAt],
+        [id, invitedByUserId, expiresAt],
       );
       return result.rows[0]
-        ? { invitation: mapAdminInvitationRow(result.rows[0]), token }
+        ? { invitation: mapAdminInvitationRow(result.rows[0]) }
         : null;
     },
 
@@ -1046,12 +826,12 @@ export function createPostgresAuthRepository(db: Queryable) {
       return result.rows[0] ? mapAdminInvitationRow(result.rows[0]) : null;
     },
 
-    async acceptAdminInvitation(token: string, userId: string) {
-      const invitation = await this.findActiveAdminInvitationToken(token);
+    async acceptAdminInvitation(id: string, userId: string) {
+      const invitation = await this.getPendingAdminInvitation(id);
       const user = await this.getUser(userId);
       if (!invitation || !user) return null;
-      if (normalizeEmail(user.email) !== invitation.email) {
-        return { error: "email_mismatch" as const, invitation };
+      if (normalizeUsername(user.username) !== invitation.username) {
+        return { error: "username_mismatch" as const, invitation };
       }
       const accepted = await db.query<AdminInvitationRow>(
         `update admin_invitations
@@ -1064,8 +844,6 @@ export function createPostgresAuthRepository(db: Queryable) {
       );
       if (!accepted.rows[0]) return null;
       const nextUser = await this.updateUser(user.id, {
-        emailVerified: true,
-        status: user.status === "pending_email_verification" ? "active" : user.status,
         systemRoles: [...new Set([...user.systemRoles, invitation.role])],
       });
       return nextUser
@@ -1073,128 +851,11 @@ export function createPostgresAuthRepository(db: Queryable) {
         : null;
     },
 
-    async revokeProjectInvitationTokens(projectMemberId: string) {
-      const result = await db.query<{ revoked_count: number | string }>(
-        `
-          with revoked as (
-            update project_invitation_tokens
-            set revoked_at = now()
-            where project_member_id = $1
-              and revoked_at is null
-              and accepted_at is null
-            returning 1
-          )
-          select count(*)::int as revoked_count from revoked
-        `,
-        [projectMemberId],
-      );
-
-      return Number(result.rows[0]?.revoked_count ?? 0);
-    },
-
-    async createProjectInvitationToken(input: {
-      projectMemberId: string;
-      createdByUserId: string;
-    }) {
-      await this.revokeProjectInvitationTokens(input.projectMemberId);
-      const token = randomUUID();
-      const expiresAt = new Date(
-        Date.now() + PROJECT_INVITATION_TOKEN_TTL_MS,
-      ).toISOString();
-      await db.query(
-        `
-          insert into project_invitation_tokens (
-            id,
-            project_member_id,
-            token_hash,
-            expires_at,
-            created_by_user_id
-          )
-          values ($1, $2, $3, $4, $5)
-        `,
-        [
-          randomUUID(),
-          input.projectMemberId,
-          hashToken(token),
-          expiresAt,
-          input.createdByUserId,
-        ],
-      );
-
-      return { token, expiresAt };
-    },
-
-    async findActiveProjectInvitationToken(token: string) {
-      const result = await db.query<ProjectInvitationTokenRow>(
-        `
-          select ${projectInvitationTokenColumns}
-          from project_invitation_tokens
-          where token_hash = $1
-            and revoked_at is null
-            and accepted_at is null
-            and expires_at > now()
-          limit 1
-        `,
-        [hashToken(token)],
-      );
-      const tokenRow = result.rows[0];
-      if (!tokenRow) return null;
-
-      const member = await this.getMember(tokenRow.project_member_id);
-      if (!member || member.status !== "invited") return null;
-      const project = await this.getProject(member.projectId);
-      if (!project || project.status === "deleted") return null;
-
-      return {
-        token: mapProjectInvitationTokenRow(tokenRow),
-        member,
-        project,
-      };
-    },
-
-    async acceptProjectInvitationToken(
-      token: string,
-      user: Pick<UserRecord, "id" | "email" | "displayName">,
-    ) {
-      const invitation = await this.findActiveProjectInvitationToken(token);
-      if (!invitation) return null;
-      if (invitation.member.email !== normalizeEmail(user.email)) {
-        return { error: "email_mismatch" as const, invitation };
-      }
-
-      const accepted = await db.query<ProjectInvitationTokenRow>(
-        `
-          update project_invitation_tokens
-          set accepted_at = now()
-          where id = $1
-            and revoked_at is null
-            and accepted_at is null
-            and expires_at > now()
-          returning ${projectInvitationTokenColumns}
-        `,
-        [invitation.token.id],
-      );
-      const acceptedToken = accepted.rows[0];
-      if (!acceptedToken) return null;
-
-      // Accepting an invitation is the membership lifecycle boundary from invited to active.
-      const member = await this.updateMember(invitation.member.id, {
-        userId: user.id,
-        displayName: user.displayName,
-        status: "active",
-        joinedAt: toIsoString(acceptedToken.accepted_at ?? new Date()),
-      });
-      if (!member) return null;
-
-      return { member, project: invitation.project };
-    },
-
     async createProject(input: {
       projectMode?: "standard" | "professional";
       ownerUserId: string;
       name: string;
       description: string | null;
-      visibility: ProjectVisibility;
       retentionPolicy?: ProjectRetentionPolicy;
       backgroundKey?: ProjectBackgroundKey | null;
     }) {
@@ -1205,12 +866,11 @@ export function createPostgresAuthRepository(db: Queryable) {
             owner_user_id,
             name,
             description,
-            visibility,
             retention_policy,
             background_key,
             project_mode
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8)
+          values ($1, $2, $3, $4, $5, $6, $7)
           returning ${projectColumns}
         `,
         [
@@ -1218,7 +878,6 @@ export function createPostgresAuthRepository(db: Queryable) {
           input.ownerUserId,
           input.name,
           input.description,
-          input.visibility,
           input.retentionPolicy ?? "manual",
           input.backgroundKey ?? null,
           input.projectMode ?? "professional",
@@ -1240,7 +899,7 @@ export function createPostgresAuthRepository(db: Queryable) {
       const ownerMember = await createMember({
         projectId: project.id,
         userId: owner?.id ?? null,
-        email: owner?.email ?? "",
+        username: owner?.username ?? "",
         displayName: owner?.displayName ?? null,
         role: "owner",
         status: "active",
@@ -1366,7 +1025,6 @@ export function createPostgresAuthRepository(db: Queryable) {
           ProjectRecord,
           | "name"
           | "description"
-          | "visibility"
           | "status"
           | "ownerUserId"
           | "retentionPolicy"
@@ -1380,11 +1038,10 @@ export function createPostgresAuthRepository(db: Queryable) {
           set
             name = case when $2 then $3 else name end,
             description = case when $4 then $5 else description end,
-            visibility = case when $6 then $7 else visibility end,
-            status = case when $8 then $9 else status end,
-            owner_user_id = case when $10 then $11 else owner_user_id end,
-            retention_policy = case when $12 then $13 else retention_policy end,
-            background_key = case when $14 then $15 else background_key end,
+            status = case when $6 then $7 else status end,
+            owner_user_id = case when $8 then $9 else owner_user_id end,
+            retention_policy = case when $10 then $11 else retention_policy end,
+            background_key = case when $12 then $13 else background_key end,
             updated_at = now()
           where id = $1
           returning ${projectColumns}
@@ -1395,8 +1052,6 @@ export function createPostgresAuthRepository(db: Queryable) {
           patch.name ?? null,
           Object.hasOwn(patch, "description"),
           patch.description ?? null,
-          Object.hasOwn(patch, "visibility"),
-          patch.visibility ?? null,
           Object.hasOwn(patch, "status"),
           patch.status ?? null,
           Object.hasOwn(patch, "ownerUserId"),
@@ -1491,16 +1146,16 @@ export function createPostgresAuthRepository(db: Queryable) {
       return result.rows[0] ? mapProjectMemberRow(result.rows[0]) : null;
     },
 
-    async findProjectMemberByEmail(projectId: string, email: string) {
+    async findProjectMemberByUsername(projectId: string, username: string) {
       const result = await db.query<ProjectMemberRow>(
         `
           select ${projectMemberColumns}
           from project_members
           where project_id = $1
-            and email = $2
+            and username = $2
           limit 1
         `,
-        [projectId, normalizeEmail(email)],
+        [projectId, normalizeUsername(username)],
       );
 
       return result.rows[0] ? mapProjectMemberRow(result.rows[0]) : null;
@@ -1640,7 +1295,7 @@ export function createPostgresAuthRepository(db: Queryable) {
 
     async recordLoginEvent(input: {
       userId: string | null;
-      email: string | null;
+      username: string | null;
       outcome: "success" | "failure";
       ipAddress: string | null;
       userAgent: string | null;
@@ -1651,7 +1306,7 @@ export function createPostgresAuthRepository(db: Queryable) {
           insert into login_events (
             id,
             user_id,
-            email,
+            username,
             outcome,
             ip_address,
             user_agent,
@@ -1663,7 +1318,7 @@ export function createPostgresAuthRepository(db: Queryable) {
         [
           randomUUID(),
           input.userId,
-          input.email ? normalizeEmail(input.email) : null,
+          input.username ? normalizeUsername(input.username) : null,
           input.outcome,
           input.ipAddress,
           input.userAgent,

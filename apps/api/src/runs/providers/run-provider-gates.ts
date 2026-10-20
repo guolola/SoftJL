@@ -23,7 +23,7 @@ import { createHttpErrorResponse } from "../../server/http-error-response.js";
 type RunAccessResolver = {
   resolveRunAccess(request: FastifyRequest): Promise<{
     userId?: string;
-    email?: string | null;
+    username?: string | null;
   }>;
 };
 
@@ -268,7 +268,7 @@ export async function checkGenerationUsageLimit({
   if (!access.userId) return true;
   const decision = await generationUsage.checkGenerationLimit({
     userId: access.userId,
-    email: access.email,
+    username: access.username,
     ipAddress: ipAddressFromRequest(request),
   });
   if (decision.allowed) return true;
@@ -295,7 +295,7 @@ export async function recordGenerationUsage({
   if (!access.userId) return;
   await generationUsage.recordGenerationUsage({
     userId: access.userId,
-    email: access.email,
+    username: access.username,
     ipAddress: ipAddressFromRequest(request),
     taskType,
     providerConfigId,

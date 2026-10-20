@@ -1,4 +1,4 @@
-// Provides accessible Card 16 spotlight and Card 17 perspective effects without owning business interactions.
+// Provides an accessible Card 16 spotlight effect without owning business interactions.
 import * as React from "react";
 import { useReducedMotion } from "motion/react";
 
@@ -18,43 +18,6 @@ function useFinePointer() {
   }, []);
 
   return finePointer;
-}
-
-export function PerspectiveCard({ className, children, onPointerMove, onPointerLeave, ...props }: InteractiveCardProps) {
-  const reduceMotion = useReducedMotion();
-  const finePointer = useFinePointer();
-  const cardRef = React.useRef<HTMLElement>(null);
-
-  const resetTransform = React.useCallback(() => {
-    if (!cardRef.current) return;
-    cardRef.current.style.transform = "perspective(900px) rotateX(0deg) rotateY(0deg)";
-  }, []);
-
-  return (
-    <article
-      ref={cardRef}
-      data-slot="perspective-card"
-      className={cn(
-        "relative min-w-0 transform-gpu overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-[transform,box-shadow,border-color] duration-300 ease-out hover:border-primary/35 hover:shadow-lg motion-reduce:transform-none motion-reduce:transition-none",
-        className,
-      )}
-      onPointerMove={(event) => {
-        onPointerMove?.(event);
-        if (reduceMotion || !finePointer || !cardRef.current) return;
-        const bounds = cardRef.current.getBoundingClientRect();
-        const x = (event.clientX - bounds.left) / bounds.width - 0.5;
-        const y = (event.clientY - bounds.top) / bounds.height - 0.5;
-        cardRef.current.style.transform = `perspective(900px) rotateX(${(-y * 5).toFixed(2)}deg) rotateY(${(x * 6).toFixed(2)}deg)`;
-      }}
-      onPointerLeave={(event) => {
-        onPointerLeave?.(event);
-        resetTransform();
-      }}
-      {...props}
-    >
-      {children}
-    </article>
-  );
 }
 
 export const SpotlightCard = React.forwardRef<HTMLElement, InteractiveCardProps>(function SpotlightCard({ className, children, onPointerMove, ...props }, forwardedRef) {

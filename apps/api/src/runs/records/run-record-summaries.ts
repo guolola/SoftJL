@@ -20,7 +20,7 @@ export function queryValue(query: unknown, key: string) {
 }
 
 function readSnapshotModel(snapshot: RunRecord["snapshot"]) {
-  const settings = "providerSettings" in snapshot ? snapshot.providerSettings : undefined;
+  const settings = "standardRun" in snapshot && snapshot.standardRun ? snapshot.standardRun : "providerSettings" in snapshot ? snapshot.providerSettings : undefined;
   if (!settings || typeof settings !== "object" || !("model" in settings)) return undefined;
   const model = (settings as { model?: unknown }).model;
   return typeof model === "string" ? model : undefined;

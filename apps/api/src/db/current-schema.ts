@@ -86,12 +86,10 @@ create index llm_telemetry_project_run_idx on llm_request_telemetry(project_id, 
 export const currentSchemaSql = `
 create table users (
   id text primary key,
-  email text not null unique,
   username text not null unique,
   display_name text not null,
   avatar_url text,
   status text not null default 'active',
-  email_verified boolean not null default false,
   mfa_enabled boolean not null default false,
   mfa_secret text,
   mfa_pending_secret text,
@@ -101,6 +99,14 @@ create table users (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   last_login_at timestamptz
+);
+
+create table inbox_receipts (
+  user_id text not null references users(id) on delete cascade,
+  message_id text not null,
+  read_at timestamptz not null default now(),
+  dismissed_at timestamptz,
+  primary key (user_id, message_id)
 );
 
 create table sessions (
@@ -117,7 +123,7 @@ create table sessions (
 create table login_events (
   id text primary key,
   user_id text references users(id) on delete set null,
-  email text,
+  username text,
   outcome text not null,
   ip_address text,
   user_agent text,
@@ -142,7 +148,6 @@ create table projects (
   name text not null,
   project_mode text not null check (project_mode in ('standard', 'professional')),
   description text,
-  visibility text not null default 'private' check (visibility in ('private', 'public')),
   status text not null default 'active',
   owner_user_id text not null references users(id),
   retention_policy text not null default 'manual',
@@ -155,7 +160,7 @@ create table project_members (
   id text primary key,
   project_id text not null references projects(id) on delete cascade,
   user_id text references users(id) on delete set null,
-  email text not null,
+  username text not null,
   display_name text,
   role text not null,
   status text not null default 'invited',
@@ -164,19 +169,9 @@ create table project_members (
   joined_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (project_id, email)
+  unique (project_id, username)
 );
 
-create table project_invitation_tokens (
-  id text primary key,
-  project_member_id text not null references project_members(id) on delete cascade,
-  token_hash text not null unique,
-  expires_at timestamptz not null,
-  revoked_at timestamptz,
-  accepted_at timestamptz,
-  created_by_user_id text not null references users(id) on delete cascade,
-  created_at timestamptz not null default now()
-);
 
 create table audit_logs (
   id text primary key,
@@ -374,7 +369,6 @@ create index login_events_user_id_created_at_idx on login_events(user_id, create
 create index auth_tokens_user_type_idx on auth_tokens(user_id, type, expires_at desc);
 create index projects_owner_user_id_idx on projects(owner_user_id);
 create index project_members_user_id_idx on project_members(user_id);
-create index project_invitation_tokens_member_idx on project_invitation_tokens(project_member_id);
 create index audit_logs_created_at_idx on audit_logs(created_at desc);
 create index risk_events_created_at_idx on risk_events(created_at desc);
 create index risk_events_project_created_at_idx on risk_events(project_id, created_at desc);
@@ -518,14 +512,13 @@ on conflict (code) do nothing;
 
 create table admin_invitations (
   id text primary key,
-  email text not null,
+  username text not null,
   display_name text,
   role text not null check (role in (
     'system_operator', 'project_admin', 'auditor',
     'security_admin', 'model_admin'
   )),
-  token_hash text not null unique,
-  status text not null default 'pending' check (status in ('pending', 'accepted', 'revoked', 'expired')),
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'revoked', 'expired')),
   invited_by_user_id text not null references users(id) on delete restrict,
   accepted_by_user_id text references users(id) on delete set null,
   expires_at timestamptz not null,
@@ -534,10 +527,10 @@ create table admin_invitations (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index admin_invitations_email_idx
-  on admin_invitations (lower(email), created_at desc);
+create index admin_invitations_username_idx
+  on admin_invitations (lower(username), created_at desc);
 create unique index admin_invitations_pending_role_unique
-  on admin_invitations (lower(email), role)
+  on admin_invitations (lower(username), role)
   where status = 'pending' and revoked_at is null and accepted_at is null;
 
 create table prompt_runtime_versions (

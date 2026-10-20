@@ -1,4 +1,5 @@
 // Verifies top-level app routing, provider composition, shell layout behavior, and account/project entry flows.
+import { matchAppRoute } from "./app-routes";
 import { createDocumentRunSnapshot } from "@/test/contract-fixtures";
 import { installReactFlowTestLayout } from '../test/react-flow-test-layout';
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -29,7 +30,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), back: vi.
 let projectApiMode: "unauthenticated" | "authenticated" | "empty" | "forbidden" | "offline";
 let caseProjectApiMode: "success" | "failure";
 let projectMembershipRole: "owner" | "editor" | "viewer";
-let loginApiMode: "failure" | "success" | "mfa-challenge" | "email-unverified";
+let loginApiMode: "failure" | "success" | "mfa-challenge";
 let authSessionMode: "authenticated" | "unauthenticated" | "offline";
 let accountMfaEnabled: boolean;
 let providerConfigFixtures: Array<Record<string, unknown>>;
@@ -154,10 +155,9 @@ function createAuthMeResponse() {
     JSON.stringify({
       user: {
         id: "e91237c8-5ccf-45aa-b0d2-822b96915a24",
-        email: "new-student@example.edu",
+        username: "new_student",
         displayName: "new-student",
         status: "active",
-        emailVerified: true,
         mfaEnabled: accountMfaEnabled,
       },
       mfa: { enabled: accountMfaEnabled, enforcement: "totp" },
@@ -177,7 +177,7 @@ function createProjectListResponse() {
           id: "library-booking",
           name: "智慧图书馆预约系统",
           description: "真实项目数据",
-          visibility: "private",
+
           status: "active",
           ownerUserId: "e91237c8-5ccf-45aa-b0d2-822b96915a24",
           ownerDisplayName: "New Student",
@@ -203,7 +203,7 @@ function createProjectOverviewResponse() {
         id: "library-booking",
         name: "智慧图书馆预约系统",
         description: "真实项目数据",
-        visibility: "private",
+
         status: "active",
         ownerUserId: "e91237c8-5ccf-45aa-b0d2-822b96915a24",
         ownerDisplayName: "New Student",
@@ -217,7 +217,7 @@ function createProjectOverviewResponse() {
         id: "member-owner",
         projectId: "library-booking",
         userId: "e91237c8-5ccf-45aa-b0d2-822b96915a24",
-        email: "new-student@example.edu",
+        username: "new_student",
         displayName: "New Student",
         role: "owner",
         status: "active",
@@ -308,7 +308,7 @@ describe("App shell routes", () => {
     window.history.pushState({}, "", "/");
     localStorage.removeItem(LOCALE_PREFERENCE_STORAGE_KEY);
     localStorage.removeItem(USER_SETTINGS_STORAGE_KEY);
-    localStorage.removeItem("uml-auth-remembered-email");
+    localStorage.removeItem("uml-auth-remembered-username");
     localStorage.removeItem("uml-auth-remembered-password");
     invalidateProviderConfigCache();
     await i18n.changeLanguage("zh-CN");
@@ -338,25 +338,15 @@ describe("App shell routes", () => {
             JSON.stringify({
               user: {
                 id: "user-new",
-                email: "new-student@example.edu",
+                username: "new_student",
                 displayName: "new-student",
                 status: "active",
-                emailVerified: true,
                 mfaEnabled: false,
               },
               session: { id: "session-login" },
             }),
             {
               status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        if (pathname === "/api/auth/login" && loginApiMode === "email-unverified") {
-          return new Response(
-            JSON.stringify({ error: { code: "AUTH_EMAIL_VERIFICATION_REQUIRED", category: "authorization", retryable: false } }),
-            {
-              status: 403,
               headers: { "Content-Type": "application/json" },
             },
           );
@@ -372,10 +362,9 @@ describe("App shell routes", () => {
             JSON.stringify({
               user: {
                 id: "user-new",
-                email: "new-student@example.edu",
+                username: "new_student",
                 displayName: "new-student",
                 status: "active",
-                emailVerified: true,
                 mfaEnabled: true,
               },
               session: { id: "session-mfa" },
@@ -391,10 +380,9 @@ describe("App shell routes", () => {
             JSON.stringify({
               user: {
                 id: "user-new",
-                email: "new-student@example.edu",
+                username: "new_student",
                 displayName: "new-student",
                 status: "active",
-                emailVerified: true,
                 mfaEnabled: accountMfaEnabled,
               },
               session: { id: "session-new" },
@@ -404,30 +392,6 @@ describe("App shell routes", () => {
               headers: { "Content-Type": "application/json" },
             },
           );
-        }
-        if (pathname === "/api/auth/verify-email") {
-          return new Response(JSON.stringify({ message: "Email verified" }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        if (pathname === "/api/auth/resend-verification") {
-          return new Response(JSON.stringify({ message: "Verification email sent" }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        if (pathname === "/api/auth/forgot-password") {
-          return new Response(JSON.stringify({ message: "Reset email sent" }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        if (pathname === "/api/auth/reset-password") {
-          return new Response(JSON.stringify({ message: "Password reset" }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
         }
         if (pathname === "/api/auth/me") {
           if (authSessionMode === "offline") {
@@ -443,10 +407,9 @@ describe("App shell routes", () => {
             JSON.stringify({
               user: {
                 id: "e91237c8-5ccf-45aa-b0d2-822b96915a24",
-                email: "new-student@example.edu",
+                username: "new_student",
                 displayName: "new-student",
                 status: "active",
-                emailVerified: true,
                 mfaEnabled: accountMfaEnabled,
               },
               mfa: { enabled: accountMfaEnabled, enforcement: "totp" },
@@ -466,11 +429,10 @@ describe("App shell routes", () => {
             JSON.stringify({
               user: {
                 id: "user-new",
-                email: "new-student@example.edu",
+                username: "new_student",
                 displayName: "new-student",
                 avatarUrl: "https://cdn.example.edu/avatar.png",
                 status: "active",
-                emailVerified: true,
                 mfaEnabled: accountMfaEnabled,
               },
               mfa: { enabled: accountMfaEnabled, enforcement: "totp" },
@@ -486,11 +448,10 @@ describe("App shell routes", () => {
             JSON.stringify({
               user: {
                 id: "user-new",
-                email: "new-student@example.edu",
+                username: "new_student",
                 displayName: "课程助教",
                 avatarUrl: "https://cdn.example.edu/ta.png",
                 status: "active",
-                emailVerified: true,
                 mfaEnabled: accountMfaEnabled,
               },
               mfa: { enabled: accountMfaEnabled, enforcement: "totp" },
@@ -529,7 +490,7 @@ describe("App shell routes", () => {
                 {
                   id: "login-1",
                   userId: "user-new",
-                  email: "new-student@example.edu",
+                  username: "new_student",
                   outcome: "success",
                   ipAddress: "127.0.0.1",
                   userAgent: "Chrome on Windows",
@@ -549,7 +510,7 @@ describe("App shell routes", () => {
             JSON.stringify({
               secret: "JBSWY3DPEHPK3PXP",
               otpauthUri:
-                "otpauth://totp/UML:new-student@example.edu?secret=JBSWY3DPEHPK3PXP&issuer=UML",
+                "otpauth://totp/UML:new_student?secret=JBSWY3DPEHPK3PXP&issuer=UML",
               expiresAt: "2026-05-22T02:15:00.000Z",
             }),
             {
@@ -649,61 +610,6 @@ describe("App shell routes", () => {
             },
           );
         }
-        if (pathname === "/api/invitations/invite-token-123" && method === "GET") {
-          return new Response(
-            JSON.stringify({
-              invitation: {
-                id: "invitation-123",
-                projectId: "library-booking",
-                email: "invitee@example.edu",
-                role: "editor",
-                status: "invited",
-                invitedAt: "2026-05-22T02:00:00.000Z",
-                expiresAt: "2026-05-29T02:00:00.000Z",
-                project: { projectMode: "professional",
-                  id: "library-booking",
-                  name: "智慧图书馆预约系统",
-                  description: "真实项目数据",
-                  visibility: "private",
-                  status: "active",
-                  ownerUserId: "user-owner",
-                  createdAt: "2026-05-22T01:00:00.000Z",
-                  updatedAt: projectUpdatedAt,
-                },
-              },
-              expiresAt: "2026-05-29T02:00:00.000Z",
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        if (pathname === "/api/invitations/invite-token-123/accept" && method === "POST") {
-          return new Response(
-            JSON.stringify({
-              message: "Invitation accepted",
-              member: {
-                id: "member-invitee",
-                projectId: "library-booking",
-                userId: "user-new",
-                email: "invitee@example.edu",
-                displayName: "invitee",
-                role: "editor",
-                status: "active",
-                invitedByUserId: "user-owner",
-                invitedAt: "2026-05-22T02:00:00.000Z",
-                joinedAt: "2026-05-22T02:05:00.000Z",
-                createdAt: "2026-05-22T02:00:00.000Z",
-                updatedAt: "2026-05-22T02:05:00.000Z",
-              },
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
         if (pathname === "/api/account/sessions/revoke-others") {
           return new Response(JSON.stringify({ revokedCount: 1 }), {
             status: 200,
@@ -730,7 +636,7 @@ describe("App shell routes", () => {
                 id: `case-project-${caseId}`,
                 name: caseTitleById[caseId] ?? "项目",
                 description: "案例生成项目",
-                visibility: "private",
+
                 status: "active",
                 ownerUserId: "user-new",
                 createdAt: "2026-06-26T00:00:00.000Z",
@@ -740,7 +646,7 @@ describe("App shell routes", () => {
                 id: "member-case-owner",
                 projectId: `case-project-${caseId}`,
                 userId: "user-new",
-                email: "new-student@example.edu",
+                username: "new_student",
                 displayName: "new-student",
                 role: "owner",
                 status: "active",
@@ -765,7 +671,7 @@ describe("App shell routes", () => {
                 id: projectId,
                 name: "案例项目",
                 description: "案例生成项目",
-                visibility: "private",
+
                 status: "active",
                 ownerUserId: "user-new",
                 createdAt: "2026-06-26T00:00:00.000Z",
@@ -775,7 +681,7 @@ describe("App shell routes", () => {
                 id: "member-case-owner",
                 projectId,
                 userId: "user-new",
-                email: "new-student@example.edu",
+                username: "new_student",
                 displayName: "new-student",
                 role: projectMembershipRole,
                 status: "active",
@@ -795,7 +701,7 @@ describe("App shell routes", () => {
                   id: "library-booking",
                   name: "智慧图书馆预约系统",
                   description: "真实项目数据",
-                  visibility: "private",
+
                   status: "active",
                   ownerUserId: "e91237c8-5ccf-45aa-b0d2-822b96915a24",
                   ownerDisplayName: "New Student",
@@ -835,7 +741,7 @@ describe("App shell routes", () => {
                   id: "archived-demo",
                   name: "归档课程演示",
                   description: "已经归档的真实项目",
-                  visibility: "private",
+
                   status: "archived",
                   ownerUserId: "teacher-1",
                   createdAt: "2026-05-21T01:00:00.000Z",
@@ -879,7 +785,7 @@ describe("App shell routes", () => {
                 id: "library-booking",
                 name: "智慧图书馆预约系统",
                 description: "真实项目数据",
-                visibility: "private",
+
                 status: "active",
                 ownerUserId: "user-new",
                 createdAt: "2026-05-22T01:00:00.000Z",
@@ -889,7 +795,7 @@ describe("App shell routes", () => {
                 id: "member-owner",
                 projectId: "library-booking",
                 userId: "user-new",
-                email: "new-student@example.edu",
+                username: "new_student",
                 displayName: "new-student",
                 role: projectMembershipRole,
                 status: "active",
@@ -913,7 +819,7 @@ describe("App shell routes", () => {
                 id: "created-project",
                 name: "课程 UML 实验项目",
                 description: null,
-                visibility: "private",
+
                 status: "active",
                 ownerUserId: "user-new",
                 createdAt: "2026-05-22T01:00:00.000Z",
@@ -923,7 +829,7 @@ describe("App shell routes", () => {
                 id: "member-created-owner",
                 projectId: "created-project",
                 userId: "user-new",
-                email: "new-student@example.edu",
+                username: "new_student",
                 displayName: "new-student",
                 role: "owner",
                 status: "active",
@@ -943,7 +849,7 @@ describe("App shell routes", () => {
                   id: "member-owner",
                   projectId: "library-booking",
                   userId: "user-new",
-                  email: "new-student@example.edu",
+                  username: "new_student",
                   displayName: "new-student",
                   avatarUrl: "https://cdn.example.edu/new-student.png",
                   role: "owner",
@@ -958,7 +864,7 @@ describe("App shell routes", () => {
                   id: "member-analyst",
                   projectId: "library-booking",
                   userId: "a3023f76-6da3-4fcd-9a82-8a187c30691d",
-                  email: "analyst@example.edu",
+                  username: "analyst",
                   displayName: "需求分析师",
                   avatarUrl: null,
                   role: "editor",
@@ -973,7 +879,7 @@ describe("App shell routes", () => {
                   id: "member-viewer",
                   projectId: "library-booking",
                   userId: null,
-                  email: "viewer@example.edu",
+                  username: "viewer",
                   displayName: null,
                   role: "viewer",
                   status: "invited",
@@ -987,7 +893,7 @@ describe("App shell routes", () => {
                   id: "member-editor",
                   projectId: "library-booking",
                   userId: "user-editor",
-                  email: "editor-active@example.edu",
+                  username: "editor_active",
                   displayName: "editor-active",
                   role: "editor",
                   status: "active",
@@ -1011,7 +917,7 @@ describe("App shell routes", () => {
               invitation: {
                 id: "invitation-editor",
                 projectId: "library-booking",
-                email: "editor@example.edu",
+                username: "editor",
                 role: "editor",
                 status: "invited",
                 invitedAt: "2026-05-22T02:30:00.000Z",
@@ -1030,7 +936,7 @@ describe("App shell routes", () => {
               invitation: {
                 id: "member-viewer",
                 projectId: "library-booking",
-                email: "viewer@example.edu",
+                username: "viewer",
                 role: "viewer",
                 status: "invited",
                 invitedAt: "2026-05-22T02:40:00.000Z",
@@ -1058,7 +964,7 @@ describe("App shell routes", () => {
                 id: "member-viewer",
                 projectId: "library-booking",
                 userId: null,
-                email: "viewer@example.edu",
+                username: "viewer",
                 displayName: null,
                 role: "editor",
                 status: "invited",
@@ -1079,7 +985,7 @@ describe("App shell routes", () => {
                 id: "member-editor",
                 projectId: "library-booking",
                 userId: "user-editor",
-                email: "editor-active@example.edu",
+                username: "editor_active",
                 displayName: "editor-active",
                 role: "viewer",
                 status: "active",
@@ -1201,7 +1107,7 @@ describe("App shell routes", () => {
                   status: "active",
                   editLock: {
                     status: "locked",
-                    lockedBy: "teacher@example.edu",
+                    lockedBy: "teacher",
                     lockedAt: "2026-05-22T02:01:00.000Z",
                   },
                   download: { status: "available" },
@@ -1321,7 +1227,7 @@ describe("App shell routes", () => {
                 id: "created-project",
                 name: "课程 UML 实验项目",
                 description: null,
-                visibility: "private",
+
                 status: "active",
                 ownerUserId: "user-new",
                 updatedAt: new Date().toISOString(),
@@ -1376,7 +1282,7 @@ describe("App shell routes", () => {
     authSessionMode = "unauthenticated";
     window.history.pushState({}, "", "/projects/connections?interaction=consent-id");
     render(withWorkspaceProviders(<Shell />, createRepository()));
-    await screen.findByLabelText("邮箱或用户名");
+    await screen.findByLabelText("用户名");
     expect(window.location.pathname).toBe("/login");
     expect(new URLSearchParams(window.location.search).get("redirect")).toBe("/projects/connections?interaction=consent-id");
   });
@@ -1506,7 +1412,7 @@ describe("App shell routes", () => {
     });
     expect(window.location.pathname).toBe("/login");
     expect(window.location.search).toBe("?redirect=%2Fprojects&reason=session-expired");
-    expect(await screen.findByLabelText("邮箱或用户名")).toBeInTheDocument();
+    expect(await screen.findByLabelText("用户名")).toBeInTheDocument();
     expect(banner).not.toBeInTheDocument();
     expect(sidebar).not.toBeInTheDocument();
     expect(screen.queryByTestId("account-billing-dashboard")).not.toBeInTheDocument();
@@ -1524,37 +1430,35 @@ describe("App shell routes", () => {
 
   it("renders static login and registration form states", async () => {
     const user = userEvent.setup();
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-
+    const fetchMock = vi.mocked(fetch);
+    projectApiMode = "authenticated";
     window.history.pushState({}, "", "/login");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-
-    await user.type(await screen.findByLabelText("邮箱或用户名"), "student@example.edu");
+    render(withWorkspaceProviders(<Shell />, createRepository()));
+    await user.type(await screen.findByLabelText("用户名"), "student");
     expect(screen.getByTestId("auth-shell")).toHaveAttribute("data-auth-layout", "admincn-v2");
-    expect(screen.getByTestId("auth-form-panel")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "登录" })).toBeInTheDocument();
-    expect(within(screen.getByTestId("auth-form-panel")).getByText("SoftJL")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "登录" })).toHaveClass("bg-primary");
-    expect(screen.getByRole("button", { name: "创建账号" })).not.toHaveClass("bg-primary");
-    expect(screen.getByRole("button", { name: "忘记密码？" })).not.toHaveClass("bg-primary");
+    expect(screen.queryByRole("button", { name: "忘记密码？" })).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("密码"), "wrong-password");
     await user.click(screen.getByRole("button", { name: "登录" }));
-
-    expect(await screen.findByText("邮箱或用户名或密码错误。")).toBeInTheDocument();
-
+    expect(await screen.findByText("用户名或密码错误。")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "创建账号" }));
-    await user.type(await screen.findByLabelText("邮箱"), "new-student@example.edu");
+    await user.type(await screen.findByLabelText("用户名"), "new_student");
     await user.type(screen.getByLabelText("密码"), "StrongPass123");
-    await user.type(screen.getByLabelText("用户名"), "new_student");
     await user.type(screen.getByLabelText("昵称"), "New Student");
     await user.click(screen.getByRole("checkbox", { name: "我已阅读并同意服务条款" }));
-    await user.click(screen.getByRole("button", { name: "注册并发送验证邮件" }));
+    await user.click(screen.getByRole("button", { name: "注册" }));
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/auth/register"),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ username: "new_student", password: "StrongPass123", displayName: "New Student" }) }));
+    await waitFor(() => expect(window.location.pathname).toBe("/projects"));
+    expect(await screen.findByRole("heading", { name: "项目首页" })).toBeInTheDocument();
+  });
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/verify-email");
-    });
-    expect(window.location.search).toContain("email=new-student%40example.edu");
-    expect(await screen.findByText(/验证邮件已发送到/)).toBeInTheDocument();
+  it.each(["/verify-email", "/verify-username", "/forgot-password", "/reset-password", "/invitations/accept"])("rejects retired authentication route %s", async (path) => {
+    expect(matchAppRoute(path)).toMatchObject({ kind: "not-found", path });
+    window.history.pushState({}, "", path);
+    render(withWorkspaceProviders(<Shell />, createRepository()));
+    expect(await screen.findByText("你访问的页面不存在")).toBeInTheDocument();
+    expect(screen.queryByTestId("auth-shell")).not.toBeInTheDocument();
   });
 
   it("shows the shared language menu on auth pages before login", async () => {
@@ -1586,26 +1490,26 @@ describe("App shell routes", () => {
     await user.click(screen.getByRole("button", { name: "隐藏密码" }));
     expect(passwordInput).toHaveAttribute("type", "password");
 
-    await user.type(screen.getByLabelText("邮箱或用户名"), "student@example.edu");
+    await user.type(screen.getByLabelText("用户名"), "student");
     await user.type(passwordInput, "password-123");
     await user.click(screen.getByRole("checkbox", { name: "记住账号" }));
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     await waitFor(() => {
-      expect(localStorage.getItem("uml-auth-remembered-email")).toBe("student@example.edu");
+      expect(localStorage.getItem("uml-auth-remembered-username")).toBe("student");
       expect(localStorage.getItem("uml-auth-remembered-password")).toBeNull();
     });
 
     window.history.pushState({}, "", "/login");
     window.dispatchEvent(new PopStateEvent("popstate"));
 
-    expect(await screen.findByLabelText("邮箱或用户名")).toHaveValue("student@example.edu");
+    expect(await screen.findByLabelText("用户名")).toHaveValue("student");
     expect(screen.getByLabelText("密码")).toHaveValue("");
     expect(screen.getByRole("checkbox", { name: "记住账号" })).toBeChecked();
   });
 
   it("clears legacy saved passwords when opening the homepage without visiting login", async () => {
-    localStorage.setItem("uml-auth-remembered-email", "student@example.edu");
+    localStorage.setItem("uml-auth-remembered-username", "student");
     localStorage.setItem("uml-auth-remembered-password", "legacy-password");
     window.history.pushState({}, "", "/");
 
@@ -1614,16 +1518,13 @@ describe("App shell routes", () => {
     await waitFor(() => {
       expect(localStorage.getItem("uml-auth-remembered-password")).toBeNull();
     });
-    expect(localStorage.getItem("uml-auth-remembered-email")).toBe("student@example.edu");
+    expect(localStorage.getItem("uml-auth-remembered-username")).toBe("student");
   });
 
   it("renders every website auth route inside the animated auth shell", async () => {
     const authRoutes = [
       "/login",
       "/register",
-      "/forgot-password",
-      "/reset-password",
-      "/verify-email",
     ];
 
     for (const path of authRoutes) {
@@ -1643,7 +1544,7 @@ describe("App shell routes", () => {
     window.history.pushState({}, "", "/login?redirect=%2Fworkspace");
     render(withWorkspaceProviders(<Shell />, createRepository()));
 
-    await user.type(await screen.findByLabelText("邮箱或用户名"), "student@example.edu");
+    await user.type(await screen.findByLabelText("用户名"), "student");
     await user.type(screen.getByLabelText("密码"), "StrongPass123");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
@@ -1671,7 +1572,7 @@ describe("App shell routes", () => {
     await act(async () => {
       render(withWorkspaceProviders(<Shell />, createRepository()));
     });
-    await user.type(screen.getByLabelText("邮箱或用户名"), "student@example.edu");
+    await user.type(screen.getByLabelText("用户名"), "student");
     await user.type(screen.getByLabelText("密码"), "StrongPass123");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
@@ -1687,22 +1588,6 @@ describe("App shell routes", () => {
     expect(screen.getByTestId("projects-index-shell")).toBeInTheDocument();
   });
 
-  it("sends unverified logins to the website email verification page", async () => {
-    const user = userEvent.setup();
-    loginApiMode = "email-unverified";
-    window.history.pushState({}, "", "/login");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-
-    await user.type(await screen.findByLabelText("邮箱或用户名"), "student@example.edu");
-    await user.type(screen.getByLabelText("密码"), "StrongPass123");
-    await user.click(screen.getByRole("button", { name: "登录" }));
-
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/verify-email");
-    });
-    expect(window.location.search).toContain("email=student%40example.edu");
-    expect(await screen.findByRole("heading", { name: "验证您的邮箱" })).toBeInTheDocument();
-  });
 
   it("verifies an MFA challenge before completing login", async () => {
     const user = userEvent.setup();
@@ -1713,13 +1598,13 @@ describe("App shell routes", () => {
     window.history.pushState({}, "", "/login");
     window.dispatchEvent(new PopStateEvent("popstate"));
 
-    await user.type(await screen.findByLabelText("邮箱或用户名"), "student@example.edu");
+    await user.type(await screen.findByLabelText("用户名"), "student");
     await user.type(screen.getByLabelText("密码"), "StrongPass123");
     await user.click(screen.getByRole("checkbox", { name: "记住账号" }));
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     expect(await screen.findByLabelText("MFA 验证码")).toBeInTheDocument();
-    expect(localStorage.getItem("uml-auth-remembered-email")).toBeNull();
+    expect(localStorage.getItem("uml-auth-remembered-username")).toBeNull();
     expect(localStorage.getItem("uml-auth-remembered-password")).toBeNull();
     expect(screen.getByText("请输入认证器中的 6 位验证码完成登录。")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/login");
@@ -1740,136 +1625,12 @@ describe("App shell routes", () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe("/projects");
     });
-    expect(localStorage.getItem("uml-auth-remembered-email")).toBe("student@example.edu");
+    expect(localStorage.getItem("uml-auth-remembered-username")).toBe("student");
     expect(localStorage.getItem("uml-auth-remembered-password")).toBeNull();
   });
 
-  it("accepts an invitation token after registration", async () => {
-    const user = userEvent.setup();
-    const fetchMock = vi.mocked(fetch);
-    window.history.pushState({}, "", "/register?invitationToken=course-token-123");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
 
-    await user.type(await screen.findByLabelText("邮箱"), "new-student@example.edu");
-    await user.type(screen.getByLabelText("密码"), "StrongPass123");
-    await user.type(screen.getByLabelText("用户名"), "new_student");
-    await user.type(screen.getByLabelText("昵称"), "New Student");
-    expect(screen.getByLabelText("邀请码")).toHaveValue("course-token-123");
-    await user.click(screen.getByRole("checkbox", { name: "我已阅读并同意服务条款" }));
-    await user.click(screen.getByRole("button", { name: "注册并发送验证邮件" }));
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/auth/register"),
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({
-          email: "new-student@example.edu",
-          username: "new_student",
-          password: "StrongPass123",
-          displayName: "New Student",
-          invitationToken: "course-token-123",
-        }),
-      }),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/invitations/course-token-123/accept"),
-      expect.objectContaining({ method: "POST" }),
-    );
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/verify-email");
-    });
-    expect(window.location.search).toContain("email=new-student%40example.edu");
-  });
-
-  it("opens a project invitation link and accepts it from the browser", async () => {
-    const user = userEvent.setup();
-    const fetchMock = vi.mocked(fetch);
-    projectApiMode = "authenticated";
-    window.history.pushState({}, "", "/invitations/accept?token=invite-token-123");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-
-    expect(await screen.findByRole("heading", { name: "接受项目邀请" })).toBeInTheDocument();
-    expect(await screen.findByText("智慧图书馆预约系统")).toBeInTheDocument();
-    expect(screen.getByText("invitee@example.edu")).toBeInTheDocument();
-    expect(screen.getByText("编辑者")).toBeInTheDocument();
-    expect(screen.queryByText("项目导航")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "接受邀请" }));
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/invitations/invite-token-123"),
-      expect.objectContaining({ credentials: "include" }),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/invitations/invite-token-123/accept"),
-      expect.objectContaining({ method: "POST" }),
-    );
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/projects");
-    });
-  });
-
-  it("calls real auth recovery endpoints for verify, forgot, and reset flows", async () => {
-    const user = userEvent.setup();
-    const fetchMock = vi.mocked(fetch);
-    const verifyView = render(withWorkspaceProviders(<Shell />, createRepository()));
-    expect(screen.queryByText("AI 驱动的软件工程实验平台")).not.toBeInTheDocument();
-
-    window.history.pushState({}, "", "/verify-email?token=verification-token-123456");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-
-    await user.click(await screen.findByRole("button", { name: "完成邮箱验证" }));
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/login");
-    });
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/auth/verify-email"),
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ token: "verification-token-123456" }),
-      }),
-    );
-    verifyView.unmount();
-
-    window.history.pushState({}, "", "/verify-email?email=new-student%40example.edu&sent=1");
-    const manualVerifyView = render(withWorkspaceProviders(<Shell />, createRepository()));
-    await user.type(
-      await screen.findByLabelText("邮件验证码 / 短期 token"),
-      "manual-token-789",
-    );
-    await user.click(screen.getByRole("button", { name: "完成邮箱验证" }));
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/login");
-    });
-    expect(window.location.search).toContain("email=new-student%40example.edu");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/auth/verify-email"),
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ token: "manual-token-789" }),
-      }),
-    );
-    manualVerifyView.unmount();
-
-    window.history.pushState({}, "", "/forgot-password");
-    const forgotView = render(withWorkspaceProviders(<Shell />, createRepository()));
-    await user.type(await screen.findByLabelText("邮箱"), "new-student@example.edu");
-    await user.click(screen.getByRole("button", { name: "发送重置邮件" }));
-    expect(await screen.findByText(/如果邮箱存在，重置邮件会发送到/)).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/auth/forgot-password"),
-      expect.objectContaining({ method: "POST" }),
-    );
-    forgotView.unmount();
-
-    window.history.pushState({}, "", "/reset-password?token=reset-token-123456");
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-    await user.type(await screen.findByLabelText("新密码"), "AnotherStrongPass123");
-    await user.click(screen.getByRole("button", { name: "重置密码" }));
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/login");
-    });
-  });
 
   it("redirects the projects index to login when the session is missing", async () => {
     authSessionMode = "unauthenticated";
@@ -1991,12 +1752,12 @@ describe("App shell routes", () => {
       expect(screen.getAllByText("智慧图书馆预约系统").length).toBeGreaterThan(0);
       expect(screen.getByTestId("projects-card-grid")).toHaveAttribute(
         "data-mobile-card-density",
-        "two-column",
+        "single-column",
       );
-      expect(screen.getByTestId("projects-card-grid")).toHaveClass("grid-cols-2");
+      expect(screen.getByTestId("projects-card-grid")).toHaveClass("grid-cols-1", "md:grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]");
       expect(screen.getByTestId("projects-filter-panel")).toHaveClass("p-3", "md:p-[17px]");
       expect(screen.getByTestId("projects-filter-panel")).toBeInTheDocument();
-      expect(screen.getAllByRole("article")[0]).toHaveClass("min-h-[182px]");
+      expect(screen.getByRole("button", { name: "查看项目 智慧图书馆预约系统" })).toHaveClass("p-4", "rounded-xl");
       expect(screen.queryByText("正在加载项目列表...")).not.toBeInTheDocument();
       expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
     } finally {
@@ -2262,8 +2023,9 @@ describe("App shell routes", () => {
       expect(screen.getByRole("heading", { name: "项目首页" })).toBeInTheDocument();
       holdNextRouteAuth = true;
 
+      fireEvent.click(screen.getByRole("button", { name: "查看项目 智慧图书馆预约系统" }));
       fireEvent.click(
-        screen.getByRole("button", { name: "进入项目 智慧图书馆预约系统" }),
+        screen.getByRole("link", { name: "进入项目 智慧图书馆预约系统" }),
       );
 
       await act(async () => {
@@ -2393,7 +2155,7 @@ describe("App shell routes", () => {
     render(withWorkspaceProviders(<Shell />, createRepository()));
 
     expect(
-      await screen.findByRole("button", { name: "进入项目 智慧图书馆预约系统" }),
+      await screen.findByRole("button", { name: "查看项目 智慧图书馆预约系统" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "项目首页" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "去连接" })).not.toBeInTheDocument();
@@ -2415,17 +2177,19 @@ describe("App shell routes", () => {
     expect(screen.queryByRole("button", { name: "导出" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "历史" })).not.toBeInTheDocument();
 
-    expect(screen.getByText("负责人：New Student")).toBeInTheDocument();
-    expect(screen.getByText("真实项目数据")).toHaveClass("truncate");
+    expect(screen.getByText("真实项目数据")).toHaveClass("text-base");
     expect(screen.getByText("真实项目数据")).toHaveAttribute("title", "真实项目数据");
+    await user.click(screen.getByRole("button", { name: "查看项目 智慧图书馆预约系统" }));
+    expect(await screen.findByRole("dialog", { name: "智慧图书馆预约系统" })).toBeVisible();
+    expect(screen.getByText("负责人：New Student")).toBeInTheDocument();
     expect(screen.queryByText("e91237c8-5ccf-45aa-b0d2-822b96915a24")).not.toBeInTheDocument();
-    expect(screen.getAllByText("仅成员可见").length).toBeGreaterThan(0);
+    expect(screen.getByText("4 位成员")).toBeInTheDocument();
     expect(screen.getByText(`最近更新：${formatProjectDateTimeMinute(projectUpdatedAt)}`)).toBeInTheDocument();
     expect(screen.getByLabelText("成员头像 New Student")).toBeInTheDocument();
     expect(screen.getByLabelText("成员头像 Editor User")).toBeInTheDocument();
     expect(screen.getByLabelText("成员头像 Viewer User")).toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "进入项目 智慧图书馆预约系统" }));
+    await user.click(screen.getByRole("link", { name: "进入项目 智慧图书馆预约系统" }));
 
     expect(window.location.pathname).toBe("/projects/library-booking");
     expect(await screen.findByText("项目导航")).toBeInTheDocument();
@@ -2504,12 +2268,8 @@ describe("App shell routes", () => {
     expect(descriptionInput.tagName).toBe("TEXTAREA");
     expect(descriptionInput).toHaveAttribute("rows", "4");
     await user.type(screen.getByLabelText("项目名称"), "订单系统");
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    const visibilityGroup = screen.getByRole("group", { name: "可见性" });
-    expect(
-      within(visibilityGroup).getByRole("button", { name: "仅成员可见" }),
-    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("group", { name: "可见性" })).not.toBeInTheDocument();
+    expect(screen.getByText("项目仅对已加入的成员开放，创建后可邀请协作者。")).toBeInTheDocument();
     expect(screen.queryByLabelText("课程 / 班级 / 团队")).not.toBeInTheDocument();
   });
 
@@ -2531,14 +2291,8 @@ describe("App shell routes", () => {
     expect(descriptionInput.tagName).toBe("TEXTAREA");
     expect(descriptionInput).toHaveAttribute("rows", "4");
     await user.type(screen.getByLabelText("项目名称"), "订单系统");
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    const visibilityGroup = screen.getByRole("group", { name: "可见性" });
-    await user.click(within(visibilityGroup).getByRole("button", { name: "仅成员可见" }));
-    expect(within(visibilityGroup).getByRole("button", { name: "仅成员可见" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(screen.queryByRole("group", { name: "可见性" })).not.toBeInTheDocument();
+    expect(screen.getByText("项目仅对已加入的成员开放，创建后可邀请协作者。")).toBeInTheDocument();
     expect(screen.queryByLabelText("课程 / 班级 / 团队")).not.toBeInTheDocument();
     expect(screen.queryByText("默认模型策略")).not.toBeInTheDocument();
   });
@@ -2630,7 +2384,7 @@ describe("App shell routes", () => {
 
     await user.click(await screen.findByRole("button", { name: "成员" }));
     expect(window.location.pathname).toBe("/projects/library-booking/members");
-    expect(await screen.findByRole("region", { name: "项目成员与权限" })).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "成员" })).toBeInTheDocument();
     expect(screen.queryByTestId("project-workspace-drawer-layer")).not.toBeInTheDocument();
     expect(screen.getByText("项目导航")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "系统需求" }));
@@ -2772,7 +2526,14 @@ describe("App shell routes", () => {
     expect(screen.queryByRole("button", { name: "取消任务" })).not.toBeInTheDocument();
   });
 
-  it("manages project members through invitation APIs, role, and revoke actions", async () => {
+  it("manages project members through invitation APIs, role, and revoke actions", async ({ onTestFinished }) => {
+    // jsdom does not fetch avatar images; complete loading before checking the shared Avatar.
+    const imageMock = vi.spyOn(window, "Image").mockImplementation(function () {
+      const image = document.createElement("img");
+      queueMicrotask(() => image.dispatchEvent(new Event("load")));
+      return image;
+    });
+    onTestFinished(() => imageMock.mockRestore());
     const user = userEvent.setup();
     const fetchMock = vi.mocked(fetch);
     projectApiMode = "authenticated";
@@ -2781,30 +2542,30 @@ describe("App shell routes", () => {
 
     await user.click(await screen.findByRole("button", { name: "成员" }));
 
-    expect(await screen.findByRole("region", { name: "项目成员与权限" })).toBeInTheDocument();
-    expect(screen.getByAltText("new-student 的头像")).toHaveAttribute(
+    expect(await screen.findByRole("group", { name: "成员" })).toBeInTheDocument();
+    expect(await screen.findByAltText("new-student 的头像")).toHaveAttribute(
       "src",
       "https://cdn.example.edu/new-student.png",
     );
     expect(screen.queryByRole("option", { name: "owner" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "邀请新成员" }));
-    const inviteDialog = await screen.findByRole("dialog", { name: "邀请新成员" });
-    fireEvent.change(within(inviteDialog).getByLabelText("邀请邮箱"), {
-      target: { value: "editor@example.edu" },
+    const inviteDialog = await screen.findByRole("dialog", { name: "邀请成员加入项目" });
+    fireEvent.change(within(inviteDialog).getByLabelText(/邀请用户名/u), {
+      target: { value: "editor" },
     });
     await user.click(within(inviteDialog).getByRole("button", { name: "发送邀请" }));
     await waitFor(() => {
-      expect(screen.getAllByText("editor@example.edu").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("editor").length).toBeGreaterThan(0);
     });
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/projects/library-booking/invitations"),
       expect.objectContaining({ method: "POST" }),
     );
-    expect(screen.getAllByText("邀请中").length).toBeGreaterThan(0);
+    expect(within(screen.getByRole("group", { name: "待处理邀请" })).getAllByText("editor").length).toBeGreaterThan(0);
 
     await chooseSelectOption(
       user,
-      getSelectTrigger("editor-active@example.edu 的角色"),
+      getSelectTrigger("editor_active 的角色"),
       "查看者",
     );
     expect(fetchMock).toHaveBeenCalledWith(
@@ -2812,19 +2573,22 @@ describe("App shell routes", () => {
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ role: "viewer" }) }),
     );
 
-    await user.click(screen.getByRole("button", { name: "重发邀请 viewer@example.edu" }));
+    await user.click(screen.getByRole("button", { name: "管理 viewer" }));
+    await user.click(await screen.findByRole("menuitem", { name: "重发邀请 viewer" }));
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/projects/library-booking/invitations/member-viewer/resend"),
       expect.objectContaining({ method: "POST" }),
     );
 
-    await user.click(screen.getByRole("button", { name: "撤销邀请 viewer@example.edu" }));
+    await user.click(screen.getByRole("button", { name: "管理 viewer" }));
+    await user.click(await screen.findByRole("menuitem", { name: "撤销邀请 viewer" }));
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/projects/library-booking/invitations/member-viewer"),
       expect.objectContaining({ method: "DELETE" }),
     );
 
-    await user.click(screen.getByRole("button", { name: "移除 editor-active@example.edu" }));
+    await user.click(screen.getByRole("button", { name: "管理 editor_active" }));
+    await user.click(await screen.findByRole("menuitem", { name: "移除 editor_active" }));
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/projects/library-booking/members/member-editor"),
       expect.objectContaining({ method: "DELETE" }),
@@ -2998,38 +2762,29 @@ describe("App shell routes", () => {
     expect(repository.deleteRunHistory).toHaveBeenCalledWith("run-failed");
   });
 
-  it("creates projects with explicit mode and visibility", async () => {
+  it("creates projects with explicit mode and member-only access", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.mocked(fetch);
     window.history.pushState({}, "", "/projects/new");
     render(withWorkspaceProviders(<Shell />, createRepository()));
 
-    const preview = await screen.findByTestId("project-background-preview-image");
-    const defaultBackground = PROJECT_BACKGROUND_OPTIONS.find(option => option.imageUrl === preview.getAttribute("src"));
-    expect(defaultBackground).toBeDefined();
+    expect(screen.queryByRole("button", { name: "选择背景图" })).not.toBeInTheDocument();
 
     expect(screen.queryByLabelText("课程 / 班级 / 团队")).not.toBeInTheDocument();
     await user.type(await screen.findByLabelText("项目名称"), "课程 UML 实验项目");
-    await user.click(await screen.findByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "公开可见" }));
     expect(screen.queryByText("默认模型策略")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/projects"),
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({
-          projectMode: "standard",
-          name: "课程 UML 实验项目",
-          description: null,
-          visibility: "public",
-          backgroundKey: defaultBackground!.key,
-        }),
-      }),
-    );
+    const createCall = fetchMock.mock.calls.find(([input, init]) => String(input).endsWith("/api/projects") && init?.method === "POST");
+    expect(createCall).toBeDefined();
+    const payload = JSON.parse(String(createCall?.[1]?.body));
+    expect(payload).toEqual({
+      projectMode: "standard",
+      name: "课程 UML 实验项目",
+      description: null,
+      backgroundKey: expect.any(String),
+    });
+    expect(PROJECT_BACKGROUND_OPTIONS.map(({ key }) => key)).toContain(payload.backgroundKey);
     expect(
       await screen.findByText("项目已创建，正在进入项目。"),
     ).toBeInTheDocument();

@@ -6,8 +6,8 @@ type EvaluationInput = { requirementText: string; selectedDiagrams: RunSnapshot[
 export function assertEvaluationApiConfig(env: NodeJS.ProcessEnv) {
   const required = ["UML_EVAL_PROJECT_ID", "UML_EVAL_PROVIDER_CONFIG_ID", "UML_EVAL_MODEL"];
   const missing = required.filter((name) => !env[name]?.trim());
-  if (!env.UML_EVAL_SESSION_COOKIE?.trim() && !(env.UML_EVAL_EMAIL?.trim() && env.UML_EVAL_PASSWORD)) {
-    missing.push("UML_EVAL_SESSION_COOKIE 或 UML_EVAL_EMAIL + UML_EVAL_PASSWORD");
+  if (!env.UML_EVAL_SESSION_COOKIE?.trim() && !(env.UML_EVAL_USERNAME?.trim() && env.UML_EVAL_PASSWORD)) {
+    missing.push("UML_EVAL_SESSION_COOKIE 或 UML_EVAL_USERNAME + UML_EVAL_PASSWORD");
   }
   if (missing.length) throw new Error(`缺少评测配置：${missing.join("、")}`);
 }
@@ -26,7 +26,7 @@ export async function createEvaluationApiClient(env: NodeJS.ProcessEnv, send: ty
   if (!cookie) {
     const response = await send(`${origin}/api/auth/login`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifier: env.UML_EVAL_EMAIL, password: env.UML_EVAL_PASSWORD }),
+      body: JSON.stringify({ identifier: env.UML_EVAL_USERNAME, password: env.UML_EVAL_PASSWORD }),
       signal: AbortSignal.timeout(timeoutMs), redirect: "error",
     });
     if (response.status === 202) throw new Error("评测账号需要多因素认证，请完成登录后配置 UML_EVAL_SESSION_COOKIE");

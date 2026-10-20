@@ -104,7 +104,7 @@ export function assertCurrentRunSnapshot(value: unknown): void {
     for (const model of snapshot.requirementModels) assertModel(model, "requirements");
   } else {
     const snapshot = runSnapshotSchema.parse(value);
-    const expected = snapshot.selectedDiagrams.length || snapshot.requestedDiagrams?.length
+    const expected = snapshot.standardRun ? "quick_modeling" : snapshot.selectedDiagrams.length || snapshot.requestedDiagrams?.length
       ? "requirement_modeling" : "requirement_extraction";
     z.literal(expected).parse(snapshot.operationType);
     for (const model of snapshot.models) assertModel(model, "requirements");

@@ -66,12 +66,12 @@ async function setup(
     config,
   }))!;
   const alice = await authStore.createUser({
-    email: "alice@example.test",
+    username: "alice",
     displayName: "Alice",
     passwordHash: "not-a-password",
   });
   const bob = await authStore.createUser({
-    email: "bob@example.test",
+    username: "bob",
     displayName: "Bob",
     passwordHash: "not-a-password",
   });
@@ -79,13 +79,13 @@ async function setup(
     ownerUserId: alice.id,
     name: "图书管理系统",
     description: "A",
-    visibility: "private",
+
   });
   const b = await authStore.createProject({
     ownerUserId: bob.id,
     name: "图书管理系统",
     description: "B",
-    visibility: "private",
+
   });
   const session = await authStore.createSession({
     userId: alice.id,
@@ -344,7 +344,7 @@ function designWorkspace(summary: string) {
       diagramKind: "architecture", modelId: "implementation", title: "实现设计", summary, notes: [], packages: [],
       components: [{ id: "service", name: "Service" }], relationships: [],
     } },
-    designPlantUml: { implementation: "@startuml\ncomponent Service\n@enduml" },
+    designPlantUml: { implementation: "@startuml\ncomponent Service\n" },
   };
 }
 
@@ -533,7 +533,7 @@ test("account-wide personal tokens follow live project access, including project
   assert.equal(created.json().connection.projectScope, "account");
   const principal = await s.access.authenticate(`Bearer ${created.json().token}`);
   const service = createMcpToolService(s.access, principal);
-  const later = await s.authStore.createProject({ ownerUserId: s.alice.id, name: "Later project", description: "", visibility: "private" });
+  const later = await s.authStore.createProject({ ownerUserId: s.alice.id, name: "Later project", description: "" });
   const projects = await service.list_projects(mcpListProjectsInputSchema.parse({}));
   assert.deepEqual(new Set((projects.data.items as { id: string }[]).map((project) => project.id)), new Set([s.a.id, later.project.id]));
   const scoped = createMcpToolService(s.access, await s.access.authenticate(s.headers.authorization));
@@ -551,11 +551,11 @@ test("account-wide personal tokens follow live project access, including project
 test("accounts with no projects can create personal tokens before creating their first project", async (t) => {
   const s = await setup();
   t.after(() => s.app.close());
-  const user = await s.authStore.createUser({ email: "new@example.test", displayName: "New user", passwordHash: "not-a-password" });
-  const token = await s.access.createToken(user.id, "new-account", { projectScope: 'account', projectIds: [] }, 30);
+  const user = await s.authStore.createUser({ username: "new", displayName: "New user", passwordHash: "not-a-password" });
+  const token = await s.access.createToken(user.id, "new-account", { projectScope: "account", projectIds: [] }, 30);
   const service = createMcpToolService(s.access, await s.access.authenticate(`Bearer ${token.token}`));
   assert.deepEqual((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items, []);
-  const project = await s.authStore.createProject({ ownerUserId: user.id, name: "First project", description: "", visibility: "private" });
+  const project = await s.authStore.createProject({ ownerUserId: user.id, name: "First project", description: "" });
   assert.equal((await service.get_implementation_context(mcpContextInputSchema.parse({ projectId: project.project.id }))).status, "ok");
   s.authStore.updateUser(user.id, { status: "disabled" });
   await assert.rejects(() => service.list_projects(mcpListProjectsInputSchema.parse({})), { code: "invalid_token" });
@@ -648,7 +648,7 @@ test("OAuth PKCE account consent without projects follows live access through re
   assert.equal(connections.find((connection: { id: string }) => connection.id === principal.id).projectScope, "account");
   const service = createMcpToolService(s.access, principal);
   assert.deepEqual((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items, []);
-  const later = await s.authStore.createProject({ ownerUserId: s.alice.id, name: "Later OAuth project", description: "", visibility: "private" });
+  const later = await s.authStore.createProject({ ownerUserId: s.alice.id, name: "Later OAuth project", description: "" });
   assert.deepEqual(((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items as { id: string }[]).map((project) => project.id), [later.project.id]);
   assert.equal((await service.get_implementation_context(mcpContextInputSchema.parse({ projectId: later.project.id }))).status, "ok");
   await assert.rejects(() => service.get_implementation_context(mcpContextInputSchema.parse({ projectId: s.b.id })), { code: "access_denied" });
@@ -656,7 +656,7 @@ test("OAuth PKCE account consent without projects follows live access through re
   await assert.rejects(() => service.get_implementation_context(mcpContextInputSchema.parse({ projectId: later.project.id })), { code: "access_denied" });
   assert.deepEqual((await service.list_projects(mcpListProjectsInputSchema.parse({}))).data.items, []);
   const joined = s.authStore.createMember({
-    projectId: s.a.id, userId: s.alice.id, email: s.alice.email, displayName: s.alice.displayName,
+    projectId: s.a.id, userId: s.alice.id, username: s.alice.username, displayName: s.alice.displayName,
     role: "viewer", status: "active", invitedByUserId: null, invitedAt: null, joinedAt: new Date().toISOString(),
   });
   assert.equal((await service.get_implementation_context(mcpContextInputSchema.parse({ projectId: s.a.id }))).status, "ok");
@@ -1098,7 +1098,7 @@ test("disabled MCP does not expose the verifier download", async (t) => {
 
 test("ordinary MCP uses trusted project mode and omits professional implementation artifacts", async t => {
   const s = await setup(); t.after(() => s.app.close());
-  const { project } = s.authStore.createProject({ ownerUserId: s.alice.id, name: "普通版", projectMode: "standard", description: null, visibility: "private" });
+  const { project } = s.authStore.createProject({ ownerUserId: s.alice.id, name: "普通版", projectMode: "standard", description: null });
   s.authStore.saveProjectWorkspace({ projectId: project.id, baseVersion: 0, updatedByUserId: s.alice.id,
     state: { standardProject: { description: "修改后的需求", rounds: [], diagrams: {} }, projectMode: "professional" } });
   const token = await s.access.createToken(s.alice.id, "ordinary", { projectScope: 'selected', projectIds: [project.id] }, 30);

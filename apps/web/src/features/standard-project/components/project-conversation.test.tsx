@@ -364,9 +364,10 @@ it("connects the source timing, follow-ups and provider Token display after a st
   expect(screen.getByRole("button", { name: /读取项目.*已完成/ })).toBeInTheDocument();
   expect(screen.getByText("已读取项目，reasoning 是原始内容。")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "回复耗时" })).toHaveTextContent("4.29s");
-  const counter = await screen.findByRole("button", { name: /Token 用量/ });
-  await waitFor(() => expect(counter).toHaveTextContent("12.4k / 64k"));
+  const counter = await screen.findByRole("button", { name: /当前上下文占用/ });
+  await waitFor(() => expect(counter).toHaveTextContent("111 / 64k"));
   await user.hover(counter); expect(await screen.findByText("缓存输入")).toBeInTheDocument();
+  expect(screen.getByText("最近一次主会话调用")).toBeInTheDocument();
   await user.unhover(counter);
   const followUp = screen.getByRole("button", { name: "检查现有模型中遗漏的业务规则" });
   await user.click(followUp);
@@ -754,10 +755,10 @@ it("bounds merged reasoning by user turns and calendar days without inventing da
 it("labels a real runtime budget when Modelpedia capacity is unknown", async () => {
   vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 48000,
     capacity: { context: null, output: null, source: "unknown", matchedId: null, updatedAt: null } });
-  const props = defaults(); props.state.tokenUsage = { model: "strict", contextBudget: 48000, contextTokens: null,
+  const props = defaults(); props.state.tokenUsage = { model: "strict", contextBudget: 48000, contextTokens: 1400,
     lastCall: { input: 1200, output: 200, cacheRead: null, cacheWrite: null, total: 1400 }, cumulative: { total: 1400, calls: 1, unreportedCalls: 0 } };
   render(view(props));
-  const counter = await screen.findByRole("button", { name: "Token 用量（当前预算）" });
+  const counter = await screen.findByRole("button", { name: "当前上下文占用（当前预算）" });
   await waitFor(() => expect(counter).toHaveTextContent("1.4k / 48k"));
 });
 
@@ -767,9 +768,9 @@ it("uses the model table's context capacity even when output is unknown and save
   const props = defaults(); props.state.tokenUsage = { model: "strict", contextBudget: 48000, contextTokens: 11000,
     lastCall: { input: 10000, output: 1000, cacheRead: null, cacheWrite: null, total: 11000 }, cumulative: { total: 11000, calls: 1, unreportedCalls: 0 } };
   render(view(props));
-  const counter = await screen.findByRole("button", { name: "Token 用量" });
+  const counter = await screen.findByRole("button", { name: "当前上下文占用" });
   await waitFor(() => expect(counter).toHaveTextContent("11k / 1M"));
-  expect(screen.queryByRole("button", { name: "Token 用量（当前预算）" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "当前上下文占用（当前预算）" })).not.toBeInTheDocument();
 });
 
 it("submits source message edits with attachments and rejects no draft on failure", async () => {
@@ -848,4 +849,59 @@ it("preserves an edit across a pending request that is rejected", async () => {
   mounted.rerender(view(props));
   expect(screen.getByRole("textbox", { name: "编辑消息" })).toHaveValue("尚未受理的编辑");
   expect(screen.getByText("原回复")).toBeInTheDocument();
+});
+
+
+it("invalidates the old context during and after compaction and accepts the smaller fresh measurement", async () => {
+  vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 1000000,
+    capacity: { context: 1000000, output: 8000, source: "modelpedia", matchedId: "origin/strict", updatedAt: null } });
+  const props = defaults();
+  const usage = { model: "strict", contextBudget: 1000000, contextTokens: 990500,
+    lastCall: { input: 990000, output: 500, cacheRead: 980000, cacheWrite: null, total: 990500 },
+    cumulative: { total: 5000000, calls: 20, unreportedCalls: 0 } };
+  props.state.tokenUsage = usage;
+  const mounted = render(view(props));
+  const counter = await screen.findByRole("button", { name: "当前上下文占用" });
+  await waitFor(() => expect(counter).toHaveTextContent("990.5k / 1M"));
+  mounted.rerender(view({ ...props, state: { ...props.state, contextStatus: "compacting" } }));
+  await waitFor(() => expect(counter).toHaveTextContent("未报告 / 1M"));
+  mounted.rerender(view({ ...props, state: { ...props.state, contextStatus: "ready", tokenUsage: { ...usage, contextTokens: null } } }));
+  expect(counter).toHaveTextContent("未报告 / 1M");
+  const user = userEvent.setup(); await user.hover(counter);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip).not.toHaveTextContent("99% 已使用");
+  expect(within(tooltip).queryByText("缓存输入")).not.toBeInTheDocument();
+  await user.unhover(counter);
+  mounted.rerender(view({ ...props, state: { ...props.state, contextStatus: "ready", tokenUsage: { ...usage, contextTokens: 2300 } } }));
+  await waitFor(() => expect(counter).toHaveTextContent("2.3k / 1M"));
+  expect(counter).not.toHaveTextContent("990.5k");
+  expect(counter).not.toHaveTextContent("5M");
+});
+
+it.each([[0, "0"], [2300, "2.3k"]] as const)("shows live context %s without requiring a last-call report", async (contextTokens, formatted) => {
+  const props = defaults(); props.state.tokenUsage = { model: "strict", contextBudget: 64000, contextTokens,
+    lastCall: null, cumulative: { total: 5000000, calls: 20, unreportedCalls: 0 } };
+  render(view(props));
+  const counter = await screen.findByRole("button", { name: "当前上下文占用" });
+  await waitFor(() => expect(counter).toHaveTextContent(formatted + " / 64k"));
+});
+
+it("uses the live runtime context budget when the operator caps a larger model", async () => {
+  vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 48000,
+    capacity: { context: 1000000, output: 8000, source: "modelpedia", matchedId: "origin/strict", updatedAt: null } });
+  const props = defaults(); props.state.tokenUsage = { model: "strict", contextBudget: 64000, contextTokens: 11000,
+    lastCall: null, cumulative: { total: 5000000, calls: 20, unreportedCalls: 0 } };
+  render(view(props));
+  const counter = await screen.findByRole("button", { name: "当前上下文占用（当前预算）" });
+  await waitFor(() => expect(counter).toHaveTextContent("11k / 48k"));
+});
+
+it("clears the previous context when the saved usage belongs to another model", async () => {
+  const props = defaults(); props.state.tokenUsage = { model: "strict", contextBudget: 64000, contextTokens: 10000,
+    lastCall: null, cumulative: { total: 5000000, calls: 20, unreportedCalls: 0 } };
+  const mounted = render(view(props));
+  const counter = await screen.findByRole("button", { name: "当前上下文占用" });
+  await waitFor(() => expect(counter).toHaveTextContent("10k / 64k"));
+  mounted.rerender(view({ ...props, state: { ...props.state, tokenUsage: { ...props.state.tokenUsage!, model: "other" } } }));
+  await waitFor(() => expect(counter).toHaveTextContent("未报告 / 64k"));
 });

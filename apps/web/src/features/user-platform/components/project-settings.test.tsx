@@ -5,11 +5,11 @@ import { afterEach, expect, it, vi } from "vitest";
 import { ProjectSettings } from "./project-settings";
 import { platformApi, type PlatformProject } from "../services/platform-api";
 
-const project: PlatformProject = { id: "project", name: "订单系统", description: null, visibility: "private", status: "active", projectMode: "professional", ownerUserId: "owner", updatedAt: "2026-01-01T00:00:00Z" };
+const project: PlatformProject = { id: "project", name: "订单系统", description: null,  status: "active", projectMode: "professional", ownerUserId: "owner", updatedAt: "2026-01-01T00:00:00Z" };
 const members = [
-  { id: "one", projectId: "project", userId: "owner", email: "owner@example.test", displayName: "Owner", role: "owner", status: "active" },
-  { id: "two", projectId: "project", userId: "editor-id", email: "editor@example.test", displayName: "Editor", role: "editor", status: "active" },
-  { id: "three", projectId: "project", userId: "pending", email: "pending@example.test", displayName: "Pending", role: "editor", status: "invited" },
+  { id: "one", projectId: "project", userId: "owner", username: "owner", displayName: "Owner", role: "owner", status: "active" },
+  { id: "two", projectId: "project", userId: "editor-id", username: "editor", displayName: "Editor", role: "editor", status: "active" },
+  { id: "three", projectId: "project", userId: "pending", username: "pending", displayName: "Pending", role: "editor", status: "invited" },
 ];
 afterEach(() => vi.restoreAllMocks());
 
@@ -19,8 +19,9 @@ it("saves project settings without hierarchy bindings", async () => {
   vi.spyOn(platformApi, "updateProjectRetentionPolicy").mockResolvedValue({ project });
   render(<ProjectSettings project={project} membershipRole="owner" />);
   expect(screen.queryByLabelText("课程 / 班级 / 团队")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("项目可见性")).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "保存项目设置" }));
-  expect(update).toHaveBeenCalledWith(project.id, { name: project.name, description: null, visibility: "private", backgroundKey: null });
+  expect(update).toHaveBeenCalledWith(project.id, { name: project.name, description: null,  backgroundKey: null });
 });
 
 it("shows only the archive action appropriate to the current project state", async () => {
@@ -47,7 +48,7 @@ it("transfers only to a joined member selected by name", async () => {
   await waitFor(() => expect(select).not.toHaveAttribute("aria-disabled", "true"));
   await userEvent.click(select);
   expect(screen.queryByRole("option", { name: /Pending|Owner/ })).not.toBeInTheDocument();
-  await userEvent.click(await screen.findByRole("option", { name: "Editor (editor@example.test)" }));
+  await userEvent.click(await screen.findByRole("option", { name: "Editor (editor)" }));
   expect(screen.queryByText("editor-id")).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "转移所有者" }));
   expect(transfer).toHaveBeenCalledWith("project", "editor-id");

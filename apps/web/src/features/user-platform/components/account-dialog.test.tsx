@@ -13,11 +13,9 @@ import { invalidateProviderConfigCache } from "../services/provider-config-cache
 
 const baseUser = {
   id: "user-1",
-  email: "student@example.edu",
   username: "student",
   displayName: "Student",
   status: "active",
-  emailVerified: true,
   mfaEnabled: false,
 };
 
@@ -120,7 +118,7 @@ function stubAccountFetch(profile: PlatformAccountProfileResponse, sessions: Pla
       return new Response(
         JSON.stringify({
           secret: "JBSWY3DPEHPK3PXP",
-          otpauthUri: "otpauth://totp/UML:student@example.edu?secret=JBSWY3DPEHPK3PXP",
+          otpauthUri: "otpauth://totp/UML:student?secret=JBSWY3DPEHPK3PXP",
           qrCodeDataUrl: "data:image/png;base64,mfa",
           expiresAt: "2026-05-25T08:05:00.000Z",
         }),
@@ -343,7 +341,7 @@ describe("AccountDialog generation usage", () => {
         {
           ...baseUser,
           id: "guest-user",
-          email: "guest@example.edu",
+          username: "guest",
           displayName: "Guest",
         },
       ),
@@ -354,7 +352,7 @@ describe("AccountDialog generation usage", () => {
       initialUser: {
         ...baseUser,
         id: "guest-user",
-        email: "guest@example.edu",
+        username: "guest",
         displayName: "Guest",
       },
     });
@@ -404,6 +402,46 @@ describe("AccountDialog generation usage", () => {
         }),
       );
     });
+  });
+
+  it("replaces an unsaved upload with a bundled avatar and saves the selected reference", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubAccountFetch(profileResponse({ usedToday: 0, limit: null, remaining: null, windowSeconds: 86400, limited: false, scope: "user" }));
+    const createObjectURL = vi.fn(() => "blob:avatar-preview");
+    const revokeObjectURL = vi.fn();
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL;
+    try {
+      renderAccountDialog({ onNavigate: () => {}, initialUser: baseUser });
+      await user.click(screen.getByRole("button", { name: "账号" }));
+      const dialog = await screen.findByRole("dialog", { name: "设置" });
+      await user.click(within(dialog).getByRole("tab", { name: "个人资料" }));
+      await within(dialog).findByLabelText("昵称");
+      const fileInput = within(dialog).getByLabelText("头像图片");
+      await user.upload(fileInput, new File(["avatar"], "avatar.png", { type: "image/png" }));
+      expect(within(dialog).getByAltText("头像图片")).toHaveAttribute("src", "blob:avatar-preview");
+      const presets = within(dialog).getByRole("group", { name: "默认人物头像" });
+      expect(within(presets).getAllByRole("button")).toHaveLength(12);
+      expect(within(dialog).queryByText("原神")).not.toBeInTheDocument();
+      expect(within(dialog).queryByText("鸣潮")).not.toBeInTheDocument();
+      expect(within(dialog).queryByText("卡通人物")).not.toBeInTheDocument();
+      await user.click(within(presets).getByRole("button", { name: "芙宁娜" }));
+      expect(within(presets).getByRole("button", { name: "芙宁娜" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(dialog).getByAltText("头像图片")).toHaveAttribute("src", "/avatars/genshin-furina.svg");
+      expect(fileInput).toHaveValue("");
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:avatar-preview");
+      await user.click(within(dialog).getByRole("button", { name: "保存资料" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/account/profile"),
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ displayName: "Student", avatarUrl: "/avatars/genshin-furina.svg" }) }),
+      ));
+      expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/api/account/avatar"))).toBe(false);
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
   });
 
   it("manages real TOTP MFA and session revocation through account APIs", async () => {

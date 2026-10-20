@@ -395,7 +395,7 @@ function createProjectWorkspaceState(svg = "<svg><text>sequence</text></svg>") {
     },
     requirementModelTraceability: workspaceRequirementTraceability,
     plantUml: {
-      usecase: "@startuml\nactor 用户\n@enduml",
+      usecase: "@startuml\nactor 用户\n",
     },
     svgArtifacts: {
       usecase: workspaceRequirementSvg,
@@ -405,7 +405,7 @@ function createProjectWorkspaceState(svg = "<svg><text>sequence</text></svg>") {
     },
     designModelTraceability: workspaceDesignTraceability,
     designPlantUml: {
-      "sequence:view": "@startuml\n用户 -> 活动服务: 查看活动\n@enduml",
+      "sequence:view": "@startuml\n用户 -> 活动服务: 查看活动\n",
     },
     designSvgArtifacts: {
       "sequence:view": workspaceDesignSvg(svg),
@@ -2219,13 +2219,13 @@ test("project document commands preserve the type and identity of custom-ID requ
     async () => ({ state: {
       ...workspace,
       models: { "custom-usecase": { ...minimalUseCaseModel, modelId: "custom-usecase" } },
-      plantUml: { "custom-usecase": "@startuml\nactor 用户\n@enduml" },
+      plantUml: { "custom-usecase": "@startuml\nactor 用户\n" },
       svgArtifacts: { "custom-usecase": { ...workspaceRequirementSvg, modelId: "custom-usecase" } },
     } }),
   );
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.deepEqual(result.input.requirementPlantUml, [{ diagramKind: "usecase", modelId: "custom-usecase", source: "@startuml\nactor 用户\n@enduml" }]);
+  assert.deepEqual(result.input.requirementPlantUml, [{ diagramKind: "usecase", modelId: "custom-usecase", source: "@startuml\nactor 用户\n" }]);
 });
 
 test("project document runs do not require legacy workspace credentials", async () => {
@@ -2646,7 +2646,7 @@ test("project design start command filters old records for the replacing design 
   };
   state.designPlantUml = {
     ...state.designPlantUml,
-    class: "@startuml\nclass ExistingDesign\n@enduml",
+    class: "@startuml\nclass ExistingDesign\n",
   };
   state.designSvgArtifacts = {
     ...state.designSvgArtifacts,
@@ -3511,7 +3511,7 @@ test("removed run evidence and review routes return 404", async () => {
 test("guest project run starts return 429 after the visitor daily generation limit", async () => {
   let pipelineCalls = 0;
   const generationUsage = createGenerationUsageService({
-    guestEmail: "guest@example.edu",
+    guestUsername: "guest",
     guestDailyLimit: 1,
     now: () => new Date("2026-05-25T08:00:00.000Z"),
   });
@@ -3522,7 +3522,7 @@ test("guest project run starts return 429 after the visitor daily generation lim
         return {
           userId: "guest-user",
           projectId: stringHeader(request, "x-test-project-id"),
-          email: "guest@example.edu",
+          username: "guest",
         };
       },
       async canAccessProject({ projectId }) {

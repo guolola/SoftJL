@@ -13,7 +13,9 @@ export function homeText(value: unknown): unknown {
   if (value === "Low") return "No";
   if (value === "Med" || value === "Medium") return "Yes";
   if (value === "Thinking" || value === "Reasoning effort") return zh ? "推理" : "Reasoning";
-  if (value === "Context usage" && homeContextUsesBudget()) return zh ? "Token 用量（当前预算）" : "Token usage (current budget)";
+  if (value === "Context usage") return homeContextUsesBudget()
+    ? zh ? "当前上下文占用（当前预算）" : "Current context usage (current budget)"
+    : zh ? "当前上下文占用" : "Current context usage";
   if (value.endsWith("% full") && homeContextUsesBudget()) return zh ? `${value.slice(0, -6)}% 预算已使用` : `${value.slice(0, -6)}% of budget used`;
   if (!zh) return value;
   if (Object.hasOwn(chinese, value)) return (chinese as Record<string, string>)[value];

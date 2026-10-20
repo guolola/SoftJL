@@ -67,7 +67,7 @@ async function accountProfileResponse({
     },
     generationUsage: await generationUsage.getAccountGenerationUsage({
       userId: user.id,
-      email: user.email,
+      username: user.username,
       ipAddress,
     }),
   });
@@ -378,7 +378,7 @@ export function registerAccountRoutes({
       secret,
       otpauthUri: createTotpUri({
         issuer: "UML Experimental Platform",
-        accountName: auth.user.email,
+        accountName: auth.user.username,
         secret,
       }),
       expiresAt,

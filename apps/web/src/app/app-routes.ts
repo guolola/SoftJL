@@ -2,11 +2,8 @@ import type { AppRoute, AuthRoutePath, ProjectRouteSection, ShellRoutePath, } fr
 export type { AppRoute, AuthRoutePath, ProjectRouteSection, ShellRoutePath, } from "../shared/lib/app-route-types";
 const SHELL_PATHS = new Set<ShellRoutePath>(["/workspace"]);
 const AUTH_PATHS = new Set<AuthRoutePath>([
-    "/login",
-    "/register",
-    "/verify-email",
-    "/forgot-password",
-    "/reset-password",
+  "/login",
+  "/register",
 ]);
 export function matchAppRoute(pathname: string): AppRoute {
     if (["/account/billing", "/billing/alipay/return"].includes(pathname))
@@ -19,9 +16,6 @@ export function matchAppRoute(pathname: string): AppRoute {
     }
     if (AUTH_PATHS.has(pathname as AuthRoutePath)) {
         return { kind: "auth", path: pathname as AuthRoutePath };
-    }
-    if (pathname === "/invitations/accept") {
-        return { kind: "invitation-accept", path: "/invitations/accept" };
     }
     if (pathname === "/account" || pathname === "/account/security") {
         return { kind: "legacy-account", path: pathname };

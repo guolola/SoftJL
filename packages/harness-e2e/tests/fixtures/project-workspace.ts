@@ -353,10 +353,9 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
         json({
           user: {
             id: "user-1",
-            email: "model-nav@example.test",
+            username: "model_nav",
             displayName: "Model Nav Reviewer",
             status: "active",
-            emailVerified: true,
             mfaEnabled: false,
           },
           session: {
@@ -370,6 +369,11 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
           },
         }),
       );
+      return;
+    }
+
+    if (pathname === "/api/inbox") {
+      await route.fulfill(json({ messages: [], unreadCount: 0 }));
       return;
     }
 
@@ -396,7 +400,7 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
             projectMode: "professional",
             name: "座位预约系统",
             description: "模型导航验收项目",
-            visibility: "private",
+
             status: "active",
             ownerUserId: "user-1",
             updatedAt: now,
@@ -406,7 +410,7 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
             id: "member-1",
             projectId,
             userId: "user-1",
-            email: "model-nav@example.test",
+            username: "model_nav",
             displayName: "Model Nav Reviewer",
             role: "owner",
             status: "active",
@@ -427,7 +431,7 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
               id: "member-1",
               projectId,
               userId: "user-1",
-              email: "model-nav@example.test",
+              username: "model_nav",
               displayName: "Model Nav Reviewer",
               role: "owner",
               status: "active",

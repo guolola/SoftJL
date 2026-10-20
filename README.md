@@ -25,7 +25,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Version-v2.2.0-2563eb?style=flat-square" alt="Current product version v2.2.0" />
+  <img src="https://img.shields.io/badge/Version-v2.2.1-2563eb?style=flat-square" alt="Current product version v2.2.1" />
   <img src="https://img.shields.io/badge/Frontend-React%20%2B%20Next.js-61dafb?style=flat-square" alt="React and Next.js" />
   <img src="https://img.shields.io/badge/API-Fastify%20%2B%20Zod-111827?style=flat-square" alt="Fastify and Zod" />
   <img src="https://img.shields.io/badge/UML-PlantUML-f59e0b?style=flat-square" alt="PlantUML" />
@@ -63,17 +63,20 @@ Review generated content, organize documents according to your school's requirem
 
 SoftJL Community is a self-hosted AI software engineering workspace, distributed as an independent source snapshot with a fresh Git history.
 
-## What changed in v2.2.0
+## What changed in v2.2.1
 
-This release improves source mapping completion and keeps generated results synchronized:
+This release aligns account, collaboration and quick-modeling task persistence:
 
-- Complete missing source mappings with bounded requests for the missing elements, preserving accepted models and mappings. Complete mappings need no extra call.
-- Publish cumulative requirement previews and successive feasibility results without a reload, while protecting later manual edits.
-- Show the element mapping rate for the full scoped matrix, consistently across search, pagination and analysis views.
-- Explain supported text and image attachment formats beside the requirement input.
-- Simplify project collaboration to member invitations and private/public visibility; remove organizations, courses, classes, teams and their fields, permissions and quotas.
+- Register and sign in with a username; invite registered users by username and accept or decline invitations in the notification center.
+- Read or dismiss personal notifications without affecting other users; resent invitations become unread again.
+- Preview project details in expandable cards, with keyboard closing, stable page position and layered member tips.
+- Show live quick-modeling context occupancy against the effective budget; keep last-call usage separate and wait for a new measurement after compaction.
+- Create projects in one form, with access controlled by membership; project visibility settings are retired.
+- Choose a bundled avatar, with a default assigned to new accounts and accounts missing a picture.
+- Persist each accepted quick-modeling turn and its own changed diagrams, tests and documents. Completed outputs survive a failed or stopped turn; history excludes reused outputs.
+- Keep quick-modeling history visible, with provider model details and accepted outputs; continue failed quick turns through the conversation workflow.
 
-This release uses the current `current_platform_schema_v2` installation baseline.
+This release uses the current `current_platform_schema_v3` installation baseline. Existing v1/v2 databases are rejected; use a clean database. SMTP and emailed invitation links are retired.
 
 ## Generation workflow
 
@@ -203,7 +206,7 @@ The root `npm run dev` builds shared packages automatically; use `npm run build:
 
 ## Release and upgrades
 
-Current version: **v2.2.0**. See [release notes and setup requirements](release-notes.md). New installations initialize an empty database with `current_platform_schema_v2`; databases already using this baseline can continue to be used. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
+Current version: **v2.2.1**. See [release notes and setup requirements](release-notes.md). New installations initialize an empty database with `current_platform_schema_v3`; databases already using this baseline can continue to be used. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
 
 ## Online Access
 

@@ -1,5 +1,4 @@
 // Owns project settings, provider policy, retention, and high-risk project actions.
-import Link from "../../../shared/lib/template-link";
 import { Alert } from '../../../shared/ui/alert';
 import {
   Card,
@@ -39,7 +38,6 @@ import {
   type PlatformProjectMember,
 } from "../services/platform-api";
 import { ProjectBackgroundPicker } from "./project-background-picker";
-import { projectVisibilityOptions } from "../lib/project-visibility";
 
 export function ProjectSettings({
   project,
@@ -58,7 +56,6 @@ export function ProjectSettings({
   const { showAlert } = useFloatingAlert();
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? "");
-  const [visibility, setVisibility] = useState(project.visibility);
   const [backgroundKey, setBackgroundKey] = useState<ProjectBackgroundKey | null>(
     project.backgroundKey ?? null,
   );
@@ -86,7 +83,6 @@ export function ProjectSettings({
   useEffect(() => {
     setName(project.name);
     setDescription(project.description ?? "");
-    setVisibility(project.visibility);
     setBackgroundKey(project.backgroundKey ?? null);
     setRetentionPolicy(project.retentionPolicy ?? "manual");
     setNewOwnerUserId("");
@@ -101,7 +97,6 @@ export function ProjectSettings({
       const response = await platformApi.updateProject(project.id, {
         name: name.trim(),
         description: description.trim() || null,
-        visibility,
         backgroundKey,
       });
       const retentionResponse = await platformApi.updateProjectRetentionPolicy(
@@ -192,15 +187,6 @@ export function ProjectSettings({
       )}
       <div className={settingGridClass}>
         <Card as="section" className={cn("gap-6 shadow-none", sectionClass)}>
-          <CardHeader>
-            <CardTitle>{t("mcp.title")}</CardTitle>
-            <CardDescription>{t("mcp.connectProjectHelp")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button nativeButton={false} render={<Link href={`/projects/connections?projectId=${encodeURIComponent(project.id)}`} />}>{t("mcp.connectProject")}</Button>
-          </CardContent>
-        </Card>
-        <Card as="section" className={cn("gap-6 shadow-none", sectionClass)}>
           {layout === "drawer" && (
             <CardHeader>
               <CardTitle className="text-sm font-semibold">{t("projectSettings.basic")}</CardTitle>
@@ -243,16 +229,6 @@ export function ProjectSettings({
                   value={backgroundKey}
                   onChange={setBackgroundKey}
                   disabled={!canManageProjectSettings}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="settings-project-visibility">{t("projectSettings.visibility")}</FieldLabel>
-                <SelectControl
-                  id="settings-project-visibility"
-                  value={visibility}
-                  onValueChange={setVisibility}
-                  disabled={!canManageProjectSettings}
-                  options={projectVisibilityOptions(t)}
                 />
               </Field>
               <Field>
@@ -322,7 +298,7 @@ export function ProjectSettings({
                   setOwnerError("");
                 }}
                 placeholder={t("uxReview.chooseMember")}
-                options={eligibleOwners.map(member => ({ value: member.userId, label: `${member.displayName || member.email} (${member.email})` }))}
+                options={eligibleOwners.map(member => ({ value: member.userId, label: `${member.displayName || member.username} (${member.username})` }))}
                 disabled={!canManageProjectSettings || membersLoading || membersError || currentProject.status !== "active"}
               />
               {membersError && <p role="alert" className="text-sm">{t("uxReview.memberLoadFailed")} <Button variant="link" size="sm" onClick={() => setMembersRetry(value => value + 1)}>{t("uxReview.retry")}</Button></p>}

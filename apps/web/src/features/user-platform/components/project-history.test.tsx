@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../../shared/i18n/i18n-provider";
 import type { PlatformRunSummary, PlatformRunTokenConsumption } from "../services/platform-api";
 import { ProjectHistory } from "./project-history";
-import { createDesignRunSnapshot } from "../../../test/contract-fixtures";
+import { createDesignRunSnapshot, createRunSnapshot } from "../../../test/contract-fixtures";
 
 const mocks = vi.hoisted(() => ({
   deleteProjectRun: vi.fn(),
@@ -53,6 +53,26 @@ describe("ProjectHistory", () => {
     mocks.listProjectRuns.mockResolvedValue({ projectId: "project", runs });
     mocks.retryProjectRun.mockResolvedValue({ runId: "retry-new", status: "queued" });
     mocks.canStartRuns = true;
+  });
+
+  it("shows quick turns and only their accepted outputs without offering an engineering retry", async () => {
+    const quick: PlatformRunSummary = { runId: "quick", operationType: "quick_modeling", status: "failed" };
+    mocks.getProjectRun.mockResolvedValue({ run: quick, snapshot: createRunSnapshot({
+      operationType: "quick_modeling",
+      outputManifest: [{ kind: "model", id: "own" }],
+      standardRun: { operation: "chat", model: "test-model", providerConfigId: "provider", baseline: {}, artifacts: [
+        { id: "own", title: "本轮订单模型", type: "毕设图表", previewAvailable: false },
+        { id: "old", title: "沿用历史模型", type: "毕设图表", previewAvailable: false },
+      ] },
+    }) });
+    const user = userEvent.setup();
+    render(<AppI18nProvider><ProjectHistory projectId="project" initialRuns={[quick]} members={[]} /></AppI18nProvider>);
+    expect(screen.getByText("快速建模")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /重试运行/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "查看运行记录 quick" }));
+    expect(await screen.findByText("本轮订单模型")).toBeInTheDocument();
+    expect(screen.queryByText("沿用历史模型")).not.toBeInTheDocument();
+    expect(mocks.retryProjectRun).not.toHaveBeenCalled();
   });
 
   it.each(["page", "drawer"] as const)("refreshes %s history while keeping search and preventing duplicate requests", async (layout) => {

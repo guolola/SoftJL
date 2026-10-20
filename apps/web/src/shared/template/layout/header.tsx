@@ -12,8 +12,8 @@ export function AdmincnHeader({ navigation, actions, showSidebar = true }: { nav
           <Separator orientation="vertical" className="hidden h-4! self-center! sm:block" />
           {navigation}
         </div>
-        {/* Keep the navigation trigger reachable when tablet/mobile actions exceed the available width. */}
-        <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{actions}</div>
+        {/* Horizontal scrolling also clips vertically: reserve halo space and cancel its layout height. */}
+        <div className="-my-3 flex min-w-0 items-center gap-1.5 overflow-x-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{actions}</div>
       </div>
     </header>
   );

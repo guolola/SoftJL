@@ -11,7 +11,7 @@ test("regular users are counted without being limited", async () => {
 
   const decision = await service.checkGenerationLimit({
     userId: "user-1",
-    email: "student@example.edu",
+    username: "student",
     ipAddress: "203.0.113.10",
   });
   assert.equal(decision.allowed, true);
@@ -20,14 +20,14 @@ test("regular users are counted without being limited", async () => {
 
   await service.recordGenerationUsage({
     userId: "user-1",
-    email: "student@example.edu",
+    username: "student",
     ipAddress: "203.0.113.10",
     taskType: "requirements_to_uml",
   });
 
   const usage = await service.getAccountGenerationUsage({
     userId: "user-1",
-    email: "student@example.edu",
+    username: "student",
     ipAddress: "203.0.113.10",
   });
   assert.equal(usage.usedToday, 1);
@@ -37,7 +37,7 @@ test("regular users are counted without being limited", async () => {
 
 test("guest users are limited per visitor", async () => {
   const service = createGenerationUsageService({
-    guestEmail: "guest@example.edu",
+    guestUsername: "guest",
     guestDailyLimit: 2,
     now: () => new Date("2026-05-25T08:00:00.000Z"),
   });
@@ -45,13 +45,13 @@ test("guest users are limited per visitor", async () => {
   for (let index = 0; index < 2; index += 1) {
     const decision = await service.checkGenerationLimit({
       userId: "guest-user",
-      email: "guest@example.edu",
+      username: "guest",
       ipAddress: "203.0.113.10",
     });
     assert.equal(decision.allowed, true);
     await service.recordGenerationUsage({
       userId: "guest-user",
-      email: "guest@example.edu",
+      username: "guest",
       ipAddress: "203.0.113.10",
       taskType: "requirements_to_uml",
     });
@@ -59,7 +59,7 @@ test("guest users are limited per visitor", async () => {
 
   const exhausted = await service.checkGenerationLimit({
     userId: "guest-user",
-    email: "guest@example.edu",
+    username: "guest",
     ipAddress: "203.0.113.10",
   });
   assert.equal(exhausted.allowed, false);
@@ -69,7 +69,7 @@ test("guest users are limited per visitor", async () => {
 
   const otherVisitor = await service.checkGenerationLimit({
     userId: "guest-user",
-    email: "guest@example.edu",
+    username: "guest",
     ipAddress: "203.0.113.11",
   });
   assert.equal(otherVisitor.allowed, true);
@@ -97,7 +97,7 @@ test("persisted usage counts use tracker-side filters", async () => {
     },
   };
   const service = createGenerationUsageService({
-    guestEmail: "guest@example.edu",
+    guestUsername: "guest",
     guestDailyLimit: 5,
     providerUsageTracker: tracker,
     now: () => new Date("2026-05-25T08:00:00.000Z"),
@@ -105,7 +105,7 @@ test("persisted usage counts use tracker-side filters", async () => {
 
   const usage = await service.getAccountGenerationUsage({
     userId: "guest-user",
-    email: "guest@example.edu",
+    username: "guest",
     ipAddress: "203.0.113.10",
   });
 

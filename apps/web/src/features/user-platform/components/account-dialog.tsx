@@ -53,6 +53,7 @@ import {
   type PlatformUser,
 } from "../services/platform-api";
 import { AccountAvatarPreview } from "./account-avatar-preview";
+import { DefaultAvatarPicker } from "./default-avatar-picker";
 import { MfaSetupPanel } from "./mfa-setup-panel";
 
 import { AccountPreferencePages } from '../../settings/components/account-preference-pages';
@@ -190,7 +191,7 @@ export function AccountDialog({
     };
   }, [open, userId]);
 
-  const title = useMemo(() => user?.displayName || user?.email || t("auth.login"), [t, user]);
+  const title = useMemo(() => user?.displayName || user?.username || t("auth.login"), [t, user]);
   const avatarPreviewSrc = avatarPreviewUrl || avatarUrl;
   const accountStatus = accountStatusLabel(user?.status, {
     active: t("account.normal"),
@@ -542,13 +543,20 @@ export function AccountDialog({
                       </div>
                     )}
                     {avatarError && <p className="max-w-44 text-center text-xs text-destructive">{avatarError}</p>}
+                    <DefaultAvatarPicker value={avatarFile ? "" : avatarUrl} disabled={profileSaving} onSelect={(url) => {
+                      if (profileSaveInFlight.current) return;
+                      // Choosing a preset replaces an unsaved upload and its object URL preview.
+                      selectAvatarFile(null);
+                      if (avatarInputRef.current) avatarInputRef.current.value = "";
+                      setAvatarUrl(url);
+                    }} />
                   </div>
                     </SettingRow>
                     <SettingRow label={t("account.displayName")} hint={t("account.profileDescription")} htmlFor="account-display-name">
                       <Input id="account-display-name" className="h-9 w-full sm:w-56" value={displayName} onChange={event => setDisplayName(event.target.value)} placeholder={t("account.displayNamePlaceholder")} />
                     </SettingRow>
-                    <SettingRow label={t("account.email")} hint={user.emailVerified ? t("account.emailVerified") : t("account.emailUnverified")} htmlFor="account-email">
-                      <Input id="account-email" className="h-9 w-full sm:w-56" value={user.email} readOnly />
+                    <SettingRow label={t("account.username")} htmlFor="account-username">
+                      <Input id="account-username" className="h-9 w-full sm:w-56" value={user.username} readOnly />
                     </SettingRow>
                     <SettingRow label={t("account.accountStatus")} hint={t("account.profileDescription")}>
                       <div className="flex flex-wrap gap-2"><Badge variant="outline">{accountStatus}</Badge><Badge variant="outline">{mfaEnabled ? t("account.mfaEnabled") : t("account.mfaDisabled")}</Badge></div>
