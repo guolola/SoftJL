@@ -51,6 +51,6 @@ test("first generation declares analysis sources and direct design dependencies"
   for (const kind of ["component", "table", "deployment"] as const) {
     const prompt = buildGenerateDesignModelsPrompt(baseline, [], [], [kind], [modelFixture("design", "class") as any]);
     assert.match(prompt, /直接上游/);
-    assert.match(prompt, /遗漏时仅请求补齐缺失元素的映射/);
+    assert.match(prompt, /修复时在本对话中返回完整模型和全部有效来源映射/);
   }
 });

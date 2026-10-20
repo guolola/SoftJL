@@ -61,7 +61,8 @@ import {
 import { NewRequirementRuleDialog } from "./new-requirement-rule-dialog";
 import { RequirementComposer, type RequirementComposerOptions } from "./requirement-composer";
 import { TargetSelectionActions } from "../../workspace-shell/components/target-selection-actions";
-import { requirementModelSources, type RequirementRuleType } from "@uml-platform/contracts";
+import { independentModelGenerationTargets, requirementModelSources, type RequirementRuleType } from "@uml-platform/contracts";
+import { modelGenerationSelectionBlockReason } from "../../workspace-session/lib/model-generation-selection";
 import { RequirementModelCardPopovers } from "./requirement-model-card-popovers";
 import {
   Dialog,
@@ -257,9 +258,9 @@ export function TextRequirementView({
   };
 
   useEffect(() => {
-    const nextSelectedDiagrams = selectedDiagrams.filter((diagram) =>
+    const nextSelectedDiagrams = independentModelGenerationTargets("requirements", selectedDiagrams.filter((diagram) =>
       DIAGRAM_ORDER.includes(diagram),
-    );
+    ));
     if (nextSelectedDiagrams.length !== selectedDiagrams.length) {
       setSelectedDiagrams(nextSelectedDiagrams);
     }
@@ -350,6 +351,7 @@ export function TextRequirementView({
           isRulesStale,
           rules,
           staleDiagrams,
+          selectedDiagrams,
         }),
       )
       .find(Boolean) ?? null;
@@ -404,8 +406,12 @@ export function TextRequirementView({
       case "baseline": return upstreamBaselineState(requirementBaseline, isRulesStale);
       case "requirement": {
         const status = requirementStatusFor(input.diagram);
-        return upstreamStateFromAvailability(Object.values(models).some(model => model?.diagramKind === input.diagram), staleDiagrams.includes(input.diagram), {
-          planned: plannedRequirementDiagrams.includes(input.diagram) || status === "queued",
+        const planned = plannedRequirementDiagrams.includes(input.diagram) || status === "queued";
+        // The source can be current itself while an existing analysis still uses its previous event flows.
+        const changedAnalysisSource = input.eventFlows === "single-use-case" &&
+          (planned || staleDiagrams.includes("analysis"));
+        return upstreamStateFromAvailability(Object.values(models).some(model => model?.diagramKind === input.diagram), staleDiagrams.includes(input.diagram) || changedAnalysisSource, {
+          planned: !changedAnalysisSource && planned,
           running: status === "running",
         });
       }
@@ -574,7 +580,7 @@ export function TextRequirementView({
                 </Badge>
                 <TargetSelectionActions
                   disabled={generating || !canEditRequirements}
-                  onSelectAll={() => setSelectedDiagrams(DIAGRAM_ORDER.filter((diagram) => selectableDiagramSet.has(diagram)))}
+                  onSelectAll={() => setSelectedDiagrams(independentModelGenerationTargets("requirements", [...selectedDiagrams, ...DIAGRAM_ORDER].filter((diagram) => selectableDiagramSet.has(diagram))))}
                   onClear={() => setSelectedDiagrams([])}
                 />
               </div>
@@ -663,6 +669,8 @@ export function TextRequirementView({
                     onInspect={() => setInspectedDiagram(diagram)}
                     content={
                       <div className="space-y-1.5">
+                        {modelGenerationSelectionBlockReason("requirements", diagram, selectedDiagrams) &&
+                          <p className="text-warning">{blockReason}</p>}
                         {isAnalysisDiagram &&
                           canSelectDiagram &&
                           linkedRules.length === 0 && (

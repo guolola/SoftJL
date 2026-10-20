@@ -156,17 +156,18 @@ describe("DesignModelPage", () => {
     render(withWorkspaceProviders(<DesignModelPage />, repository));
     const group = await screen.findByRole("group", { name: "全选 / 全不选" });
     await user.click(within(group).getByRole("button", { name: "全选" }));
-    // This fixture also permits deployment; select the six saved target types explicitly.
-    await user.click(screen.getByRole("checkbox", { name: "部署设计" }));
+    const independentKinds = ["architecture", "sequence", "class", "navigation"];
+    expect(screen.getByRole("checkbox", { name: "部署设计" })).toHaveAttribute("aria-disabled", "true");
     await user.click(screen.getByRole("button", { name: "生成" }));
     const dialog = await screen.findByRole("dialog", { name: "确认生成设计模型" });
-    expect(within(dialog).queryByRole("heading", { name: "保留不变" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "保留不变" })).toBeInTheDocument();
     const updates = within(dialog).getByRole("list", { name: "模型生成范围" });
-    expect(updates).toHaveTextContent("总体架构图、用例实现设计、设计类图、界面关系图、数据库设计、组件（构件）关系");
+    expect(updates).toHaveTextContent("总体架构图、用例实现设计、设计类图、界面关系图");
+    expect(updates).toHaveTextContent("保留不变数据库设计、组件（构件）关系");
     await user.click(within(dialog).getByRole("button", { name: "确认生成" }));
     await waitFor(() => expect(startDesignRun).toHaveBeenCalledTimes(1));
-    expect(new Set(startDesignRun.mock.calls[0][0].requestedDiagrams)).toEqual(new Set(kinds));
-    expect(new Set(startDesignRun.mock.calls[0][0].selectedDiagrams)).toEqual(new Set(kinds));
+    expect(new Set(startDesignRun.mock.calls[0][0].requestedDiagrams)).toEqual(new Set(independentKinds));
+    expect(new Set(startDesignRun.mock.calls[0][0].selectedDiagrams)).toEqual(new Set(independentKinds));
   });
 
   it("excludes missing requirement upstreams from card, checkbox, keyboard and bulk selection", async () => {
@@ -200,7 +201,7 @@ describe("DesignModelPage", () => {
     expect(screen.getByRole("button", { name: "生成" })).toBeDisabled();
     await user.click(within(group).getByRole("button", { name: "全选" }));
     expect(checkbox).not.toBeChecked();
-    expect(screen.getByText("6/7")).toBeInTheDocument();
+    expect(screen.getByText("4/7")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "生成" }));
     const confirmation = await screen.findByRole("dialog", { name: "确认生成设计模型" });
     expect(confirmation).not.toHaveTextContent("部署设计");
@@ -230,7 +231,7 @@ describe("DesignModelPage", () => {
     expect(screen.getByText("3/7")).toBeInTheDocument();
   });
 
-  it("allows a stale downstream prerequisite when its class model is regenerated in the same batch", async () => {
+  it("keeps a downstream target blocked until its stale class source has actually been regenerated", async () => {
     const snapshot = completeRequirementSources();
     const repository = createCurrentMockWorkspaceRepository({
       requirementText: snapshot.requirementText, requirementBaseline: snapshot.requirementBaseline, rules: snapshot.rules,
@@ -247,12 +248,13 @@ describe("DesignModelPage", () => {
     const table = screen.getByRole("checkbox", { name: "数据库设计" });
     await waitFor(() => expect(table).toHaveAttribute("aria-disabled", "true"));
     await user.click(screen.getByRole("checkbox", { name: "设计类图" }));
-    await waitFor(() => expect(table).not.toHaveAttribute("aria-disabled", "true"));
+    expect(table).toHaveAttribute("aria-disabled", "true");
     await user.click(table);
-    expect(table).toBeChecked();
+    expect(table).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "设计类图" })).toBeChecked();
   });
 
-  it.each([false, true])("allows all seven design targets with custom saved requirement IDs: %s", async (customIds) => {
+  it.each([false, true])("keeps available design targets independently selectable with custom saved requirement IDs: %s", async (customIds) => {
     const snapshot = completeRequirementSources();
     if (customIds) {
       // Match production records whose IDs differ from their diagram kinds.
@@ -293,21 +295,42 @@ describe("DesignModelPage", () => {
       await waitFor(() => expect(checkbox).not.toHaveAttribute("aria-disabled", "true"));
       await user.click(screen.getByRole("button", { name: `选择${label}` }));
       expect(checkbox).toBeChecked();
+      await user.click(checkbox);
     }
-    expect(screen.getByText("7/7")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "设计类图" }));
+    const tableCard = screen.getByRole("button", { name: "选择数据库设计" });
+    const selectionReason = "已选择设计类图，上下游模型不能在同一批生成。";
+    const blockedIcon = within(tableCard).getByRole("img", { name: selectionReason });
+    await user.hover(tableCard);
+    await user.hover(blockedIcon);
+    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent(selectionReason));
+    expect(screen.queryByText("请先更新并确认所需的需求模型")).not.toBeInTheDocument();
+    await user.unhover(blockedIcon);
+    for (const label of ["数据库设计", "组件（构件）关系", "部署设计"]) {
+      const checkbox = screen.getByRole("checkbox", { name: label });
+      expect(checkbox).toHaveAttribute("aria-disabled", "true");
+      await user.click(checkbox);
+      expect(checkbox).not.toBeChecked();
+    }
+    await user.click(screen.getByRole("checkbox", { name: "设计类图" }));
+    await user.click(screen.getByRole("checkbox", { name: "组件（构件）关系" }));
+    expect(screen.getByRole("checkbox", { name: "设计类图" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("checkbox", { name: "部署设计" })).toHaveAttribute("aria-disabled", "true");
+    await user.click(screen.getByRole("checkbox", { name: "数据库设计" }));
+    expect(screen.getByRole("checkbox", { name: "数据库设计" })).toBeChecked();
     const group = screen.getByRole("group", { name: "全选 / 全不选" });
     await user.click(within(group).getByRole("button", { name: "全不选" }));
     expect(screen.getByText("0/7")).toBeInTheDocument();
     expect(screen.getAllByRole("checkbox").every((checkbox) => checkbox.getAttribute("aria-checked") !== "true")).toBe(true);
     await user.click(within(group).getByRole("button", { name: "全选" }));
-    expect(screen.getByText("7/7")).toBeInTheDocument();
+    expect(screen.getByText("4/7")).toBeInTheDocument();
     expect(screen.queryByText(/需求模型之间的追踪关系不完整/)).not.toBeInTheDocument();
     expect(screen.queryByText(/将自动补齐：/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "生成" }));
     const confirmation = await screen.findByRole("dialog", { name: "确认生成设计模型" });
     await user.click(within(confirmation).getByRole("button", { name: "确认生成" }));
     await waitFor(() => expect(startDesignRun).toHaveBeenCalledTimes(1));
-    expect(new Set(startDesignRun.mock.calls[0][0].requestedDiagrams)).toEqual(new Set(designDiagramKindSchema.options));
+    expect(new Set(startDesignRun.mock.calls[0][0].requestedDiagrams)).toEqual(new Set(["architecture", "sequence", "class", "navigation"]));
     expect(startDesignRun.mock.calls[0][0].requirementModels).toEqual(snapshot.models);
   });
 
@@ -1035,7 +1058,7 @@ describe("DesignModelPage", () => {
       name: /用例实现设计/,
     });
     const sequenceCard = screen.getByRole("button", { name: "选择用例实现设计" });
-    expect(sequenceCard).toHaveClass("h-[212px]", "sm:h-[236px]");
+    expect(sequenceCard).toHaveClass("min-h-[260px]", "sm:min-h-[284px]");
     expect(sequenceCard).toHaveAttribute("data-slot", "spotlight-card");
     expect(sequenceCheckbox).not.toBeChecked();
     expect(within(sequenceCard).getByText("2")).toBeInTheDocument();

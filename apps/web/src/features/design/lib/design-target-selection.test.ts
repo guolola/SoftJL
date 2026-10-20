@@ -13,9 +13,9 @@ describe("selectableDesignTargets", () => {
     expect(selected).toEqual(["navigation"]);
   });
 
-  it("retains an available upstream with its dependents in the same batch", () => {
+  it("keeps an available upstream and excludes its dependents from the same batch", () => {
     expect(selectableDesignTargets(["class", "table"], (target, batch) =>
       target === "table" && !batch.includes("class") ? "缺少设计类图" : null,
-    )).toEqual(["class", "table"]);
+    )).toEqual(["class"]);
   });
 });

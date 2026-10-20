@@ -1,7 +1,7 @@
 // Orchestrates requirement extraction, model generation, PlantUML, and SVG rendering.
-import { MAX_GENERATION_REPAIR_ATTEMPTS, diagramModelsResultSchema, candidateRulesForDiagram, requirementBaselinePromptContext } from "@uml-platform/contracts";
-import { GenerationRepairSession } from "./shared/generation-repair.js";
-import { repairRequirementMappings } from "./shared/repair-missing-mappings.js";
+import { MAX_GENERATION_REPAIR_ATTEMPTS, candidateRulesForDiagram, requirementBaselinePromptContext } from "@uml-platform/contracts";
+import { ModelGenerationConversation } from "./shared/model-generation-conversation.js";
+import { assertRequirementMappings } from "./shared/model-mapping-validation.js";
 import { missingRequestedModelOutputs } from "../records/run-output-provenance.js";
 import { getStageModelSchema, contractResponseSchema } from "@uml-platform/contracts";
 
@@ -280,16 +280,15 @@ async function generateAnalysisModelWithRepair(
       : null;
   const modelId = sourceUseCase ? analysisModelIdForUseCase(sourceUseCase) : undefined;
   const initialPrompt = promptOverride ?? buildGenerateRequirementAnalysisPrompt(scopedUseCaseModel);
-  let prompt = initialPrompt;
   let lastErrorMessage = "";
 
-  const repair = new GenerationRepairSession(modelId ?? "analysis", { scopedUseCaseModel }, ["models"], MAX_GENERATION_REPAIR_ATTEMPTS, initialPrompt, diagramModelsResultSchema);
+  const repair = new ModelGenerationConversation(modelId ?? "analysis", createMessages(initialPrompt));
   for (let attempt = 0; attempt <= MAX_MODEL_REPAIR_ATTEMPTS; attempt += 1) {
     if (attempt > 0 && modelId && readDiagramReviewCounters(record, modelId, "analysis").repairAttempts >= MAX_MODEL_REPAIR_ATTEMPTS) throw new Error("已达到共享 5 次结构修复上限");
     let content = await collectTextResult(
       llmTransport,
       providerSettings,
-      createMessages(prompt),
+      repair.messages,
       createRunLlmChunkHandlers({
         record,
         stage: "generate_models",
@@ -304,7 +303,7 @@ async function generateAnalysisModelWithRepair(
           ? `需求分析模型：${sourceUseCase.name}`
           : "需求分析模型",
       }),
-      repair.repairing ? { type: "json_object" } : responseFormat,
+      responseFormat,
       abortSignal,
     );
     appendRequirementTrace(record, {
@@ -359,7 +358,7 @@ async function generateAnalysisModelWithRepair(
         errorMessage: lastErrorMessage,
       });
       if (attempt === MAX_MODEL_REPAIR_ATTEMPTS) {
-        throw new Error(`generate_models structured output failed: ${lastErrorMessage}`, { cause: error });
+        throw new Error(`generate_models structured output failed: ${lastErrorMessage}（已达到共享 5 次修复上限）`, { cause: error });
       }
       emitEvent(
         record,
@@ -378,11 +377,11 @@ async function generateAnalysisModelWithRepair(
         }),
       );
       onActivity?.();
-      prompt = repair.prepare(error);
+      repair.prepare(error);
     }
   }
 
-  throw new Error(`generate_models structured output failed: ${lastErrorMessage}`);
+  throw new Error(`generate_models structured output failed: ${lastErrorMessage}（已达到共享 5 次修复上限）`);
 }
 
 function missingUseCasesForAnalysis(
@@ -527,14 +526,14 @@ export async function generateModelsWithRepair(
   const singleDiagram = selectedDiagrams.length === 1 ? selectedDiagrams[0] : undefined;
   const taskIdentity = { diagramKind: singleDiagram, subtaskId: singleDiagram };
 
-  const repair = new GenerationRepairSession(singleDiagram ?? selectedDiagrams.join(","), { rules, requirementBaseline }, ["models", "requirementModelTraceability"], MAX_GENERATION_REPAIR_ATTEMPTS, prompt, diagramModelsResultSchema);
+  const repair = new ModelGenerationConversation(singleDiagram ?? selectedDiagrams.join(","), createMessages(prompt));
   for (let attempt = 0; attempt <= MAX_MODEL_REPAIR_ATTEMPTS; attempt += 1) {
     if (attempt > 0 && readDiagramReviewCounters(record, singleDiagram ?? selectedDiagrams.join(","), singleDiagram).repairAttempts >= MAX_MODEL_REPAIR_ATTEMPTS) throw new Error("已达到共享 5 次结构修复上限");
     const repairRound = readDiagramReviewCounters(record, singleDiagram ?? selectedDiagrams.join(","), singleDiagram).repairAttempts + 1;
     let content = await collectTextResult(
       llmTransport,
       providerSettings,
-      createMessages(prompt),
+      repair.messages,
       createRunLlmChunkHandlers({
         record,
         stage: "generate_models",
@@ -545,7 +544,7 @@ export async function generateModelsWithRepair(
         operation: attempt > 0 ? "model_repair" : undefined,
         round: attempt > 0 ? repairRound : undefined,
       }),
-      repair.repairing ? { type: "json_object" } : responseFormat,
+      responseFormat,
       abortSignal,
     );
     appendRequirementTrace(record, {
@@ -581,17 +580,15 @@ export async function generateModelsWithRepair(
         requirementModelTraceability: filteredTraceability,
       };
       assertRequirementModelSemanticFidelity(rules, filteredModels);
+      // Structure and source completeness share this task's exact conversation and repair budget.
+      assertRequirementMappings(filteredModels, rules, filteredTraceability);
       appendRequirementTrace(record, {
         stage: "generate_models",
         attempt: attempt + 1,
         kind: "parsed_model",
         parsedData: filteredParsed,
       });
-      // Mapping completion owns its bounded retries; its errors must not regenerate an accepted graph.
-      return repairRequirementMappings({ record, providerSettings, llmTransport, stage: "generate_models",
-        targetId: singleDiagram ?? selectedDiagrams.join(","), diagramKind: singleDiagram, models: filteredModels,
-        bindings: filteredTraceability, rules, repairsUsed: repair.attempts, abortSignal, onActivity, onBlankActivity })
-        .then(requirementModelTraceability => ({ models: filteredModels, requirementModelTraceability }));
+      return filteredParsed;
     } catch (error) {
       logFailedStructuredOutput(
         "generate_models",
@@ -611,7 +608,7 @@ export async function generateModelsWithRepair(
 
       if (attempt === MAX_MODEL_REPAIR_ATTEMPTS) {
         throw new Error(
-          `generate_models structured output failed: ${lastErrorMessage}`,
+          `generate_models structured output failed: ${lastErrorMessage}（已达到共享 5 次修复上限）`,
           { cause: error },
         );
       }
@@ -628,11 +625,11 @@ export async function generateModelsWithRepair(
       );
       onActivity?.();
 
-      prompt = repair.prepare(error);
+      repair.prepare(error);
     }
   }
 
-  throw new Error(`generate_models structured output failed: ${lastErrorMessage}`);
+  throw new Error(`generate_models structured output failed: ${lastErrorMessage}（已达到共享 5 次修复上限）`);
 }
 
 // route -> pipeline -> record store contract: this pipeline mutates the run snapshot and emits stage/artifact events.

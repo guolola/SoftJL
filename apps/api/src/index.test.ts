@@ -7,15 +7,21 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateRawSync } from "node:zlib";
-import type { LlmTransport } from "./llm.js";
+import type { LlmTransport, StreamChatCompletionInput } from "./llm.js";
 import { createApiServer } from "./index.js";
 import { createInMemoryAuthStore } from "./auth/in-memory-auth-store.js";
 import type { DocumentLibrary } from "./documents/library/document-library.js";
 import { createProviderConfigStore } from "./provider-configs/provider-config-store.js";
 import { createRunRecordStore } from "./runs/records/run-record-store.js";
 import { buildRequirementBaseline } from "./runs/baselines/requirement-baseline.js";
-import { designInputFingerprint, requirementRuleSchema, snapshotInputFingerprint, type DesignDiagramModelSpec, type DiagramModelSpec } from "@uml-platform/contracts";
+import { designDiagramModelsResultSchema, designInputFingerprint, requirementRuleSchema, snapshotInputFingerprint, type DesignDiagramModelSpec, type DiagramModelSpec } from "@uml-platform/contracts";
 import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "./adapters/plantuml/model-renderer.js";
+
+// Model conversations keep their original output contract; document and late render repairs keep JSON mode.
+function expectedResponseFormat(context: StreamChatCompletionInput["runContext"]) {
+  const modelGeneration = ["generate_models", "generate_design_models", "generate_design_sequence"].includes(context?.stage ?? "");
+  return context?.operation === "model_repair" && !modelGeneration ? "json_object" : "json_schema";
+}
 
 function assertApiErrorCode(response: { json(): unknown }, code: string) {
   const body = response.json() as { error?: { code?: string; retryable?: boolean } };
@@ -1384,7 +1390,7 @@ function createMockLlmTransport(): LlmTransport {
       const prompt = lastPromptText(messages);
 
       if (prompt.includes("请修复下面无法编译或返回占位 SVG 的 PlantUML")) {
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         yield JSON.stringify({
           source: [
             "@startuml",
@@ -1397,20 +1403,20 @@ function createMockLlmTransport(): LlmTransport {
         return;
       }
 
-      if ((prompt.includes("请修复下面不符合要求的 UML 结构化模型 JSON 输出") || prompt.includes("修复上下文："))) {
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+      if ((prompt.includes("请修复下面不符合要求的 UML 结构化模型 JSON 输出") || prompt.includes("请基于本对话中上一版完整模型"))) {
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         yield USECASE_MODEL_JSON;
         return;
       }
 
       if (prompt.includes("抽取结构化需求规则")) {
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         yield RULES_JSON;
         return;
       }
 
       if (prompt.includes("生成 UML 结构化模型")) {
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
       }
 
       yield USECASE_MODEL_JSON;
@@ -1424,7 +1430,7 @@ function createRuleNormalizerMockLlmTransport(): LlmTransport {
       const prompt = lastPromptText(messages);
 
       if (prompt.includes("请修复下面无法编译或返回占位 SVG 的 PlantUML")) {
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         yield JSON.stringify({
           source: [
             "@startuml",
@@ -1438,13 +1444,13 @@ function createRuleNormalizerMockLlmTransport(): LlmTransport {
       }
 
       if (prompt.includes("抽取结构化需求规则")) {
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         yield CLASSIFIED_RULES_JSON;
         return;
       }
 
       if (prompt.includes("生成 UML 结构化模型")) {
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
       }
 
       yield USECASE_MODEL_JSON;
@@ -1601,7 +1607,7 @@ test("api runs a design sequence pipeline from the requirement usecase model", a
     llmTransport: {
       async *streamChatCompletion({messages, responseFormat, runContext }) {
         const prompt = lastPromptText(messages);
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         assert.match(prompt, /用例实现设计/);
         yield DESIGN_SEQUENCE_JSON;
       },
@@ -1670,7 +1676,7 @@ test("api rejects empty design sequence sources after the shared repair budget",
     llmTransport: {
       async *streamChatCompletion({messages, responseFormat, runContext }) {
         prompts.push(lastPromptText(messages));
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         yield emptyTraceSequenceJson;
       },
     },
@@ -1839,7 +1845,7 @@ test("api generates design sequences with one LLM request per use case", async (
         activeSequenceCalls += 1;
         maxActiveSequenceCalls = Math.max(maxActiveSequenceCalls, activeSequenceCalls);
         await new Promise((resolve) => setTimeout(resolve, 5));
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         try {
           if (/"id":\s*"usecase_review"/.test(prompt)) {
             yield sequenceJsonFor("usecase_review", "审核模型");
@@ -1997,10 +2003,10 @@ test("api retries an empty use-case sequence result and completes coverage", asy
   const app = await createTestApiServer({
     llmTransport: {
       async *streamChatCompletion({messages, responseFormat, runContext }) {
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         const prompt = lastPromptText(messages);
         if (prompt.includes("请为已经生成成功的设计阶段 UML 模型补充元素级可追踪关系")) {
-          const useCaseId = prompt.includes("uc_filter_date")
+          const useCaseId = runContext?.subtaskId === "sequence:uc_filter_date"
             ? "uc_filter_date"
             : "usecase_generate";
           yield traceabilityJsonFor(
@@ -2009,7 +2015,7 @@ test("api retries an empty use-case sequence result and completes coverage", asy
           );
           return;
         }
-        const useCaseId = prompt.includes("uc_filter_date")
+        const useCaseId = runContext?.subtaskId === "sequence:uc_filter_date"
           ? "uc_filter_date"
           : "usecase_generate";
         const isSequencePrompt = true;
@@ -2229,7 +2235,7 @@ test("api rebuilds design after render failure without requesting PlantUML rewri
           });
           return;
         }
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         assert.match(prompt, /用例实现设计/);
         yield DESIGN_SEQUENCE_JSON;
       },
@@ -2282,7 +2288,7 @@ test("api records design model parse repair trace", async () => {
     llmTransport: {
       async *streamChatCompletion({messages, responseFormat, runContext }) {
         const prompt = lastPromptText(messages);
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         if (prompt.includes("请修复下面不符合要求的设计阶段 UML 结构化模型 JSON 输出")) {
           yield DESIGN_SEQUENCE_JSON;
           return;
@@ -2363,8 +2369,8 @@ test("api rejects malformed design fields after five structured repair attempts"
     llmTransport: {
       async *streamChatCompletion({messages, responseFormat, runContext }) {
         const prompt = lastPromptText(messages);
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
-        assert.match(prompt, /设计阶段顺序图|用例实现设计|修复上下文/);
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
+        assert.match(prompt, /设计阶段顺序图|用例实现设计|请基于本对话/);
         yield JSON.stringify({
           models: [
             {
@@ -2491,7 +2497,7 @@ test("api rejects missing design sources without an independent mapping call", a
     llmTransport: {
       async *streamChatCompletion({messages, responseFormat, runContext }) {
         const prompt = lastPromptText(messages);
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         if (
           prompt.includes("设计阶段 UML 模型补充元素级可追踪关系") ||
           prompt.includes("修复设计模型元素级可追踪关系")
@@ -2576,7 +2582,7 @@ test("api generates an explicit sequence dependency for downstream design diagra
       async *streamChatCompletion({messages, responseFormat, runContext }) {
         const prompt = lastPromptText(messages);
         prompts.push(prompt);
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         if (prompt.includes("models 只包含 diagramKind 为 sequence")) {
           yield DESIGN_SEQUENCE_JSON;
           return;
@@ -2678,16 +2684,45 @@ test("api generates navigation from its prototype in one call without sequence o
   await app.close();
 });
 
-test("api generates explicit sequence and class dependencies for design table diagrams", async () => {
-  const classAndTable = JSON.parse(DESIGN_CLASS_AND_TABLE_JSON);
-  const classOnlyJson = JSON.stringify({
+test("api rejects dependent design batches before calling the provider", async () => {
+  let llmCalls = 0;
+  const app = await createTestApiServer({
+    llmTransport: {
+      async *streamChatCompletion() {
+        llmCalls += 1;
+        yield DESIGN_CLASS_AND_TABLE_JSON;
+      },
+    },
+  });
+
+  // Both selection orders and conflicts split across command fields use the public route guard.
+  for (const batch of [
+    { selectedDiagrams: ["class", "table"], requestedDiagrams: ["table"] },
+    { selectedDiagrams: ["table", "class"], requestedDiagrams: ["table"] },
+    { selectedDiagrams: ["class"], requestedDiagrams: ["table"] },
+  ]) {
+    const response = await startProjectRun(app, {
+      method: "POST",
+      url: "/api/design-runs",
+      payload: { ...batch, providerSettings: MANAGED_PROVIDER_SETTINGS },
+    });
+    assert.equal(response.statusCode, 409);
+    assertApiErrorCode(response, "MODEL_GENERATION_BATCH_CONFLICT");
+  }
+  assert.equal(llmCalls, 0);
+  await app.close();
+});
+
+test("api generates a design table from its saved class without regenerating prerequisites", async () => {
+  const classAndTable = designDiagramModelsResultSchema.parse(JSON.parse(DESIGN_CLASS_AND_TABLE_JSON));
+  const classOnly = {
     models: classAndTable.models.filter(
       (model: { diagramKind: string }) => model.diagramKind === "class",
     ),
     designModelTraceability: classAndTable.designModelTraceability.filter(
       (entry: { source: { diagramKind: string } }) => entry.source.diagramKind === "class",
     ),
-  });
+  };
   const tableOnlyJson = JSON.stringify({
     models: classAndTable.models.filter(
       (model: { diagramKind: string }) => model.diagramKind === "table",
@@ -2696,26 +2731,15 @@ test("api generates explicit sequence and class dependencies for design table di
       (entry: { source: { diagramKind: string } }) => entry.source.diagramKind === "table",
     ),
   });
-  const downstreamCalls: string[] = [];
   let llmCallCount = 0;
   const app = await createTestApiServer({
     llmTransport: {
       async *streamChatCompletion({messages, responseFormat, runContext }) {
         const prompt = lastPromptText(messages);
         llmCallCount += 1;
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
-        if (llmCallCount === 1) {
-          yield DESIGN_SEQUENCE_JSON;
-          return;
-        }
-        if (llmCallCount === 2) {
-          downstreamCalls.push("class");
-          yield classOnlyJson;
-          return;
-        }
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         assert.match(prompt, /已生成设计阶段上下文模型/);
         assert.match(prompt, /设计阶段静态结构/);
-        downstreamCalls.push("table");
         yield tableOnlyJson;
       },
     },
@@ -2740,7 +2764,10 @@ test("api generates explicit sequence and class dependencies for design table di
         ...USECASE_REQUIREMENT_TRACEABILITY,
         ...CLASS_REQUIREMENT_TRACEABILITY,
       ],
-      selectedDiagrams: ["sequence", "class", "table"],
+      // Upstream models must already be saved, with their original provenance.
+      existingDesignModels: classOnly.models,
+      existingDesignModelTraceability: classOnly.designModelTraceability,
+      selectedDiagrams: ["table"],
       requestedDiagrams: ["table"],
       providerSettings: MANAGED_PROVIDER_SETTINGS,
     },
@@ -2750,21 +2777,15 @@ test("api generates explicit sequence and class dependencies for design table di
   const { runId } = startResponse.json();
   const snapshot = await waitForRunSnapshot(app, `/api/design-runs/${runId}`);
 
-  assert.equal(snapshot.status, "completed");
-  assert.deepEqual(snapshot.selectedDiagrams, ["sequence", "class", "table"]);
+  assert.equal(snapshot.status, "completed", JSON.stringify(snapshot.error));
+  assert.deepEqual(snapshot.selectedDiagrams, ["table"]);
   assert.deepEqual(snapshot.requestedDiagrams, ["table"]);
-  assert.deepEqual(
-    downstreamCalls,
-    ["class", "table"],
-    JSON.stringify({
-      diagramErrors: snapshot.diagramErrors,
-      models: snapshot.models.map((model: { diagramKind: string }) => model.diagramKind),
-    }),
-  );
+  assert.equal(llmCallCount, 1);
   assert.deepEqual(
     snapshot.models.map((model: { diagramKind: string }) => model.diagramKind),
-    ["sequence", "class", "table"],
+    ["class", "table"],
   );
+  assert.deepEqual(snapshot.models.find((model: { diagramKind: string }) => model.diagramKind === "class"), classOnly.models[0]);
   assert.match(
     snapshot.plantUml.find((item: { diagramKind: string }) => item.diagramKind === "table")
       ?.source ?? "",
@@ -2774,16 +2795,16 @@ test("api generates explicit sequence and class dependencies for design table di
   await app.close();
 });
 
-test("api retains successful prerequisites but rejects a table without sources", async () => {
-  const classAndTable = JSON.parse(DESIGN_CLASS_AND_TABLE_JSON);
-  const classOnlyJson = JSON.stringify({
+test("api retains its saved class but rejects a table without sources after five repairs", async () => {
+  const classAndTable = designDiagramModelsResultSchema.parse(JSON.parse(DESIGN_CLASS_AND_TABLE_JSON));
+  const classOnly = {
     models: classAndTable.models.filter(
       (model: { diagramKind: string }) => model.diagramKind === "class",
     ),
     designModelTraceability: classAndTable.designModelTraceability.filter(
       (entry: { source: { diagramKind: string } }) => entry.source.diagramKind === "class",
     ),
-  });
+  };
   const tableOnlyJson = JSON.stringify({
     models: classAndTable.models.filter(
       (model: { diagramKind: string }) => model.diagramKind === "table",
@@ -2795,15 +2816,7 @@ test("api retains successful prerequisites but rejects a table without sources",
     llmTransport: {
       async *streamChatCompletion({responseFormat, runContext }) {
         llmCallCount += 1;
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
-        if (llmCallCount === 1) {
-          yield DESIGN_SEQUENCE_JSON;
-          return;
-        }
-        if (llmCallCount === 2) {
-          yield classOnlyJson;
-          return;
-        }
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         yield tableOnlyJson;
       },
     },
@@ -2828,7 +2841,9 @@ test("api retains successful prerequisites but rejects a table without sources",
         ...USECASE_REQUIREMENT_TRACEABILITY,
         ...CLASS_REQUIREMENT_TRACEABILITY,
       ],
-      selectedDiagrams: ["sequence", "class", "table"],
+      existingDesignModels: classOnly.models,
+      existingDesignModelTraceability: classOnly.designModelTraceability,
+      selectedDiagrams: ["table"],
       requestedDiagrams: ["table"],
       providerSettings: MANAGED_PROVIDER_SETTINGS,
     },
@@ -2846,10 +2861,10 @@ test("api retains successful prerequisites but rejects a table without sources",
 
   assert.equal(snapshot.status, "failed");
   assert.ok(snapshot.diagramErrors.table);
-  assert.ok(snapshot.models.some((model: { diagramKind: string }) => model.diagramKind === "class"));
+  assert.deepEqual(snapshot.models.find((model: { diagramKind: string }) => model.diagramKind === "class"), classOnly.models[0]);
   assert.ok(!snapshot.models.some((model: { diagramKind: string }) => model.diagramKind === "table"));
   assert.ok(!snapshot.designModelTraceability.some((entry: { source: { diagramKind: string } }) => entry.source.diagramKind === "table"));
-  assert.equal(llmCallCount, 8, "two successful prerequisites plus six table attempts");
+  assert.equal(llmCallCount, 6, "one table generation plus five repairs; saved prerequisites are not regenerated");
 
   await app.close();
 });
@@ -3231,7 +3246,7 @@ test("api fails document runs after document content repair attempts are exhaust
   const app = await createTestApiServer({
     llmTransport: {
       async *streamChatCompletion({ responseFormat, runContext }) {
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         attempts += 1;
         const chapter = runContext?.subtaskId ?? "unknown";
         chapterAttempts.set(chapter, (chapterAttempts.get(chapter) ?? 0) + 1);
@@ -3323,7 +3338,7 @@ test("api repairs generate_models output when the first model JSON is malformed"
           return;
         }
 
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         modelAttempts += 1;
         if (modelAttempts === 1) {
           yield '{"models":[{"diagramKind":"usecase","title":"实验平台用例","summary":"主要参与者和用例","notes":["仅包含核心流程"],"actors":[';
@@ -3530,7 +3545,7 @@ test("api rejects explicitly empty requirement sources without fabricating mappi
   assert.equal(snapshot.requirementModelTraceability.length, 0);
   assert.equal(snapshot.requirementTrace.filter(
     (entry: { kind: string }) => entry.kind === "parse_error",
-  ).length, 5);
+  ).length, 6);
   assert.ok(
     snapshot.requirementTrace.every(
       (entry: { kind: string; parsedData?: { autoFilledRequirementTraceability?: boolean } }) =>
@@ -3554,7 +3569,7 @@ test("api sends json_schema for Claude models and completes", async () => {
 
         if (prompt.includes("生成需求阶段 UML 结构化模型")) {
           sawGenerateModels = true;
-          assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+          assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         }
         yield USECASE_MODEL_JSON;
       },
@@ -3765,7 +3780,7 @@ test("api logs the final generate_models output when parsing or schema validatio
             return;
           }
 
-          assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+          assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
           modelAttempts += 1;
           if (modelAttempts === 1) {
             yield '{"models":[{"diagramKind":"usecase","title":"实验平台用例","summary":"主要参与者和用例","notes":["仅包含核心流程"],"actors":[';
@@ -3964,7 +3979,7 @@ test("api keeps successful diagrams and reports activity render failure in diagr
           return;
         }
 
-        assert.equal(responseFormat?.type, runContext?.operation === "model_repair" ? "json_object" : "json_schema");
+        assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         const result = JSON.parse(MULTI_MODEL_JSON);
         const selected = prompt.match(/只生成以下图类型：\s*\n([^\n]+)/u)?.[1]?.trim();
         result.models = result.models.filter((model: { diagramKind: string }) => model.diagramKind === selected);

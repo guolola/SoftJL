@@ -1,5 +1,6 @@
 // Removes blocked design targets until their remaining batch dependencies are also selectable.
 import type { DesignDiagramType } from "../../../entities/diagram/model";
+import { independentModelGenerationTargets } from "@uml-platform/contracts";
 
 export function selectableDesignTargets(
   targets: DesignDiagramType[],
@@ -8,7 +9,7 @@ export function selectableDesignTargets(
   let selected = targets;
   for (;;) {
     const next = selected.filter(target => !blockReason(target, selected));
-    if (next.length === selected.length) return selected;
+    if (next.length === selected.length) return independentModelGenerationTargets("design", selected);
     // Removing an unavailable upstream can make a downstream target unavailable too.
     selected = next;
   }

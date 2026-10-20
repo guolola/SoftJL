@@ -20,7 +20,7 @@ function repairTransport(candidate?: DesignDiagramModelSpec): LlmTransport {
   return { async *streamChatCompletion(input) {
     const prompt = input.messages.at(-1)?.content;
     input.onReasoningChunk?.("核对本模型的已确认约束"); input.onReasoningSummary?.("已完成依据核实");
-    yield typeof prompt === "string" && prompt.includes('修复上下文：') ? JSON.stringify(candidate) : '{"passed":true,"issues":[],"findings":[]}';
+    yield typeof prompt === "string" && prompt.includes('请基于本对话中上一版完整模型') ? JSON.stringify(candidate) : '{"passed":true,"issues":[],"findings":[]}';
   } };
 }
 
@@ -141,7 +141,9 @@ test("two correction rounds keep one artifact scope and never trigger an indepen
     basis: { stage: "design", upstreamModels: [{ ...before, title: "UNRELATED_UPSTREAM_CONTENT" }] }, renderClient,
     llmTransport: { async *streamChatCompletion(input) {
       prompts.push(String(input.messages.at(-1)?.content));
-      assert.deepEqual(input.messages.map(message => message.role), ["system", "user"]);
+      assert.deepEqual(input.messages.map(message => message.role), prompts.length === 1
+        ? ["system", "user", "assistant", "user"]
+        : ["system", "user", "assistant", "user", "assistant", "user"]);
       yield JSON.stringify(prompts.length === 1 ? before : corrected);
     } },
   });

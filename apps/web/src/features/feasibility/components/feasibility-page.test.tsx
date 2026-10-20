@@ -360,7 +360,7 @@ describe("FeasibilityPage", () => {
     expect(screen.getAllByRole("img", { name: /：未生成$/ })).toHaveLength(3);
     expect(screen.queryByText("未生成")).not.toBeInTheDocument();
     const card = screen.getByRole("button", { name: "选择系统环境图" });
-    expect(card).toHaveClass("h-[212px]", "sm:h-[236px]");
+    expect(card).toHaveClass("min-h-[260px]", "sm:min-h-[284px]");
     expect(card.parentElement).toHaveAttribute("data-mobile-card-density", "model-targets");
     expect(card.parentElement?.className).toContain("min-[1900px]:grid-cols-6");
     expect(screen.getByText("0/3")).toBeInTheDocument();

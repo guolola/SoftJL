@@ -12,6 +12,10 @@ export const resources = {
   "zh-CN": {
     translation: {
       ...onboardingZh,
+      generationBatch: {
+        title: "请分批生成有依赖关系的模型",
+        conflict: "已选择{{selected}}，上下游模型不能在同一批生成。",
+      },
       requirementSemantics: requirementSemanticsZh,
       standardProject: standardProjectZh,
       mcp: mcpZh,
@@ -342,6 +346,7 @@ export const resources = {
           DESIGN_MODELS_STALE: "上游设计模型已过期，请先更新依赖模型。",
           RUN_RETRY_INPUT_STALE: "原任务输入或目标产物已变更，或缺少完整输入快照，请从当前工作区重新生成。",
           MODEL_STRUCTURE_INVALID: "上游模型存在 {{count}} 个结构错误，请修复或重新生成后继续。",
+          MODEL_GENERATION_BATCH_CONFLICT: "上下游模型不能在同一批生成，请先更新上游，再单独生成下游。",
           REQUIREMENT_TRACEABILITY_MISSING: "需求模型缺少元素级映射，请先重新生成需求模型。",
           REQUIREMENT_PLANTUML_MISSING: "有 {{count}} 个需求模型缺少 PlantUML 图源码，请先重新生成需求模型。",
           DESIGN_MODELS_MISSING: "缺少设计模型，请先生成设计模型后再启动下游生成。",
@@ -634,7 +639,7 @@ export const resources = {
       workflowIllustration: {
         title: "{{target}}的上游输入", inspectHint: "悬停或聚焦卡片查看依赖", separator: "、",
         inputsLabel: "直接上游输入", platform: "平台生成", targetLabel: "目标产物", optional: "可选", optionalSuffix: "（可选）",
-        states: { ready: "就绪", missing: "缺失", stale: "需更新", planned: "本次将生成", running: "生成中" },
+        states: { ready: "就绪", missing: "缺失", stale: "待更新", planned: "本次将生成", running: "生成中" },
         summary: "{{target}}的直接上游输入：{{inputs}}", summaryItem: "{{label}}（{{state}}）", indirect: "间接依赖：{{via}}基于{{inputs}}生成",
         designBaselineCaption: "需求基线提供约束、验收标准与可追踪性。",
         inputs: {
@@ -1588,6 +1593,10 @@ export const resources = {
   en: {
     translation: {
       ...onboardingEn,
+      generationBatch: {
+        title: "Generate dependent models in separate batches",
+        conflict: "{{selected}} is selected. Upstream and downstream models require separate batches. Update the upstream first.",
+      },
       requirementSemantics: requirementSemanticsEn,
       standardProject: standardProjectEn,
       mcp: mcpEn,
@@ -1918,6 +1927,7 @@ export const resources = {
           DESIGN_MODELS_STALE: "An upstream design model is stale. Update the dependency first.",
           RUN_RETRY_INPUT_STALE: "Original inputs or targets changed, or the complete input snapshot is unavailable. Generate again from the current workspace.",
           MODEL_STRUCTURE_INVALID: "Upstream models have {{count}} structural errors. Repair or regenerate them first.",
+          MODEL_GENERATION_BATCH_CONFLICT: "Generate upstream and downstream models in separate batches. Update the upstream first.",
           REQUIREMENT_TRACEABILITY_MISSING: "Requirement models are missing element-level traceability. Regenerate them first.",
           REQUIREMENT_PLANTUML_MISSING: "{{count}} requirement models are missing PlantUML diagram source. Regenerate them first.",
           DESIGN_MODELS_MISSING: "Design models are missing. Generate them before starting downstream work.",

@@ -1,6 +1,7 @@
 // Runs model-backed feasibility stages with capability routing and section-scoped repair.
 import { candidateRulesForDiagram, MAX_GENERATION_REPAIR_ATTEMPTS, contextDiagramSpecSchema, feasibilityBusinessFlowSchema, completeFeasibilityImplementationPlanSchema } from "@uml-platform/contracts";
 import { GenerationRepairSession } from "./shared/generation-repair.js";
+import { ModelGenerationConversation } from "./shared/model-generation-conversation.js";
 import { repairDiagnostics } from "../../normalizers/structured-output/repair-diagnostics.js";
 import { createRunLlmChunkHandlers } from "./shared/llm-chunk-events.js";
 import { readDiagramReviewCounters } from "../records/diagram-review-record.js";
@@ -184,6 +185,11 @@ async function generateFeasibilityJson<T>(input: {
   const facts = sourceStart >= 0 ? input.prompt.slice(sourceStart + sourceMarker.length) : input.record.snapshot.requirementBaseline;
   const schema = input.promptStage === "context" ? contextDiagramSpecSchema : input.promptStage === "business-flow" ? feasibilityBusinessFlowSchema : completeFeasibilityImplementationPlanSchema;
   const repair = new GenerationRepairSession(targetId, facts, [], MAX_GENERATION_REPAIR_ATTEMPTS, input.prompt, schema);
+  // Model artifacts retain their generation turns; implementation plans keep the existing section repair protocol.
+  const conversation = input.promptStage === "implementation" ? undefined : new ModelGenerationConversation(targetId, [
+    { role: "system", content: "你是严谨的软件可行性分析师，只能基于给定事实输出契约要求的 JSON。" },
+    { role: "user", content: input.prompt },
+  ]);
   let lastIssues: FeasibilityValidationIssue[] = [];
   for (let attempt = 0; attempt <= MAX_GENERATION_REPAIR_ATTEMPTS; attempt++) {
     throwIfRunCancelled(input.record);
@@ -194,12 +200,12 @@ async function generateFeasibilityJson<T>(input: {
       input.diagnostics.downgradeReasons.push(`HTTP ${event.status}: ${event.reason}`);
     };
     const raw = await collectTextResult(input.llmTransport, input.providerSettings,
-      [{ role: "system", content: "你是严谨的软件可行性分析师，只能基于给定事实输出契约要求的 JSON。" }, { role: "user", content: prompt }],
+      conversation?.messages ?? [{ role: "system", content: "你是严谨的软件可行性分析师，只能基于给定事实输出契约要求的 JSON。" }, { role: "user", content: prompt }],
       createRunLlmChunkHandlers({ record: input.record, stage: input.stage, modelId: targetId, subtaskId: targetId, subtaskLabel: input.promptStage === "business-flow" ? "业务流程图" : undefined,
         operation: attempt > 0 ? "model_repair" : undefined, round: attempt > 0 ? attempt : undefined }),
-      repair.repairing ? { type: "json_object" } : responseFormatFor(input.promptStage, input.diagnostics), undefined, fallback);
+      !conversation && repair.repairing ? { type: "json_object" } : responseFormatFor(input.promptStage, input.diagnostics), undefined, fallback);
     try {
-      const parsedValue = parseJson(repair.accept(raw));
+      const parsedValue = parseJson(conversation ? conversation.accept(raw) : repair.accept(raw));
       const result = input.parse(parsedValue);
       input.diagnostics.normalizationActions.push(...(result.normalizationActions ?? []));
       input.diagnostics.normalizationActions = [...new Set(input.diagnostics.normalizationActions)];
@@ -216,7 +222,8 @@ async function generateFeasibilityJson<T>(input: {
       emitEvent(input.record, stageProgressRunEventSchema.parse({ type: "stage_progress", stage: input.stage,
         progress: stageProgressValue(input.stage), subtaskId: targetId, modelId: targetId, subtaskStatus: "repairing",
         message: `正在定点修复（${attempt + 1}/${MAX_GENERATION_REPAIR_ATTEMPTS}）：${instruction}` }));
-      prompt = repair.prepare(error, { paths, instruction, sourceFacts: facts });
+      if (conversation) conversation.prepare(error);
+      else prompt = repair.prepare(error, { paths, instruction, sourceFacts: facts });
     }
   }
   const label = input.promptStage === "business-flow" ? "业务流程图" : input.promptStage === "context" ? "上下文模型" : "实现方案";

@@ -27,6 +27,8 @@
   --info: var(--color-blue-400);
 }
 html, body, #root { min-height: 100%; }
+/* Hovered model dependencies can cross the viewport height; keep the page width stable. */
+html { scrollbar-gutter: stable; }
 
 /* The portal overlay must sit above the sticky header and fixed sidebar. */
 [data-name="onborda-overlay"] {

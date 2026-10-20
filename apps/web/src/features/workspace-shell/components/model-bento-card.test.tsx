@@ -1,4 +1,4 @@
-// Verifies compact status semantics and keyboard interactions inside fixed-size model cards.
+// Verifies compact status semantics, expanding guidance, and keyboard interactions inside model cards.
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Network } from "lucide-react";
@@ -74,7 +74,7 @@ describe("ModelBentoCard", () => {
     const icon = screen.getByRole("img", { name: new RegExp(`需求模型：.*${text}`) });
     expect(icon.querySelector("svg")).toHaveClass(color);
     expect(screen.queryByText(new RegExp(`^${text}$`))).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "选择需求模型" })).toHaveClass("h-[212px]", "sm:h-[236px]");
+    expect(screen.getByRole("button", { name: "选择需求模型" })).toHaveClass("min-h-[260px]", "sm:min-h-[284px]");
     expect(screen.getByRole("button", { name: "选择需求模型" })).toHaveAttribute("data-slot", "spotlight-card");
   });
 
@@ -127,10 +127,12 @@ describe("ModelBentoCard", () => {
     expect(onSelectedChange).not.toHaveBeenCalled();
   });
 
-  it("keeps details scrollable and preserves failure color on a disabled card", async () => {
+  it("allows details to expand without inner scrolling and preserves failure color on a disabled card", async () => {
     const user = userEvent.setup();
     const onSelectedChange = renderCard({ disabled: true, status: "failed", content: <p>详细失败原因</p> });
-    expect(screen.getByText("详细失败原因").parentElement).toHaveClass("min-h-0", "overflow-y-auto");
+    const content = screen.getByText("详细失败原因").parentElement;
+    expect(content).not.toHaveClass("overflow-y-auto", "overflow-y-scroll");
+    expect(screen.getByRole("button", { name: "选择需求模型" })).not.toHaveClass("h-[212px]", "sm:h-[236px]");
     expect(screen.getByRole("img").querySelector("svg")).toHaveClass("text-destructive");
     await user.click(screen.getByRole("button", { name: "选择需求模型" }));
     expect(onSelectedChange).not.toHaveBeenCalled();

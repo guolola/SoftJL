@@ -221,8 +221,8 @@ test("analysis requires a saved usecase even when the same batch requests one", 
     assert.equal(result.ok, false);
     if (!result.ok) {
       assert.equal(result.statusCode, 409);
-      assert.equal(result.body.error.code, "REQUIREMENT_MODELS_MISSING");
-      assert.deepEqual(result.body.error.details, { missingDiagrams: ["usecase"] });
+      assert.equal(result.body.error.code, selectedDiagrams.length > 1 ? "MODEL_GENERATION_BATCH_CONFLICT" : "REQUIREMENT_MODELS_MISSING");
+      if (selectedDiagrams.length === 1) assert.deepEqual(result.body.error.details, { missingDiagrams: ["usecase"] });
     }
   }
 });
@@ -237,7 +237,18 @@ test("analysis refuses a saved disconnected use case while regeneration may repl
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.body.error.code, "MODEL_STRUCTURE_INVALID");
   const replacement = await resolveRequirementRunInput({ ...input, selectedDiagrams: ["usecase", "analysis"] }, undefined, loadWorkspace);
-  assert.equal(replacement.ok, true);
+  assert.equal(replacement.ok, false);
+  if (!replacement.ok) assert.equal(replacement.body.error.code, "MODEL_GENERATION_BATCH_CONFLICT");
+});
+
+test("saved design upstreams cannot be regenerated in the same batch as their direct or indirect dependents", async () => {
+  for (const selectedDiagrams of [["class", "table"], ["component", "class"], ["component", "deployment"], ["deployment", "class"]]) {
+    const result = await resolveDesignRunInput({ projectId: "p", selectedDiagrams }, undefined, async () => ({ state: {
+      designModels: { class: modelFixture("design", "class"), component: modelFixture("design", "component") },
+    } }));
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.body.error.code, "MODEL_GENERATION_BATCH_CONFLICT");
+  }
 });
 
 test("analysis uses the saved usecase without scheduling an implicit replacement", async () => {

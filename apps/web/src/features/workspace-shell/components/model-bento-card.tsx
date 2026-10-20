@@ -85,7 +85,7 @@ export function ModelBentoCard({
         }
       }}
       className={cn(
-        "group relative h-[212px] min-w-0 gap-0 overflow-hidden p-3 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-[236px] sm:p-5 [&>div]:flex [&>div]:flex-col",
+        "group relative min-h-[260px] min-w-0 gap-0 overflow-hidden p-3 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-[284px] sm:p-5 [&>div]:flex [&>div]:flex-col",
         selected &&
           "ring-1 ring-primary",
         inspected && "border-primary/45 shadow-sm",
@@ -151,8 +151,8 @@ export function ModelBentoCard({
         </p>
       </div>
       {(details || content) && (
-        // Disabling card selection must not disable reviewing its inputs.
-        <div aria-disabled={false} className="mt-3 min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto overscroll-contain text-[11px] leading-4 text-muted-foreground sm:text-xs sm:leading-5">
+        // Keep guidance fully readable by growing the card instead of adding an inner scroll area.
+        <div aria-disabled={false} className="mt-3 min-w-0 space-y-2 break-words text-[11px] leading-4 text-muted-foreground sm:text-xs sm:leading-5">
           {details}
           {content}
         </div>

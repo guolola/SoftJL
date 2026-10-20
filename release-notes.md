@@ -1,30 +1,32 @@
 <!-- 记录社区版当前发布内容、链路收益、功能边界及部署要求。 -->
 
-# SoftJL Community v2.2.1
+# SoftJL Community v2.2.2
 
 ## 更新重点
 
-- **用户名账号与站内邀请**：使用用户名注册和登录，无需邮箱验证；按已注册用户名邀请成员，接收者在通知中心接受或拒绝。邀请校验拦截自己、无效用户名和未注册账号，决定只允许接收者执行一次。
-- **通知中心**：合并项目邀请与公告，支持个人已读和移除状态；移除不影响其他用户。重发邀请后恢复显示与未读状态，PostgreSQL 中的决定和回执在重启后继续保留。
-- **默认头像与账号界面**：新账号及缺少头像的账号自动分配头像，保留已有自选图片，并可在账号页切换。同步项目卡片、模式徽标和交互提示的界面改进。项目创建简化为单页表单，移除可见性设置，访问统一由成员关系控制。
-- **快速建模任务记录**：每条已接受的消息保存独立任务，在确认请求前持久化记录；图表、测试和文档只归属本轮新增或修改的成果，沿用内容不重复记入。本轮失败或停止后仍保留已完成成果。
-- **项目历史完整展示**：快速建模进入独立历史分类，显示模型与本轮已接受成果；失败任务通过快速建模会话继续，避免误用工程建模的重试入口。
-
-- **项目展开卡片**：展开查看封面、项目资料与成员后进入项目；支持键盘、外部点击及移动端关闭，保持滚动位置，修复遮罩层级和头像提示退出闪烁。
-- **实时上下文占用**：快速建模的占用比例使用当前会话测量和实际运行预算，单次供应商调用单独显示；压缩期间不沿用旧占用值，模型未报告时保持未知。
+- **统一模型修复会话**：需求模型、设计模型、可行性图表及渲染阶段结构修复保留各自任务的原始请求和历次输出，在同一会话追加校验反馈，返回完整修正模型。结构、引用和来源映射共享最多五次修复预算，避免分别修补后仍互相矛盾。
+- **依赖模型分批生成**：需求用例与分析模型、设计类与数据库/组件/部署等直接或间接依赖不允许同批生成。卡片展示冲突原因，全选保留已选目标并补充独立模型，前端操作守卫和 API 执行相同限制。
+- **上游变化及时失效**：用例事件流、关联用例、角色或系统边界变化时，已有分析模型及关联下游会标记为待更新。来源卡片和连线更准确地区分可用、待更新和生成中状态。
+- **JSON 输出指令补齐**：JSON 模式及结构化模式降级时，缺少明确指令的请求自动补充合法 JSON 要求；保留原有文字与图片输入，降低供应商因缺少指令而拒绝调用的风险。
+- **说明与流程预览**：模型卡片随内容增高，完整展示冲突原因与生成说明；页面预留滚动条宽度以减少跳动。创建项目弹窗从缩放入场后及时测量并绘制流程连线，尺寸变化时更新，关闭后清理测量任务。
+- **社区版能力继续保留**：用户名账号、站内邀请通知、默认头像、项目展开卡片、快速建模上下文占用、逐轮任务记录和本轮成果历史继续可用。
 
 ## 生成链路与消耗
 
-本次优化集中在“接收命令 → 持久化任务 → 有序保存成果 → 停止与恢复 → 查看历史”的链路：
+本次优化集中在“选择独立目标 → 校验已保存上游 → 生成模型 → 同会话校验与修复 → 发布有效成果”的链路：
 
-- 保存任务后再确认接收，重复请求复用已有命令记录，减少因刷新或重发造成的重复生成。
-- 同一轮工作区保存与历史投影按顺序完成，避免并发保存让状态与成果错位；取消后的延迟保存不能把任务恢复为运行中。
-- 只记录本轮变化的成果，历史摘要不携带 SVG 正文、会话私有上下文或文档正文，减少历史列表传输和解析负担。
-- 延续按任务裁剪上下文、字段补丁修复、缺失映射单独补齐、独立分支并行和失败实例重试，并保留供应商实际报告的 Token 汇总。
+- 在调用模型前拦截同批上下游冲突，避免下游读取旧模型后再次返工；独立分支继续并行，成功成果无需随失败实例重做。
+- 模型修复延续原始消息前缀，保留无效输出与校验原因，允许联动修正节点、关系和来源映射，减少分离修复协议之间的错位。每个任务隔离历史并受共享修复上限约束。
+- 保留按任务裁剪上下文、单用例范围选择、实际供应商 Token 汇总和快速建模会话压缩。实现方案与文档章节仍使用受目标和基础版本约束的局部补丁协议。
 
-这些机制减少重复工作和恢复成本，有助于缩短等待、控制不必要的 Token 消耗。本版本没有新增线上总耗时或总 Token 降幅结论；真实效果取决于项目规模、模型、供应商、并发和修复结果。
+这些机制旨在减少无效调用和重复生成。本版本没有线上总耗时或总 Token 降幅结论；完整模型修复会保留并增加历史输入，实际消耗取决于模型、项目规模、修复次数及供应商缓存行为。
 
-`npm run benchmark:generation` 可复现既有的本地输入范围样本：20 个用例、8 个无关模型，使用 `cl100k_base` 分词，不调用远端模型。单用例审查输入从 6,637 缩减至 422 Token，字段修复输入从 8,096 缩减至 641 Token。该结果仅表示同一合成样本的输入范围缩减，不代表本次版本相对上一版本的新增收益，也不等于线上总耗时、全部调用总 Token 或计费降幅。
+`npm run benchmark:generation` 使用 20 个用例、8 个无关模型的固定合成样本和 `cl100k_base` 分词，不调用远端模型：
+
+- 单用例审查上下文从 6,637 缩减至 422 Token，表示该样本的来源范围裁剪效果，并非本次版本新增收益。
+- 使用当前模型修复协议，首次请求为 3,858 Token，第一次修复请求为 4,245 Token；原始前缀保留，新增输出与校验反馈使输入增加 387 Token。统计包含序列化消息结构，不计工具或供应商封装。
+
+上述数值仅用于复现输入范围和会话增长，不代表全部调用总 Token、缓存命中、计费或线上耗时；旧字段补丁修复样本不再作为当前模型修复的节省依据。
 
 ## 功能边界
 
@@ -35,19 +37,21 @@
 ## 部署要求
 
 1. 使用 Node.js 22.19+，运行 `npm ci` 并构建共享包和应用。
-2. 本版本采用 `current_platform_schema_v3`，包含用户名账号和站内通知回执。首次安装使用空数据库；已经使用该基线的数据库可继续使用。
+2. 本版本继续采用 `current_platform_schema_v3`，包含用户名账号和站内通知回执。首次安装使用空数据库；已采用该基线的数据库可继续使用，包括 v2.2.1 的当前基线数据库。
 3. **v2.2.0 的 v2 基线及其他旧数据库不能直接升级**。旧库会被明确拒绝，不会自动迁移或清空；部署前准备新的空数据库并配置 `DATABASE_URL`。不再保留旧邮箱字段、邮件邀请令牌和历史迁移兼容链。
 4. 构建后可先用 `node apps/api/dist/db/migrate.js --check` 只读检查目标库，再用 `node apps/api/dist/db/migrate.js` 初始化。
 5. SMTP、邮箱验证、邮件找回密码和邮件邀请链接不再参与账号流程。可选本地访客账号使用 `UML_GUEST_USERNAME` 配置；供应商加密密钥和持久化目录按部署环境维护。
 
 ## 验证
 
-使用共享契约、API、Web 和浏览器回归验证账号、邀请权限、通知回执、快速建模成果归属与历史展示；数据库行为由 PGlite 使用当前 SQL 基线验证。类型检查、代码规范、生产构建及 `npm run audit:docs` 为发布检查入口。
+使用契约、提示词、API、Web 和浏览器回归验证修复会话、来源覆盖、共享预算、双向及间接依赖冲突、批量选择和上游变更状态；数据库行为由 PGlite 使用当前 SQL 基线验证。类型检查、代码规范、生产构建及 `npm run audit:docs` 为发布检查入口。
 
 模拟供应商与本地输入样本用于验证流程约束，不证明远端模型质量、真实线上耗时或费用。实际供应商工具调用、图表质量和 DOCX 预览仍需在部署环境验收。
 
 ## English summary
 
-v2.2.1 adds expandable project previews and live session context occupancy, and aligns username accounts, in-app invitations, personal notification receipts, default avatars and durable quick-modeling task history. Each accepted turn retains only its own changed diagrams, tests and documents, including partial outputs after failure or cancellation. Quick turns appear in project history and continue through the conversation workflow. Existing scoped context and focused repair optimizations remain available; no new production speed or total-token reduction is claimed.
+v2.2.2 unifies model structure and provenance repair in task-local conversations with a shared five-repair limit. Exact request prefixes and generated outputs are retained; corrections return complete models. UI selection, bulk actions, preflight and API guards reject dependent model batches, including indirect dependencies. Changed use-case sources invalidate existing analysis models and dependent designs. JSON mode receives explicit instructions when needed, including after schema fallback.
 
-Install with Node.js 22.19+ and an empty database using `current_platform_schema_v3`. Databases on older baselines, including v2.2.0's v2 baseline, are rejected without migration or deletion. SMTP and email-token account flows are retired. Community BYOK, project authorization, optional explicitly scoped MCP and built-in DOCX preview remain; billing and operations administration remain excluded.
+Scoped inputs, independent branches and failed-instance retries aim to reduce repeated work. Retained repair history adds input; no production speed, total-token, cache or billing reduction is claimed. The benchmark reports both scoped review inputs and current repair-message growth.
+
+Use Node.js 22.19+ and `current_platform_schema_v3`. Existing databases on that baseline remain usable; older baselines are rejected without migration or deletion. Community BYOK, project authorization, optional explicitly scoped MCP, collaboration notifications, quick-modeling history and built-in DOCX preview remain available; billing and operations administration remain excluded.

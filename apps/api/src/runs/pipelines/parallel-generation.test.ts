@@ -1665,7 +1665,7 @@ test("requirement pipeline retries empty coverage five times without guessing as
       }
       if (prompt.includes("只修复来源映射")) {
         traceabilityPromptCount += 1;
-        yield JSON.stringify({ ...JSON.parse(prompt.match(/修复上下文：(.*)/)![1]!), changes: [{ path: "requirementModelTraceability", value: [] }] });
+        yield JSON.stringify({ models: [modelForKind("usecase")], requirementModelTraceability: [] });
         return;
       }
       yield JSON.stringify({
@@ -1713,7 +1713,7 @@ test("requirement pipeline retries empty coverage five times without guessing as
   );
 });
 
-test("requirement pipeline merges only the missing portion of the initial source declaration", async () => {
+test("requirement pipeline repairs complete provenance in the original model conversation", async () => {
   let traceabilityPromptCount = 0;
   const repairedTargets = [
     { elementId: "actor_librarian", elementKind: "actor", label: "图书管理员" },
@@ -1727,12 +1727,13 @@ test("requirement pipeline merges only the missing portion of the initial source
   const transport: LlmTransport = {
     async *streamChatCompletion(input: StreamChatCompletionInput) {
       const prompt = String(input.messages.at(-1)?.content ?? "");
-      if (prompt.includes("只补齐缺失业务元素的来源映射")) {
+      if (prompt.includes("请基于本对话中上一版完整模型")) {
         traceabilityPromptCount += 1;
-        const missing = JSON.parse(prompt.match(/缺失元素清单：(.*)/)![1]!);
-        assert.ok(!missing.some((ref: { elementId: string }) => ref.elementId === "uc_borrow"));
+        assert.deepEqual(input.messages.map(message => message.role), ["system", "user", "assistant", "user"]);
+        assert.match(prompt, /完整模型/);
         yield JSON.stringify({
-          requirementModelTraceability: repairedTargets.filter(target => target.elementId !== "uc_borrow").map((target) => ({
+          models: [modelForKind("usecase")],
+          requirementModelTraceability: repairedTargets.map((target) => ({
             ruleId: "r1",
             target: {
               modelId: "usecase",

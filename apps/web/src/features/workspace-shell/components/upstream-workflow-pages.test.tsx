@@ -9,13 +9,14 @@ import { createRule, createWorkspaceRecord, withWorkspaceProviders } from "../..
 import { DesignModelPage } from "../../design/components/design-model-page";
 import { FeasibilityPage } from "../../feasibility/components/feasibility-page";
 import { TextRequirementView } from "../../requirements/components/text-requirement-page";
+import { modelFixture } from "../../../../../../packages/contracts/dist/testing/model-fixtures";
 
 // Workflow tests start from saved rules with explicit source receipts.
 function createCurrentMockWorkspaceRepository(seed: Parameters<typeof createWorkspaceRecord>[0] = {}) {
   const workspace = createWorkspaceRecord(seed);
   const fingerprint = snapshotInputFingerprint({ requirementText: workspace.requirementText, rules: workspace.rules });
   return createMockWorkspaceRepository({ ...workspace, requirementInputFingerprint: fingerprint,
-    diagramInputFingerprints: Object.fromEntries(Object.values(workspace.models).filter(Boolean).map(model => [model!.diagramKind, fingerprint])),
+    diagramInputFingerprints: { ...Object.fromEntries(Object.values(workspace.models).filter(Boolean).flatMap(model => [[model!.diagramKind, fingerprint], [model!.modelId ?? model!.diagramKind, fingerprint]])), ...workspace.diagramInputFingerprints },
   });
 }
 
@@ -145,6 +146,36 @@ describe("upstream workflow illustrations", () => {
     expect(inputKeys()).toEqual(["requirement:usecase:single-use-case"]);
     expect(within(workflow()).getByText("对应单个用例的事件流")).toBeInTheDocument();
     expect(screen.queryByText(/^间接依赖：/)).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])("shows the single-use-case event-flow source in yellow when planned or retained analysis is stale: %s", async (savedStale) => {
+    const usecase = modelFixture("requirements", "usecase");
+    const analysis = modelFixture("requirements", "analysis");
+    if (usecase.diagramKind !== "usecase" || analysis.diagramKind !== "analysis") throw new Error("fixture");
+    analysis.modelId = "analysis:case";
+    analysis.sourceUseCaseId = "case";
+    analysis.sourceUseCaseName = "下单";
+    const repository = createCurrentMockWorkspaceRepository({
+      requirementText: "用户提交订单", rules: [createRule({ type: "functional" })],
+      selectedDiagramTypes: [], generatedDiagramTypes: ["usecase", "analysis"],
+      models: { usecase, [analysis.modelId!]: analysis },
+      ...(savedStale ? { diagramInputFingerprints: { analysis: "stale:previous-events", [analysis.modelId!]: "stale:previous-events" } } : {}),
+    });
+    const user = userEvent.setup();
+    render(withWorkspaceProviders(<TextRequirementView view="models" />, repository));
+    await screen.findByRole("figure", { name: "功能结构图的上游输入" });
+    if (!savedStale) await user.click(screen.getByRole("checkbox", { name: "用例模型" }));
+    await user.hover(screen.getByRole("button", { name: "选择需求分析模型" }));
+    const source = within(workflow()).getByText("对应单个用例的事件流").closest("li")!;
+    expect(source).toHaveAttribute("data-state", "stale");
+    expect(within(source).getByText("待更新")).toHaveClass("text-warning");
+    if (!savedStale) {
+      await user.click(screen.getByRole("checkbox", { name: "用例模型" }));
+      await user.hover(screen.getByRole("button", { name: "选择需求分析模型" }));
+      const currentSource = within(workflow()).getByText("对应单个用例的事件流").closest("li")!;
+      expect(currentSource).toHaveAttribute("data-state", "ready");
+      expect(within(currentSource).getByText("就绪")).toBeInTheDocument();
+    }
   });
 
   it("shows only fixed mapped types before generation", async () => {

@@ -1,8 +1,8 @@
 // Applies project naming without implicitly carrying facts between model tasks.
 import type { LlmTransport } from "../../../llm.js";
 
-// Generation supplies authoritative inputs once. Repairs carry scoped artifact
-// state and diagnostics explicitly, without replaying sibling facts or full chat history.
+// Generation helpers own their task-local message history. This wrapper adds
+// project naming without sharing conversation turns between sibling tasks.
 export function withConversationBranch<T>(_id: string, work: () => Promise<T>): Promise<T> { return work(); }
 export function withIsolatedConversationBranch<T>(_id: string, work: () => Promise<T>): Promise<T> { return work(); }
 

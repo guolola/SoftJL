@@ -41,6 +41,13 @@ import {
   isRequirementDiagramStale,
   requirementInputFingerprintFor,
 } from "./workspace-context";
+import { modelGenerationSelectionBlockReason } from "./model-generation-selection";
+
+function modelBatchBlock(stage: "requirements" | "design", diagrams: readonly string[]): PreflightBlock | null {
+  const message = diagrams.map(diagram => modelGenerationSelectionBlockReason(stage, diagram, diagrams)).find(Boolean);
+  return message ? { title: i18n.t("generationBatch.title"), tone: "warning", message,
+    stageLabel: stage === "requirements" ? "需求模型" : "设计模型", targetLabel: "已选模型" } : null;
+}
 
 type PreflightBlock = Pick<
   GenerationResultDialogState,
@@ -180,6 +187,8 @@ export function analyzeRequirementGenerationPreflight(
   if (diagrams.length === 0) {
     return { status: "empty" };
   }
+  const batchBlock = modelBatchBlock("requirements", diagrams);
+  if (batchBlock) return { status: "blocked", block: batchBlock };
   const { activeRequirementFingerprint, stale } = hasStaleRules(input);
   if (stale) {
     return { status: "blocked", block: staleRulesBlock("已选需求模型") };
@@ -256,6 +265,8 @@ export function analyzeDesignGenerationPreflight(
   if (requestedDiagrams.length === 0) {
     return { status: "empty" };
   }
+  const batchBlock = modelBatchBlock("design", requestedDiagrams);
+  if (batchBlock) return { status: "blocked", block: batchBlock };
   const { activeRequirementFingerprint, stale } = hasStaleRules(input);
   if (stale) {
     return { status: "blocked", block: staleRulesBlock("已选设计模型") };

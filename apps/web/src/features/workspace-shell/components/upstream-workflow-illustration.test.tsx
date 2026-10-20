@@ -48,7 +48,7 @@ describe("UpstreamWorkflowIllustration", () => {
       ["supplementary", "missing"],
     ]);
     expect(items[0]).toHaveTextContent("就绪");
-    expect(items[1]).toHaveTextContent("需更新");
+    expect(items[1]).toHaveTextContent("待更新");
     expect(items[3]).toHaveTextContent("缺失");
     expect(items[3]).toHaveTextContent("补充资料可选缺失");
     expect(within(figure).queryByText("需求基线")).not.toBeInTheDocument();
@@ -59,7 +59,7 @@ describe("UpstreamWorkflowIllustration", () => {
     expect(curves).toHaveLength(4);
     expect(curves[3]).toHaveAttribute("stroke-dasharray", "3 4");
     expect(curves[0]).not.toHaveAttribute("stroke-dasharray");
-    expect(screen.getByText("实现方案的直接上游输入：系统环境图（就绪）、业务流程图（需更新）、需求规则（就绪）、补充资料（可选）（缺失）"))
+    expect(screen.getByText("实现方案的直接上游输入：系统环境图（就绪）、业务流程图（待更新）、需求规则（就绪）、补充资料（可选）（缺失）"))
       .toHaveAttribute("aria-live", "polite");
   });
 

@@ -67,6 +67,29 @@ function scopedWorkspace() {
     designInputFingerprints: Object.fromEntries(Object.keys(designModels).map(id => [id, fingerprint])) };
 }
 
+test("changing one use case event flow invalidates only its retained analysis and preserves the yellow marker until regeneration", () => {
+  const source = { diagramKind: "usecase", modelId: "usecase", actors: [], systemBoundaries: [], relationships: [],
+    useCases: [{ id: "a", eventFlows: [{ id: "flow-a", steps: [{ id: "step-a", action: "提交申请" }] }] },
+      { id: "b", eventFlows: [{ id: "flow-b", steps: [{ id: "step-b", action: "查看申请" }] }] }] };
+  const models = { usecase: source, "analysis:a": { diagramKind: "analysis", modelId: "analysis:a", sourceUseCaseId: "a" },
+    "analysis:b": { diagramKind: "analysis", modelId: "analysis:b", sourceUseCaseId: "b" } };
+  const fingerprint = snapshotInputFingerprint({ requirementText: "需求", rules: [] });
+  const before = { requirementText: "需求", rules: [], models, designModels: {},
+    diagramInputFingerprints: { usecase: fingerprint, analysis: fingerprint, "analysis:a": fingerprint, "analysis:b": fingerprint } };
+  const edited = structuredClone(before);
+  edited.models.usecase.useCases[0]!.eventFlows[0]!.steps[0]!.action = "确认后提交申请";
+  const next = invalidateDesignDependents(before, edited);
+  assert.match(String(next.diagramInputFingerprints["analysis:a"]), /^stale:/u);
+  assert.equal(next.diagramInputFingerprints["analysis:b"], fingerprint);
+  assert.equal(next.diagramInputFingerprints.usecase, fingerprint);
+  assert.match(String(next.diagramInputFingerprints.analysis), /^stale:/u);
+  const persisted = invalidateDesignDependents(next, next);
+  assert.equal(persisted.diagramInputFingerprints.analysis, next.diagramInputFingerprints.analysis);
+  const regenerated = invalidateDesignDependents(next, { ...next, diagramInputFingerprints: {
+    ...next.diagramInputFingerprints, "analysis:a": fingerprint } });
+  assert.equal(regenerated.diagramInputFingerprints.analysis, fingerprint);
+});
+
 test("editing one rule only invalidates its traced model and design, including models of the same kind", () => {
   const before = scopedWorkspace();
   const edited = { ...before, rules: before.rules.map(rule => rule.id === "r-a" ? { ...rule, text: "业务 A 新要求" } : rule) };

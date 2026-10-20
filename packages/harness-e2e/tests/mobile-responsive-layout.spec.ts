@@ -5,6 +5,27 @@ import { mockProjectApi, projectId } from "./fixtures/project-workspace";
 
 const widths = [360, 375, 768, 1440] as const;
 
+test("project creation draws workflow connections on first open without resizing", async ({ page }) => {
+  await mockProjectApi(page);
+  await page.route("**/api/projects", route => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ projects: [] }),
+  }));
+  await page.goto("/projects");
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.getByRole("button", { name: "新建项目", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "创建项目", exact: true });
+    await expect(dialog).toBeVisible();
+    const beams = dialog.locator('[data-project-mode-illustration="beam"] [data-workflow-connection] svg > path:first-child');
+    await expect(beams).toHaveCount(8);
+    // No resize follows opening: entry transforms alone must trigger the first measurement.
+    await expect.poll(() => beams.evaluateAll(paths => paths.every(path => !!path.getAttribute("d")))).toBe(true);
+    await expectNoPageOverflow(page, `project creation at ${width}px`);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  }
+});
+
 test("project cards expand without page shifts and keep overlays above the header", async ({ page }, info) => {
   await mockProjectApi(page);
   await page.route("**/api/projects", (route) => route.fulfill({
@@ -251,15 +272,12 @@ test("template page scroll keeps the workspace header visible", async ({ page })
 async function expectNoPageOverflow(page: Page, label: string) {
   await page.evaluate(() => document.fonts.ready);
   await expect.poll(
-    () => page.evaluate(() => ({
-      clientWidth: document.documentElement.clientWidth,
-      scrollWidth: document.documentElement.scrollWidth,
-    })),
+    // Stable scrollbar gutters may make scrollWidth smaller than clientWidth.
+    // Only content extending beyond the viewport is a horizontal overflow.
+    () => page.evaluate(() => Math.max(0,
+      document.documentElement.scrollWidth - document.documentElement.clientWidth)),
     { message: `${label} should not overflow the page horizontally` },
-  ).toEqual(await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.clientWidth,
-  })));
+  ).toBe(0);
 }
 
 async function checkViewportMatrix(page: Page, label: string) {

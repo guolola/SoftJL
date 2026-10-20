@@ -58,7 +58,7 @@ test("ID-free traces shared by sibling models cannot be assigned to the selected
 });
 
 
-test("design generation completes only missing mappings against its direct design dependency", async () => {
+test("design generation repairs complete output in the same direct dependency conversation", async () => {
   const { createEmptyDesignSnapshot, createEmptySnapshot } = await import("../records/snapshots.js");
   const { generateDesignModelsWithRepair } = await import("./design-pipeline.js");
   const { strictTestModelCapability } = await import("../../test-fixtures/providers/model-capability.js");
@@ -72,9 +72,14 @@ test("design generation completes only missing mappings against its direct desig
   const { collectModelRefs } = await import("../../normalizers/traceability/traceability-normalizer.js");
   const declaration = { source: { modelId: "component", diagramKind: "component", elementId: "c", elementKind: "component", label: "组件" }, targets: [{ modelId: "design-class", diagramKind: "class", elementId: "upstream-class", elementKind: "class", label: "上游设计类" }] };
   declaration.targets[0]!.elementId = "order";
-  const result = await generateDesignModelsWithRepair(run, { apiBaseUrl: "https://llm.test", apiKey: "test", model: "test", modelCapability: strictTestModelCapability("test") }, { async *streamChatCompletion() {
+  const result = await generateDesignModelsWithRepair(run, { apiBaseUrl: "https://llm.test", apiKey: "test", model: "test", modelCapability: strictTestModelCapability("test") }, { async *streamChatCompletion(input) {
     calls++;
-    yield calls === 1 ? JSON.stringify({ models: [generated], designModelTraceability: [declaration] }) : JSON.stringify({ designModelTraceability: collectModelRefs([generated]).refs.filter(ref => ref.elementId !== "c").map(source => ({ source, targets: declaration.targets })) });
+    if (calls === 2) {
+      assert.deepEqual(input.messages.map(message => message.role), ["system", "user", "assistant", "user"]);
+      assert.equal(input.messages[1]!.content, "只读取上游设计类图");
+      assert.match(String(input.messages.at(-1)!.content), /映射仍缺少/);
+    }
+    yield calls === 1 ? JSON.stringify({ models: [generated], designModelTraceability: [declaration] }) : JSON.stringify({ models: [generated], designModelTraceability: collectModelRefs([generated]).refs.map(source => ({ source, targets: declaration.targets })) });
   } }, baseline, [], ["component"], "只读取上游设计类图", "generate_design_models", { upstreamDesignModels: [upstream] });
   assert.equal(calls, 2);
   assert.equal(result.designModelTraceability.length, 3);

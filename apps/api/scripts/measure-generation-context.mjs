@@ -1,10 +1,12 @@
-// Measures deterministic prompt scope reductions; it never calls a provider or estimates live billing.
+// Measures scoped review inputs and retained model-repair messages without provider calls or billing estimates.
 import assert from "node:assert/strict";
 import { getEncoding } from "js-tiktoken";
 import { createRequirementBaselineSnapshot } from "@uml-platform/contracts";
 import { reviewPromptContext } from "../../../packages/prompts/src/prompt-context.ts";
 import { modelFixture } from "../../../packages/contracts/src/testing/model-fixtures.ts";
-import { GenerationRepairSession } from "../src/runs/pipelines/shared/generation-repair.ts";
+import { buildGenerateDesignSequencePrompt } from "@uml-platform/prompts";
+import { ModelGenerationConversation } from "../src/runs/pipelines/shared/model-generation-conversation.ts";
+import { createMessages } from "../src/runs/pipelines/shared/llm-messages.ts";
 
 const rule = { id: "R1", type: "business-rule", text: "保存失败必须回滚，拒绝后不得创建记录。" };
 const baseline = createRequirementBaselineSnapshot({ runId: "fixture", requirementText: rule.text, rules: [rule] });
@@ -21,21 +23,23 @@ const scoped = reviewPromptContext("design", model, basis);
 assert.deepEqual(scoped.upstreamModels[0].useCases.map(item => item.id), ["wanted", "included"]);
 assert.ok(JSON.stringify(scoped).includes(rule.text));
 
-const value = { models: [{ diagramKind: "class", modelId: "class", classes: [{ id: "a", name: "A" }, { id: "b", name: "B" }],
-  relationships: [{ id: "edge", sourceId: "a", targetId: "missing" }], notes: ["已确认业务正文，不参与端点修复。".repeat(100)] }] };
-const original = structuredClone(value);
-const repair = new GenerationRepairSession("class", basis, ["models"], 2);
-repair.accept(JSON.stringify(value));
-const focused = repair.prepare(new Error("[missing-endpoint] relationships.0: 关系终点不存在"));
-assert.ok(focused.includes('"targetId":"missing"'));
-assert.ok(!focused.includes("unrelated-"));
-assert.deepEqual(value, original);
+const initial = createMessages(buildGenerateDesignSequencePrompt(baseline, scoped.upstreamModels[0], [], "wanted"));
+const repair = new ModelGenerationConversation("sequence:wanted", initial);
+const raw = JSON.stringify({ models: [model], designModelTraceability: [] });
+repair.accept(raw);
+repair.prepare(new Error("designModelTraceability 映射缺少业务元素，请返回完整模型及有效来源映射"));
+const repairedRequest = repair.messages;
+// The comparison uses the production repair protocol: exact prefix, raw output and feedback.
+assert.deepEqual(repairedRequest.slice(0, initial.length), initial);
+assert.equal(repairedRequest.at(-2).content, raw);
+assert.ok(!JSON.stringify(repairedRequest).includes("unrelated-"));
 
 const encoding = getEncoding("cl100k_base");
 const tokens = value => encoding.encode(typeof value === "string" ? value : JSON.stringify(value), [], []).length;
 const comparison = (before, after) => ({ beforeTokens: tokens(before), afterTokens: tokens(after),
   reductionPercent: Number(((1 - tokens(after) / tokens(before)) * 100).toFixed(1)) });
-console.log(JSON.stringify({ fixture: "20 use cases, 8 unrelated models, one invalid relationship endpoint", tokenizer: "cl100k_base",
+console.log(JSON.stringify({ fixture: "20 use cases, 8 unrelated models, one sequence model with missing provenance", tokenizer: "cl100k_base",
   reviewContext: comparison({ basis, model }, { basis: scoped, model }),
-  repairContext: comparison({ basis, current: value }, focused),
-  scope: "Synthetic input comparison only; excludes output, retries, latency and provider billing." }, null, 2));
+  modelRepairConversation: { initialRequestTokens: tokens(initial), firstRepairRequestTokens: tokens(repairedRequest),
+    retainedPrefixTokens: tokens(initial), addedMessagesTokens: tokens(repairedRequest) - tokens(initial) },
+  scope: "Synthetic request inputs only. Repair retains history and adds input; no cache, total-token, latency or billing savings are inferred." }, null, 2));

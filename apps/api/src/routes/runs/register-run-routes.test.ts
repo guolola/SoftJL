@@ -2833,8 +2833,8 @@ test("project requirements analysis commands reject missing saved usecase models
         payload: { projectId: "project-a", selectedDiagrams },
       });
       assert.equal(response.statusCode, 409, response.body);
-      assert.equal(response.json().error.code, "REQUIREMENT_MODELS_MISSING");
-      assert.deepEqual(response.json().error.details.missingDiagrams, ["usecase"]);
+      assert.equal(response.json().error.code, selectedDiagrams.length > 1 ? "MODEL_GENERATION_BATCH_CONFLICT" : "REQUIREMENT_MODELS_MISSING");
+      if (selectedDiagrams.length === 1) assert.deepEqual(response.json().error.details.missingDiagrams, ["usecase"]);
     }
     assert.equal(runs.size, 0);
   } finally { await app.close(); }

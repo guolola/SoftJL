@@ -11,7 +11,7 @@ export function promptInputMetrics(messages: ChatMessage[], responseFormat?: Cha
     const texts = typeof message.content === "string" ? [message.content] : message.content.flatMap(part => part.type === "text" ? [part.text] : []);
     for (const text of texts) {
       total += text.length;
-      let section = "instructions";
+      let section = message.role === "assistant" ? "currentModel" : "instructions";
       for (const line of text.split(/(?<=\n)/)) {
         if (line.startsWith("修复上下文：")) {
           try { repair = JSON.parse(line.slice("修复上下文：".length)); } catch { /* Counts still cover malformed diagnostics. */ }

@@ -1,4 +1,4 @@
-// Reads current source declarations; pipelines complete missing bindings without replacing accepted ones.
+// Reads source declarations from complete model responses; omissions remain errors in the model conversation.
 import { designModelTraceabilityEntrySchema, requirementModelTraceabilityEntrySchema, type DiagramModelSpec, type DesignDiagramModelSpec } from "@uml-platform/contracts";
 import { collectModelRefs } from "./traceability-normalizer.js";
 import { isPlainRecord } from "../json/parse-json.js";

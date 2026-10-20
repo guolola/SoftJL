@@ -56,7 +56,7 @@ test("real PlantUML renders the corrected FK model without a PNG recheck", async
     providerSettings: { modelCapability: strictTestModelCapability("selected-model"), apiBaseUrl: "https://example.test", apiKey: "test", model: "selected-model" },
     llmTransport: { async *streamChatCompletion(input) {
       const prompt = input.messages.at(-1)!.content;
-      if (typeof prompt === "string" && prompt.includes("修复上下文：")) yield JSON.stringify(candidate);
+      if (typeof prompt === "string" && prompt.includes("请基于本对话中上一版完整模型")) yield JSON.stringify(candidate);
       else {
         assert.equal(typeof prompt, "string");
         yield '{"passed":true,"issues":[],"findings":[]}';

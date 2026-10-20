@@ -6,6 +6,7 @@ import { DIAGRAM_META, type DiagramType } from "../../../entities/diagram/model"
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
 import { pendingAutoReviewsForRequirementDiagram } from "./requirement-review-view-model";
+import { modelGenerationSelectionBlockReason } from "../../workspace-session/lib/model-generation-selection";
 
 export const STALE_USECASE_BLOCK_REASON = "用例模型已存在但基于旧规则，请先更新用例模型";
 export const MISSING_USECASE_BLOCK_REASON = "缺少上游模型：用例模型，请先生成";
@@ -58,6 +59,7 @@ export function requirementTargetBlockReason(input: {
   isRulesStale: boolean;
   rules: RequirementRule[];
   staleDiagrams: DiagramType[];
+  selectedDiagrams?: DiagramType[];
 }) {
   const {
     diagram,
@@ -84,7 +86,7 @@ export function requirementTargetBlockReason(input: {
   ) {
     return STALE_USECASE_BLOCK_REASON;
   }
-  return null;
+  return modelGenerationSelectionBlockReason("requirements", diagram, input.selectedDiagrams ?? []);
 }
 
 export function requirementTargetCardState(input: RequirementTargetCardStateInput) {
@@ -114,6 +116,7 @@ export function requirementTargetCardState(input: RequirementTargetCardStateInpu
     isRulesStale,
     rules,
     staleDiagrams,
+    selectedDiagrams,
   });
   const autoFillLabels: string[] = [];
   const pendingAutoReviews = pendingAutoReviewsForRequirementDiagram(
@@ -126,6 +129,7 @@ export function requirementTargetCardState(input: RequirementTargetCardStateInpu
     canSelectDiagram:
       canEditRequirements &&
       (!isAnalysisDiagram || hasUseCaseSourceForAnalysis) &&
+      !modelGenerationSelectionBlockReason("requirements", diagram, selectedDiagrams) &&
       (!blockReason ||
         (isRulesStale && rules.length > 0 && isExistingRequirementModel)),
     checked,

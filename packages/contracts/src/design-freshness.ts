@@ -95,12 +95,40 @@ function affectedRequirementModels(previous: State, next: State) {
   return affected;
 }
 
+// Analysis reads one event-flow scope, including linked cases and the actors/boundaries present in its prompt.
+function analysisSourceContext(models: State, useCaseId: string): unknown {
+  const source = Object.values(models).map(object).find(model => model.diagramKind === "usecase" &&
+    array(model.useCases).some(item => object(item).id === useCaseId));
+  if (!source) return null;
+  const cases = array(source.useCases).map(object), relationships = array(source.relationships).map(object);
+  const ids = new Set([useCaseId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const edge of relationships) {
+      if (edge.type === "association" || ![edge.sourceId, edge.targetId].some(id => ids.has(String(id)))) continue;
+      for (const id of [edge.sourceId, edge.targetId]) {
+        if (cases.some(item => item.id === id) && !ids.has(String(id))) { ids.add(String(id)); grew = true; }
+      }
+    }
+  }
+  const retained = new Set([...ids, ...array(source.actors).map(item => String(object(item).id)), ...array(source.systemBoundaries).map(item => String(object(item).id))]);
+  return { useCases: cases.filter(item => ids.has(String(item.id))), actors: source.actors, systemBoundaries: source.systemBoundaries,
+    relationships: relationships.filter(edge => retained.has(String(edge.sourceId)) && retained.has(String(edge.targetId))) };
+}
+
 export function invalidateDesignDependents(previousState: object, nextState: object, regeneratedKinds: string[] = []) {
   const previous = object(previousState), next = object(nextState);
   const oldRequirementFingerprint = requirementFingerprint(previous), newRequirementFingerprint = requirementFingerprint(next);
   const oldDesignFingerprint = designFingerprint(previous), newDesignFingerprint = designFingerprint(next);
   const beforeModels = object(previous.models), afterModels = object(next.models);
   const affected = affectedRequirementModels(previous, next);
+  for (const [id, value] of Object.entries(afterModels)) {
+    const model = object(value);
+    if (model.diagramKind !== "analysis" || !(id in beforeModels) || !equal(beforeModels[id], value)) continue;
+    const useCaseId = String(model.sourceUseCaseId ?? modelId(id, value).replace(/^analysis:/u, ""));
+    if (!equal(analysisSourceContext(beforeModels, useCaseId), analysisSourceContext(afterModels, useCaseId))) affected.add(id);
+  }
   const changedRequirements = new Set(affected);
   const tracesBefore = array(previous.requirementModelTraceability), tracesAfter = array(next.requirementModelTraceability);
   for (const id of new Set([...Object.keys(beforeModels), ...Object.keys(afterModels)])) {

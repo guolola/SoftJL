@@ -1,4 +1,4 @@
-// Measures shared card geometry and semantic icon colors against the project workspace.
+// Measures responsive card widths, content-driven heights and semantic status colors.
 import { expect, test, type Locator } from "@playwright/test";
 import { projectId, mockProjectApi } from "./fixtures/project-workspace";
 import { themePresets } from "../../../apps/web/src/shared/ui/theme-presets";
@@ -18,7 +18,7 @@ async function expectSemanticColor(icon: Locator, token: string) {
 
 for (const theme of ["light", "dark"]) {
   for (const width of [390, 1440, 2048]) {
-    test(`${theme} ${width}px model cards share dimensions and status colors`, async ({ page }, info) => {
+    test(`${theme} ${width}px model cards preserve responsive widths, readable guidance and status colors`, async ({ page }, info) => {
       await page.addInitScript(({ theme }) => {
         localStorage.setItem("admincn-ui-theme", theme);
         localStorage.setItem("admincn-ui-theme-preset", "caffeine");
@@ -45,11 +45,15 @@ for (const theme of ["light", "dark"]) {
           return { width: bounds.width, height: bounds.height };
         }));
         for (const box of geometry) {
-          expect(box.height).toBe(width < 640 ? 212 : 236);
+          expect(box.height).toBeGreaterThanOrEqual(width < 640 ? 260 : 284);
           expect(Math.abs(box.width - geometry[0].width)).toBeLessThan(1);
         }
         sizes.push(geometry[0]);
-        if (width === 390) expect(geometry[0].width).toBe(175);
+        if (width === 390) {
+          // Two columns must fill the available grid, including the platform scrollbar gutter.
+          const availableWidth = await grid.evaluate(node => node.clientWidth - Number.parseFloat(getComputedStyle(node).columnGap));
+          expect(Math.abs(geometry[0].width * 2 - availableWidth)).toBeLessThan(1);
+        }
         await expect(grid.getByText(/^(未生成|已生成设计模型|等待生成)$/)).toHaveCount(0);
         if (label === "需求模型") {
           const success = grid.locator('[data-generation-status="completed"] svg').first();
@@ -62,6 +66,14 @@ for (const theme of ["light", "dark"]) {
           await expectSemanticColor(failed.locator('svg'), '--status-failure');
           const failureCard = cards.filter({ has: page.locator('[data-generation-status="failed"]') });
           await expect(failureCard.getByRole('heading', { name: '用例实现设计', exact: true })).toBeVisible();
+          const guidance = failureCard.locator('[aria-disabled="false"]');
+          const layout = await guidance.evaluate(node => ({
+            scrollHeight: node.scrollHeight, clientHeight: node.clientHeight,
+            bottom: node.getBoundingClientRect().bottom,
+            cardBottom: node.closest('[data-slot="spotlight-card"]')!.getBoundingClientRect().bottom,
+          }));
+          expect(layout.scrollHeight).toBeLessThanOrEqual(layout.clientHeight + 1);
+          expect(layout.bottom).toBeLessThanOrEqual(layout.cardBottom);
         }
         await grid.screenshot({ path: info.outputPath(`${label}.png`) });
       }

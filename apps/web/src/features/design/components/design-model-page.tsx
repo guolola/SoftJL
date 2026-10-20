@@ -52,6 +52,7 @@ import { TargetSelectionActions } from "../../workspace-shell/components/target-
 import { DESIGN_MODEL_DEPENDENCY_MAP, DESIGN_REQUIREMENT_SOURCE_MAP, planDesignRequirementAutoUpstream, resolveDesignGenerationDiagrams } from "../../workspace-session/lib/generation-planning";
 import { missingRequirementRulesReason } from "../../workspace-session/lib/generation-preflight";
 import { selectableDesignTargets } from "../lib/design-target-selection";
+import { modelGenerationSelectionBlockReason } from "../../workspace-session/lib/model-generation-selection";
 import { UpstreamWorkflowIllustration } from "../../workspace-shell/components/upstream-workflow-illustration";
 import {
   DESIGN_DIAGRAM_ICON,
@@ -103,7 +104,8 @@ function localizeDesignBlockReason(reason: string, t: ReturnType<typeof useTrans
       label: diagram ? getDiagramLabel(diagram, t) : staleSource[1],
     });
   }
-  return t("designPage.blocked.requirements");
+  // Selection conflicts are already localized; preserve concrete reasons instead of replacing them with generic guidance.
+  return reason;
 }
 
 type RequirementSourceStatus = Record<DiagramType, boolean>;
@@ -261,7 +263,7 @@ export function DesignModelPage() {
         .map(source => DESIGN_DIAGRAM_META[source].label),
     ];
     if (missingSources.length > 0) return `缺少上游模型：${missingSources.join("、")}，请先生成`;
-    // Evaluate the proposed batch so available upstreams can be regenerated with their dependents.
+    // Saved upstreams remain the only source; dependency conflicts are handled separately by selection guards.
     const batchDesignDiagrams = resolveDesignGenerationDiagrams(
       batch, Object.values(designModels).map(model => model.diagramKind),
     ).effectiveDiagrams;
@@ -311,7 +313,7 @@ export function DesignModelPage() {
   };
   const effectiveSelected = selectableDesignTargets(selectedDesignDiagrams, getDesignTargetBlockReason);
   const selectedDesignBlockReason =
-    effectiveSelected.map(diagram => getDesignTargetBlockReason(diagram, effectiveSelected)).find(Boolean) ?? null;
+    effectiveSelected.map(diagram => modelGenerationSelectionBlockReason("design", diagram, effectiveSelected) ?? getDesignTargetBlockReason(diagram, effectiveSelected)).find(Boolean) ?? null;
   // Keep prerequisite guidance reachable when a blocked card cannot be selected.
   const unselectedPrerequisiteBlockReason = effectiveSelected.length === 0 &&
     Object.values(models).some(Boolean)
@@ -370,6 +372,7 @@ export function DesignModelPage() {
 
   const toggleDiagram = (diagram: DesignDiagramType, checked: boolean) => {
     if (generating || !canUpdateWorkspace || !canStartRuns) return;
+    if (checked && modelGenerationSelectionBlockReason("design", diagram, effectiveSelected)) return;
     const next =
       checked
         ? DESIGN_DIAGRAM_ORDER.filter((item) =>
@@ -484,10 +487,12 @@ export function DesignModelPage() {
       }
       case "design": {
         const status = designStatusFor(input.diagram);
+        const planned = plannedDesignDiagrams.includes(input.diagram) || status === "queued";
+        const changedSource = planned || designStatusFor(inspectedDiagram) === "stale";
         return upstreamStateFromAvailability(
           Object.values(designModels).some((model) => model.diagramKind === input.diagram),
-          status === "stale",
-          { planned: plannedDesignDiagrams.includes(input.diagram) || status === "queued", running: status === "running" },
+          status === "stale" || changedSource,
+          { planned: !changedSource && planned, running: status === "running" },
         );
       }
       default: return "missing";
@@ -520,7 +525,7 @@ export function DesignModelPage() {
                     </Badge>
                     <TargetSelectionActions
                       disabled={generating || !canUpdateWorkspace || !canStartRuns}
-                      onSelectAll={() => setSelectedDesignDiagrams(selectableDesignTargets(DESIGN_DIAGRAM_ORDER, getDesignTargetBlockReason))}
+                      onSelectAll={() => setSelectedDesignDiagrams(selectableDesignTargets([...effectiveSelected, ...DESIGN_DIAGRAM_ORDER], getDesignTargetBlockReason))}
                       onClear={() => setSelectedDesignDiagrams([])}
                     />
                   </div>
@@ -544,10 +549,11 @@ export function DesignModelPage() {
                     const localizedLabel = getDesignDiagramLabel(diagram, t);
                     const localizedDescription = getDesignDiagramDescription(diagram, t);
                     const checked = effectiveSelected.includes(diagram);
+                    const selectionBlock = modelGenerationSelectionBlockReason("design", diagram, effectiveSelected);
                     const blockReason = getDesignDiagramBlockReason(
                       diagram,
                       sourceStatus,
-                    ) ?? getDesignTargetBlockReason(diagram, effectiveSelected);
+                    ) ?? getDesignTargetBlockReason(diagram, effectiveSelected) ?? selectionBlock;
                     const hasPendingAutoReview = Object.values(
                       autoGeneratedUpstreamReviews,
                     ).some(
@@ -590,6 +596,7 @@ export function DesignModelPage() {
                         onInspect={() => setInspectedDiagram(diagram)}
                         content={
                           <div className="space-y-1.5">
+                            {selectionBlock && <p className="text-warning">{selectionBlock}</p>}
                             {error && (
                               <div className="text-destructive">
                                 {localizeRunFailure(

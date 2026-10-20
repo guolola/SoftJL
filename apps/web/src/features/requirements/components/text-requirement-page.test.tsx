@@ -54,6 +54,38 @@ function storeManagedUserSettings() {
 }
 
 describe("TextRequirementView", () => {
+  it("keeps usecase and analysis mutually exclusive in either selection order and in bulk selection", async () => {
+    const repository = createCurrentMockWorkspaceRepository({
+      requirementText: "用户提交订单", rules: [createRule({ type: "functional" })], selectedDiagramTypes: [],
+      generatedDiagramTypes: ["usecase", "analysis"],
+      models: { usecase: { diagramKind: "usecase", title: "订单用例", summary: "订单业务", notes: [], actors: [], useCases: [], systemBoundaries: [], relationships: [] },
+        "analysis:order": { diagramKind: "analysis", modelId: "analysis:order", sourceUseCaseId: "order", sourceUseCaseName: "提交订单", title: "提交订单分析", summary: "业务交互", notes: [], participants: [], messages: [], fragments: [] } },
+    });
+    const user = userEvent.setup();
+    render(withWorkspaceProviders(<TextRequirementView view="models" />, repository));
+    const usecase = await screen.findByRole("checkbox", { name: "用例模型" });
+    const analysis = screen.getByRole("checkbox", { name: "需求分析模型" });
+    const group = screen.getByRole("group", { name: "全选 / 全不选" });
+    await user.click(usecase);
+    expect(analysis).toHaveAttribute("aria-disabled", "true");
+    await user.click(analysis);
+    const analysisCard = screen.getByRole("button", { name: "选择需求分析模型" });
+    act(() => analysisCard.focus());
+    await user.keyboard("{Enter} ");
+    expect(analysis).not.toBeChecked();
+    expect(within(analysisCard).getByText(/上下游模型不能在同一批生成/)).toBeVisible();
+    await user.click(usecase);
+    await user.click(analysis);
+    expect(usecase).toHaveAttribute("aria-disabled", "true");
+    await user.click(within(group).getByRole("button", { name: "全选" }));
+    expect(analysis).toBeChecked();
+    expect(usecase).not.toBeChecked();
+    await user.click(within(group).getByRole("button", { name: "全不选" }));
+    await user.click(within(group).getByRole("button", { name: "全选" }));
+    expect(usecase).toBeChecked();
+    expect(analysis).not.toBeChecked();
+  });
+
   it("blocks analysis without a saved usecase even after selecting usecase or selecting all", async () => {
     const repository = createCurrentMockWorkspaceRepository({
       requirementText: "用户可以提交订单", rules: [createRule({ type: "functional" })],
@@ -1045,7 +1077,7 @@ describe("TextRequirementView", () => {
     });
     const useCaseCard = screen.getByRole("button", { name: "选择用例模型" });
     expect(within(useCaseCard).queryByRole("button", { name: /^打开/ })).not.toBeInTheDocument();
-    expect(useCaseCard).toHaveClass("h-[212px]", "sm:h-[236px]");
+    expect(useCaseCard).toHaveClass("min-h-[260px]", "sm:min-h-[284px]");
     expect(useCaseCard).toHaveAttribute("data-slot", "spotlight-card");
     expect(useCaseCheckbox).not.toBeChecked();
 

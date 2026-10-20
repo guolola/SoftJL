@@ -8,6 +8,7 @@ const REQUIRED_RUNTIME_EXPORTS = [
   "buildExtractRulesPrompt",
   "buildRepairExtractedRulesPrompt",
   "buildGenerateModelsPrompt",
+  "buildModelRepairPrompt",
   "buildGenerateRequirementAnalysisPrompt",
   "buildRepairModelsPrompt",
   "buildGenerateRequirementTraceabilityPrompt",

@@ -1,5 +1,6 @@
 // Resolves project-scoped run start commands into full pipeline request inputs.
 import { requirementRuleFacts } from "@uml-platform/contracts";
+import { conflictingModelGenerationTarget, type ModelGenerationStage } from "@uml-platform/contracts";
 import {
   requirementBaselineSchema,
   requirementRulesSchema,
@@ -89,6 +90,14 @@ function runInputResolutionError(
 function rejectInvalidModelStructures(models: unknown[], stage: ModelingStage): InputResolution<never> | null {
   const diagnostics = models.flatMap((model) => validateModelInput(model, stage)).filter((issue) => issue.severity === "error");
   return diagnostics.length ? runInputResolutionError(409, "MODEL_STRUCTURE_INVALID", { details: { diagnostics }, params: { count: diagnostics.length } }) : null;
+}
+
+function rejectConflictingModelBatch(stage: ModelGenerationStage, diagrams: readonly string[]): InputResolution<never> | null {
+  for (const target of diagrams) {
+    const conflict = conflictingModelGenerationTarget(stage, target, diagrams);
+    if (conflict) return runInputResolutionError(409, "MODEL_GENERATION_BATCH_CONFLICT", { details: { stage, targets: [target, conflict] } });
+  }
+  return null;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -772,6 +781,8 @@ export async function resolveRequirementRunInput(
   loadProjectWorkspace?: LoadProjectWorkspaceForRun,
 ): Promise<InputResolution<StartRunRequest>> {
   const command: StartRunCommand = startRunCommandSchema.parse(body);
+  const batchError = rejectConflictingModelBatch("requirements", [...command.selectedDiagrams, ...command.requestedDiagrams ?? [], ...command.dependencyDiagrams ?? []]);
+  if (batchError) return batchError;
   const rulesOnly = command.selectedDiagrams.length === 0;
   const workspace = await loadWorkspaceStateForCommand({
     commandProjectId: command.projectId,
@@ -836,6 +847,8 @@ export async function resolveDesignRunInput(
   loadProjectWorkspace?: LoadProjectWorkspaceForRun,
 ): Promise<InputResolution<StartDesignRunRequest>> {
   const command: StartDesignRunCommand = startDesignRunCommandSchema.parse(body);
+  const batchError = rejectConflictingModelBatch("design", [...command.selectedDiagrams, ...command.requestedDiagrams ?? []]);
+  if (batchError) return batchError;
   const workspace = await loadWorkspaceStateForCommand({
     commandProjectId: command.projectId,
     metadata,

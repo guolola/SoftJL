@@ -83,6 +83,6 @@ test("missing sources never open a second repair budget", async () => {
     yield JSON.stringify({ models: [{ ...modelFixture("design", "sequence"), modelId: "provider-sequence" }], designModelTraceability: [] });
   } };
   await assert.rejects(generateDesignModelsWithRepair(run, provider, transport, baseline, [], ["sequence"], "生成模型",
-    "generate_design_sequence", { subtaskId: "sequence:alarm", subtaskLabel: "用例实现设计：处理报警", modelRepairAttempts: 0 }), /designModelTraceability.*共享 5 次/);
+    "generate_design_sequence", { subtaskId: "sequence:alarm", subtaskLabel: "用例实现设计：处理报警", modelRepairAttempts: 0 }), /designModelTraceability.*共享 0 次/);
   assert.equal(calls, 1, "repairAttempts=0 also forbids opening a separate source repair loop");
 });

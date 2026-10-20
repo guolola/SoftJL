@@ -82,6 +82,11 @@ function basePreflightInput() {
 }
 
 describe("analyzeDesignGenerationPreflight", () => {
+  it.each([["class", "table"], ["component", "class"], ["component", "deployment"], ["deployment", "class"]] as DesignDiagramType[][])("blocks conflicting design batch %s and %s before generation", (...only) => {
+    const result = analyzeDesignGenerationPreflight({ ...basePreflightInput(), only });
+    expect(result.status).toBe("blocked");
+    if (result.status === "blocked") expect(result.block.message).toContain("上下游模型不能在同一批生成");
+  });
   it("does not block architecture generation on an unrelated model's incomplete traceability", () => {
     const functions = modelFixture("requirements", "function");
     const data = diagramModelSpecSchema.parse(modelFixture("requirements", "class"));
@@ -198,8 +203,8 @@ describe("candidate requirement inputs", () => {
     });
     expect(result.status).toBe("blocked");
     if (result.status !== "blocked") return;
-    expect(result.block.message).toContain("缺少上游模型：用例模型");
-    expect(result.block.primaryAction?.label).toBe("前往需求模型");
+    expect(result.block.message).toContain(sameBatch ? "上下游模型不能在同一批生成" : "缺少上游模型：用例模型");
+    if (!sameBatch) expect(result.block.primaryAction?.label).toBe("前往需求模型");
   });
 
   it("allows analysis with a saved current usecase model", () => {

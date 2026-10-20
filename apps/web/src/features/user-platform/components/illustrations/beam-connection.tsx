@@ -35,11 +35,19 @@ export function ConnectionBeam({ containerRef, fromRef, toRef, className, beamCo
     const from = fromRef.current;
     const to = toRef.current;
     if (!container || !from || !to) return;
+    let frame: number | undefined;
 
     // Convert screen measurements back to local units so scaled card previews retain aligned beams.
     const measure = () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      frame = undefined;
       const bounds = container.getBoundingClientRect();
-      if (!bounds.width || !bounds.height) return;
+      // Dialogs enter from scale(0); transforms do not trigger ResizeObserver as they animate.
+      // Retry until the preview can be measured, then leave subsequent updates to the observer.
+      if (!bounds.width || !bounds.height) {
+        frame = requestAnimationFrame(measure);
+        return;
+      }
       const scaleX = container.offsetWidth / bounds.width;
       const scaleY = container.offsetHeight / bounds.height;
       const start = from.getBoundingClientRect();
@@ -53,7 +61,10 @@ export function ConnectionBeam({ containerRef, fromRef, toRef, className, beamCo
     observer.observe(from);
     observer.observe(to);
     measure();
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
   }, [containerRef, fromRef, toRef, pathBuilder]);
 
   return <svg aria-hidden="true" className={`pointer-events-none absolute inset-0 size-full overflow-visible ${className ?? ""}`} fill="none">

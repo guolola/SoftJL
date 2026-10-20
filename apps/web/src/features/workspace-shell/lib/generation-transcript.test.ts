@@ -59,6 +59,12 @@ describe("generation transcript", () => {
         repair: { targetId: "class", mode: "scoped-regeneration", baseFingerprint: "fp:v3:abc", paths: ["models"], round: 1, reason: "诊断无法定位到字段" } } }]);
     expect(result.steps[0].calls[0].summary).toContain("扩大到当前产物范围修复：诊断无法定位到字段");
   });
+
+  it("describes full model corrections in the retained conversation", () => {
+    const result = projectGenerationTranscript([{ ...activity("model-repair", "function", "started"), operation: "model_repair", round: 1,
+      inputMetrics: { unit: "utf16-characters", messages: 100, responseFormat: 0, sections: { repair: 100 } } }]);
+    expect(result.steps[0].calls[0].summary).toContain("基于当前对话修正完整模型");
+  });
   it("shows the remaining structure check without an image call or skipped overall verdict", () => {
     const check = { ...activity("structure-start", "structure", "started"), stage: "verify_diagram_visual" as const,
       modelId: "usecase", subtaskId: "usecase", operation: "structure_check" as const };

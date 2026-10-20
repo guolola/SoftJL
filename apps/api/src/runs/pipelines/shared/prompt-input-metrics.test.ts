@@ -19,3 +19,18 @@ test("repair metrics expose bounded repair scope without retaining source facts"
   assert.deepEqual(metrics.repair, repair);
   assert.ok(!JSON.stringify(metrics).includes("PRIVATE_BUSINESS_VALUE"));
 });
+
+test("conversation metrics count retained outputs without requiring repair metadata in prompts", () => {
+  const raw = '{ "models": ["PRIVATE_GENERATED_MODEL"] }';
+  const metrics = promptInputMetrics([
+    { role: "user", content: "生成模型" },
+    { role: "assistant", content: raw },
+    { role: "user", content: "解析或校验错误：first" },
+    { role: "assistant", content: raw },
+    { role: "user", content: "解析或校验错误：second" },
+  ]);
+  assert.equal(metrics.sections.currentModel, raw.length * 2);
+  assert.equal(metrics.repair, undefined);
+  assert.equal(Object.values(metrics.sections).reduce((a, b) => a + b, 0), metrics.messages);
+  assert.doesNotMatch(JSON.stringify(metrics), /PRIVATE_GENERATED_MODEL/);
+});

@@ -340,6 +340,19 @@ function effectiveResponseFormat(
   return responseFormat ?? { type: "json_object" as const };
 }
 
+function messagesForResponseFormat(
+  messages: ChatMessage[],
+  responseFormat: ChatCompletionResponseFormat | null | undefined,
+): ChatMessage[] {
+  if (responseFormat?.type !== "json_object") return messages;
+  const mentionsJson = messages.some(({ content }) => typeof content === "string"
+    ? /json/i.test(content)
+    : content.some((part) => part.type === "text" && /json/i.test(part.text)));
+  // JSON mode requires an explicit text instruction, including after schema fallback.
+  // Preserve caller messages and image payloads; image URLs do not count as instructions.
+  return mentionsJson ? messages : [{ role: "system", content: "只返回合法 JSON，不要输出 Markdown、解释或代码围栏。" }, ...messages];
+}
+
 function isJsonSchemaResponseFormat(
   responseFormat: ChatCompletionResponseFormat | null,
 ): responseFormat is JsonSchemaResponseFormat {
@@ -607,7 +620,7 @@ function createStreamingChatCompletionBody({
 }): ChatCompletionCreateParamsStreaming {
   return {
     model: providerSettings.model,
-    messages: asChatMessages(messages),
+    messages: asChatMessages(messagesForResponseFormat(messages, responseFormat)),
     stream: true,
     ...reasoningRequestOptions(providerSettings.model, reasoning),
     ...(includeUsage ? { stream_options: { include_usage: true } } : {}),
@@ -633,7 +646,7 @@ function createNonStreamingChatCompletionBody({
 }): ChatCompletionCreateParamsNonStreaming {
   return {
     model,
-    messages: asChatMessages(messages),
+    messages: asChatMessages(messagesForResponseFormat(messages, responseFormat)),
     stream: false,
     temperature,
     ...(responseFormat === null || responseFormat === undefined

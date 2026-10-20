@@ -10,7 +10,7 @@ import {
   resolveChatCompletionsUrl,
   resolveOpenAiBaseUrl,
 } from "./llm.js";
-import type { OpenAiCompatibleClientFactory } from "./llm.js";
+import type { ChatMessage, OpenAiCompatibleClientFactory } from "./llm.js";
 import type { ProviderRequestRetryEvent } from "./adapters/llm/request-retry.js";
 
 const resolvePublicHostname = async () => ["8.8.8.8"];
@@ -26,6 +26,48 @@ async function drain(stream: AsyncIterable<string>) {
   for await (const chunk of stream) chunks.push(chunk);
   return chunks;
 }
+
+test("JSON mode satisfies provider validation for explicit, default and image requests without mutating inputs", async () => {
+  for (const variant of ["explicit", "default", "image", "existing-instruction"] as const) {
+    const messages: ChatMessage[] = variant === "image"
+      ? [{ role: "user", content: [{ type: "text", text: "读取模型" }, { type: "image_url", image_url: { url: "https://images.test/json/model.png" } }] }]
+      : [{ role: "system", content: variant === "existing-instruction" ? "只返回 Json。" : "只补齐缺失来源映射。" }, { role: "user", content: "生成结果" }];
+    const original = structuredClone(messages);
+    let calls = 0;
+    const clientFactory: OpenAiCompatibleClientFactory = () => ({
+      chat: { completions: { create: async (body) => {
+        calls++;
+        const request = body as unknown as { messages: ChatMessage[]; response_format: { type: string } };
+        assert.equal(request.response_format.type, "json_object");
+        const text = request.messages.flatMap(({ content }) => typeof content === "string" ? [content] : content.flatMap(part => part.type === "text" ? [part.text] : [])).join("\n");
+        if (!/json/i.test(text)) throw { status: 400, message: "Prompt must contain the word 'json'" };
+        assert.deepEqual(variant === "existing-instruction" ? request.messages : request.messages.slice(1), original);
+        if (variant !== "existing-instruction") assert.equal(request.messages[0]?.role, "system");
+        return (async function* () { yield { choices: [{ delta: { content: '{"ok":true}' } }] }; })() as never;
+      } } }, models: { list: async () => ({ data: [] }) },
+    });
+    const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+    const output = await drain(transport.streamChatCompletion({ ...retryTestInput, messages,
+      responseFormat: variant === "default" ? undefined : { type: "json_object" },
+    }));
+    assert.deepEqual(output, ['{"ok":true}']);
+    assert.equal(calls, 1);
+    assert.deepEqual(messages, original);
+  }
+});
+
+test("plain text and strict schema requests retain their original messages", async () => {
+  for (const responseFormat of [null, { type: "json_schema", json_schema: { name: "model", strict: true, schema: { type: "object" } } }] as const) {
+    const clientFactory: OpenAiCompatibleClientFactory = () => ({
+      chat: { completions: { create: async (body) => {
+        assert.deepEqual(body.messages, retryTestInput.messages);
+        return (async function* () { yield { choices: [{ delta: { content: "ok" } }] }; })() as never;
+      } } }, models: { list: async () => ({ data: [] }) },
+    });
+    const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+    assert.deepEqual(await drain(transport.streamChatCompletion({ ...retryTestInput, responseFormat })), ["ok"]);
+  }
+});
 
 test("real transport retries a gateway 503 with the same prompt and records recovery", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -563,6 +605,12 @@ test("createRealLlmTransport retries unsupported json_schema requests with JSON 
     assert.equal(resolveCalls, 2);
     assert.equal(JSON.parse(requestBodies[0]).response_format.type, "json_schema");
     assert.equal(JSON.parse(requestBodies[1]).response_format.type, "json_object");
+    // The downgrade must add JSON instructions even when the original schema request had none.
+    const originalMessages = JSON.parse(requestBodies[0]).messages;
+    const fallbackMessages = JSON.parse(requestBodies[1]).messages;
+    assert.deepEqual(fallbackMessages.slice(1), originalMessages);
+    assert.equal(fallbackMessages[0].role, "system");
+    assert.match(fallbackMessages[0].content, /JSON/);
     assert.deepEqual(fallbacks, [{
       from: "strict_json",
       to: "json_object",

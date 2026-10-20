@@ -1,7 +1,7 @@
 // Orchestrates design-model generation, PlantUML, and SVG rendering for design runs.
-import { MAX_GENERATION_REPAIR_ATTEMPTS, designDiagramModelsResultSchema } from "@uml-platform/contracts";
-import { GenerationRepairSession } from "./shared/generation-repair.js";
-import { repairDesignMappings } from "./shared/repair-missing-mappings.js";
+import { MAX_GENERATION_REPAIR_ATTEMPTS } from "@uml-platform/contracts";
+import { ModelGenerationConversation } from "./shared/model-generation-conversation.js";
+import { assertDesignMappings } from "./shared/model-mapping-validation.js";
 import { missingRequestedModelOutputs } from "../records/run-output-provenance.js";
 
 import { createStageLifecycle } from "./shared/stage-lifecycle.js";
@@ -28,7 +28,6 @@ import {
 import {
   buildGenerateDesignModelsPrompt,
   buildGenerateDesignSequencePrompt,
-  modelTaskSourcePrompt,
   scopeUseCaseModelForPrompt,
 } from "@uml-platform/prompts";
 import { type LlmTransport } from "../../llm.js";
@@ -440,7 +439,6 @@ export async function generateDesignModelsWithRepair(
     if (!models.length || models.some((model) => !selectedDiagrams.includes(model.diagramKind))) throw new Error("模型类型与本次请求不匹配");
     options.validateModels?.(models);
   };
-  let prompt = initialPrompt;
   let lastErrorMessage = "";
   const traceStage =
     stage === "generate_design_sequence" ? "generate_design_sequence" : "generate_design_models";
@@ -456,7 +454,7 @@ export async function generateDesignModelsWithRepair(
     subtaskLabel: options.subtaskLabel ?? (diagramKind ? designDiagramLabel(diagramKind) : undefined),
   };
 
-  const repair = new GenerationRepairSession(repairIdentity, modelTaskSourcePrompt(initialPrompt), ["models", "designModelTraceability"], modelRepairAttempts, initialPrompt, designDiagramModelsResultSchema);
+  const repair = new ModelGenerationConversation(repairIdentity, createMessages(initialPrompt), modelRepairAttempts);
   for (let attempt = 0; attempt <= modelRepairAttempts; attempt += 1) {
     if (attempt > 0 && readDiagramReviewCounters(record, repairIdentity, selectedDiagrams[0]).repairAttempts >= MAX_MODEL_REPAIR_ATTEMPTS) throw new Error("已达到共享 5 次结构修复上限");
     const repairRound = readDiagramReviewCounters(record, repairIdentity, diagramKind).repairAttempts + 1;
@@ -471,9 +469,9 @@ export async function generateDesignModelsWithRepair(
     let content = await collectTextResult(
       llmTransport,
       providerSettings,
-      createMessages(prompt),
+      repair.messages,
       emitLimitedChunk,
-      repair.repairing ? { type: "json_object" } : responseFormat,
+      responseFormat,
       abortSignal,
     );
     appendDesignTrace(record, {
@@ -494,6 +492,7 @@ export async function generateDesignModelsWithRepair(
       const filteredTraceability = parsed.designModelTraceability.filter((entry) =>
         filteredDiagramKinds.has(entry.source.diagramKind as DesignDiagramKind),
       );
+      assertDesignMappings(filteredModels, [...requirementModels, ...options.upstreamDesignModels ?? []], filteredTraceability);
       appendDesignTrace(record, {
         stage: traceStage,
         attempt: attempt + 1,
@@ -503,11 +502,7 @@ export async function generateDesignModelsWithRepair(
           designModelTraceability: filteredTraceability,
         },
       });
-      return repairDesignMappings({ record, providerSettings, llmTransport, stage, targetId: repairIdentity, diagramKind,
-        subtaskLabel: options.subtaskLabel, models: filteredModels, bindings: filteredTraceability,
-        upstreamModels: [...requirementModels, ...options.upstreamDesignModels ?? []], repairsUsed: repair.attempts,
-        repairLimit: modelRepairAttempts, abortSignal, onActivity, onBlankActivity })
-        .then(designModelTraceability => ({ models: filteredModels, designModelTraceability }));
+      return { models: filteredModels, designModelTraceability: filteredTraceability };
     } catch (error) {
       logFailedStructuredOutput(
         stage,
@@ -527,7 +522,7 @@ export async function generateDesignModelsWithRepair(
 
       if (attempt === modelRepairAttempts) {
         throw new Error(
-          `${stage} structured output failed: ${lastErrorMessage}`,
+          `${stage} structured output failed: ${lastErrorMessage}（已达到共享 ${modelRepairAttempts} 次修复上限）`,
           { cause: error },
         );
       }
@@ -544,11 +539,11 @@ export async function generateDesignModelsWithRepair(
       );
       onActivity?.();
 
-      prompt = repair.prepare(error);
+      repair.prepare(error);
     }
   }
 
-  throw new Error(`${stage} structured output failed: ${lastErrorMessage}`);
+  throw new Error(`${stage} structured output failed: ${lastErrorMessage}（已达到共享 ${modelRepairAttempts} 次修复上限）`);
 }
 
 export function findRequirementModel(

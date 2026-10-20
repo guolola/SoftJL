@@ -26,7 +26,7 @@ test("replayed feasibility rejects mismatched facts before any provider call", a
   assert.deepEqual(snapshot.requirementBaseline, baseline);
 });
 
-test("a lane and node ID collision completes after one focused repair", async () => {
+test("a lane and node ID collision completes through full model conversation repair", async () => {
   const rules: RequirementRule[] = [{ id: "r1", type: "functional", text: "系统调用外部工具处理业务" }];
   const baseline = buildRequirementBaseline({ runId: "source", requirementText: rules[0]!.text, rules });
   const snapshot = createEmptyFeasibilitySnapshot("duplicate-lane", { projectId: "p", selectedArtifacts: ["business-flow"],
@@ -46,11 +46,14 @@ test("a lane and node ID collision completes after one focused repair", async ()
       if (calls === 1) { yield JSON.stringify({ model, traceability: [{ requirementId: "r1", targetId: "work", targetKind: "node" }] }); return; }
       const prompt = input.messages.at(-1)!.content;
       assert.equal(typeof prompt, "string");
-      const metadata = JSON.parse((prompt as string).split("\n").find(line => line.startsWith("修复上下文："))!.slice("修复上下文：".length));
-      assert.deepEqual(metadata.paths, ["model.swimlanes.1.id", "model.nodes.3.actorOrLane"]);
-      yield JSON.stringify({ targetId: metadata.targetId, baseFingerprint: metadata.baseFingerprint, changes: [
-        { path: "model.swimlanes.1.id", value: "lane_tool" }, { path: "model.nodes.3.actorOrLane", value: "lane_tool" },
-      ] });
+      assert.match(prompt as string, /返回修正后的完整 JSON/);
+      assert.doesNotMatch(prompt as string, /修复上下文|baseFingerprint/);
+      assert.equal(input.runContext?.round, 1);
+      assert.deepEqual(input.messages.map(message => message.role), ["system", "user", "assistant", "user"]);
+      const repaired = structuredClone(model);
+      repaired.swimlanes[1]!.id = "lane_tool";
+      repaired.nodes[3]!.actorOrLane = "lane_tool";
+      yield JSON.stringify({ model: repaired, traceability: [{ requirementId: "r1", targetId: "work", targetKind: "node" }] });
     } },
     async artifact => ({ svg: "<svg/>", renderMeta: { engine: "test", generatedAt: new Date().toISOString(), sourceLength: artifact.source.length, durationMs: 0 } }));
   assert.equal(calls, 2);
@@ -77,6 +80,7 @@ for (const artifact of ["context", "business-flow", "implementation"] as const) 
       }
       const run: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false };
       let calls = 0;
+      let previousMessages: import("../../llm.js").ChatMessage[] = [];
       const response = artifact === "context" ? structuredClone(librarySeatFeasibilityContext) : artifact === "business-flow" ? structuredClone(librarySeatFeasibilityFlow) : structuredClone(librarySeatFeasibilityPlan);
       if (missingSource) {
         if ("people" in response) response.people[0]!.sourceRequirementIds = [];
@@ -85,7 +89,20 @@ for (const artifact of ["context", "business-flow", "implementation"] as const) 
       }
       const generation = runFeasibilityStagePipeline(run,
         { modelCapability: strictTestModelCapability("test"), apiBaseUrl: "https://example.test", apiKey: "test", model: "test" },
-        { async *streamChatCompletion() { calls++; yield JSON.stringify(response); } },
+        { async *streamChatCompletion(input) {
+          calls++;
+          if (artifact === "implementation") {
+            assert.equal(input.messages.length, 2, "implementation plans retain their existing independent section repair requests");
+            assert.equal(input.responseFormat?.type, calls > 1 ? "json_object" : "json_schema");
+          } else {
+            assert.equal(input.messages.length, calls * 2);
+            assert.deepEqual(input.messages.slice(0, previousMessages.length), previousMessages);
+            if (calls > 1) assert.equal(input.messages.at(-2)!.content, JSON.stringify(response));
+            assert.equal(input.responseFormat?.type, "json_schema");
+            previousMessages = structuredClone(input.messages);
+          }
+          yield JSON.stringify(response);
+        } },
         async artifact => ({ svg: "<svg/>", renderMeta: { engine: "test", generatedAt: new Date().toISOString(), sourceLength: artifact.source.length, durationMs: 0 } }));
       if (missingSource) {
         await assert.rejects(generation, /结构化输出.*共享 5 次修复/);

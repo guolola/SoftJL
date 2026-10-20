@@ -220,7 +220,11 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
           : `${operationNames[event.operation]}${event.round ? ` · 第 ${event.round} 轮` : ""}`}`;
       }
       call.technical = event.format === "technical";
-      if (event.phase === "started" && event.inputMetrics?.repair) {
+      const fullModelRepair = event.operation === "model_repair" && ["generate_context", "generate_business_flow", "generate_models", "generate_design_models", "generate_design_sequence", "verify_diagram_visual"].includes(event.stage);
+      // Model repair state comes from server events, never from technical fields embedded in prompts.
+      if (event.phase === "started" && fullModelRepair && !event.inputMetrics?.repair) {
+        call.summary += "基于当前对话修正完整模型\n";
+      } else if (event.phase === "started" && event.inputMetrics?.repair) {
         const repair = event.inputMetrics.repair;
         const label = repair.mode === "field-patch" ? "仅修复已定位的问题" : repair.mode === "syntax" ? "修复输出格式" : "扩大到当前产物范围修复";
         call.summary += `${label}${repair.reason ? `：${repair.reason}` : ""}\n`;

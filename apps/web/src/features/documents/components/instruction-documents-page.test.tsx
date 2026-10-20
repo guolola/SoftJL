@@ -535,7 +535,7 @@ describe("InstructionDocumentsPage", () => {
       expect(within(card).getByRole("img")).toHaveAttribute("data-generation-status", "blocked");
       expect(within(card).queryByRole("button", { name: /前往/ })).not.toBeInTheDocument();
       expect(card).toHaveAttribute("data-slot", "spotlight-card");
-      expect(card).toHaveClass("h-[212px]", "sm:h-[236px]");
+      expect(card).toHaveClass("min-h-[260px]", "sm:min-h-[284px]");
       expect(within(card).getByRole("checkbox")).not.toBeChecked();
       expect(within(card).queryByRole("button", { name: /生成|打开/ })).not.toBeInTheDocument();
     }
