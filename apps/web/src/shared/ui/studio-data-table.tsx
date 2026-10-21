@@ -2,6 +2,7 @@
 'use client'
 
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   type ColumnDef,
   type OnChangeFn,
@@ -47,11 +48,12 @@ function StudioPageSizeSelect({
   onPageSizeChange: (pageSize: number) => void
   className?: string
 }) {
+  const { t } = useTranslation()
   return (
     <label className={cn('text-muted-foreground flex shrink-0 items-center gap-2 text-sm', className)}>
-      <span>每页</span>
+      <span>{t('studioTable.perPage')}</span>
       <SelectControl
-        aria-label='每页条数'
+        aria-label={t('studioTable.pageSize')}
         className='w-20'
         value={String(pageSize)}
         onValueChange={value => onPageSizeChange(Number(value))}
@@ -69,7 +71,7 @@ export function StudioPagination({
   onPageChange,
   onPageSizeChange,
   pageSizeOptions = [10, 25, 50],
-  itemLabel = '条记录',
+  itemLabel,
   showPageSize = true,
   className
 }: {
@@ -84,6 +86,7 @@ export function StudioPagination({
   showPageSize?: boolean
   className?: string
 }) {
+  const { t } = useTranslation()
   const safePageCount = Math.max(1, pageCount)
   const safePage = Math.min(Math.max(1, page), safePageCount)
   const from = total === 0 ? 0 : (safePage - 1) * pageSize + 1
@@ -103,8 +106,7 @@ export function StudioPagination({
         aria-label={`${from}-${to} / ${total}`}
         className='text-muted-foreground grow text-sm max-sm:order-3 max-sm:w-full max-sm:text-center'
       >
-        显示 <span className='text-foreground'>{from}</span>–<span className='text-foreground'>{to}</span>，共{' '}
-        <span className='text-foreground'>{total}</span> {itemLabel}
+        {t('studioTable.summary', { from, to, total, itemLabel: itemLabel ?? t('studioTable.records') })}
       </p>
       <Pagination className='mx-0 w-fit justify-end'>
         <PaginationContent>
@@ -114,7 +116,7 @@ export function StudioPagination({
               variant='ghost'
               size='icon'
               className='rounded-full'
-              aria-label='上一页'
+              aria-label={t('studioTable.previous')}
               disabled={safePage <= 1}
               onClick={() => onPageChange(Math.max(1, safePage - 1))}
             >
@@ -134,7 +136,7 @@ export function StudioPagination({
                   size='icon'
                   className='rounded-full'
                   aria-current={entry === safePage ? 'page' : undefined}
-                  aria-label={`第 ${entry} 页`}
+                  aria-label={t('studioTable.page', { page: entry })}
                   onClick={() => onPageChange(entry)}
                 >
                   {entry}
@@ -148,7 +150,7 @@ export function StudioPagination({
               variant='ghost'
               size='icon'
               className='rounded-full'
-              aria-label='下一页'
+              aria-label={t('studioTable.next')}
               disabled={safePage >= safePageCount}
               onClick={() => onPageChange(Math.min(safePageCount, safePage + 1))}
             >
@@ -196,7 +198,7 @@ export function StudioDataTable<TData, TValue = unknown>({
   columns,
   data,
   getRowId,
-  emptyState = '暂无数据',
+  emptyState,
   pageSizeOptions = [10, 25, 50],
   initialPageSize = 10,
   pagination: controlledPagination,
@@ -213,8 +215,9 @@ export function StudioDataTable<TData, TValue = unknown>({
   actions,
   className,
   tableClassName,
-  footerLabel = '条记录'
+  footerLabel
 }: StudioDataTableProps<TData, TValue>) {
+  const { t } = useTranslation()
   const searchId = React.useId()
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [internalPagination, setInternalPagination] = React.useState<PaginationState>({
@@ -325,7 +328,7 @@ export function StudioDataTable<TData, TValue = unknown>({
           )) : (
             <TableRow>
               <TableCell colSpan={columns.length} className='h-28 text-center text-muted-foreground'>
-                {emptyState}
+                {emptyState ?? t('studioTable.empty')}
               </TableCell>
             </TableRow>
           )}

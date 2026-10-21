@@ -12,6 +12,11 @@ export const resources = {
   "zh-CN": {
     translation: {
       ...onboardingZh,
+      studioTable: {
+        perPage: "每页", pageSize: "每页条数", previous: "上一页", next: "下一页",
+        page: "第 {{page}} 页", records: "条记录", empty: "暂无数据",
+        summary: "显示 {{from}}–{{to}}，共 {{total}} {{itemLabel}}",
+      },
       generationBatch: {
         title: "请分批生成有依赖关系的模型",
         conflict: "已选择{{selected}}，上下游模型不能在同一批生成。",
@@ -1593,6 +1598,11 @@ export const resources = {
   en: {
     translation: {
       ...onboardingEn,
+      studioTable: {
+        perPage: "Per page", pageSize: "Rows per page", previous: "Previous page", next: "Next page",
+        page: "Page {{page}}", records: "records", empty: "No data",
+        summary: "Showing {{from}}–{{to}} of {{total}} {{itemLabel}}",
+      },
       generationBatch: {
         title: "Generate dependent models in separate batches",
         conflict: "{{selected}} is selected. Upstream and downstream models require separate batches. Update the upstream first.",

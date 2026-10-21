@@ -1,8 +1,9 @@
 // Verifies the shared Studio DataTable 9 shell keeps controls and pagination inside one bordered card.
 import type { ColumnDef } from "@tanstack/react-table";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "../i18n/i18n";
 
 import { StudioDataTable } from "./studio-data-table";
 
@@ -13,6 +14,22 @@ const columns: ColumnDef<Row>[] = [
 ];
 
 describe("StudioDataTable", () => {
+  afterEach(async () => { await act(async () => { await i18n.changeLanguage("zh-CN"); }); });
+
+  it("switches pagination and empty-state text with the interface language", async () => {
+    await act(async () => { await i18n.changeLanguage("en"); });
+    const { rerender } = render(<StudioDataTable columns={columns} data={Array.from({ length: 12 }, (_, i) => ({ id: String(i), name: `Record ${i + 1}` }))} />);
+    expect(screen.getByLabelText("Rows per page")).toBeInTheDocument();
+    expect(screen.getByText("Showing 1–10 of 12 records")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByText("Record 11")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Page 2" })).toHaveAttribute("aria-current", "page");
+    rerender(<StudioDataTable columns={columns} data={[]} />);
+    expect(screen.getByText("No data")).toBeInTheDocument();
+    await act(async () => { await i18n.changeLanguage("zh-CN"); });
+    expect(screen.getByLabelText("每页条数")).toBeInTheDocument();
+    expect(screen.getByText("暂无数据")).toBeInTheDocument();
+  });
   it("keeps toolbar, table and pagination in one fully bordered shell", async () => {
     const onSearch = vi.fn();
     const data = Array.from({ length: 12 }, (_, index) => ({
