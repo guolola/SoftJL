@@ -2,7 +2,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FileTextIcon } from "lucide-react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "../../i18n/i18n";
 import {
   EmptyState,
   PageHeader,
@@ -72,6 +73,11 @@ describe("TableToolbar", () => {
 });
 
 describe("TablePagination", () => {
+  // Pagination uses the shared translations; initialize its locale before rendering.
+  beforeEach(async () => {
+    await i18n.changeLanguage("zh-CN");
+  });
+
   it("announces the visible range and navigates pages", async () => {
     const onPageChange = vi.fn();
     render(
