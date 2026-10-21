@@ -21,6 +21,18 @@ build/
 *.key
 *.p12
 *.pfx
+# Local credential stores must never be published.
+.aws/
+.ssh/
+.npmrc
+
+# Local database files and their transaction sidecars.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
 
 # logs
 *.log

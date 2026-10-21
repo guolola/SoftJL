@@ -1,9 +1,11 @@
-<!-- Introduces SoftJL through project outcomes, English interface examples and self-hosting instructions. -->
+<!-- Provides the default English repository overview and links to the Simplified Chinese version. -->
 
 **English** | [简体中文](./readme-zh-cn.md)
 
 <p align="center">
-  <img src="./apps/web/public/brand/uml-platform-logo.svg" width="80" height="80" alt="SoftJL" />
+  <a href="https://jianglisoftware.com">
+    <img src="./apps/web/public/brand/uml-platform-logo.svg" width="120" height="120" alt="SoftJL official logo" />
+  </a>
 </p>
 
 <div align="center">
@@ -11,46 +13,157 @@
 # SoftJL Community
 
 <p>
-  <strong>Turn requirements into UML diagrams, test cases and Word specifications.</strong><br />
-  An AI workspace for software engineering capstone and course projects.<br />
-  <sub>Self-hosted · Bring your own model · Traceable designs · Editable DOCX exports</sub>
+  <strong>An engineering workspace for capstone and course projects</strong><br />
+  Connect requirements, UML, design, tests and engineering documents with your own model service.<br />
+  <sub>Review coverage · Follow changes · Explain your work</sub>
 </p>
 
-[Try the hosted app](https://jianglisoftware.com) · [Run locally](#quick-start) · [User guide](https://jianglisoftware.com/tutorial)
+<p>
+  <a href="https://jianglisoftware.com"><img src="https://img.shields.io/badge/Live%20Demo-Open%20Platform-2563eb?style=for-the-badge" alt="Open the live platform" /></a>
+  <a href="https://jianglisoftware.com/tutorial"><img src="https://img.shields.io/badge/User%20Guide-Read%20Online-0f766e?style=for-the-badge" alt="Read the user guide" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-7c3aed?style=for-the-badge" alt="Apache-2.0 License" /></a>
+</p>
 
-[![Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-7c3aed?style=flat-square)](LICENSE)
-[![v2.2.3](https://img.shields.io/badge/Version-v2.2.3-2563eb?style=flat-square)](release-notes.md)
+<p>
+  <img src="https://img.shields.io/badge/Version-v2.2.3-2563eb?style=flat-square" alt="Current product version v2.2.3" />
+  <img src="https://img.shields.io/badge/Frontend-React%20%2B%20Next.js-61dafb?style=flat-square" alt="React and Next.js" />
+  <img src="https://img.shields.io/badge/API-Fastify%20%2B%20Zod-111827?style=flat-square" alt="Fastify and Zod" />
+  <img src="https://img.shields.io/badge/UML-PlantUML-f59e0b?style=flat-square" alt="PlantUML" />
+  <img src="https://img.shields.io/badge/Runtime-Node.js%2022-339933?style=flat-square" alt="Node.js 22" />
+</p>
+
+> Trace your designs, guide your revisions. Review models, tests and specifications against the same requirements, follow change impacts and organize design sources you can explain in reviews and your defense.
 
 </div>
 
-![English engineering workspace: reservation validation, persistence, notifications and exception branches](docs/images/readme-sequence-en.jpg)
+## Revise requirements, trace designs, explain your work
 
-**One reservation workflow: 6 participants, 19 messages and 3 conditional fragments.** Captured in the English interface using a prepared library reservation example.
+For software capstone projects, course projects and UML assignments, the workspace helps students check whether requirements are reflected in designs and tests, identify materials affected by changes and explain where their design decisions came from.
+
+| What to check | How the platform helps | Supporting materials |
+| --- | --- | --- |
+| Which designs need updating after requirements change | Save and confirm revised rules, then follow linked artifacts and update status | Requirement baselines, source relationships and change impact |
+| Which requirements lack design or test support before submission | Locate missing or review-needed relationships in traceability matrices and check normal, exceptional and boundary tests | Coverage gaps and design content requiring review |
+| Whether diagrams and specifications describe the same behavior | Generate specifications from saved models and designs, then compare diagrams and edit the text | Editable, versioned DOCX specifications |
+| Which designs and acceptance criteria should guide implementation | Enable read-only MCP and connect an external Coding Agent to read complete designs, acceptance criteria and tests | Inputs for coding and actual verification in your own repository |
+| How to explain design sources during a review or defense | Revisit relationships between requirements, designs and tests, together with task history | Sources for explaining design choices and test coverage |
+
+Source links and coverage counts help locate content to inspect. Open the models to check their actual constraints and behavior. Run generated test cases against the real system; consistency between diagrams, specifications and code requires human review and execution evidence.
+
+### Project materials you can prepare
+
+- **Analysis and design**: requirement rules, feasibility analysis, UML models and system designs.
+- **Testing and presentation**: test cases, coverage matrices, traceability matrices and task records for checking your work.
+- **Engineering documents**: feasibility reports, requirements specifications and software design descriptions, with version management and DOCX downloads; preview DOCX in the browser and edit downloaded files in your Word-compatible editor.
+- **Implementation inputs**: saved designs and acceptance criteria for a compatible Coding Agent to use when implementing and testing in an external repository.
+
+Review generated content, organize documents according to your school's requirements and verify the running system. Engineering specifications can support a project report; they are not a complete graduation thesis. Real-client compatibility and generated-code acceptance for Coding Agents remain pending; see the [integration guide](docs/integrations/coding-agent-mcp.md).
 
 ## Overview
 
-SoftJL connects requirements, models, tests and engineering documents in one self-hosted workspace. Use **Standard** for conversational modeling, or **Professional** for the staged requirements, feasibility, design and documentation workflow. Both modes support your own provider; their names are not pricing tiers.
+SoftJL Community is a self-hosted AI software engineering workspace, distributed as an independent source snapshot with a fresh Git history.
 
-- **Build project materials** — prepare UML models, system designs, normal/exception/boundary test cases and downloadable DOCX specifications.
-- **Follow requirement changes** — inspect source relationships and update status to find designs and tests that need review after a requirement changes.
-- **Explain design decisions** — revisit requirements, design sources and task history when preparing a project review or defense.
+Turn a system description into UML diagrams, test cases and editable Word specifications, then follow requirement changes through the linked project materials.
 
-Review the generated artifacts and execute tests against your actual system. Specifications can support a project report; they are not a complete graduation thesis.
+## What changed in v2.2.3
 
-### Walk through a library reservation project
+This release improves model repair continuity and provider configuration:
 
-> Students sign in, find available seats and book a date and time slot. Reject occupied seats and overlapping bookings. Send notifications after booking or cancellation. Administrators maintain seats, review reservations and handle no-shows or equipment failures.
+- Continue post-generation structure and provenance repairs in the original task conversation, retaining the spent budget while isolating sibling artifacts.
+- Validate source references against real model elements, including nested flows and qualified field IDs. Publish the accepted model, mappings and rendered output together.
+- Manage providers in a table with status, update time and a single enabled selection; only the owner can edit or delete personal credentials.
+- Search discovered models with provider icons and output-mode badges. Reuse successful discovery probes when saving, while retaining server address safety checks.
+- Save workspace preferences independently from provider drafts; show actionable errors above configuration dialogs without closing them.
 
-| Step | What you do | What you can inspect |
-| --- | --- | --- |
-| 1 | Describe the system and confirm its rules | Actors, constraints and acceptance criteria |
-| 2 | Complete feasibility and generate models | Use cases, classes, sequence diagrams and their sources |
-| 3 | Prepare tests and specifications | Scenario coverage, document preview and DOCX downloads |
-| 4 | Revise a rule and follow dependencies | Affected artifacts to review and update |
+This release uses the current `current_platform_schema_v3` installation baseline. Existing v1/v2 databases are rejected; use a clean database. SMTP and emailed invitation links are retired.
 
-## Online Access
+Mapping metadata fields `reviewStatus`, `confidence` and the `auto-filled-pending-review` value are retired. Workspaces containing them are rejected by the current contract; recreate affected projects and models. No automatic data conversion is provided.
 
-**[Open the hosted app](https://jianglisoftware.com)** to explore without installing local services. Sign-in, available models and generation entitlements depend on the hosted account. **[Run Community locally](#quick-start)** to use your own model service and manage your own data. Model calls are billed by your provider.
+## Generation workflow
+
+The generation workflow focuses on shorter waits and fewer repeated model inputs.
+
+- **Scoped context**: send task dependencies and the selected use case with its include/extend relationships; retain business constraints and complete target models.
+- **Task-local model repair**: generation and rendering append feedback to the same retained conversation, share five repairs and publish validated model/mapping/render results together. Implementation plans and document sections retain their scoped patch protocol.
+- **Independent progress**: run independent design branches concurrently and retry failed model instances while retaining successful results.
+- **Two project modes**: start a conversational Standard project or use the complete Professional workflow. Both are available with your own provider; mode names do not indicate pricing tiers.
+- **Visible consumption**: task history reports provider-supplied token usage, including repairs and failed calls; unknown usage stays unknown.
+- **Built-in document preview**: preview DOCX without a separate document server.
+
+The [release notes](release-notes.md) include a reproducible synthetic input comparison. Actual end-to-end duration and total tokens vary with project size, model, provider latency and repairs; the fixture results are not production savings.
+
+## Core Capabilities
+
+### Community and Hosted Comparison
+
+**Community** is the self-hosted edition in this repository. **Hosted** is the service available on the [SoftJL website](https://jianglisoftware.com). ✅ means supported; — means not provided. Configuration and access requirements are listed below.
+
+| Capability | Community | Hosted | Scope and requirements |
+| --- | :---: | :---: | --- |
+| 📝 Requirement rules and confirmation | ✅ | ✅ | Extraction, quality review, revision, human confirmation and acceptance criteria |
+| 🧭 Feasibility: system context | ✅ | ✅ | System boundaries, external actors and interactions |
+| 🧭 Feasibility: business/system flow | ✅ | ✅ | Business processes and system workflows |
+| 🧭 Feasibility: implementation options | ✅ | ✅ | Candidate solutions, costs, benefits and risks |
+| 📐 Complete requirement models | ✅ | ✅ | Functional structure, business flow, use cases, domain concepts, prototype navigation, deployment requirements and analysis models |
+| 🏗️ Complete design models | ✅ | ✅ | Architecture, use-case realization, design classes, page navigation, database, components and deployment |
+| 🧪 Test cases and coverage matrices | ✅ | ✅ | Normal, exceptional and boundary scenarios; execute generated tests against the actual system |
+| 📄 Feasibility report | ✅ | ✅ | Generation, versions and DOCX downloads |
+| 📄 Requirements specification | ✅ | ✅ | Generation, versions and DOCX downloads |
+| 📄 Software design description | ✅ | ✅ | Generation, versions and DOCX downloads |
+| 👁️ Built-in DOCX preview and download | ✅ | ✅ | Preview generated documents in the browser; edit downloaded files with a Word-compatible editor |
+| 🎨 Diagram editing and export | ✅ | ✅ | PlantUML editing and SVG export |
+| 🔗 Source traceability and change impact | ✅ | ✅ | Artifact sources, dependencies and version changes |
+| 👥 Projects and members | ✅ | ✅ | Authentication, project membership and role permissions |
+| ⏱️ Generation tasks, history and retries | ✅ | ✅ | Review run records and retry failed tasks |
+| 🤖 Bring your own model service (BYOK) | ✅ | ✅ | OpenAI-compatible providers, model discovery and connection tests; usage billed by the provider |
+| ☁️ Website-managed models | — | ✅ | Subject to account configuration, model availability and generation entitlements |
+| 💻 MCP / Coding Agent integration | ✅ (opt-in) | ✅ | Read-only access to designs, acceptance criteria, engineering constraints and tests; real-client compatibility and generated-code acceptance remain pending |
+| 💳 Platform billing, payments and credits | — | ✅ | Purchases, orders and entitlements; Community does not require platform credits |
+| 🛠️ Operations administration | — | ✅ | Restricted to website operators, unavailable to regular accounts |
+| 📦 Open source and self-hosting | ✅ | — | Community source under Apache-2.0; manage your own services and data |
+| 🌐 Online use without deployment | — | ✅ | Access the website with hosting maintained by the platform |
+
+### Edition boundaries
+
+After the initial installation and build, use `npm run dev:mcp` for local MCP access. See [MCP configuration](docs/integrations/coding-agent-mcp.md) for production setup.
+
+Platform billing, payments, credit management, and the operations administration backend are excluded. Read-only MCP access is optional, with explicit project grants and the shared connection page. Authentication, project permissions, provider credential protection and generation scheduling remain available. Hosted availability depends on the current deployment, account permissions and service configuration.
+
+Use an independent database. This distribution is not a downgrade path for an existing full-edition database. Generated models and documents require review, and tests must be executed against your actual system.
+
+## Interface Preview
+
+The community edition opens the project list directly, with sign-in required. See the capability table for the current community scope.
+
+The following screenshots show the English interface with English example content. The modeling conversation and diagrams use a prepared library reservation project; dashboard figures are illustrative demo data, not performance measurements.
+
+### Quick Modeling (Standard)
+
+Describe requirements in chat, review tool activity and open saved models from the sidebar.
+
+![Quick Modeling — English conversation, design layers, business rules and saved model navigation](docs/images/readme-quick-modeling-en.jpg)
+
+The design class example contains 20 classes, 4 interfaces, 2 enumerations and 21 relationships. Inspect their attributes, methods and associations in the model workspace.
+
+![Quick Modeling — English design class diagram with controllers, services, repositories and domain objects](docs/images/readme-class-full-en.jpg)
+
+### Engineering Modeling (Professional)
+
+Follow the requirements, feasibility, modeling, testing and documentation workflow, with model elements and traceability available in the workspace.
+
+The reservation sequence example connects 6 participants through 19 messages and 3 conditional fragments, covering successful reservations, occupied seats and duplicate bookings.
+
+![Engineering Modeling — English reservation sequence diagram with validation and exception branches](docs/images/readme-sequence-en.jpg)
+
+### Test scenarios and coverage
+
+The prepared example includes **12 test cases mapped to 9 requirement rules**, covering expired sessions, occupied seats, overlapping bookings, adjacent time slots, notifications and administrative cancellation. Review the mappings and execute the cases against the actual system; a coverage link is not a passed test.
+
+![English test cases with concrete steps, expected results and requirement mappings](docs/images/readme-tests-en.jpg)
+
+### Project dashboard
+
+![English project dashboard with illustrative project and task statistics](docs/images/readme-dashboard-en.jpg)
 
 ## Quick Start
 
@@ -83,44 +196,6 @@ Core services include document generation, built-in DOCX preview and downloads. 
 
 Add your provider in account model settings, test the connection and select a model. Configure persistence and encryption secrets for deployment, and disable development guest access and legacy plaintext provider settings.
 
-## Interface Preview
-
-### Inspect a layered reservation design
-
-A focused Standard-mode example with **10 classes, 2 repository interfaces and 14 relationships**: controller, services, repositories, students, seats, reservations and notifications. Attributes and operations remain visible alongside model editing controls.
-
-![English design class workspace with services, repository interfaces and domain objects](docs/images/readme-class-en.jpg)
-
-### Review normal, exceptional and boundary tests
-
-The example includes **12 cases mapped to 9 requirement rules**: expired sessions, occupied seats, duplicate bookings, adjacent time slots, notifications and administrative cancellation. Mapping status is pending review; a coverage link does not mean a test has passed.
-
-![English test workspace with scenario types, priorities, steps, expected results and source mappings](docs/images/readme-tests-en.jpg)
-
-## Core Capabilities
-
-| Capability | What Community provides |
-| --- | --- |
-| Requirements and feasibility | Extract and confirm rules; analyze system context, business flow and implementation options. |
-| UML and system design | Model use cases, classes, interactions, architecture, database, components and deployment; edit PlantUML and export SVG. |
-| Testing and traceability | Prepare scenario-based tests, inspect source mappings, coverage gaps and changes. |
-| Word documents | Professional: feasibility report, requirements specification and software design description. Standard: requirements and design specifications. Preview in the browser, download DOCX and edit in a Word-compatible editor. |
-| Your model and your deployment | OpenAI-compatible providers, model discovery, connection checks, task history and retries. |
-| Project collaboration | Authentication, project membership, role permissions and provider credential protection. |
-| Optional MCP integration | Read-only project access to designs, acceptance criteria and tests, with explicit grants. Real-client compatibility and generated-code acceptance remain pending. |
-
-### Community and hosted editions
-
-Community includes the engineering workspace and BYOK generation without platform credits. The hosted service additionally manages hosting, website models, billing and generation entitlements. Platform payments, credit management and the operations backend are excluded from this repository. Hosted capabilities depend on the deployment and account permissions.
-
-After installation, use `npm run dev:mcp` to enable local MCP. See the [MCP integration guide](docs/integrations/coding-agent-mcp.md) for grants and production configuration.
-
-## Release and upgrades
-
-Current version: **v2.2.3**, with model repair continuity and improved provider configuration. See [release notes and upgrade requirements](release-notes.md).
-
-**Deployment and upgrade requirements:** use an independent database and the `current_platform_schema_v3` baseline. Older database schemas are rejected. Workspace mappings containing `reviewStatus`, `confidence` or `auto-filled-pending-review` are no longer accepted; affected projects/models must be recreated. No automatic data conversion is provided. Community is not a downgrade path for a full-edition database.
-
 ## Architecture
 
 | Directory | Responsibility |
@@ -134,18 +209,15 @@ Current version: **v2.2.3**, with model repair continuity and improved provider 
 
 ## Common Commands
 
-Build shared packages before starting individual applications or tests. The root `npm run dev` does this automatically.
+The root `npm run dev` builds shared packages automatically; use `npm run build:packages` before individual application commands and tests. Other npm scripts include build, test:contracts, test:api, test:web, test:render, typecheck:web and audit:docs. CI is included; the original production deployment workflow is excluded.
 
-| Command | Purpose |
-| --- | --- |
-| `npm run build:packages` | Build shared contracts and prompts |
-| `npm run build` | Build all applications |
-| `npm run test:web` | Run frontend tests |
-| `npm run typecheck:web` | Check frontend types |
-| `npm run test:harness-e2e` | Run browser acceptance checks |
-| `npm run audit:docs` | Check documentation structure and links |
+## Release and upgrades
 
-For API, rendering, deployment and maintenance checks, see [Contributing](contributing.md) and [Community maintenance](docs/development/community-edition.md).
+Current version: **v2.2.3**. See [release notes and setup requirements](release-notes.md). New installations initialize an empty database with `current_platform_schema_v3`; databases already using this baseline can continue to be used, subject to the current workspace contracts. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
+
+## Online Access
+
+[SoftJL website](https://jianglisoftware.com) offers the hosted edition, which may have different features. Run this repository locally for the community edition.
 
 ## Documentation
 
