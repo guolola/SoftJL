@@ -40,6 +40,10 @@
 
 **Turn a system description into UML diagrams, test cases and editable Word specifications.** Follow requirement changes through the linked project materials, then use the designs and tests to prepare your project review or defense.
 
+![Engineering Modeling — English reservation sequence diagram with validation and exception branches](docs/images/readme-sequence-en.jpg)
+
+**A reservation workflow with 6 participants, 19 messages and 3 conditional fragments:** successful booking, an occupied seat and a duplicate reservation. Captured in the English interface using a prepared example project.
+
 SoftJL Community is a self-hosted AI software engineering workspace for capstone and course projects. Bring your own OpenAI-compatible model service. Community is distributed as an independent source snapshot with a fresh Git history.
 
 ### Choose a modeling workflow
@@ -56,10 +60,6 @@ Both modes support your own model service; their names do not indicate pricing t
 - **Keep completed work** — retry failed model instances while retaining successful artifacts; inspect task history and provider-reported usage.
 
 [See the conversation workflow](#quick-modeling-standard) · [Compare all capabilities](#core-capabilities) · [Run locally](#quick-start) · [Read the generation workflow](#generation-workflow)
-
-![Engineering Modeling — English reservation sequence diagram with validation and exception branches](docs/images/readme-sequence-en.jpg)
-
-**A reservation workflow with 6 participants, 19 messages and 3 conditional fragments:** successful booking, an occupied seat and a duplicate reservation. Captured in the English interface using a prepared example project.
 
 ## Interface Preview
 
