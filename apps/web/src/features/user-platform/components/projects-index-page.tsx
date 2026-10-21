@@ -59,7 +59,7 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
   const [forbidden, setForbidden] = useState(false);
   const [listError, setListError] = useState(false);
   const [search, setSearch] = useState("");
-  const [scope, setScope] = useState("all");
+  const [scope, setScope] = useState<(typeof PROJECT_SCOPE_OPTIONS)[number]["value"]>("all");
   const [sort, setSort] = useState("generated");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
@@ -134,9 +134,8 @@ export function ProjectsIndexPage({ onNavigate }: { onNavigate: Navigate }) {
     return projects
       .filter((project) => {
         if (query && !project.searchableText.includes(query)) return false;
-        if (scope === "archived") return project.status === "archived";
+        if (scope === "standard" || scope === "professional") return project.projectMode === scope;
         if (scope === "shared") return project.memberCount > 1;
-        if (scope === "mine") return project.isOwnedByCurrentUser || project.memberCount <= 1;
         return true;
       })
       .sort((left, right) => {

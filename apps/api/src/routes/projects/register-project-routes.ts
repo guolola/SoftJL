@@ -8,6 +8,8 @@ import { normalizeWorkspaceModelState } from "../../normalizers/workspace/model-
 import {
   projectInvitationCreateRequestSchema,
   projectInvitationResponseSchema,
+  projectInviteeSearchQuerySchema,
+  projectInviteeSearchResponseSchema,
   projectCreateRequestSchema,
   projectListResponseSchema,
   projectMemberInviteRequestSchema,
@@ -36,7 +38,7 @@ import {
   toProjectInvitationDto,
 } from "../../projects/project-route-payloads.js";
 import { requireProjectSettingsContext } from "../../projects/project-settings-access.js";
-import { resolveRegisteredProjectInvitee } from "../../projects/project-invitation-eligibility.js";
+import { resolveRegisteredProjectInvitee, searchProjectInvitees } from "../../projects/project-invitation-eligibility.js";
 
 function isSchemaError(error: unknown): error is z.ZodError {
   // Contracts may resolve a workspace-local Zod copy, so constructor identity alone is insufficient.
@@ -412,6 +414,20 @@ export function registerProjectRoutes({
 
     return projectMembersResponseSchema.parse({
       members: (await authStore.listProjectMembers(projectId)).map(toProjectMemberDto),
+    });
+  });
+
+  app.get("/api/projects/:projectId/invitees", async (request, reply) => {
+    const { projectId } = request.params as { projectId: string };
+    const context = await requireProjectPermission(request, reply, authStore, projectId, "invite_members");
+    if (isProjectPermissionError(context)) return context;
+    const input = projectInviteeSearchQuerySchema.safeParse(request.query);
+    if (!input.success) {
+      reply.code(400);
+      return createHttpErrorResponse(reply, { issues: input.error.issues });
+    }
+    return projectInviteeSearchResponseSchema.parse({
+      users: await searchProjectInvitees(authStore, projectId, context.user.id, input.data.query),
     });
   });
 

@@ -97,6 +97,51 @@ test("acknowledges chat with its durable user message before model execution and
   assert.equal(persisted.conversation.filter((message: { role: string }) => message.role === "user").length, 2);
 });
 
+for (const alternative of [false, true]) test(`HTTP ${alternative ? "alternative" : "scope"} confirmation validates choice identifiers and persists new consent before the model runs`, async t => {
+  const app = Fastify(); const authStore = createInMemoryAuthStore();
+  const owner = authStore.createUser({ username: "scope", displayName: "Owner", passwordHash: "test" })!;
+  const cookie = `uml_session=${authStore.createSession({ userId: owner.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
+  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Scope", description: null, projectMode: "standard" });
+  const providerConfigs = createProviderConfigStore({ secret: "test" });
+  const config = providerConfigs.create({ name: "test", baseUrl: "https://example.test", apiKey: "test", defaultModel: "test", allowedModels: ["test"], createdBy: "test" });
+  const state = createStandardProjectState("考研自习室座位预约小程序");
+  state.generationScope = { status: "confirmed", kinds: ["function", "usecase", "activity"] };
+  if (alternative) state.unsupportedDiagramRequest = { models: ["UML 状态图"], messageId: "user:earlier", questionId: "scope" };
+  state.rounds = [{ purpose: "generation_scope", answers: [], questions: [{ id: "scope", title: "是否新增领域模型？", multiple: false,
+    options: ["是，加入并生成领域概念图", "不生成"], recommendation: "推荐新增", scopeChoices: [
+      { id: "yes", label: "是，加入并生成领域概念图", kinds: ["er"], recommended: true },
+      { id: "no", label: "不生成", kinds: [], recommended: false },
+    ] }] }];
+  const workspace = authStore.getProjectWorkspace(project.id);
+  authStore.saveProjectWorkspace({ projectId: project.id, baseVersion: workspace.version, updatedByUserId: owner.id, state: { standardProject: state } });
+  let scheduled = 0;
+  const scheduler = createInMemoryLlmScheduler(); scheduler.run = async () => { scheduled++; throw new Error("test queue stopped"); };
+  registerStandardProjectRoutes({ app, authStore, providerConfigs, llmScheduler: scheduler,
+    llmTransport: { async *streamChatCompletion() { throw new Error("unexpected model call"); } },
+    renderClient: async () => { throw new Error("unexpected rendering"); }, pngRenderClient: async () => { throw new Error("unexpected rendering"); } });
+  t.after(() => app.close());
+  const payload = { operation: "chat", requestId: "33333333-3333-4333-8333-333333333333", providerSettings: { providerConfigId: config.id, model: "test" } };
+  const send = (answers: unknown[]) => app.inject({ method: "POST", url: `/api/projects/${project.id}/standard`, headers: { cookie }, payload: { ...payload, answers } });
+  for (const selectedOptionIds of [["concept_er"], ["yes", "no"], undefined]) {
+    const rejected = await send([{ questionId: "scope", answer: "同意", selectedOptionIds }]);
+    assert.equal(rejected.statusCode, 409, rejected.body);
+  }
+  assert.equal(scheduled, 0);
+  const stale = await send([{ questionId: "scope_old", answer: "同意", selectedOptionIds: ["yes"] }]);
+  assert.equal(stale.statusCode, 409);
+  assert.deepEqual((authStore.getProjectWorkspace(project.id).state.standardProject as StandardProjectState).generationScope, state.generationScope);
+  const answers = [{ questionId: "scope", answer: "是，加入并生成领域概念图", selectedOptionIds: ["yes"] }];
+  const accepted = await send(answers);
+  assert.equal(accepted.statusCode, 202, accepted.body);
+  assert.deepEqual(accepted.json().state.generationScope, { status: "confirmed", kinds: ["er"] });
+  assert.equal(accepted.json().state.unsupportedDiagramRequest, undefined);
+  assert.deepEqual(accepted.json().state.rounds[0].answers, answers);
+  assert.deepEqual(accepted.json().state.conversation[0].answers, answers);
+  const replay = await send(answers);
+  assert.equal(replay.statusCode, 200, replay.body);
+  assert.equal(replay.json().state.conversation.filter((message: { role: string }) => message.role === "user").length, 1);
+});
+
 test("revision commands require current history, valid user content and stored attachment capabilities before starting a model call", async t => {
   const app = Fastify(); const authStore = createInMemoryAuthStore();
   const owner = authStore.createUser({ username: "revision", displayName: "Owner", passwordHash: "test" })!;

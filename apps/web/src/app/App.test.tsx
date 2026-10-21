@@ -737,7 +737,7 @@ describe("App shell routes", () => {
                     },
                   ],
                 },
-                { projectMode: "professional",
+                { projectMode: "standard",
                   id: "archived-demo",
                   name: "归档课程演示",
                   description: "已经归档的真实项目",
@@ -2163,9 +2163,9 @@ describe("App shell routes", () => {
     expect(screen.getByRole("button", { name: "新建项目" })).toBeInTheDocument();
     expect(document.querySelector('[data-slot="sidebar-inset"] > footer')).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "全部项目" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "我的项目" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "快速项目" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "工程项目" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "协作项目" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "归档项目" })).toBeInTheDocument();
     const searchInput = screen.getByPlaceholderText("搜索项目、成员...");
     expect(searchInput).toBeInTheDocument();
     expect(searchInput.parentElement).toHaveClass("min-w-0", "flex-1", "md:max-w-2xs");
@@ -2228,7 +2228,7 @@ describe("App shell routes", () => {
     expect(document.querySelector('[data-slot="sidebar-inset"] > footer')).not.toBeInTheDocument();
   });
 
-  it("filters and sorts projects from real project status data", async () => {
+  it("filters projects by modeling mode and collaboration from API records", async () => {
     const user = userEvent.setup();
     projectApiMode = "authenticated";
     render(withWorkspaceProviders(<Shell />, createRepository()));
@@ -2239,9 +2239,16 @@ describe("App shell routes", () => {
     expect(await screen.findByRole("heading", { name: "智慧图书馆预约系统" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "归档课程演示" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "归档项目" }));
+    await user.click(screen.getByRole("button", { name: "快速项目" }));
     expect(screen.queryByRole("heading", { name: "智慧图书馆预约系统" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "归档课程演示" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "工程项目" }));
+    expect(screen.getByRole("heading", { name: "智慧图书馆预约系统" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "归档课程演示" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "协作项目" }));
+    expect(screen.getByRole("heading", { name: "智慧图书馆预约系统" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "归档课程演示" })).not.toBeInTheDocument();
 
     await user.clear(screen.getByPlaceholderText("搜索项目、成员..."));
     await user.type(screen.getByPlaceholderText("搜索项目、成员..."), "不存在");

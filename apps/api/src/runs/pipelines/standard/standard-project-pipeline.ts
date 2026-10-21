@@ -14,6 +14,7 @@ import { toOpenAiStrictJsonSchema } from "../../../adapters/llm/response-formats
 import { parseJson } from "../../../normalizers/json/parse-json.js";
 import { omitModelNullValues as omitNullValues } from "../../../normalizers/diagrams/model-input.js";
 import { selectedStandardTasks } from "./standard-generation-scope.js";
+import { assertStandardDiagramSubstitutionAllowed } from "./standard-diagram-support.js";
 import { withRunReasoning } from "../shared/run-reasoning.js";
 
 export type StandardOperation = "chat" | "edit" | "regenerate" | "prepare" | "generate" | "retry" | "resume" | "tests" | "requirementsSpec" | "softwareDesignSpec";
@@ -113,6 +114,7 @@ useRecommendations=true 时必须采用推荐方案直接输出ready，并在ass
   const outline = initial.outline;
   const facts = projectFacts(initial);
   if (command.operation === "generate" || command.operation === "retry" || command.operation === "resume") {
+    assertStandardDiagramSubstitutionAllowed(initial);
     if (initial.generationScope?.status === "awaiting_selection") throw new Error("请先选择需要生成的模型");
     const selectedKinds = selectedStandardTasks(initial);
     if (command.targetIds && selectedKinds && standardDiagramTasks(outline).some(task => command.targetIds!.includes(task.id) && !selectedKinds.includes(task.kind))) throw new Error("目标图超出用户确认的生成范围");

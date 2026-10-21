@@ -45,6 +45,7 @@ const AVATAR_MIME_TYPES = {
   "image/png": { extension: ".png", contentType: "image/png" },
   "image/jpeg": { extension: ".jpg", contentType: "image/jpeg" },
   "image/webp": { extension: ".webp", contentType: "image/webp" },
+  "image/gif": { extension: ".gif", contentType: "image/gif" },
 } as const;
 
 async function accountProfileResponse({
@@ -86,12 +87,13 @@ function safeAvatarPrefix(userId: string) {
 }
 
 function avatarMimeForFileName(fileName: string) {
-  const match = fileName.match(/\.(png|jpg|jpeg|webp)$/iu);
+  const match = fileName.match(/\.(png|jpg|jpeg|webp|gif)$/iu);
   if (!match) return null;
   const extension = match[1]?.toLowerCase();
   if (extension === "png") return AVATAR_MIME_TYPES["image/png"];
   if (extension === "jpg" || extension === "jpeg") return AVATAR_MIME_TYPES["image/jpeg"];
   if (extension === "webp") return AVATAR_MIME_TYPES["image/webp"];
+  if (extension === "gif") return AVATAR_MIME_TYPES["image/gif"];
   return null;
 }
 
@@ -105,6 +107,10 @@ function avatarUrlForRequest(request: FastifyRequest, fileName: string) {
 }
 
 function bufferMatchesAvatarMime(buffer: Buffer, mimeType: keyof typeof AVATAR_MIME_TYPES) {
+  if (mimeType === "image/gif") {
+    const signature = buffer.subarray(0, 6).toString("ascii");
+    return signature === "GIF87a" || signature === "GIF89a";
+  }
   if (mimeType === "image/png") {
     return buffer.subarray(0, 8).equals(
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -229,6 +235,7 @@ export function registerAccountRoutes({
 
     await mkdir(avatarStorageDir, { recursive: true });
     const fileName = `${safeAvatarPrefix(auth.user.id)}-${randomUUID()}${mime.extension}`;
+    // Store the original bytes so GIF frame timing, looping, and transparency survive upload.
     await writeFile(join(avatarStorageDir, fileName), buffer);
     const user = await authStore.updateUser(auth.user.id, {
       avatarUrl: avatarUrlForRequest(request, fileName),
@@ -258,7 +265,7 @@ export function registerAccountRoutes({
     "/api/account/avatars/:fileName",
     async (request, reply) => {
       const { fileName } = request.params;
-      if (!/^[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp)$/u.test(fileName)) {
+      if (!/^[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif)$/u.test(fileName)) {
         reply.code(404);
         return createHttpErrorResponse(reply);
       }

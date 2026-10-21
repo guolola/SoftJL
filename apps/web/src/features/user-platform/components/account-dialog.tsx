@@ -54,6 +54,7 @@ import {
   type PlatformUser,
 } from "../services/platform-api";
 import { AccountAvatarPreview } from "./account-avatar-preview";
+import { useAuthenticatedRouteUserUpdate } from "./authenticated-route-session";
 import { DefaultAvatarPicker } from "./default-avatar-picker";
 import { MfaSetupPanel } from "./mfa-setup-panel";
 
@@ -79,6 +80,7 @@ export function AccountDialog({
   globalSettingsRequestId,
 }: AccountDialogProps) {
   const { t, i18n } = useTranslation();
+  const updateSessionUser = useAuthenticatedRouteUserUpdate();
   const translationRef = useRef(t);
   translationRef.current = t;
   const locale = i18n.resolvedLanguage === "en" ? "en-US" : "zh-CN";
@@ -300,8 +302,10 @@ export function AccountDialog({
         displayName,
         avatarUrl: avatarUrl.trim() || null,
       });
+      updateSessionUser?.(response.user);
       if (avatarFile) {
         response = await platformApi.uploadAccountAvatar(avatarFile);
+        updateSessionUser?.(response.user);
       }
       setUser(response.user);
       setDisplayName(response.user.displayName);
@@ -529,7 +533,7 @@ export function AccountDialog({
                       aria-label={t("account.avatarAria")}
                       className="sr-only"
                       type="file"
-                      accept="image/png,image/jpeg,image/webp"
+                      accept={AVATAR_FILE_TYPES.join(",")}
                       onChange={(event) => selectAvatarFile(event.target.files?.[0] ?? null)}
                     />
                     <label

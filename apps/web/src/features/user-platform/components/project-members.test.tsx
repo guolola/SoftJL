@@ -36,6 +36,75 @@ describe("ProjectMembers", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     localStorage.clear();
+    vi.spyOn(platformApi, "searchProjectInvitees").mockResolvedValue({ users: [] });
+  });
+
+  it("uses autocomplete-09 to search registered users and invite the selected username", async () => {
+    const user = userEvent.setup();
+    const search = vi.mocked(platformApi.searchProjectInvitees).mockResolvedValue({ users: [{ id: "alice", username: "alice_user", displayName: "Alice Chen", avatarUrl: null }] });
+    const member = { ...owner("alice", "alice_user"), role: "viewer", status: "invited" };
+    const invite = vi.spyOn(platformApi, "inviteProjectMember").mockResolvedValue({ member });
+    render(withWorkspaceProviders(<ProjectMembers project={project} members={[]} membershipRole="owner" />));
+    await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
+    const dialog = await screen.findByRole("dialog");
+    const input = within(dialog).getByRole("combobox", { name: /邀请用户名/u });
+    expect(input).toHaveAttribute("data-slot", "autocomplete-input");
+    expect(search).not.toHaveBeenCalled();
+    await user.type(input, "Alice");
+    expect(await screen.findByText("正在搜索用户…")).toBeVisible();
+    const option = await screen.findByRole("option", { name: /Alice Chen.*alice_user/u });
+    expect(within(option).getByText("AC")).toBeVisible();
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(search).toHaveBeenCalledWith(project.id, "Alice");
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(input).toHaveValue("alice_user");
+    // Tab dismisses the autocomplete popup before reaching the dialog actions.
+    await user.tab();
+    await user.click(within(dialog).getByRole("button", { name: "发送邀请" }));
+    await waitFor(() => expect(invite).toHaveBeenCalledWith(project.id, { username: "alice_user", role: "viewer" }));
+  });
+
+  it("ignores stale searches, clears results, and recovers from search errors", async () => {
+    const user = userEvent.setup();
+    let resolveFirst!: (value: Awaited<ReturnType<typeof platformApi.searchProjectInvitees>>) => void;
+    const search = vi.mocked(platformApi.searchProjectInvitees)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue({ users: [{ id: "bob", username: "bobby", displayName: "Bob", avatarUrl: null }] });
+    render(withWorkspaceProviders(<ProjectMembers project={project} members={[]} membershipRole="owner" />));
+    await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
+    const input = screen.getByRole("combobox", { name: /邀请用户名/u });
+    await user.type(input, "alice");
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+    await user.clear(input);
+    await user.type(input, "missing");
+    expect(await screen.findByText("搜索用户失败，请重试。")).toBeVisible();
+    resolveFirst({ users: [{ id: "old", username: "alice", displayName: "Stale Alice", avatarUrl: null }] });
+    await user.clear(input);
+    await user.type(input, "bob");
+    await user.click(await screen.findByRole("option", { name: /Bob.*bobby/u }));
+    expect(input).toHaveValue("bobby");
+    expect(screen.queryByText("Stale Alice")).not.toBeInTheDocument();
+    const clear = document.querySelector<HTMLButtonElement>("[data-slot='autocomplete-clear']")!;
+    await user.click(clear);
+    expect(input).toHaveValue("");
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    expect(screen.queryByText("搜索用户失败，请重试。")).not.toBeInTheDocument();
+  });
+
+  it("shows the demo's empty search status without blocking manual invitation", async () => {
+    const user = userEvent.setup();
+    const invite = vi.spyOn(platformApi, "inviteProjectMember").mockResolvedValue({ member: {
+      ...owner("unknown", "unknown"), role: "viewer", status: "invited",
+    } });
+    render(withWorkspaceProviders(<ProjectMembers project={project} members={[]} membershipRole="owner" />));
+    await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
+    const sendButton = screen.getByRole("button", { name: "发送邀请" });
+    await user.type(screen.getByRole("combobox", { name: /邀请用户名/u }), "unknown");
+    expect(await screen.findByText("未找到与“unknown”匹配的可邀请用户")).toBeVisible();
+    // A pointer click outside the open popup still reaches the invitation action.
+    await user.click(sendButton);
+    await waitFor(() => expect(invite).toHaveBeenCalledWith(project.id, { username: "unknown", role: "viewer" }));
   });
 
   it("uses the template lists and explains why the sole owner cannot be changed", async () => {
@@ -114,10 +183,12 @@ describe("ProjectMembers", () => {
 
     await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
     const dialog = await screen.findByRole("dialog", { name: "邀请成员加入项目" });
+    await user.tab();
     await user.click(within(dialog).getByRole("button", { name: "发送邀请" }));
     expect(within(dialog).getByText("请填写邀请用户名。")).toBeVisible();
     expect(invite).not.toHaveBeenCalled();
     await user.type(within(dialog).getByLabelText(/邀请用户名/u), "new");
+    await user.tab();
     await user.click(within(dialog).getByRole("button", { name: "发送邀请" }));
     await waitFor(() => expect(invite).toHaveBeenCalledWith(project.id, { username: "new", role: "viewer" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -131,6 +202,7 @@ describe("ProjectMembers", () => {
     await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText(/邀请用户名/u), username);
+    await user.tab();
     await user.click(within(dialog).getByRole("button", { name: "发送邀请" }));
     expect(within(dialog).getByText("请输入 3–32 位小写字母、数字或下划线组成的用户名。")).toBeVisible();
     expect(invite).not.toHaveBeenCalled();
@@ -148,6 +220,7 @@ describe("ProjectMembers", () => {
     await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText(/邀请用户名/u), " Owner ");
+    await user.tab();
     await user.click(within(dialog).getByRole("button", { name: "发送邀请" }));
     expect(within(dialog).getByText("不能邀请自己的用户名。")).toBeVisible();
     expect(invite).not.toHaveBeenCalled();
@@ -160,6 +233,7 @@ describe("ProjectMembers", () => {
     await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText(/邀请用户名/u), "Another");
+    await user.tab();
     await user.click(within(dialog).getByRole("button", { name: "发送邀请" }));
     expect(within(dialog).getByText("该用户名已在项目中或已有邀请记录，请勿重复邀请。")).toBeVisible();
     expect(invite).not.toHaveBeenCalled();
@@ -177,6 +251,7 @@ describe("ProjectMembers", () => {
     await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText(/邀请用户名/u), " Unknown ");
+    await user.tab();
     await user.click(within(dialog).getByRole("button", { name: "发送邀请" }));
     expect(await within(dialog).findByText(message)).toBeVisible();
     expect(within(dialog).getByLabelText(/邀请用户名/u)).toHaveAttribute("aria-invalid", "true");

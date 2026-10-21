@@ -13,6 +13,7 @@ const labels: Record<string, [string, string]> = {
   generate_diagrams: ["生成图表", "Generate diagrams"], save_diagram: ["保存图表", "Save diagram"],
   generate_tests: ["生成测试用例", "Generate test cases"], generate_document: ["生成说明书", "Generate document"],
   remember_decisions: ["保存项目约定", "Save project decisions"],
+  report_unsupported_diagram: ["说明不支持的模型", "Explain unsupported model"],
 };
 
 export function useToolPresentation() {

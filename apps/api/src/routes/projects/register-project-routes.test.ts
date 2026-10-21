@@ -67,6 +67,36 @@ async function createProject(input: {
   return response.json().project as { id: string; name: string };
 }
 
+test("invitee search returns public registered identities and enforces invitation access", async (t) => {
+  const { app, authStore } = await createTestApp();
+  t.after(() => app.close());
+  const owner = await registerUser({ authStore, username: "search_owner", displayName: "Search Owner" });
+  const alice = await registerUser({ authStore, username: "alice", displayName: "Search Alice" });
+  const existing = await registerUser({ authStore, username: "existing", displayName: "Search Existing" });
+  const viewer = await registerUser({ authStore, username: "viewer", displayName: "Viewer" });
+  const outsider = await registerUser({ authStore, username: "outsider", displayName: "Outsider" });
+  await authStore.createUser({ username: "disabled", displayName: "Search Disabled", passwordHash: "secret", status: "disabled" });
+  const project = await createProject({ app, cookie: owner.cookie });
+  for (const [user, role, status] of [[existing.user, "editor", "invited"], [viewer.user, "viewer", "active"]] as const) {
+    await authStore.createMember({ projectId: project.id, userId: user.id, username: user.username, displayName: user.displayName, role, status, invitedByUserId: owner.user.id, invitedAt: null, joinedAt: null });
+  }
+  const search = (query: string, cookie = owner.cookie) => app.inject({ method: "GET", url: `/api/projects/${project.id}/invitees?query=${encodeURIComponent(query)}`, headers: { cookie } });
+  const response = await search(" SEARCH ");
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json().users, [{ id: alice.user.id, username: "alice", displayName: "Search Alice", avatarUrl: alice.user.avatarUrl }]);
+  assert.deepEqual((await search("ALIC")).json().users, response.json().users);
+  assert.deepEqual((await search(" ")).json().users, []);
+  assert.equal((await search("a".repeat(65))).statusCode, 400);
+  assert.equal((await search("search", viewer.cookie)).statusCode, 403);
+  assert.equal((await search("search", outsider.cookie)).statusCode, 403);
+  assert.equal((await search("search", "")).statusCode, 401);
+  // The autocomplete must stay bounded even when a broad query matches many users.
+  for (let index = 0; index < 22; index++) {
+    await authStore.createUser({ username: `candidate_${index}`, displayName: "Candidate", passwordHash: "secret" });
+  }
+  assert.equal((await search("candidate")).json().users.length, 20);
+});
+
 test("project execution mode is read-only and reflects server demo configuration", async (t) => {
   for (const key of ["UML_DEMO_OFFLINE_PROJECT_IDS", "UML_DEMO_OFFLINE_PROJECT_NAME_PATTERNS"]) {
     const previous = process.env[key];

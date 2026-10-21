@@ -39,7 +39,7 @@ test("project cards expand without page shifts and keep overlays above the heade
         status: "active",
         backgroundKey: "booking",
         ownerUserId: "user-1",
-        ownerAvatarUrl: "/avatars/genshin-furina.svg",
+        ownerAvatarUrl: "/avatars/momonga-tail-wag.gif",
         updatedAt: "2026-09-22T02:00:00.000Z",
         memberCount: 1,
         memberPreviews: [],

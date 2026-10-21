@@ -14,7 +14,7 @@ export function resolveConversationRevision(state: StandardProjectState, command
   const user = history[userIndex];
   if (!user) throw new Error("这条回复没有可重新提交的用户消息");
   requireRevisionCheckpoint(state, user.id);
-  return { ...command, ...(command.operation === "regenerate" ? { message: user.text, attachments: user.attachments, quote: user.quote } : {}), revisionUserId: user.id };
+  return { ...command, ...(command.operation === "regenerate" ? { message: user.text, attachments: user.attachments, quote: user.quote, answers: user.answers } : {}), revisionUserId: user.id };
 }
 
 function requireRevisionCheckpoint(state: StandardProjectState, messageId: string) {
@@ -37,6 +37,7 @@ export function applyConversationRevision(state: StandardProjectState, command: 
   state.piSession!.leafId = checkpoint.id;
   state.rounds = structuredClone((checkpoint.data as { rounds: StandardProjectState["rounds"] }).rounds);
   state.generationScope = structuredClone((checkpoint.data as { generationScope?: StandardProjectState["generationScope"] }).generationScope);
+  state.unsupportedDiagramRequest = structuredClone((checkpoint.data as { unsupportedDiagramRequest?: StandardProjectState["unsupportedDiagramRequest"] }).unsupportedDiagramRequest);
   // Saved usage remains cumulative; a historical last-call/context estimate must not describe the revised prefix.
   if (state.tokenUsage) { state.tokenUsage.contextTokens = null; state.tokenUsage.lastCall = null; }
 }

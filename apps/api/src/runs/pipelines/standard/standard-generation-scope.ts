@@ -1,17 +1,45 @@
 // Separates describing a project from authorizing its model outputs, with a durable first-turn choice.
-import { standardDiagramKinds, standardDiagramLabels, type StandardDiagramKind, type StandardProjectState } from "@uml-platform/contracts";
+import { standardDiagramKinds, standardDiagramLabels, type StandardAnswer, type StandardDiagramKind, type StandardProjectState } from "@uml-platform/contracts";
 
 const recommended: StandardDiagramKind[] = ["function", "usecase", "activity"];
 const aliases: Record<StandardDiagramKind, RegExp> = {
   function: /功能结构图|功能图|function diagram/i,
   usecase: /用例图|use\s*case diagram/i,
   activity: /业务流程图|流程图|活动图|activity diagram|flowchart/i,
-  architecture: /总体架构图|总体结构图|架构图|architecture diagram/i,
-  er: /概念\s*E[-－— ]?R\s*图|E[-－— ]?R\s*图|实体关系图|er diagram/i,
+  architecture: /总体架构图|总体结构图|体系结构图|架构图|architecture diagram/i,
+  er: /领域概念图|概念\s*E[-－— ]?R\s*图|E[-－— ]?R\s*图|实体关系图|er diagram/i,
   class: /设计类图|类图|class diagram/i,
   sequence: /时序图|顺序图|sequence diagram/i,
   table: /数据库表关系图|表关系图|数据库关系图|table diagram/i,
 };
+
+export function resolveStandardScopeAnswers(round: StandardProjectState["rounds"][number] | undefined, answers: StandardAnswer[], unsupported?: StandardProjectState["unsupportedDiagramRequest"]) {
+  if (!round || round.answers.length) throw new Error("问题已变化，请刷新后重新选择");
+  if (unsupported && (!unsupported.questionId || !answers.some(answer => answer.questionId === unsupported.questionId))) throw new Error("请先通过本轮替代方案询问组件确认，不能沿用其他问题的答案");
+  if (new Set(answers.map(answer => answer.questionId)).size !== answers.length) throw new Error("问题答案重复，请重新选择");
+  const kinds = new Set<StandardDiagramKind>();
+  let scoped = false;
+  for (const answer of answers) {
+    const question = round.questions.find(question => question.id === answer.questionId);
+    if (!question) throw new Error("问题已变化，请刷新后重新选择");
+    if (!question.scopeChoices) {
+      if (answer.selectedOptionIds || (round.purpose === "generation_scope" && !round.questions.some(item => item.scopeChoices))) throw new Error("该范围问题缺少模型类型标识，请重新发起模型选择");
+      continue;
+    }
+    if (round.purpose !== "generation_scope" || !answer.selectedOptionIds?.length) throw new Error("请通过模型选项提交生成范围");
+    if ((!question.multiple && answer.selectedOptionIds.length !== 1) || new Set(answer.selectedOptionIds).size !== answer.selectedOptionIds.length) throw new Error("模型选项数量无效");
+    for (const id of answer.selectedOptionIds) {
+      const choice = question.scopeChoices.find(choice => choice.id === id);
+      if (!choice) throw new Error("模型选项已变化，请重新选择");
+      if (!choice.kinds.length && answer.selectedOptionIds.length > 1) throw new Error("不生成选项不能与其他模型选项同时选择");
+      for (const kind of choice.kinds) kinds.add(kind);
+    }
+    scoped = true;
+  }
+  if (round.questions.some(question => question.scopeChoices) && round.questions.some(question => !answers.some(answer => answer.questionId === question.id))) throw new Error("请完成本轮问题后提交");
+  // An explicit empty scope is a refusal; undefined means this was a business answer.
+  return scoped ? standardDiagramKinds.filter(kind => kinds.has(kind)) : undefined;
+}
 
 export function resolveStandardGenerationSelection(text: string, awaitingSelection: boolean): StandardDiagramKind[] | undefined {
   const value = text.trim();
@@ -47,6 +75,8 @@ export function selectedStandardTasks(state: StandardProjectState) {
 
 export function standardGenerationScopeDescription(state: StandardProjectState) {
   return state.generationScope?.status === "confirmed"
-    ? `用户已确认的生成范围：${state.generationScope.kinds.map(kind => standardDiagramLabels[kind]).join("、")}。generate_diagrams 省略 ids 只会生成这些类型；不得自行扩大范围。`
+    ? state.generationScope.kinds.length
+      ? `用户已确认的生成范围：${state.generationScope.kinds.map(kind => standardDiagramLabels[kind]).join("、")}。这是本轮授权；新增类型不会重生成其他已有图。generate_diagrams 省略 ids 只会生成这些类型；不得自行扩大范围。`
+      : "用户本轮未选择任何模型或已拒绝生成，不得调用图表生成或修改工具。"
     : state.generationScope?.status === "awaiting_selection" ? "尚未确认生成范围。可以解释模型用途、补充关键业务问题，但不得生成图表；请用户通过名称、序号、按推荐方案或生成全部选择。" : "已有项目按用户本轮明确请求修改，保留其他产物。";
 }

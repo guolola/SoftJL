@@ -47,3 +47,39 @@ test("preserves user-authored text alongside structured answers", () => {
   const reply = prepareStandardAgentTurn("p", { operation: "chat", message: text, answers: [{ questionId: "role", answer: "学生" }] }, state);
   assert.equal(reply.text, text);
 });
+
+test("scope recommendations submit explicit identifiers and checkpoint the previous scope before acknowledgement", () => {
+  const state = createStandardProjectState();
+  state.generationScope = { status: "confirmed", kinds: ["class"] };
+  state.rounds = [{ purpose: "generation_scope", answers: [], questions: [{ id: "scope", title: "是否新增概念模型？", multiple: false,
+    options: ["是，加入并生成领域概念图", "不生成"], recommendation: "说明文字不决定模型类型", scopeChoices: [
+      { id: "yes", label: "是，加入并生成领域概念图", kinds: ["er"], recommended: true },
+      { id: "no", label: "不生成", kinds: [], recommended: false },
+    ] }] }];
+  const message = prepareStandardAgentTurn("p", { operation: "chat", useRecommendations: true }, state);
+  assert.equal(message.text, "是，加入并生成领域概念图");
+  assert.deepEqual(message.answers, [{ questionId: "scope", answer: "是，加入并生成领域概念图", selectedOptionIds: ["yes"] }]);
+  assert.deepEqual(state.generationScope, { status: "confirmed", kinds: ["er"] });
+  const checkpoint = state.piSession!.entries.at(-1) as { data: { generationScope: typeof state.generationScope } };
+  assert.deepEqual(checkpoint.data.generationScope, { status: "confirmed", kinds: ["class"] });
+});
+
+test("free text does not acknowledge an unanswered structured model question", () => {
+  const state = createStandardProjectState();
+  state.rounds = [{ purpose: "generation_scope", answers: [], questions: [{ id: "scope", title: "新增？", multiple: false,
+    options: ["同意", "拒绝"], recommendation: "同意", scopeChoices: [
+      { id: "yes", label: "同意", kinds: ["er"], recommended: true }, { id: "no", label: "拒绝", kinds: [], recommended: false },
+    ] }] }];
+  prepareStandardAgentTurn("p", { operation: "chat", message: "同意" }, state);
+  assert.deepEqual(state.rounds[0]!.answers, []);
+  assert.equal(state.generationScope, undefined);
+});
+
+test("recommendation shortcuts cannot infer model consent from an untyped pending scope question", () => {
+  const state = createStandardProjectState();
+  state.rounds = [{ purpose: "generation_scope", answers: [], questions: [{ id: "scope", title: "新增模型？", multiple: false,
+    options: ["总体架构图", "不生成"], recommendation: "总体架构图" }] }];
+  assert.throws(() => prepareStandardAgentTurn("p", { operation: "chat", useRecommendations: true }, state), /缺少模型类型标识/);
+  assert.equal(state.conversation, undefined);
+  assert.deepEqual(state.rounds[0]!.answers, []);
+});

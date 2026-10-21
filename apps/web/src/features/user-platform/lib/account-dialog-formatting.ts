@@ -5,7 +5,7 @@ import type {
   PlatformUser,
 } from "../services/platform-api";
 
-export const AVATAR_FILE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+export const AVATAR_FILE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 export const ACCOUNT_SESSION_RECORD_LIMIT = 5;
 

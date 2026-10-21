@@ -13,7 +13,7 @@ vi.mock("motion/react", async (importOriginal) => {
 });
 
 function mockProjectList(count: number) {
-  const projects = Array.from({ length: count }, (_, index) => ({ projectMode: "professional",
+  const projects = Array.from({ length: count }, (_, index) => ({ projectMode: index % 3 === 0 ? "standard" : "professional",
     id: `project-${index + 1}`,
     name: `项目${String(index + 1).padStart(2, "0")}`,
     memberCount: index % 2 === 1 ? 2 : 1,
@@ -127,9 +127,11 @@ describe("ProjectsIndexPage", () => {
     expect(screen.queryByRole("heading", { name: "项目29" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "第 2 页" }));
-    await user.click(screen.getByRole("button", { name: "归档项目" }));
-    expect(screen.getByLabelText("1-2 / 2")).toBeInTheDocument();
-    expect(projectCards()).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "快速项目" }));
+    expect(screen.getByLabelText("1-10 / 10")).toBeInTheDocument();
+    expect(projectCards()).toHaveLength(10);
+    await user.click(screen.getByRole("button", { name: "工程项目" }));
+    expect(screen.getByLabelText("1-12 / 20")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "全部项目" }));
     await user.click(screen.getByRole("button", { name: "第 2 页" }));
@@ -138,6 +140,28 @@ describe("ProjectsIndexPage", () => {
     expect(screen.getByLabelText("1-12 / 30")).toBeInTheDocument();
     expect(projectCards().map((card) => within(card).getByRole("heading").textContent))
       .toEqual(Array.from({ length: 12 }, (_, index) => `项目${String(index + 1).padStart(2, "0")}`));
+  });
+
+  it("filters project modes independently from collaboration and keeps archived projects accessible", async () => {
+    const user = userEvent.setup();
+    mockProjectList(6);
+    render(<ProjectsIndexPage onNavigate={() => {}} />);
+    await screen.findByLabelText("1-6 / 6");
+    const filters = within(screen.getByTestId("projects-filter-panel"));
+    expect(filters.getAllByRole("button").filter(button => button.hasAttribute("aria-pressed"))
+      .map(button => button.getAttribute("aria-label")))
+      .toEqual(["全部项目", "快速项目", "工程项目", "协作项目"]);
+
+    for (const [filter, names] of [
+      ["快速项目", ["项目04", "项目01"]],
+      ["工程项目", ["项目06", "项目05", "项目03", "项目02"]],
+      ["协作项目", ["项目06", "项目04", "项目02"]],
+      ["全部项目", ["项目06", "项目05", "项目04", "项目03", "项目02", "项目01"]],
+    ] as const) {
+      await user.click(filters.getByRole("button", { name: filter }));
+      expect(filters.getByRole("button", { name: filter })).toHaveAttribute("aria-pressed", "true");
+      expect(projectCards().map(card => within(card).getByRole("heading").textContent)).toEqual(names);
+    }
   });
 
   it("resets to the first page when changing page size and handles a single remaining page", async () => {

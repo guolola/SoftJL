@@ -16,7 +16,6 @@ export type StaticProject = {
   description: string;
   owner: string;
   ownerUserId: string;
-  isOwnedByCurrentUser: boolean;
   status: string;
   statusLabel: string;
   updatedAt: string;
@@ -40,9 +39,9 @@ type StaticProjectMemberPreview = {
 
 export const PROJECT_SCOPE_OPTIONS = [
   { value: "all", labelKey: "projects.scope.all", shortLabelKey: "projects.scopeShort.all" },
-  { value: "mine", labelKey: "projects.scope.mine", shortLabelKey: "projects.scopeShort.mine" },
+  { value: "standard", labelKey: "projects.scope.standard", shortLabelKey: "projects.scopeShort.standard" },
+  { value: "professional", labelKey: "projects.scope.professional", shortLabelKey: "projects.scopeShort.professional" },
   { value: "shared", labelKey: "projects.scope.shared", shortLabelKey: "projects.scopeShort.shared" },
-  { value: "archived", labelKey: "projects.scope.archived", shortLabelKey: "projects.scopeShort.archived" },
 ] as const;
 
 function displayNameFromUser(user: PlatformUser | null | undefined) {
@@ -155,7 +154,6 @@ export function projectFromApi(
     description: project.description ?? noDescription,
     owner: ownerName,
     ownerUserId: project.ownerUserId,
-    isOwnedByCurrentUser: currentUser?.id === project.ownerUserId,
     status: project.status,
     statusLabel: projectStatusLabel(project.status, locale),
     updatedAt: new Date(project.updatedAt).toLocaleString(locale),

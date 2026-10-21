@@ -1,7 +1,7 @@
 // Verifies standard workspace reads require current state without migrating or dropping private execution context.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createStandardProjectState } from "@uml-platform/contracts";
+import { createStandardProjectState, type StandardProjectState } from "@uml-platform/contracts";
 import { readStandardState } from "./standard-project-record.js";
 
 test("current state reads retain private session and command receipts while new workspaces initialize normally", () => {
@@ -17,4 +17,11 @@ test("obsolete standard state is rejected without rewriting stored data", () => 
     assert.throws(() => readStandardState(workspace));
     assert.deepEqual(workspace, before);
   }
+});
+
+test("pending unsupported-model consent survives workspace reads without being cleared or inferred", () => {
+  const state: StandardProjectState = { ...createStandardProjectState("Current"), generationScope: { status: "confirmed", kinds: [] },
+    unsupportedDiagramRequest: { models: ["UML 状态图"], messageId: "user:r", questionId: "scope_alternative" } };
+  assert.deepEqual(readStandardState({ standardProject: state }), state);
+  assert.throws(() => readStandardState({ standardProject: { ...state, unsupportedDiagramRequest: { models: [] } } }));
 });

@@ -406,6 +406,70 @@ describe("AccountDialog generation usage", () => {
     });
   });
 
+  it("previews and uploads the original GIF and displays the saved animated avatar", async () => {
+    const user = userEvent.setup();
+    const profile = profileResponse({ usedToday: 0, limit: null, remaining: null, windowSeconds: 86400, limited: false, scope: "user" });
+    const fetchMock = stubAccountFetch(profile);
+    const originalFetch = fetchMock.getMockImplementation()!;
+    const savedUrl = "https://cdn.example.edu/avatar.gif";
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input).endsWith("/api/account/avatar")) {
+        return new Response(JSON.stringify({ ...profile, user: { ...profile.user, avatarUrl: savedUrl } }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => "blob:animated-avatar");
+    URL.revokeObjectURL = vi.fn();
+    try {
+      renderAccountDialog({ onNavigate: () => {}, initialUser: baseUser });
+      await user.click(screen.getByRole("button", { name: "账号" }));
+      const dialog = await screen.findByRole("dialog", { name: "设置" });
+      await user.click(within(dialog).getByRole("tab", { name: "个人资料" }));
+      await within(dialog).findByLabelText("昵称");
+      const input = within(dialog).getByLabelText("头像图片");
+      expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif");
+      const file = new File(["GIF89a"], "animated.gif", { type: "image/gif" });
+      await user.upload(input, file);
+      expect(within(dialog).getByAltText("头像图片")).toHaveAttribute("src", "blob:animated-avatar");
+      await user.click(within(dialog).getByRole("button", { name: "保存资料" }));
+      await waitFor(() => expect(within(dialog).getByAltText("头像图片")).toHaveAttribute("src", savedUrl));
+      const upload = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/api/account/avatar"));
+      expect(upload?.[1]?.method).toBe("POST");
+      expect((upload?.[1]?.body as FormData).get("avatar")).toBe(file);
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+
+  it("rejects oversized GIFs and unsupported formats before previewing or uploading", async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    const fetchMock = stubAccountFetch(profileResponse({ usedToday: 0, limit: null, remaining: null, windowSeconds: 86400, limited: false, scope: "user" }));
+    const originalCreate = URL.createObjectURL;
+    URL.createObjectURL = vi.fn();
+    try {
+      renderAccountDialog({ onNavigate: () => {}, initialUser: baseUser });
+      await user.click(screen.getByRole("button", { name: "账号" }));
+      const dialog = await screen.findByRole("dialog", { name: "设置" });
+      await user.click(within(dialog).getByRole("tab", { name: "个人资料" }));
+      await within(dialog).findByLabelText("昵称");
+      const input = within(dialog).getByLabelText("头像图片");
+      await user.upload(input, new File([new Uint8Array(2 * 1024 * 1024 + 1)], "large.gif", { type: "image/gif" }));
+      expect(within(dialog).getByText("头像图片不能超过 2MB。")).toBeInTheDocument();
+      await user.upload(input, new File(["<svg/>"], "avatar.svg", { type: "image/svg+xml" }));
+      expect(within(dialog).getByText("请选择 PNG、JPG、WebP 或 GIF 图片。")).toBeInTheDocument();
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/account/avatar"))).toBe(false);
+      expect(within(dialog).getByRole("button", { name: "保存资料" })).toBeDisabled();
+    } finally {
+      URL.createObjectURL = originalCreate;
+    }
+  });
+
   it("replaces an unsaved upload with a bundled avatar and saves the selected reference", async () => {
     const user = userEvent.setup();
     const fetchMock = stubAccountFetch(profileResponse({ usedToday: 0, limit: null, remaining: null, windowSeconds: 86400, limited: false, scope: "user" }));
@@ -429,15 +493,15 @@ describe("AccountDialog generation usage", () => {
       expect(within(dialog).queryByText("原神")).not.toBeInTheDocument();
       expect(within(dialog).queryByText("鸣潮")).not.toBeInTheDocument();
       expect(within(dialog).queryByText("卡通人物")).not.toBeInTheDocument();
-      await user.click(within(presets).getByRole("button", { name: "芙宁娜" }));
-      expect(within(presets).getByRole("button", { name: "芙宁娜" })).toHaveAttribute("aria-pressed", "true");
-      expect(within(dialog).getByAltText("头像图片")).toHaveAttribute("src", "/avatars/genshin-furina.svg");
+      await user.click(within(presets).getByRole("button", { name: "莫莫咖摇尾巴" }));
+      expect(within(presets).getByRole("button", { name: "莫莫咖摇尾巴" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(dialog).getByAltText("头像图片")).toHaveAttribute("src", "/avatars/momonga-tail-wag.gif");
       expect(fileInput).toHaveValue("");
       expect(revokeObjectURL).toHaveBeenCalledWith("blob:avatar-preview");
       await user.click(within(dialog).getByRole("button", { name: "保存资料" }));
       await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining("/api/account/profile"),
-        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ displayName: "Student", avatarUrl: "/avatars/genshin-furina.svg" }) }),
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ displayName: "Student", avatarUrl: "/avatars/momonga-tail-wag.gif" }) }),
       ));
       expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/api/account/avatar"))).toBe(false);
     } finally {

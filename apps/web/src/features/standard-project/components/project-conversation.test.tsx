@@ -318,7 +318,12 @@ it("shows a saved model question as Agent text and only the selected option in t
 it("renders Agent-authored model choices, preserves answers on rejection and hides the component after acknowledgement", async () => {
   const props = defaults(); props.onSend.mockResolvedValueOnce(false);
   props.state.generationScope = { status: "awaiting_selection", kinds: ["usecase"] };
-  props.state.rounds = [{ purpose: "generation_scope", questions: [{ id: "models", title: "这轮需要哪些图？", options: ["功能结构图", "用例图", "总体架构图"], recommendation: "功能结构图、用例图", multiple: true }], answers: [] }];
+  props.state.rounds = [{ purpose: "generation_scope", questions: [{ id: "models", title: "这轮需要哪些图？", options: ["功能结构图", "用例图", "总体架构图"], recommendation: "功能结构图、用例图", multiple: true,
+    scopeChoices: [
+      { id: "function", label: "功能结构图", kinds: ["function"], recommended: true },
+      { id: "usecase", label: "用例图", kinds: ["usecase"], recommended: true },
+      { id: "architecture", label: "总体架构图", kinds: ["architecture"], recommended: false },
+    ] }], answers: [] }];
   props.state.conversation = [{ id: "a", role: "assistant", text: "请选择需要的模型。", status: "completed", createdAt: "now" }];
   const mounted = render(view(props)); const user = userEvent.setup();
   await user.type(screen.getByPlaceholderText("发送消息…"), "保留的草稿");
@@ -328,7 +333,7 @@ it("renders Agent-authored model choices, preserves answers on rejection and hid
   expect(screen.getByRole("checkbox", { name: "用例图" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "总体架构图" })).not.toBeChecked();
   await user.click(screen.getByRole("button", { name: "确认并生成" }));
-  expect(props.onSend).toHaveBeenCalledWith({ operation: "chat", language: "zh-CN", message: "功能结构图、用例图", answers: [{ questionId: "models", answer: "功能结构图、用例图" }] });
+  expect(props.onSend).toHaveBeenCalledWith({ operation: "chat", language: "zh-CN", message: "功能结构图、用例图", answers: [{ questionId: "models", answer: "功能结构图、用例图", selectedOptionIds: ["function", "usecase"] }] });
   expect(screen.getByRole("checkbox", { name: "用例图" })).toBeChecked();
   expect(screen.getByPlaceholderText("发送消息…")).toHaveValue("保留的草稿");
   mounted.rerender(view({ ...props, disabled: true }));
@@ -337,11 +342,15 @@ it("renders Agent-authored model choices, preserves answers on rejection and hid
     rounds: [{ ...props.state.rounds[0]!, answers: [{ questionId: "models", answer: "功能结构图、用例图" }] }] } }));
   expect(screen.queryByRole("checkbox", { name: "用例图" })).not.toBeInTheDocument();
 });
-it("selects model recommendations when LLM options include numbered purpose descriptions", async () => {
+it("uses explicit recommended identifiers when model labels contain explanations or unrelated recommendation text", async () => {
   const props = defaults();
   props.state.rounds = [{ purpose: "generation_scope", questions: [{ id: "models", title: "需要哪些模型？", multiple: true,
     options: ["1. 功能结构图 — 展示系统模块", "2. 用例图 — 展示哪些角色使用哪些功能", "7. 时序图 — 展示对象交互"],
-    recommendation: "推荐功能结构图、用例图；时序图按业务生成。" }], answers: [] }];
+    recommendation: "时序图展示对象交互；本轮采用指定的推荐组合。", scopeChoices: [
+      { id: "function", label: "1. 功能结构图 — 展示系统模块", kinds: ["function"], recommended: true },
+      { id: "usecase", label: "2. 用例图 — 展示哪些角色使用哪些功能", kinds: ["usecase"], recommended: true },
+      { id: "sequence", label: "7. 时序图 — 展示对象交互", kinds: ["sequence"], recommended: false },
+    ] }], answers: [] }];
   props.state.conversation = [{ id: "a", role: "assistant", text: "请选择。", status: "completed", createdAt: "now" }];
   render(view(props)); const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "填入推荐答案" }));
@@ -349,7 +358,81 @@ it("selects model recommendations when LLM options include numbered purpose desc
   expect(screen.getByRole("checkbox", { name: "2. 用例图 — 展示哪些角色使用哪些功能" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "7. 时序图 — 展示对象交互" })).not.toBeChecked();
   await user.click(screen.getByRole("button", { name: "确认并生成" }));
-  expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ answers: [{ questionId: "models", answer: "1. 功能结构图 — 展示系统模块、2. 用例图 — 展示哪些角色使用哪些功能" }] }));
+  expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ answers: [{ questionId: "models", answer: "1. 功能结构图 — 展示系统模块、2. 用例图 — 展示哪些角色使用哪些功能", selectedOptionIds: ["function", "usecase"] }] }));
+});
+
+it.each(["总体架构图", "是，加入并生成领域概念图", "不生成"])("submits a later single-model decision by identifier: %s", async label => {
+  const props = defaults();
+  props.state.generationScope = { status: "confirmed", kinds: ["class"] };
+  props.state.rounds = [{ purpose: "generation_scope", answers: [], questions: [{ id: "scope", title: "是否新增此模型？", multiple: false,
+    options: ["总体架构图", "是，加入并生成领域概念图", "不生成"], recommendation: "推荐新图", scopeChoices: [
+      { id: "arch", label: "总体架构图", kinds: ["architecture"], recommended: false },
+      { id: "concept", label: "是，加入并生成领域概念图", kinds: ["er"], recommended: true },
+      { id: "skip", label: "不生成", kinds: [], recommended: false },
+    ] }] }];
+  props.state.conversation = [{ id: "a", role: "assistant", text: "请选择新增模型。", status: "completed", createdAt: "now" }];
+  render(view(props)); const user = userEvent.setup();
+  expect(screen.queryByRole("button", { name: "选择全部" })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/是否新增此模型.*自定义答案/)).not.toBeInTheDocument();
+  await user.click(screen.getByRole("radio", { name: label }));
+  await user.click(screen.getByRole("button", { name: "确认并生成" }));
+  const id = label === "总体架构图" ? "arch" : label === "不生成" ? "skip" : "concept";
+  expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ answers: [{ questionId: "scope", answer: label, selectedOptionIds: [id] }] }));
+});
+
+it("rejects an untyped pending scope question with an inline recovery instruction", () => {
+  const props = defaults();
+  props.state.rounds = [{ purpose: "generation_scope", questions: [{ id: "scope", title: "是否新增？", options: ["总体架构图", "不生成"], recommendation: "总体架构图", multiple: false }], answers: [] }];
+  props.state.conversation = [{ id: "a", role: "assistant", text: "请选择。", status: "completed", createdAt: "now" }];
+  render(view(props));
+  expect(screen.getByRole("button", { name: "确认并生成" })).toBeDisabled();
+  expect(screen.getByRole("status")).toHaveTextContent("这份模型选择已失效");
+  expect(screen.getByPlaceholderText("发送消息…")).toBeEnabled();
+});
+
+it.each(["改为生成：概念 E-R 图", "不生成替代图"])("discloses the unsupported model and submits the user's alternative decision: %s", async label => {
+  const props = defaults();
+  props.state.unsupportedDiagramRequest = { models: ["UML 状态图"], messageId: "user:r", questionId: "scope_alternative" };
+  props.state.generationScope = { status: "confirmed", kinds: [] };
+  const title = "当前不支持「UML 状态图」。是否改为生成其他受支持的图？";
+  props.state.rounds = [{ purpose: "generation_scope", answers: [], questions: [{ id: "scope_alternative", title, multiple: false,
+    options: ["改为生成：概念 E-R 图", "不生成替代图"], recommendation: "不是原模型的等价替代。", scopeChoices: [
+      { id: "yes", label: "改为生成：概念 E-R 图", kinds: ["er"], recommended: true }, { id: "no", label: "不生成替代图", kinds: [], recommended: false },
+    ] }] }];
+  props.state.conversation = [{ id: "notice", role: "assistant", text: "当前平台不支持生成状态图，不会擅自替换成其他图。", status: "completed", createdAt: "now" },
+    { id: "ask", role: "assistant", text: "请确认是否选择其他模型。", status: "completed", createdAt: "now", tools: [{ id: "tool", name: "ask_questions", status: "completed" }] }];
+  const mounted = render(view(props)); const user = userEvent.setup();
+  expect(screen.getByText(title)).toBeInTheDocument();
+  expect(screen.getByText(/不会擅自替换/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "确认并生成" })).toBeDisabled();
+  await user.click(screen.getByRole("radio", { name: label }));
+  await user.click(screen.getByRole("button", { name: "确认并生成" }));
+  expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ answers: [{ questionId: "scope_alternative", answer: label, selectedOptionIds: [label === "不生成替代图" ? "no" : "yes"] }] }));
+  mounted.rerender(view({ ...props, state: { ...props.state, unsupportedDiagramRequest: { ...props.state.unsupportedDiagramRequest!, questionId: undefined } } }));
+  expect(screen.queryByRole("radio", { name: label })).not.toBeInTheDocument();
+});
+
+it("select all excludes the decline choice and manual decline clears positive model selections", async () => {
+  const props = defaults();
+  props.state.rounds = [{ purpose: "generation_scope", answers: [], questions: [{ id: "scope", title: "选择新增模型", multiple: true,
+    options: ["架构", "领域", "不生成"], recommendation: "推荐新增", scopeChoices: [
+      { id: "arch", label: "架构", kinds: ["architecture"], recommended: true },
+      { id: "concept", label: "领域", kinds: ["er"], recommended: true },
+      { id: "skip", label: "不生成", kinds: [], recommended: false },
+    ] }] }];
+  props.state.conversation = [{ id: "a", role: "assistant", text: "请选择。", status: "completed", createdAt: "now" }];
+  render(view(props)); const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "选择全部" }));
+  expect(screen.getByRole("checkbox", { name: "架构" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "领域" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "不生成" })).not.toBeChecked();
+  await user.click(screen.getByRole("checkbox", { name: "不生成" }));
+  expect(screen.getByRole("checkbox", { name: "架构" })).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "领域" })).not.toBeChecked();
+  await user.click(screen.getByRole("button", { name: "确认并生成" }));
+  expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ answers: [{ questionId: "scope", answer: "不生成", selectedOptionIds: ["skip"] }] }));
+  await user.click(screen.getByRole("checkbox", { name: "架构" }));
+  expect(screen.getByRole("checkbox", { name: "不生成" })).not.toBeChecked();
 });
 it("connects the source timing, follow-ups and provider Token display after a stopped task", async () => {
   const props = defaults();

@@ -25,7 +25,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Version-v2.2.3-2563eb?style=flat-square" alt="Current product version v2.2.3" />
+  <img src="https://img.shields.io/badge/Version-v2.2.4-2563eb?style=flat-square" alt="Current product version v2.2.4" />
   <img src="https://img.shields.io/badge/Frontend-React%20%2B%20Next.js-61dafb?style=flat-square" alt="React and Next.js" />
   <img src="https://img.shields.io/badge/API-Fastify%20%2B%20Zod-111827?style=flat-square" alt="Fastify and Zod" />
   <img src="https://img.shields.io/badge/UML-PlantUML-f59e0b?style=flat-square" alt="PlantUML" />
@@ -205,15 +205,15 @@ Core services include document generation, built-in DOCX preview and downloads. 
 
 Add your provider in account model settings, test the connection and select a model. Configure persistence and encryption secrets for deployment, and disable development guest access and legacy plaintext provider settings.
 
-## What changed in v2.2.3
+## What changed in v2.2.4
 
-This release improves model repair continuity and provider configuration:
+This release improves Quick Modeling scope confirmation, invitations and profile updates:
 
-- Continue post-generation structure and provenance repairs in the original task conversation, retaining the spent budget while isolating sibling artifacts.
-- Validate source references against real model elements, including nested flows and qualified field IDs. Publish the accepted model, mappings and rendered output together.
-- Manage providers in a table with status, update time and a single enabled selection; only the owner can edit or delete personal credentials.
-- Search discovered models with provider icons and output-mode badges. Reuse successful discovery probes when saving, while retaining server address safety checks.
-- Save workspace preferences independently from provider drafts; show actionable errors above configuration dialogs without closing them.
+- Confirm model scope with server-validated option IDs; reject stale questions, invalid selections and attempts to expand the selected diagram types.
+- Explain unsupported Quick Modeling requests and require explicit choices before generating a supported alternative; recommendations and earlier consent cannot bypass confirmation.
+- Search registered invitees by username or display name, with avatars, request debouncing and filtering of existing members, inactive users and yourself.
+- Choose from 12 bundled animated avatars or upload GIFs without losing animation; profile changes update navigation avatars without reloading the project.
+- Filter projects by Standard or Professional mode, while retaining shared-project filtering and the community edition's direct project entry.
 
 This release uses the current `current_platform_schema_v3` installation baseline. Existing v1/v2 databases are rejected; use a clean database. SMTP and emailed invitation links are retired.
 
@@ -236,7 +236,7 @@ The root `npm run dev` builds shared packages automatically; use `npm run build:
 
 ## Release and upgrades
 
-Current version: **v2.2.3**. See [release notes and setup requirements](release-notes.md). New installations initialize an empty database with `current_platform_schema_v3`; databases already using this baseline can continue to be used, subject to the current workspace contracts. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
+Current version: **v2.2.4**. See [release notes and setup requirements](release-notes.md), including retired avatar paths and model-selection questions. New installations initialize an empty database with `current_platform_schema_v3`; existing data must meet current contracts. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
 
 ## Documentation
 

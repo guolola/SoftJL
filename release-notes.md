@@ -1,57 +1,54 @@
 <!-- 记录社区版当前发布内容、链路收益、功能边界及部署要求。 -->
 
-# SoftJL Community v2.2.3
+# SoftJL Community v2.2.4
 
 ## 更新重点
 
-- **生成与渲染连续修复**：后置结构和来源问题沿用首次生成的完整会话，继承已消耗的修复预算；同批模型分支保留原始历史后各自修复，避免互相污染。模型、来源映射和绘图全部通过后一起发布，失败候选不覆盖有效成果。
-- **来源映射简化**：校验真实模型元素，支持嵌套事件流、结构元素和限定字段 ID，仍要求业务元素具有完整来源。移除来源映射置信度、待确认状态及自动候选映射，不再把这些字段作为生成前置门槛；矩阵展示同步调整。
-- **供应商配置列表**：展示名称、状态、默认模型、更新时间与启用项，只允许选择一个可用供应商。个人配置仅由所属用户编辑或删除，停用或无可用模型的配置无法启用。
-- **模型搜索与发现**：模型选择支持搜索、品牌图标及严格 JSON/JSON 模式/兼容模式标识。发现阶段已完成的模型探测用于后续保存，取消重复测试调用；保存仍执行地址安全校验，编辑时重新填写密钥并获取模型列表。
-- **独立工作台偏好**：自动生成、过期提示及完成提示音独立维护，保存时只合并当前页面字段。错误浮层显示在配置弹窗上方，关闭提示后可继续修改，不丢失表单。
+- **快速建模范围确认**：模型选项携带稳定 ID 和明确类型，提交时由服务端校验，不再根据展示文字推断生成范围。重复、伪造、过期及数量不合法的选项会在创建任务前被拒绝；本轮新增类型保留其他已完成模型。
+- **未支持图表先说明**：快速建模遇到当前八类模型之外的请求时先说明不支持，阻止擅自替换、生成或修改其他图。替代方案必须通过当前询问组件明确选择，并提供“不生成替代图”；旧范围、正文同意和推荐快捷操作不能代替这次确认。
+- **选择与会话记录一致**：结构化选择保存到本轮消息，拒绝生成可形成明确的空范围；编辑或重新生成时恢复对应问题、范围和未支持请求状态，避免沿用后续轮次的选择。旧问题不能确认新一轮生成。
+- **成员邀请搜索补全**：可按已注册用户名或显示名搜索，展示头像与身份，自动排除自己、现有项目成员和停用账号，最多返回 20 项。查询仍要求项目邀请权限；输入防抖，关闭弹窗或输入新内容后忽略过期响应。
+- **动态头像与资料同步**：内置 12 个优化后的本地 GIF 默认头像，上传支持 GIF 并保留原始帧、循环和透明度。保存资料后导航栏、侧栏和头像菜单即时同步，不重新认证或卸载当前项目；迟到的认证响应不会覆盖新资料。
+- **项目筛选与界面细节**：项目列表新增普通版、专业版筛选，保留共享项目筛选；同步头像选择与登录界面的调整。保留社区版近期更新的双语成果介绍、复杂建模截图及既有 CI 布局采样修复。
 
 ## 生成链路与消耗
 
-本次优化集中在“发现供应商模型 → 保存配置 → 选择直接上游 → 生成与渲染连续修复 → 发布有效成果”的链路：
+本次优化集中在“识别请求 → 明确支持范围 → 校验选择 → 创建任务 → 按本轮范围生成”的链路：
 
-- 供应商保存不再额外重复执行模型连通性测试，复用发现阶段的结果，减少配置过程的等待及重复调用；地址策略继续由服务端校验。
-- 后置修复不重新拼装另一份生成上下文，直接延续原消息历史和已消耗预算。来源问题与结构问题共同校验，修复返回完整模型及映射，绘图成功后才发布。
-- 设计任务仅使用实际直接上游，缺少来源时不回退到整份需求模型；保留独立分支并行、依赖批次限制及失败实例重试。实现方案与文档章节继续使用局部补丁协议。
+- 在模型生成前拦截未支持请求和无效答案，避免生成用户未确认的替代图，减少误生成后的重做与修复。
+- 生成与修改工具同时检查当前范围；模型目录返回准确任务 ID 和授权状态，避免猜测目标或扩大到其他产物。
+- 编辑、重新生成和后续问答保留各自边界，避免旧选择错误地触发后续生成；用户拒绝时不创建替代图。
+- 延续按任务裁剪上下文、生成与渲染共用修复会话及预算、独立分支并行、失败实例重试，以及供应商保存复用模型发现结果等机制。
 
-这些机制旨在减少无效调用和重复生成。本版本没有线上总耗时或总 Token 降幅结论；完整模型修复会保留并增加历史输入，实际消耗取决于模型、项目规模、修复次数及供应商缓存行为。
+本版本未提供线上总耗时或总 Token 降幅结论。上述约束旨在减少不必要的调用与返工；实际消耗仍取决于项目、模型、供应商和修复次数。
 
-`npm run benchmark:generation` 使用 20 个用例、8 个无关模型的固定合成样本和 `cl100k_base` 分词，不调用远端模型：
-
-- 单用例审查上下文从 6,637 缩减至 413 Token，表示当前样本的来源范围裁剪效果，不代表相对上一版本的线上收益。
-- 使用当前模型修复协议，首次请求为 3,882 Token，第一次修复请求为 4,269 Token；原始前缀保留，新增输出与校验反馈使输入增加 387 Token。统计包含序列化消息结构，不计工具或供应商封装。
-
-上述数值仅用于复现输入范围和会话增长，不代表全部调用总 Token、缓存命中、计费或线上耗时；旧字段补丁修复样本不再作为当前模型修复的节省依据。
+`npm run benchmark:generation` 保留可复现的本地合成输入对比：20 个用例、8 个无关模型，使用 `cl100k_base` 分词，不调用远端模型。当前样本的单用例审查上下文为 6,637 → 413 Token；完整模型修复的首次请求为 3,882 Token，第一次修复请求为 4,269 Token，新增历史与反馈增加 387 Token。这是既有输入裁剪与会话增长样本，不代表本版本新增收益、线上总消耗、费用或耗时降幅。
 
 ## 功能边界
 
-保留快速建模、工程建模、自带模型服务配置、账号认证、项目权限、供应商密钥加密、DOCX 内置预览与下载，以及由部署者启用并明确授权范围的 MCP。继续排除平台计费、支付、充值额度、运营后台、官网宣传首页和官网自动生产部署。
+保留快速建模、工程建模、自带模型服务、账号认证、项目成员权限、密钥加密、DOCX 内置预览与下载，以及部署者启用并明确授权范围的 MCP。继续排除平台计费、支付、充值额度、运营后台、官网宣传首页及其专用依赖和生产部署流程。
 
-组织、课程、班级、团队及其关联字段、权限和配额保持移除；项目可见性字段已移除，统一通过成员邀请协作，仅已加入成员可访问。
+快速建模支持功能结构、用例、活动/流程、总体架构、概念 E-R、设计类、时序及数据库表关系八类模型；本次未扩展图表种类。未支持请求的确认规则仅描述快速建模，工程建模仍按自身模型契约和依赖运行。
 
 ## 部署要求
 
 1. 使用 Node.js 22.19+，运行 `npm ci` 并构建共享包和应用。
-2. 本版本继续采用 `current_platform_schema_v3`。首次安装使用空数据库；已采用该基线的数据库结构可继续使用，但工作区数据必须符合当前契约。
-3. **v2.2.0 的 v2 基线及其他旧数据库不能直接升级**。旧库会被明确拒绝，不会自动迁移或清空；部署前准备新的空数据库并配置 `DATABASE_URL`。不再保留旧邮箱字段、邮件邀请令牌和历史迁移兼容链。
-4. 构建后可先用 `node apps/api/dist/db/migrate.js --check` 只读检查目标库，再用 `node apps/api/dist/db/migrate.js` 初始化。
-5. SMTP、邮箱验证、邮件找回密码和邮件邀请链接不再参与账号流程。可选本地访客账号使用 `UML_GUEST_USERNAME` 配置；供应商加密密钥和持久化目录按部署环境维护。
-6. **来源映射旧数据不再兼容**：`reviewStatus`、`confidence` 字段和 `auto-filled-pending-review` 值已移除，包含这些内容的工作区会被拒绝。请重建受影响的项目和模型；本次不自动迁移、删除或转换这些数据。
+2. 数据库仍使用 `current_platform_schema_v3`；首次安装准备空数据库，已有数据必须符合当前契约。v1、v2 及历史迁移链不自动升级，也不会自动清空。
+3. 默认头像改为本地 GIF，旧游戏角色 SVG 路径已移除且不自动映射。现有部署若引用旧目录，请在升级前改用自行上传的有效头像，或准备符合新目录的新账户数据；同步部署新的 `apps/web/public/avatars/` 资源，并保留自定义头像存储目录。
+4. 快速建模旧范围问题若缺少 `scopeChoices`，请重新发起模型选择；不能提交旧答案来授权新范围。普通业务澄清继续按现有问答契约处理。
+5. 来源映射中的 `reviewStatus`、`confidence` 和 `auto-filled-pending-review` 仍不兼容，含这些旧元数据的工作区需重建项目和模型，不自动转换。
+6. 构建后可用 `node apps/api/dist/db/migrate.js --check` 只读检查目标库，再用 `node apps/api/dist/db/migrate.js` 初始化。SMTP、邮箱验证和邮件邀请不参与账号流程；供应商密钥与持久化目录按部署环境维护。
 
 ## 验证
 
-使用契约、提示词、API、Web 和浏览器回归验证渲染修复延续、分支隔离、共享预算、真实来源引用、旧字段拒绝、供应商列表与搜索、保存免重复探测、偏好独立保存及错误提示层级；数据库行为由 PGlite 使用当前 SQL 基线验证。类型检查、代码规范、生产构建及 `npm run audit:docs` 为发布检查入口。
+使用共享契约、API、Web 和浏览器回归验证生成范围、未支持图表确认、旧问题拒绝、会话边界恢复、邀请搜索权限、过期响应处理、GIF 上传及导航资料同步。生产构建、类型检查、代码规范与 `npm run audit:docs` 为发布检查入口。
 
-模拟供应商与本地输入样本用于验证流程约束，不证明远端模型质量、真实线上耗时或费用。实际供应商工具调用、图表质量和 DOCX 预览仍需在部署环境验收。
+模拟供应商和本地输入样本用于验证流程约束，不证明真实模型质量、线上耗时或费用；生成内容及实际部署仍需人工验收。
 
 ## English summary
 
-v2.2.3 continues post-generation structure and provenance repairs in the original conversation, carrying the spent budget while isolating sibling histories. Valid models, mappings and rendered outputs are published together. Source references resolve against real model elements; mapping review/confidence metadata and auto-filled pending mappings are retired.
+v2.2.4 validates Quick Modeling scope choices by stable option IDs and explicit diagram kinds. Unsupported requests cannot silently generate substitutes: alternatives require a new structured confirmation, including a decline option. Saved answers and restored turn boundaries prevent stale questions or later choices from authorizing the wrong work.
 
-Provider settings now use a status table, single enabled selection and searchable discovered models with brand/output-mode indicators. Saving reuses discovery probes while retaining address safety checks. Workspace preferences save independently, and actionable errors remain visible above dialogs. Scoped inputs, independent branches and bounded repairs aim to reduce repeated work; no production speed, total-token or billing reduction is claimed.
+Project invitations gain permission-scoped registered-user search with avatars and debouncing. Twelve bundled animated GIF avatars and original-byte GIF uploads replace the former default catalog. Profile saves update navigation immediately without remounting the project, and delayed authentication responses cannot overwrite newer profile data. Projects can be filtered by Standard or Professional mode.
 
-Use Node.js 22.19+ and `current_platform_schema_v3`. Older database baselines are rejected without migration or deletion. Workspaces with retired mapping metadata must be recreated under the current contract; no automatic conversion is provided. Community BYOK, project authorization, optional explicitly scoped MCP, collaboration notifications, quick-modeling history and built-in DOCX preview remain available; billing and operations administration remain excluded.
+These changes aim to reduce unwanted generation and repeated work; no new production latency, total-token or billing reduction is claimed. The supported Quick Modeling diagram types are unchanged. Use Node.js 22.19+ and the current v3 database baseline. Retired avatar paths, obsolete model-selection questions and old mapping metadata are not automatically converted. Community BYOK, authorization, optional explicitly scoped MCP and DOCX preview remain; hosted billing, operations administration and marketing pages remain excluded.

@@ -286,5 +286,29 @@
     "source": "dashboard-shell-06.zip!components/shadcn-studio/blocks/widget-payment-history.tsx",
     "target": "src/shared/template/blocks/dashboard-shell-06/widget-payment-history.tsx",
     "sha256": "bd19b637ec0c70b94fec25b1f31119a83314d38d28da8312d859bb45a041210a"
+  },
+  {
+    "template": "shadcn-studio",
+    "source": "components/shadcn-studio/blocks/faq-component-01/faq-component-01.tsx",
+    "target": "src/features/mcp-connections/components/project-usage-examples.tsx",
+    "sha256": "27ed1080755bf8312098dd7e3ae6f85d054a369e3cceedc0a05152b023fd9b7e"
+  },
+  {
+    "template": "shadcn-studio",
+    "source": "https://github.com/shadcnstudio/shadcn-studio/blob/main/src/components/ui/rainbow-button.tsx",
+    "target": "src/shared/ui/rainbow-button.tsx",
+    "sha256": "51635d4a7f98a9b1711c8a53c0cc5a0f35ca232ed3fd64467df3562191f4e5c6"
+  },
+  {
+    "template": "shadcn-studio",
+    "source": "user-provided:shadcn-studio/autocomplete-09.tsx",
+    "target": "src/features/user-platform/components/project-invitee-autocomplete.tsx",
+    "sha256": "a095a476c86972c4f63546b1597425ee895f88fa7b824a4e974c9d8e6ea6c274"
+  },
+  {
+    "template": "shadcn-studio",
+    "source": "user-provided:shadcn-studio/ui/autocomplete.tsx",
+    "target": "src/shared/ui/autocomplete.tsx",
+    "sha256": "05411b498124588fb302d8b11facc52de03bdf46b0ac0e18825a95487d19af09"
   }
 ]

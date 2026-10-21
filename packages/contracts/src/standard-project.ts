@@ -14,11 +14,18 @@ export const standardDiagramLabels: Record<StandardDiagramKind, string> = {
   er: "概念 E-R 图", class: "设计类图", sequence: "时序图", table: "数据库表关系图",
 };
 const standardSwimlaneSchema = z.object({ id, name: text });
+// Display copy never determines model consent; choices carry explicit, server-validated kinds.
+export const standardScopeChoiceSchema = z.object({
+  id, label: text, kinds: z.array(standardDiagramKindSchema).max(8), recommended: z.boolean(),
+}).strict();
 export const standardQuestionSchema = z.object({
   id, title: text, multiple: z.boolean().default(false),
   options: z.array(text).min(2).max(8), recommendation: text,
+  scopeChoices: z.array(standardScopeChoiceSchema).min(2).max(8).optional(),
 });
-export const standardAnswerSchema = z.object({ questionId: id, answer: text });
+export const standardAnswerSchema = z.object({
+  questionId: id, answer: text, selectedOptionIds: z.array(id).min(1).max(8).optional(),
+});
 export const standardOutlineSchema = z.object({
   title: text, summary: text,
   roles: z.array(z.object({ id, name: text, description: text })).min(1),
@@ -72,7 +79,10 @@ export function standardModelSchemaForKind(kind: StandardDiagramKind) {
     : scoped;
 }
 const standardGenerationScopeSchema = z.object({
-  status: z.enum(["awaiting_selection", "confirmed"]), kinds: z.array(standardDiagramKindSchema).min(1),
+  status: z.enum(["awaiting_selection", "confirmed"]), kinds: z.array(standardDiagramKindSchema).max(8),
+});
+const standardUnsupportedDiagramRequestSchema = z.object({
+  models: z.array(text).min(1).max(8), messageId: z.string().min(1), questionId: id.optional(),
 });
 export type StandardQuestion = z.infer<typeof standardQuestionSchema>;
 export type StandardAnswer = z.infer<typeof standardAnswerSchema>;
@@ -92,6 +102,7 @@ export type StandardAttachment = z.infer<typeof standardAttachmentSchema>;
 export const standardQuoteSchema = z.object({ text: z.string().min(1).max(12000), messageId: z.string().optional() });
 export const standardConversationMessageSchema = z.object({
   id: z.string(), role: z.enum(["user", "assistant"]), text: z.string(), createdAt: z.string(),
+  answers: z.array(standardAnswerSchema).max(3).optional(),
   status: z.enum(["streaming", "completed", "failed"]).default("completed"),
   attachments: z.array(standardAttachmentSchema).max(4).optional(), quote: standardQuoteSchema.optional(),
   reasoning: z.string().optional(), durationMs: z.number().nonnegative().optional(),
@@ -118,6 +129,8 @@ const standardRunSchema = z.object({
 });
 export type StandardProjectState = {
   generationScope?: z.infer<typeof standardGenerationScopeSchema>;
+  /** Unsupported requests cannot reuse earlier consent; alternatives require their own Ask answer. */
+  unsupportedDiagramRequest?: z.infer<typeof standardUnsupportedDiagramRequestSchema>;
   tokenUsage?: StandardTokenUsage;
   /** Idempotency receipts contain identifiers only, never provider credentials. */
   acceptedCommands?: string[];
@@ -147,6 +160,7 @@ export const standardDiagramSchema = z.object({
 });
 export const standardProjectStateSchema = z.object({
   generationScope: standardGenerationScopeSchema.optional(),
+  unsupportedDiagramRequest: standardUnsupportedDiagramRequestSchema.optional(),
   tokenUsage: standardTokenUsageSchema.optional(),
   conversation: z.array(standardConversationMessageSchema).optional(), memory: z.array(text).optional(),
   contextStatus: z.enum(["ready", "compacting"]).optional(), compactionCount: z.number().int().nonnegative().optional(),

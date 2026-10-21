@@ -13,6 +13,7 @@ import type {
   ProviderModelCapabilityMap,
   ProviderModelDiscoveryResponse,
   ProviderModelDiscoveryProgressEvent,
+  ProjectInviteeSearchResponse,
 } from "@uml-platform/contracts";
 import type { RunError } from "@uml-platform/contracts";
 import type { ProjectBackgroundKey } from "@uml-platform/contracts";
@@ -636,6 +637,11 @@ export const platformApi = {
   listProjectMembers(projectId: string) {
     return requestJson<{ members: PlatformProjectMember[] }>(
       `/api/projects/${projectId}/members`,
+    );
+  },
+  searchProjectInvitees(projectId: string, query: string) {
+    return requestJson<ProjectInviteeSearchResponse>(
+      `/api/projects/${projectId}/invitees?${new URLSearchParams({ query })}`,
     );
   },
   inviteProjectMember(

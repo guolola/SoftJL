@@ -4,7 +4,7 @@ import { standardIntroEn, standardIntroZh } from "./standard-intro-resources";
 export const standardProjectZh = {
   intro: standardIntroZh,
   agentChat: "Agent 聊天",
-  inquiry: { models: "选择需要生成的模型", modelHint: "可多选，确认后开始生成。", recommended: "采用推荐组合", all: "选择全部", generate: "确认并生成", chooseModels: "请至少选择一种模型。", business: "补充业务需求", custom: "自定义答案（选填）", useAnswers: "填入推荐答案", submit: "提交答案", complete: "请完成全部问题后提交。" },
+  inquiry: { models: "选择需要生成的模型", modelHint: "可多选，确认后开始生成。", recommended: "采用推荐组合", all: "选择全部", generate: "确认并生成", chooseModels: "请至少选择一种模型。", business: "补充业务需求", custom: "自定义答案（选填）", useAnswers: "填入推荐答案", submit: "提交答案", complete: "请完成全部问题后提交。", refreshScope: "这份模型选择已失效，请在对话中重新说明需要生成的图，以获取新的选择。" },
   welcomeBack: "欢迎回来，{{name}}。",
   chat: {
     noCommand: "没有匹配的指令", edit: "编辑消息", cancelEdit: "取消", update: "更新", regenerate: "重新生成回复", previousVersion: "上一版本", nextVersion: "下一版本",
@@ -167,7 +167,7 @@ export const standardProjectZh = {
 export const standardProjectEn = {
   intro: standardIntroEn,
   agentChat: "Agent chat",
-  inquiry: { models: "Choose models to generate", modelHint: "Select one or more models, then confirm to generate.", recommended: "Use recommended set", all: "Select all", generate: "Confirm and generate", chooseModels: "Choose at least one model.", business: "Clarify business requirements", custom: "Custom answer (optional)", useAnswers: "Fill recommended answers", submit: "Submit answers", complete: "Answer every question before submitting." },
+  inquiry: { models: "Choose models to generate", modelHint: "Select one or more models, then confirm to generate.", recommended: "Use recommended set", all: "Select all", generate: "Confirm and generate", chooseModels: "Choose at least one model.", business: "Clarify business requirements", custom: "Custom answer (optional)", useAnswers: "Fill recommended answers", submit: "Submit answers", complete: "Answer every question before submitting.", refreshScope: "These model choices have expired. Send a new request for the diagrams you need to receive current choices." },
   welcomeBack: "Welcome back, {{name}}.",
   chat: {
     noCommand: "No matching command", edit: "Edit message", cancelEdit: "Cancel", update: "Update", regenerate: "Regenerate response", previousVersion: "Previous version", nextVersion: "Next version",

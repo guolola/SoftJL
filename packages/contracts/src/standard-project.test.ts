@@ -1,7 +1,18 @@
 // Verifies diagram-specific provider vocabularies against the same structural contracts used at save time.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { standardDiagramKinds, standardDiagramSchema, standardModelSchemaForKind, standardModelNodeTypes, standardModelRelationTypes } from "./standard-project.js";
+import { standardAnswerSchema, standardScopeChoiceSchema, standardDiagramKinds, standardDiagramSchema, standardModelSchemaForKind, standardModelNodeTypes, standardModelRelationTypes } from "./standard-project.js";
+
+test("model choices carry current diagram kinds and answers preserve selected option identifiers", () => {
+  const choice = { id: "yes", label: "是，加入并生成领域概念图", kinds: ["er"], recommended: true };
+  assert.deepEqual(standardScopeChoiceSchema.parse(choice), choice);
+  assert.equal(standardScopeChoiceSchema.safeParse({ ...choice, kinds: ["concept_er"] }).success, false);
+  assert.equal(standardScopeChoiceSchema.safeParse({ ...choice, kinds: ["state"] }).success, false);
+  assert.equal(standardScopeChoiceSchema.safeParse({ ...choice, kinds: [] }).success, true);
+  const answer = { questionId: "scope", answer: choice.label, selectedOptionIds: ["yes"] };
+  assert.deepEqual(standardAnswerSchema.parse(answer), answer);
+  assert.equal(standardAnswerSchema.safeParse({ ...answer, selectedOptionIds: [] }).success, false);
+});
 
 test("use-case diagrams have one current overview identity without role-view aliases", () => {
   const diagram = { id: "usecase", kind: "usecase", title: "用例图", status: "pending" };

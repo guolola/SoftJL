@@ -803,7 +803,7 @@ describe("TopBar", () => {
     await user.upload(screen.getByLabelText("头像图片"), avatarFile);
 
     expect(screen.getByAltText("头像图片")).toHaveAttribute("src", "blob:document-export");
-    expect(screen.queryByText(/请选择 PNG、JPG 或 WebP 图片/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(/请选择 PNG、JPG、WebP 或 GIF 图片/u)).not.toBeInTheDocument();
   });
 
   it("validates and uploads the selected account avatar when saving profile", async () => {
@@ -891,7 +891,7 @@ describe("TopBar", () => {
     expect(toastSuccess).toHaveBeenCalledWith("资料已更新");
 
     await user.upload(screen.getByLabelText("头像图片"), new File(["bad"], "bad.txt", { type: "text/plain" }));
-    expect(screen.getByText("请选择 PNG、JPG 或 WebP 图片。")).toBeInTheDocument();
+    expect(screen.getByText("请选择 PNG、JPG、WebP 或 GIF 图片。")).toBeInTheDocument();
   });
 
   it("aligns the account dialog profile, MFA, and session views with the settings design", async () => {

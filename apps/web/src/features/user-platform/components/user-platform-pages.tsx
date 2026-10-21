@@ -43,6 +43,7 @@ import {
   type PlatformProjectMember,
   type PlatformRunSummary,
   type PlatformAccountProfileResponse,
+  type PlatformUser,
 } from "../services/platform-api";
 import {
   PlatformLoadingCoordinatorProvider,
@@ -291,6 +292,12 @@ function AuthenticatedRouteContent({
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const hasVerifiedSessionRef = useRef(false);
+  const profileRevision = useRef(0);
+  const updateSessionUser = useCallback((user: PlatformUser) => {
+    ++profileRevision.current;
+    // Share successful profile writes without rechecking auth or remounting route content.
+    setAuthSession((current) => current?.user.id === user.id ? { ...current, user } : current);
+  }, []);
   const hasVerifiedSession = Boolean(authSession) && verifiedRouteKey === routeKey;
   const effectiveChecking = checking || !hasVerifiedSession;
   const overlayActive = showLoadingScreen && (effectiveChecking || childLoading.active);
@@ -298,6 +305,7 @@ function AuthenticatedRouteContent({
   const loadingTransition = useLoadingTransition(overlayActive);
 
   const verifySession = useCallback(() => {
+    const profileVersion = profileRevision.current;
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setChecking(true);
@@ -305,7 +313,10 @@ function AuthenticatedRouteContent({
       .me()
       .then((response) => {
         if (!mountedRef.current || requestIdRef.current !== requestId) return;
-        setAuthSession(response);
+        // An auth request started before a profile save must not restore the older avatar.
+        setAuthSession((current) => current?.user.id === response.user.id && profileVersion !== profileRevision.current
+          ? { ...response, user: current.user }
+          : response);
         hasVerifiedSessionRef.current = true;
         setVerifiedRouteKey(routeKey);
         setChecking(false);
@@ -364,7 +375,7 @@ function AuthenticatedRouteContent({
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <AuthenticatedRouteSessionProvider value={authSession}>
+      <AuthenticatedRouteSessionProvider value={authSession} onUserUpdate={updateSessionUser}>
         <ManagedProviderSettingsSync session={authSession} />
         {/* Keep verified navigation mounted while blocking target content until its session check completes. */}
         {renderLayout

@@ -228,3 +228,16 @@ test("source labels preserve generic types while preventing preprocessor injecti
   assert.doesNotMatch(source, /!include|\$variable|%load_json/);
   assert.match(source, /as node_start/);
 });
+
+test("direct generate, retry and resume cannot bypass pending unsupported-model confirmation", async () => {
+  const initial: StandardProjectState = { ...createStandardProjectState("借阅系统"), outline,
+    generationScope: { status: "confirmed", kinds: ["class"] },
+    unsupportedDiagramRequest: { models: ["UML 状态图"], messageId: "user:r" },
+    diagrams: { class: { id: "class", kind: "class", title: "类图", status: "failed", model: model("class") } } };
+  const store = memory(initial); let calls = 0;
+  const transport: LlmTransport = { async *streamChatCompletion() { calls++; throw new Error("unexpected provider call"); } };
+  for (const operation of ["generate", "retry", "resume"] as const) {
+    await assert.rejects(runStandardProject({ operation, targetIds: ["class"], diagramId: "class" }, store.get(), { settings, transport, render, save: store.save }), /询问组件确认/);
+  }
+  assert.equal(calls, 0); assert.deepEqual(store.get(), initial);
+});

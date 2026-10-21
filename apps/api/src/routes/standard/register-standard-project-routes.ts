@@ -22,6 +22,7 @@ import { interruptStandardRunMessages } from "../../runs/records/standard-run-me
 import { runStandardProject, renderStandardDiagram } from "../../runs/pipelines/standard/standard-project-pipeline.js";
 import { runStandardAgent } from "../../runs/pipelines/standard/standard-agent-pipeline.js";
 import { prepareStandardAgentTurn } from "../../runs/pipelines/standard/standard-agent-turn.js";
+import { resolveStandardScopeAnswers } from "../../runs/pipelines/standard/standard-generation-scope.js";
 import { createStandardPiStream } from "../../adapters/llm/pi-provider.js";
 import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
 import type { ModelCatalog } from "../../provider-configs/model-catalog.js";
@@ -145,6 +146,13 @@ export function registerStandardProjectRoutes(deps: {
     let command: z.infer<typeof commandSchema>;
     try { command = { ...parsed.data, ...resolveConversationRevision(current, parsed.data) }; }
     catch (error) { return reply.code(409).send(createHttpErrorResponse(reply)); }
+    if (command.answers?.length && ["chat", "edit", "regenerate"].includes(command.operation)) {
+      try {
+        const validationState = structuredClone(current);
+        applyConversationRevision(validationState, command);
+        resolveStandardScopeAnswers(validationState.rounds.at(-1), command.answers, validationState.unsupportedDiagramRequest);
+      } catch { return reply.code(409).send(createHttpErrorResponse(reply)); }
+    }
     if (command.operation === "resume" && (!current.run || current.run.id !== command.resumeRunId || !["stopped", "failed"].includes(current.run.status))) return reply.code(409).send(createHttpErrorResponse(reply));
     if (["chat", "edit", "regenerate"].includes(command.operation) && !command.message && !command.attachments?.length && !command.useRecommendations && !command.answers?.length) return reply.code(400).send(createHttpErrorResponse(reply));
     if (command.operation === "edit" && !command.message && !command.attachments?.length) return reply.code(400).send(createHttpErrorResponse(reply));

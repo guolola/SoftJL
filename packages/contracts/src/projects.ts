@@ -233,6 +233,20 @@ export const projectMembersResponseSchema = z.object({
 });
 export type ProjectMembersResponse = z.infer<typeof projectMembersResponseSchema>;
 
+export const projectInviteeSearchQuerySchema = z.object({
+  query: z.string().trim().max(64),
+}).strict();
+
+export const projectInviteeSearchResponseSchema = z.object({
+  users: z.array(z.object({
+    id: z.string().min(1),
+    username: usernameSchema,
+    displayName: publicNameSchema,
+    avatarUrl: avatarUrlSchema.nullable(),
+  }).strict()).max(20),
+}).strict();
+export type ProjectInviteeSearchResponse = z.infer<typeof projectInviteeSearchResponseSchema>;
+
 export const projectMemberResponseSchema = z.object({
   member: projectMemberDtoSchema,
 });

@@ -1,19 +1,19 @@
 // Owns project member invitation, role, and removal interactions.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { UserRoundPlus, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { projectInvitationCreateRequestSchema } from "@uml-platform/contracts";
 import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
 import { Alert } from "../../../shared/ui/alert";
 import { Button } from "../../../shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../../shared/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "../../../shared/ui/field";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "../../../shared/ui/input-group";
 import { SelectControl } from "../../../shared/ui/select";
 import { Separator } from "../../../shared/ui/separator";
 import { useFloatingAlert } from "../../../shared/ui/floating-alert";
 import { invitationToMember, memberRoleLabel } from "../lib/project-workspace-presentation";
 import { PlatformApiError, platformApi, type PlatformProject, type PlatformProjectMember } from "../services/platform-api";
+import ProjectInviteeAutocomplete from "./project-invitee-autocomplete";
 import { ProjectMemberRow } from "./project-member-row";
 import { useAuthenticatedRouteSession } from "./authenticated-route-session";
 
@@ -285,26 +285,18 @@ export function ProjectMembers({
             </DialogHeader>
             <FieldGroup className="mt-4 grid grid-cols-1 gap-4">
               <Field>
-                <FieldLabel htmlFor="member-invite-username" className="gap-1">
-                  {t("projectShell.membersUi.usernameLabel")}<span className="text-destructive">*</span>
-                </FieldLabel>
-                <InputGroup>
-                  <InputGroupInput
-                    id="member-invite-username"
-                    type="text"
-                    value={inviteUsername}
-                    onChange={(event) => {
-                      setInviteUsername(event.target.value);
-                      if (event.target.value.trim()) setInviteFieldError("");
-                    }}
-                    placeholder={t("projectShell.membersUi.usernamePlaceholder")}
-                    disabled={!canManageMembers}
-                    required
-                    aria-invalid={!!inviteFieldError}
-                    aria-describedby={inviteFieldError ? "member-invite-username-error" : undefined}
-                  />
-                  <InputGroupAddon align="inline-end"><UserRoundPlus className="size-4" aria-hidden="true" /></InputGroupAddon>
-                </InputGroup>
+                <ProjectInviteeAutocomplete
+                  projectId={project.id}
+                  id="member-invite-username"
+                  value={inviteUsername}
+                  onValueChange={(value) => {
+                    setInviteUsername(value);
+                    setInviteFieldError("");
+                  }}
+                  disabled={!canManageMembers}
+                  invalid={!!inviteFieldError}
+                  describedBy={inviteFieldError ? "member-invite-username-error" : undefined}
+                />
                 {inviteFieldError && <FieldError id="member-invite-username-error">{inviteFieldError}</FieldError>}
               </Field>
               <Field>
