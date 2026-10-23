@@ -65,9 +65,7 @@ jobs:
         run: test -f plantuml/plantuml-1.2026.3beta8.jar
 
       - name: Build shared packages for tests
-        run: |
-          npm run build:contracts
-          npm run build:prompts
+        run: npm run build:packages
 
       - name: Audit documentation
         run: npm run audit:docs
