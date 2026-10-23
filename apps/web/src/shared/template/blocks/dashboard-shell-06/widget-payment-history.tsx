@@ -36,7 +36,8 @@ const PaymentHistoryCard = ({ title, paymentData, className, ...actions }: Props
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paymentData.map((payment, _index) => (<TableRow key={payment.id} className='border-none hover:bg-transparent'>
+            {paymentData.map((payment) => (
+              <TableRow key={payment.id} className='border-none hover:bg-transparent'>
                 <TableCell className='pl-6 first:pt-4'>
                   <div className='flex items-center gap-2'>
                     <div className='bg-muted flex size-10.5 items-center justify-center rounded-sm'>

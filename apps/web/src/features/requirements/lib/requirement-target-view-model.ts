@@ -1,6 +1,6 @@
 // Derives target-model card state and traceability proof rows for requirement generation.
 import { candidateRulesForDiagram } from "@uml-platform/contracts";
-import type { TFunction } from "i18next";
+
 import { requirementModelSources, type DiagramModelSpec, type RequirementModelTraceabilityEntry } from "@uml-platform/contracts";
 import { DIAGRAM_META, type DiagramType } from "../../../entities/diagram/model";
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
@@ -31,24 +31,6 @@ export interface RequirementTargetCardStateInput {
   staleDiagrams: DiagramType[];
   models: DiagramModelSpec[] | Partial<Record<string, DiagramModelSpec>>;
   traceability?: RequirementModelTraceabilityEntry[];
-}
-
-export function requirementDiagramsButtonLabel(input: {
-  generatedDiagrams: DiagramType[];
-  selectedDiagrams: DiagramType[];
-  staleDiagrams: DiagramType[];
-  t?: TFunction;
-}) {
-  const { generatedDiagrams, selectedDiagrams, t } = input;
-  const toAdd = selectedDiagrams.filter(
-    (diagram) => !generatedDiagrams.includes(diagram),
-  ).length;
-  const updates = selectedDiagrams.length - toAdd;
-  if (selectedDiagrams.length === 0) return t ? t("uxReview.selectModels") : "勾选要生成或更新的模型";
-  const parts: string[] = [];
-  if (toAdd) parts.push(t ? t("uxReview.generateCount", { count: toAdd }) : `生成 ${toAdd} 个`);
-  if (updates) parts.push(t ? t("uxReview.updateCount", { count: updates }) : `更新 ${updates} 个`);
-  return parts.join("，");
 }
 
 export function requirementTargetBlockReason(input: {

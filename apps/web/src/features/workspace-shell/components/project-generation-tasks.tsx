@@ -46,7 +46,7 @@ export function ProjectGenerationTasksDrawerContent({ projectRuns = emptyRuns, p
   const selectedRemote = relevantAction?.runId === runId ? relevantAction : remote?.runId === runId ? remote : undefined;
   const kind = selectedLocal?.kind ?? selectedRemote?.runKind ?? session.currentRunDiagnostics.runKind;
   const scopedProjectId = projectId ?? selectedRemote?.projectId;
-  const restored = useRunTranscript(scopedProjectId, runId, kind);
+  const restored = useRunTranscript(scopedProjectId, runId);
   const diagnostics = selectedLocal?.diagnostics ?? (!runId || session.currentRunDiagnostics.runId === runId ? session.currentRunDiagnostics : undefined);
   const events = useMemo(() => {
     const localEvents = diagnostics ? diagnostics.transcript ?? emptyEvents : !restored.events.length && selectedRemote?.stage ? [{ type: "stage_started", stage: selectedRemote.stage as RunStage }] as RunEventInput[] : emptyEvents;

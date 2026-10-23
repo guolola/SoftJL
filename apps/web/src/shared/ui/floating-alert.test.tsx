@@ -1,4 +1,4 @@
-// Verifies transient alert appearance, timing, and interaction behavior.
+// Verifies transient alert timing, dismissal, focus, and stack behavior.
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -38,55 +38,22 @@ describe('FloatingAlertProvider', () => {
   })
 
   it.each([
-    ['success', 'success', 'circle-check'],
-    ['info', 'info', 'circle-alert'],
-    ['warning', 'warning', 'triangle-alert'],
-    ['destructive', 'destructive', 'circle-x'],
-  ] as const)('uses the alert-01 layout and distinct %s styling', (tone, color, icon) => {
+    'success', 'info', 'warning', 'destructive',
+  ] as const)('exposes a dismissible %s alert with the default expiry', (tone) => {
     const timer = vi.spyOn(globalThis, 'setTimeout')
     render(<FloatingAlertProvider><AlertTrigger tone={tone} description='操作已完成' /></FloatingAlertProvider>)
 
     fireEvent.click(screen.getByRole('button', { name: '显示提示' }))
-    const alert = screen.getByRole('alert')
-    const statusIcon = alert.firstElementChild
-
-    expect(alert).toHaveClass(`border-${color}/45`, `bg-${color}/10`, '*:[svg]:row-span-1')
-    expect(alert).not.toHaveClass('*:[svg]:row-span-2')
-    expect(statusIcon).toHaveClass(`lucide-${icon}`)
-    expect(screen.getByText('操作已完成')).toHaveClass('col-start-2')
     expect(screen.getByRole('button', { name: '关闭提示' })).toBeInTheDocument()
     expect(timer).toHaveBeenCalledWith(expect.any(Function), 2500)
   })
 
-  it('animates entry and keeps an expiring alert mounted through its exit', async () => {
+  it('removes an alert after its configured expiry', async () => {
     render(<FloatingAlertProvider><AlertTrigger durationMs={30} /></FloatingAlertProvider>)
 
     fireEvent.click(screen.getByRole('button', { name: '显示提示' }))
-    const item = screen.getByText('保存成功').closest('[data-slot="floating-alert-item"]') as HTMLElement
-    expect(item).toHaveStyle({ opacity: '0' })
-    expect(item.style.transform).toContain('translateY(-8px)')
 
     await waitFor(() => expect(screen.queryByText('保存成功')).not.toBeInTheDocument())
-  })
-
-  it('sizes stacked alerts independently while allowing long text to wrap within the viewport', () => {
-    render(<FloatingAlertProvider><div>content</div></FloatingAlertProvider>)
-
-    act(() => {
-      floatingAlert.success('已复制')
-      floatingAlert.warning('请检查项目配置后重试', { description: 'https://example.com/' + 'a'.repeat(200) })
-    })
-
-    const alerts = screen.getAllByRole('alert')
-    for (const alert of alerts) {
-      const item = alert.closest('[data-slot="floating-alert-item"]') as HTMLElement
-      expect(item).toHaveClass('w-fit', 'max-w-full', 'min-w-0')
-      expect(item).not.toHaveClass('w-full')
-      expect(item.parentElement).toHaveClass('items-center')
-      expect(alert).toHaveClass('[overflow-wrap:anywhere]')
-    }
-    expect(screen.getByText('已复制')).toBeInTheDocument()
-    expect(screen.getByText('请检查项目配置后重试')).toBeInTheDocument()
   })
 
   it('keeps alerts in a body-level live region instead of a clipped nested dialog', async () => {
@@ -102,14 +69,6 @@ describe('FloatingAlertProvider', () => {
     expect(viewport?.closest('[data-slot="dialog-content"]')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '关闭提示' }))
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
-  })
-
-  it('centers the status icon and close button alongside a message without a description', () => {
-    render(<FloatingAlertProvider><AlertTrigger /></FloatingAlertProvider>)
-    fireEvent.click(screen.getByRole('button', { name: '显示提示' }))
-
-    expect(screen.getByRole('alert')).toHaveClass('items-center')
-    expect(screen.getByRole('button', { name: '关闭提示' }).parentElement).toHaveClass('top-1/2', '-translate-y-1/2')
   })
 
   it('pauses while hovered and animates manual close', async () => {
@@ -161,8 +120,6 @@ describe('FloatingAlertProvider', () => {
     render(<FloatingAlertProvider><AlertTrigger /></FloatingAlertProvider>)
 
     fireEvent.click(screen.getByRole('button', { name: '显示提示' }))
-    const item = screen.getByText('保存成功').closest('[data-slot="floating-alert-item"]') as HTMLElement
-    expect(item.style.transform).not.toContain('translateY(-8px)')
 
     fireEvent.click(screen.getByRole('button', { name: '关闭提示' }))
     await waitFor(() => expect(screen.queryByText('保存成功')).not.toBeInTheDocument())

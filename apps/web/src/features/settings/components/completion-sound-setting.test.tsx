@@ -36,13 +36,13 @@ describe("Completion sound setting", () => {
     const user = userEvent.setup();
     const actions = createRef<GlobalSettingsActions>();
     render(<AppI18nProvider><WorkspacePreferencesPanel ref={actions} active onDirtyChange={() => {}} /></AppI18nProvider>);
-    await user.click(screen.getByRole("switch", { name: "修改后自动重新生成规则" }));
+    await user.click(screen.getByRole("switch", { name: "显示过期模型横幅" }));
     saveUserSettings({ ...loadUserSettings(), providerConfigId: "new-provider", defaultModel: "chat-new" });
     act(() => actions.current?.save());
-    expect(loadUserSettings()).toMatchObject({ autoGenerate: true, providerConfigId: "new-provider", defaultModel: "chat-new" });
+    expect(loadUserSettings()).toMatchObject({ showStaleBanner: false, providerConfigId: "new-provider", defaultModel: "chat-new" });
     act(() => actions.current?.reset());
-    expect(screen.getByRole("switch", { name: "修改后自动重新生成规则" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "显示过期模型横幅" })).toBeChecked();
     act(() => actions.current?.save());
-    expect(loadUserSettings()).toMatchObject({ autoGenerate: false, providerConfigId: "new-provider", defaultModel: "chat-new" });
+    expect(loadUserSettings()).toMatchObject({ showStaleBanner: true, providerConfigId: "new-provider", defaultModel: "chat-new" });
   });
 });

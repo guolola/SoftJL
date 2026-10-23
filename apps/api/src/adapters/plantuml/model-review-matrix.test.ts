@@ -5,14 +5,14 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getStageModelSchemas, type ModelingStage } from "@uml-platform/contracts";
-import { modelReviewFixtures } from "../../../../../packages/contracts/src/testing/model-review-fixtures.js";
+import { modelReviewFixtures } from "@uml-platform/contracts/testing";
 import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "./model-renderer.js";
-import { verifySvgMapping } from "../../normalizers/diagrams/svg-review.js";
+import { verifySvgMapping } from "../../../tests/fixtures/render/svg-mapping-verifier.js";
 
 const root = fileURLToPath(new URL("../../../../../", import.meta.url));
 const java = process.env.JAVA_HOME ? resolve(process.env.JAVA_HOME, "bin", process.platform === "win32" ? "java.exe" : "java") : process.platform === "win32" ? "C:/Program Files/Eclipse Adoptium/jdk-21.0.12.101-hotspot/bin/java.exe" : "java";
 function draw(source: string) {
-  const rendered = spawnSync(java, ["-Djava.awt.headless=true", "-jar", resolve(root, "plantuml/build/libs/plantuml-1.2026.3beta8.jar"), "-charset", "UTF-8", "-pipe", "-tsvg"], { input: source, encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 30000 });
+  const rendered = spawnSync(java, ["-Djava.awt.headless=true", "-jar", resolve(root, "plantuml/plantuml-1.2026.3beta8.jar"), "-charset", "UTF-8", "-pipe", "-tsvg"], { input: source, encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 30000 });
   assert.equal(rendered.status, 0, `${rendered.error ?? ""}${rendered.stderr}`);
   assert.doesNotMatch(rendered.stdout, /Syntax Error|Cannot find Graphviz|Dot executable does not exist/);
   return rendered.stdout;
@@ -59,7 +59,7 @@ for (const stage of ["feasibility", "requirements", "design"] as ModelingStage[]
       const svg = draw(artifact.source);
       const check = verifySvgMapping(svg, artifact.renderMapping, model.modelId!, kind);
       assert.deepEqual(check.findings, [], `${name}: no false positives`);
-      if (kind === "function") { assert.equal(check.identifiable, false, "MindMap has no stable identities; never assert program mapping success"); continue; }
+      if (kind === "function" || kind === "activity" && artifact.renderMapping?.mode === "native") { assert.equal(check.identifiable, false, "Native diagram has no stable SVG identities; never assert program mapping success"); continue; }
       assert.equal(check.identifiable, true, name); assert.equal(check.inconclusive, undefined, name);
       if (name === "基本模型") {
         const label = artifact.renderMapping!.elements.find((element) => element.label && element.statement?.includes(element.label));

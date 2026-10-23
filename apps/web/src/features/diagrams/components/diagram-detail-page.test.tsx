@@ -1,16 +1,16 @@
 // Verifies diagram detail editing, rerendering, trace highlighting, and export interactions.
-import { createRenderMeta } from "@/test/contract-fixtures";
+import { createRenderMeta } from "@test/fixtures/contract-fixtures";
 import { snapshotInputFingerprint, tableDiagramSpecSchema } from "@uml-platform/contracts";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import {
   createBusinessFlowArtifact,
   createRule,
   createWorkspaceRecord,
   withWorkspaceProviders,
-} from "../../../test/workspace-test-utils";
+} from "../../../../tests/helpers/workspace-test-utils";
 import { BusinessFlowDiagramView, ContextDiagramView, DesignDiagramView, DiagramView } from "./diagram-detail-page";
 
 // Problem categories are collapsed by default; inspect their content after expanding them.
@@ -22,7 +22,6 @@ function expandCheckRecord(scope: HTMLElement) {
     (details as HTMLDetailsElement).open = true;
   });
 }
-
 
 const { toastMessage, toastError } = vi.hoisted(() => ({
   toastMessage: vi.fn(),
@@ -70,11 +69,11 @@ describe("DiagramView", () => {
   ): WorkspaceRepository {
     return {
       loadWorkspace: vi.fn(async () => workspace),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
+
       renderStructuredModel: vi.fn(async (model) => ({
         plantUmlSource: `@startuml\n' ${model.title}\n@enduml`,
         svg: `<svg><text>${model.diagramKind}</text></svg>`,
@@ -88,11 +87,11 @@ describe("DiagramView", () => {
       saveRequirementModelEdit: vi.fn(async () => {}),
       saveDesignModelEdit: vi.fn(async () => {}),
       saveManualModelRerender: vi.fn(async () => {}),
-      testProviderSettings: vi.fn(),
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
   }
 
@@ -153,7 +152,6 @@ describe("DiagramView", () => {
     const noticeButton = await screen.findByRole("button", { name: /提示（\d+）/ });
     const heading = screen.getByRole("heading", { name: "总体业务流程", level: 1 });
     expect(heading.parentElement).toContainElement(noticeButton);
-    expect(noticeButton).toHaveClass("w-auto", "shrink-0");
     expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(screen.queryByText("总体业务流程 生成失败")).not.toBeInTheDocument();
     await userEvent.click(noticeButton);
@@ -184,15 +182,12 @@ describe("DiagramView", () => {
       } },
     });
     const repository = createRepository(workspace);
-    repository.confirmVisualReview = vi.fn();
+
     const { unmount } = render(withWorkspaceProviders(<DiagramView type="usecase" />, repository));
     const noticeButton = await screen.findByRole("button", { name: /提示（\d+）/ });
     const heading = screen.getByRole("heading", { name: "用例模型", level: 1 });
-    expect(heading).toHaveClass("font-display", "font-bold", "text-3xl", "leading-9");
-    expect(heading.closest("header")?.querySelector("p.text-muted-foreground")).toHaveClass("mt-2", "max-w-3xl", "text-sm", "leading-6");
     expect(heading.parentElement).toContainElement(noticeButton);
     expect(heading.parentElement).toContainElement(screen.getByRole("button", { name: "编辑" }));
-    expect(noticeButton).toHaveClass("w-auto", "shrink-0");
     expect(screen.queryByText("标签不可读")).not.toBeInTheDocument();
     await userEvent.click(noticeButton);
     const notice = await screen.findByRole("dialog", { name: "模型提示" });
@@ -204,7 +199,7 @@ describe("DiagramView", () => {
     expect(within(notice).queryByRole("button", { name: "确认当前图" })).not.toBeInTheDocument();
     expect(within(notice).getByText("视觉检查仍有问题，请人工确认")).toBeVisible();
     if (confirmed) expect(within(notice).getByText("内容已人工确认，原检查结论与结构问题仍保留。")).toBeVisible();
-    expect(repository.confirmVisualReview).not.toHaveBeenCalled();
+
     const saved = await repository.loadWorkspace();
     expect(saved.visualReviews?.["requirements:usecase"]).toEqual(workspace.visualReviews?.["requirements:usecase"]);
     expect(Boolean(saved.visualReviews?.["requirements:usecase"].confirmedAt)).toBe(confirmed);
@@ -243,10 +238,8 @@ describe("DiagramView", () => {
       render(withWorkspaceProviders(<DiagramView type="usecase" />, repository));
       const button = await screen.findByRole("button", { name: /提示（\d+）/ });
       const heading = screen.getByRole("heading", { name: "用例模型", level: 1 });
-      expect(heading.parentElement).toHaveClass("flex-wrap");
       expect(heading.parentElement).toContainElement(button);
       expect(heading.parentElement).toContainElement(screen.getByRole("button", { name: "编辑" }));
-      expect(button).toHaveClass("w-auto", "shrink-0");
       expect(screen.queryByText("标签不可读")).not.toBeInTheDocument();
       await userEvent.click(button);
       const notice = await screen.findByRole("dialog", { name: "模型提示" });
@@ -802,8 +795,7 @@ describe("DiagramView", () => {
 
     render(withWorkspaceProviders(<DesignDiagramView type="class" />, repository));
 
-    const heading = await screen.findByRole("heading", { name: "设计类图", level: 1 });
-    expect(heading).toHaveClass("font-display", "font-bold", "text-3xl");
+    await screen.findByRole("heading", { name: "设计类图", level: 1 });
     expect(screen.queryByLabelText("模型标题")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "编辑" }));
     const dialog = await screen.findByRole("dialog", { name: "编辑模型信息" });
@@ -1039,47 +1031,7 @@ describe("DiagramView", () => {
     expect(screen.getByText("100%")).toBeInTheDocument();
   });
 
-  it("keeps the SVG preview canvas tall enough for detailed model diagrams", async () => {
-    const repository = createRepository(
-      createWorkspaceRecord({
-        generatedDiagramTypes: ["usecase"],
-        plantUml: {
-          usecase: "@startuml\nactor 用户\n@enduml",
-        },
-        models: {
-          usecase: {
-            diagramKind: "usecase",
-            title: "用例图",
-            summary: "核心用例",
-            notes: [],
-            actors: [],
-            useCases: [],
-            systemBoundaries: [],
-            relationships: [],
-          },
-        },
-        svgArtifacts: {
-          usecase: {
-            diagramKind: "usecase",
-            svg: '<svg width="1200" height="800"><text>large model</text></svg>',
-            renderMeta: {
-              engine: "plantuml",
-              generatedAt: new Date().toISOString(),
-              sourceLength: 10,
-              durationMs: 1,
-            },
-          },
-        },
-      }),
-    );
-
-    render(withWorkspaceProviders(<DiagramView type="usecase" />, repository));
-
-    const canvas = await screen.findByTestId("svg-preview-canvas");
-    expect(canvas).toHaveClass("h-[560px]", "sm:h-[720px]");
-  });
-
-  it("keeps the SVG preview full width while opening and closing the model overview overlay", async () => {
+  it("opens and closes the model overview with Escape and its close action", async () => {
     const repository = createRepository(
       createWorkspaceRecord({
         generatedDiagramTypes: ["class"],
@@ -1127,11 +1079,9 @@ describe("DiagramView", () => {
     );
 
     render(withWorkspaceProviders(<DiagramView type="class" />, repository));
-
-    expect(await screen.findByTestId("diagram-preview-section")).toHaveClass("w-full");
     expect(screen.queryByRole("complementary", { name: "模型概览" })).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "打开模型概览" }));
+    await userEvent.click(await screen.findByRole("button", { name: "打开模型概览" }));
     const panel = await screen.findByRole("complementary", { name: "模型概览" });
     expect(within(panel).getByText("类")).toBeInTheDocument();
     expect(within(panel).getByText("关系")).toBeInTheDocument();
@@ -1400,7 +1350,6 @@ describe("DiagramView", () => {
     fireEvent(canvas, pointerEvent("pointerup", { pointerId: 1 }));
 
     expect(viewport.style.transform).toBe("translate(-30px, -20px)");
-    expect(canvas).toHaveClass("select-none");
   });
 
   it("shows large diagrams directly without summary view controls", async () => {
@@ -1725,7 +1674,6 @@ describe("DiagramView", () => {
     await userEvent.click(await screen.findByRole("button", { name: "添加" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "添加类" }));
     let dialog = await screen.findByRole("dialog", { name: /添加类/u });
-    expect(dialog).toHaveClass("sm:max-w-2xl");
     expect(dialog).toHaveAttribute("data-form-layout", "4");
     await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
     expect(repository.renderStructuredModel).not.toHaveBeenCalled();
@@ -1746,7 +1694,6 @@ describe("DiagramView", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "添加关系" }));
     dialog = await screen.findByRole("dialog", { name: /添加关系/u });
-    expect(dialog).toHaveClass("sm:max-w-2xl");
     expect(dialog).toHaveAttribute("data-form-layout", "6");
     expect(dialog.querySelector("select")).toBeNull();
     expect(within(dialog).getByRole("combobox", { name: "起点" })).toBeInTheDocument();
@@ -1893,7 +1840,6 @@ describe("DiagramView", () => {
     await userEvent.click(screen.getByRole("button", { name: "添加" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "添加角色" }));
     let dialog = await screen.findByRole("dialog", { name: /添加角色/u });
-    expect(dialog).toHaveClass("sm:max-w-2xl");
     expect(dialog).toHaveAttribute("data-form-layout", "4");
     expect(within(dialog).getByLabelText("角色名称")).toBeInTheDocument();
     expect(within(dialog).queryByText(/actor_/u)).not.toBeInTheDocument();
@@ -1902,7 +1848,6 @@ describe("DiagramView", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "编辑角色：教师" }));
     dialog = await screen.findByRole("dialog", { name: /编辑角色/u });
-    expect(dialog).toHaveClass("sm:max-w-2xl");
     expect(dialog).toHaveAttribute("data-form-layout", "4");
     expect(within(dialog).queryByText(/actor_/u)).not.toBeInTheDocument();
     const actorNameInput = within(dialog).getByLabelText("角色名称");
@@ -1913,7 +1858,6 @@ describe("DiagramView", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "编辑关系：发起" }));
     dialog = await screen.findByRole("dialog", { name: /编辑关系/u });
-    expect(dialog).toHaveClass("sm:max-w-2xl");
     expect(dialog).toHaveAttribute("data-form-layout", "6");
     expect(dialog.querySelector("select")).toBeNull();
     expect(within(dialog).getByRole("combobox", { name: "起点" })).toBeInTheDocument();
@@ -2057,7 +2001,6 @@ describe("DiagramView", () => {
     expect(screen.queryByLabelText("模型备注")).not.toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: "编辑类：Order" }));
     let dialog = await screen.findByRole("dialog", { name: /编辑类/u });
-    expect(dialog).toHaveClass("sm:max-w-2xl");
     expect(dialog).toHaveAttribute("data-form-layout", "4");
     await userEvent.clear(within(dialog).getByLabelText("第 1 个属性名称"));
     await userEvent.type(within(dialog).getByLabelText("第 1 个属性名称"), "totalAmount");

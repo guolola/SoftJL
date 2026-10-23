@@ -1,5 +1,5 @@
 // Supplies complex legal model cases shared by semantic and real-renderer review regressions.
-import { deriveTableModel, getStageModelSchema, type AnyDiagramModel, type ModelingStage } from "../model-semantics.js";
+import { deriveTableModel, getStageModelSchema, type AnyDiagramModel, type ModelingStage } from "../modeling/model-semantics.js";
 import { modelFixture, objectActivityFixture, parallelObjectActivityFixture } from "./model-fixtures.js";
 
 export function modelReviewFixtures(stage: ModelingStage, kind: string): Array<{ name: string; model: AnyDiagramModel }> {

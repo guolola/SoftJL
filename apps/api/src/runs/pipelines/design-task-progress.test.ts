@@ -1,13 +1,13 @@
 // Verifies design repair and traceability progress retain their exact model-task ownership.
-import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { deriveTableModel, designGenerationKinds, type DiagramModelSpec, type ProviderSettings } from "@uml-platform/contracts";
-import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
-import type { LlmTransport } from "../../llm.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 import type { RunRecord } from "../records/run-record-store.js";
 import { createEmptyDesignSnapshot, createEmptySnapshot } from "../records/snapshots.js";
-import { collectModelRefs } from "../../normalizers/traceability/traceability-normalizer.js";
+import { collectModelRefs } from "@uml-platform/contracts";
 import { generateDesignModelsWithRepair } from "./design-pipeline.js";
 
 const provider: ProviderSettings = { modelCapability: strictTestModelCapability("test"), apiBaseUrl: "https://provider.test", apiKey: "test", model: "test" };
@@ -33,7 +33,7 @@ test("complete JSON values with missing root punctuation are repaired locally wi
     else yield valid;
   } };
   const source = "需求阶段来源模型：\n" + "UPSTREAM_FACT".repeat(1000);
-  const result = await generateDesignModelsWithRepair(run, provider, transport, baseline, requirementModels, ["class"], source, "generate_design_models");
+  const result = await generateDesignModelsWithRepair(run, provider, transport, requirementModels, ["class"], source, "generate_design_models");
   assert.equal(prompts.length, 1);
   assert.equal(result.models[0].diagramKind, "class");
 });
@@ -59,7 +59,7 @@ test("parallel design JSON repairs and mapping recovery identify each requested 
       yield JSON.stringify({ models: [model], designModelTraceability: collectModelRefs([model]).refs.map(source => ({ source, targets: [collectModelRefs(requirementModels).refs[0]] })) });
     }
   } };
-  await Promise.all(tasks.map(task => generateDesignModelsWithRepair(run, provider, transport, baseline, requirementModels,
+  await Promise.all(tasks.map(task => generateDesignModelsWithRepair(run, provider, transport, requirementModels,
     [task.kind], "生成模型", task.kind === "sequence" ? "generate_design_sequence" : "generate_design_models",
     { subtaskId: task.id, subtaskLabel: task.label })));
   for (const task of tasks) {
@@ -82,7 +82,7 @@ test("missing sources never open a second repair budget", async () => {
     assert.equal(input.runContext?.subtaskId, "sequence:alarm");
     yield JSON.stringify({ models: [{ ...modelFixture("design", "sequence"), modelId: "provider-sequence" }], designModelTraceability: [] });
   } };
-  await assert.rejects(generateDesignModelsWithRepair(run, provider, transport, baseline, [], ["sequence"], "生成模型",
+  await assert.rejects(generateDesignModelsWithRepair(run, provider, transport, [], ["sequence"], "生成模型",
     "generate_design_sequence", { subtaskId: "sequence:alarm", subtaskLabel: "用例实现设计：处理报警", modelRepairAttempts: 0 }), /designModelTraceability.*共享 0 次/);
   assert.equal(calls, 1, "repairAttempts=0 also forbids opening a separate source repair loop");
 });

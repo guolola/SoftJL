@@ -1,18 +1,16 @@
-// Names the ordinary Agent's actual outputs and localizes the shared library-system illustrations.
+// Localizes project starter examples, capability badges and the new-project introduction.
 export const standardIntroZh = {
   suggestions: {
-    label: "试试这些项目任务",
-    requirements: { label: "梳理项目需求", prompt: "请通过问答帮我梳理项目需求，确认系统角色、主要业务、数据和约束。请先询问我准备做什么系统。" },
-    scope: { label: "选择八类模型", prompt: "请先了解我的项目需求，再帮助我从{{models}}中选择需要生成的模型，说明每种模型的用途，等我确认范围后再生成。" },
-    usecase: { label: "生成用例图", prompt: "我想生成项目用例图。请先确认系统角色、各角色的业务和系统边界；信息不足时先向我提问，确认后生成用例图。" },
-    activity: { label: "生成业务流程图", prompt: "我想生成业务流程图。请先了解我的项目和目标业务，确认参与角色、正常流程及异常分支，再生成对应的泳道活动图。" },
-    sequence: { label: "生成时序图", prompt: "我想生成业务时序图。请先确认项目需求和目标业务，梳理参与对象及调用顺序，再生成对应的时序图。" },
-    classes: { label: "生成设计类图", prompt: "我想生成设计类图。请先了解项目需求，确认核心类、属性、方法及类之间的关系，再生成设计类图。" },
-    tests: { label: "生成测试用例", prompt: "我想生成测试用例。请先确认项目需求和已生成的模型；如果缺少模型，请先帮助我完成必要的建模。之后生成正常、替代、异常、边界和判定表场景的用例，包含前置条件、步骤、预期结果和优先级。" },
-    requirementsSpec: { label: "需求规格说明书", prompt: "我想生成需求规格说明书。请先确认我的项目需求和已有模型；如缺少模型，先帮助我选择并生成必要的模型，再根据已保存的需求与图表编写需求规格说明书。" },
-    softwareDesignSpec: { label: "软件设计说明书", prompt: "我想生成软件设计说明书。请先确认项目需求和已有模型；如缺少设计模型，先帮助我选择并生成必要的模型，再根据已保存的资料编写软件设计说明书。" },
+    label: "试试这些项目例子",
+    library: { label: "图书借阅系统", prompt: "我想做一个图书借阅系统，供读者和图书管理员使用，支持图书检索、借阅、归还、续借和逾期处理。请先通过问答帮我明确借阅规则与系统边界，再确认需要生成的模型。" },
+    courses: { label: "课程选课系统", prompt: "我想做一个课程选课系统，供学生、教师和教务管理员使用，支持课程发布、选课、退课、容量限制和课表冲突检查。请先通过问答帮我明确选课规则与系统边界，再确认需要生成的模型。" },
+    seats: { label: "图书馆座位预约系统", prompt: "我想做一个图书馆座位预约系统，供学生和管理员使用，支持座位查询、分时预约、签到、取消预约和违约处理。请先通过问答帮我明确预约规则与系统边界，再确认需要生成的模型。" },
+    shopping: { label: "在线商城系统", prompt: "我想做一个在线商城系统，供顾客、商家和平台管理员使用，支持商品管理、购物车、下单、支付、库存扣减和退款。请先通过问答帮我明确订单流程与系统边界，再确认需要生成的模型。" },
+    foodDelivery: { label: "校园外卖系统", prompt: "我想做一个校园外卖系统，供学生、商家、配送员和管理员使用，支持菜单浏览、下单支付、商家接单、配送和取消订单。请先通过问答帮我明确配送流程与系统边界，再确认需要生成的模型。" },
+    appointments: { label: "医院挂号系统", prompt: "我想做一个医院挂号系统，供患者、医生和医院管理员使用，支持科室查询、医生排班、预约挂号、取消预约和就诊签到。请先通过问答帮我明确挂号规则与系统边界，再确认需要生成的模型。" },
   },
   badges: { requirements: "需求澄清", models: "8 类模型", edit: "图表修改", tests: "测试用例", requirementsSpec: "需求规格说明书", softwareDesignSpec: "软件设计说明书", memory: "项目记忆" },
+  dialog: { title: "用 Agent 开始快速建模", description: "了解如何通过对话梳理需求、生成模型、测试用例和说明书。此介绍仅在新项目中展示一次。", start: "开始建模", close: "关闭介绍" },
   cards: {
     requirements: { title: "梳理与澄清需求", description: "描述你的系统，梳理角色、业务、数据与约束；通过问答补充细节，形成共享方案。" },
     conversation: { title: "通过对话修改模型", description: "说明要改哪张图、哪些内容，更新指定模型；项目约定也能随对话保存。" },
@@ -39,18 +37,16 @@ export const standardIntroZh = {
 
 export const standardIntroEn = {
   suggestions: {
-    label: "Try these project tasks",
-    requirements: { label: "Clarify requirements", prompt: "Help me clarify my project requirements through questions about roles, workflows, data and constraints. Start by asking what system I want to build." },
-    scope: { label: "Choose model types", prompt: "First understand my project, then help me choose from {{models}}. Explain what each model is for and wait for me to confirm the scope before generating." },
-    usecase: { label: "Generate use cases", prompt: "I want a use case diagram. First confirm the system's roles, their workflows and the system boundary. Ask about missing requirements before generating the diagram." },
-    activity: { label: "Generate workflows", prompt: "I want a business flow diagram. First understand my project and target workflow, clarify the roles, normal flow and exception branches, then generate its swimlane activity diagram." },
-    sequence: { label: "Generate sequences", prompt: "I want a sequence diagram. First confirm the project requirements and target workflow, identify the participants and call order, then generate the diagram." },
-    classes: { label: "Generate class diagrams", prompt: "I want a design class diagram. First understand the project requirements and clarify the classes, attributes, methods and relationships, then generate the diagram." },
-    tests: { label: "Generate test cases", prompt: "I want test cases. First confirm the requirements and saved models. If models are missing, help me complete the necessary modeling first. Then prepare normal, alternative, exception, boundary and decision-table cases with preconditions, steps, expected results and priorities." },
-    requirementsSpec: { label: "Requirements spec", prompt: "I want a requirements specification. First confirm my project requirements and saved models. If models are missing, help me choose and generate the necessary models, then write the requirements specification from the saved requirements and diagrams." },
-    softwareDesignSpec: { label: "Software design spec", prompt: "I want a software design specification. First confirm the project requirements and saved models. If design models are missing, help me choose and generate the necessary models, then write the software design specification from the saved project artifacts." },
+    label: "Try these project examples",
+    library: { label: "Library system", prompt: "I want to build a library system for readers and librarians, with book search, borrowing, returns, renewals and overdue handling. Ask me questions to clarify the loan rules and system boundary, then confirm which models to generate." },
+    courses: { label: "Course enrollment system", prompt: "I want to build a course enrollment system for students, teachers and academic administrators, with course publishing, enrollment, withdrawal, capacity limits and timetable conflict checks. Ask me questions to clarify the enrollment rules and system boundary, then confirm which models to generate." },
+    seats: { label: "Library seat reservation system", prompt: "I want to build a library seat reservation system for students and administrators, with seat search, time-slot booking, check-in, cancellation and violation handling. Ask me questions to clarify the booking rules and system boundary, then confirm which models to generate." },
+    shopping: { label: "Online shopping system", prompt: "I want to build an online shopping system for customers, merchants and platform administrators, with product management, a shopping cart, orders, payments, inventory deductions and refunds. Ask me questions to clarify the order workflow and system boundary, then confirm which models to generate." },
+    foodDelivery: { label: "Campus food delivery system", prompt: "I want to build a campus food delivery system for students, merchants, couriers and administrators, with menu browsing, ordering, payments, order acceptance, delivery and cancellation. Ask me questions to clarify the delivery workflow and system boundary, then confirm which models to generate." },
+    appointments: { label: "Hospital appointment system", prompt: "I want to build a hospital appointment system for patients, doctors and hospital administrators, with department search, doctor schedules, appointment booking, cancellation and visit check-in. Ask me questions to clarify the appointment rules and system boundary, then confirm which models to generate." },
   },
   badges: { requirements: "Clarify", models: "8 models", edit: "Edit models", tests: "Test cases", requirementsSpec: "Req. spec", softwareDesignSpec: "Design spec", memory: "Memory" },
+  dialog: { title: "Start quick modeling with Agent", description: "See how conversations help clarify requirements and generate models, test cases and specifications. This introduction appears once for each new project.", start: "Start modeling", close: "Close introduction" },
   cards: {
     requirements: { title: "Clarify your requirements", description: "Describe your system and clarify its roles, workflows, data and constraints through questions and a shared outline." },
     conversation: { title: "Edit models through conversation", description: "Name the diagram and describe what to change. Save project decisions to keep them in context." },

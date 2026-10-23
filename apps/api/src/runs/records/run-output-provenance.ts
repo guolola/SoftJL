@@ -78,7 +78,7 @@ export function acceptOutputEvent(record: RunRecord, event: RunRecord["events"][
     add("document", source.documentId);
 }
 
-export function runOutputView(snapshot: RunRecord["snapshot"], _events: RunRecord["events"] = []) {
+export function runOutputView(snapshot: RunRecord["snapshot"]) {
   const source = object(snapshot);
   const operationType = operationForSnapshot(snapshot);
   const references = runOutputReferenceSchema.array().parse(source.outputManifest);

@@ -7,16 +7,6 @@ import {
   type RunErrorCode,
 } from "@uml-platform/contracts";
 
-export function getErrorMessage(error: unknown) {
-  const runError = getRunError(error);
-  if (runError) return runError.message;
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
-}
-
 export class RunPipelineError extends Error {
   readonly runError: RunError;
 

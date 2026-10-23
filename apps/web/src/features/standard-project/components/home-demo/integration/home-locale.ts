@@ -1,6 +1,6 @@
 // Translates source-owned UI text only; messages, model identifiers and quoted user content stay intact.
 import { useTranslation } from "react-i18next";
-import { i18n } from "../../../../../shared/i18n";
+import { i18n } from "../../../../../shared/i18n/index";
 import chinese from "./home-demo-zh.json";
 import { homeContextUsesBudget } from "./model";
 export function useHomeLocale(_implicit?: boolean): void { useTranslation(); }

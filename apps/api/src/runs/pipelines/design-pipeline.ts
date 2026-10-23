@@ -23,7 +23,6 @@ import {
   type DiagramKind,
   type DiagramModelSpec,
   type ProviderSettings,
-  type RequirementBaseline,
   type RunStage,
 } from "@uml-platform/contracts";
 import {
@@ -31,7 +30,7 @@ import {
   buildGenerateDesignSequencePrompt,
   scopeUseCaseModelForPrompt,
 } from "@uml-platform/prompts";
-import { type LlmTransport } from "../../llm.js";
+import { type LlmTransport } from "../../adapters/llm/llm-transport.js";
 import { type RenderClient } from "../../adapters/render/render-client.js";
 import {
   getGenerateDesignModelsResponseFormat,
@@ -42,7 +41,7 @@ import {
 } from "../../normalizers/design/design-model-normalizer.js";
 import {
   collectModelRefs,
-} from "../../normalizers/traceability/traceability-normalizer.js";
+} from "@uml-platform/contracts";
 import { formatParseError } from "../../normalizers/json/parse-json.js";
 import { emitEvent, type RunRecord } from "../records/run-record-store.js";
 import { readDiagramReviewCounters } from "../records/diagram-review-record.js";
@@ -53,8 +52,7 @@ import {
 } from "../records/run-cancellation.js";
 
 import { DiagramReviewRenderError, reviewRenderedArtifact } from "./render/review-rendered-artifact.js";
-import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
-import { withConversationBranch } from "./shared/conversation-context.js";
+
 import { stageProgressValue } from "./shared/pipeline-events.js";
 import { createMessages } from "./shared/llm-messages.js";
 import {
@@ -417,7 +415,6 @@ export async function generateDesignModelsWithRepair(
   record: RunRecord,
   providerSettings: ProviderSettings,
   llmTransport: LlmTransport,
-  requirementBaseline: RequirementBaseline,
   requirementModels: DiagramModelSpec[],
   selectedDiagrams: DesignDiagramKind[],
   initialPrompt: string,
@@ -607,12 +604,6 @@ function existingSequenceModelsForUseCases(
   }
 }
 
-export function sourceRequirementKindForDesign(
-  diagramKind: Exclude<DesignDiagramKind, "sequence">,
-): DiagramKind | undefined {
-  return sourceRequirementKindsForDesign(diagramKind)[0];
-}
-
 function sourceRequirementKindsForDesign(
   diagramKind: Exclude<DesignDiagramKind, "sequence">,
 ): DiagramKind[] {
@@ -646,7 +637,6 @@ export async function runDesignStagePipeline(
   providerSettings: ProviderSettings,
   llmTransport: LlmTransport,
   renderClient: RenderClient,
-  pngRenderClient?: PngRenderClient,
 ) {
   const snapshot = record.snapshot as DesignRunSnapshot;
   llmTransport = withRunReasoning(llmTransport, snapshot.reasoning);
@@ -778,11 +768,11 @@ export async function runDesignStagePipeline(
     const targetUseCases = useCasesFromModel(useCaseModel).filter(useCase => !sequenceTargets.size || sequenceTargets.has(useCase.id));
     if (sequenceTargets.size && targetUseCases.length !== sequenceTargets.size) throwRunError(createRunError("RUN_DEPENDENCY_MISSING", "待重试的用例已不存在，请从当前工作区重新生成。"));
     const sequenceRunErrors: ReturnType<typeof normalizeRunError>[] = [];
-    record.conversationContext?.forkBranches(targetUseCases.map((useCase) => `design:${sequenceModelIdForUseCase(useCase)}`));
+
     const sequenceResults = await mapWithConcurrency(
       targetUseCases,
       readDesignSequenceConcurrency(),
-      (useCase) => withConversationBranch(`design:${sequenceModelIdForUseCase(useCase)}`, async () => {
+      async (useCase) => {
         throwIfRunCancelled(record);
         const modelId = sequenceModelIdForUseCase(useCase);
         const scopedUseCaseModel = scopeUseCaseModelForPrompt(
@@ -819,7 +809,6 @@ export async function runDesignStagePipeline(
                 record,
                 providerSettings,
                 llmTransport,
-                requirementBaseline,
                 [scopedUseCaseModel, ...scopedAnalysisModels],
                 ["sequence"],
                 buildGenerateDesignSequencePrompt(
@@ -874,7 +863,6 @@ export async function runDesignStagePipeline(
               }),
             );
 
-            record.conversationContext?.commitValidatedBranch(`design:${modelId}`, JSON.stringify(result.models));
             return result;
           } catch (error) {
             throwIfRunCancelled(record);
@@ -909,7 +897,7 @@ export async function runDesignStagePipeline(
           }),
         );
         return null;
-      }),
+      },
     );
     throwIfRunCancelled(record);
     const generatedSequences = sequenceResults.flatMap((result) => result?.models ?? []).filter(
@@ -1045,8 +1033,6 @@ export async function runDesignStagePipeline(
             record,
             providerSettings,
             llmTransport,
-            requirementBaseline,
-            // First-generation declarations are retained; only direct dependencies enter the prompt.
             sourceModels,
             [diagram],
             buildGenerateDesignModelsPrompt(
@@ -1096,7 +1082,7 @@ export async function runDesignStagePipeline(
           }),
         );
 
-        record.conversationContext?.commitValidatedBranch(`design:${diagram}`, JSON.stringify(result.models));
+
         return result;
       } catch (error) {
         throwIfRunCancelled(record);
@@ -1143,7 +1129,7 @@ export async function runDesignStagePipeline(
       diagram: Exclude<DesignDiagramKind, "sequence">,
       designContextModels: DesignDiagramModelSpec[] = [],
     ) => {
-      const result = await withConversationBranch(`design:${diagram}`, () => generateDownstreamDiagram(diagram, designContextModels));
+      const result = await generateDownstreamDiagram(diagram, designContextModels);
       throwIfRunCancelled(record);
       const resultModels = result?.models.filter(
         (model) => model.diagramKind === diagram,

@@ -11,6 +11,7 @@ import { Field, FieldGroup, FieldLabel, FieldSet } from "../../../shared/ui/fiel
 import { platformApi } from "../services/platform-api";
 import { randomProjectBackground } from "../lib/project-backgrounds";
 import { ProjectModeSelector } from "./project-mode-selector";
+import { queueProjectIntroduction } from "../../../shared/lib/project-introduction";
 
 type Navigate = (path: string) => void;
 
@@ -44,6 +45,7 @@ export function ProjectCreateForm({ onNavigate }: { onNavigate: Navigate }) {
         description: description.trim() || null,
         backgroundKey,
       });
+      queueProjectIntroduction(response.project.id, response.project.projectMode);
       if (!mounted.current) return;
       floatingAlert.success(t("projects.createForm.created"));
       navigationTimer.current = window.setTimeout(() => {

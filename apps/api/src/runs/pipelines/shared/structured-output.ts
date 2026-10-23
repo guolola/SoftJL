@@ -6,7 +6,7 @@ import {
   type ChatMessage,
   type LlmTransport,
   type StreamChatCompletionInput,
-} from "../../../llm.js";
+} from "../../../adapters/llm/llm-transport.js";
 import { formatParseError } from "../../../normalizers/json/parse-json.js";
 
 const RAW_OUTPUT_LOG_LIMIT = 8000;

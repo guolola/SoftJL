@@ -1,11 +1,13 @@
 // Provides cookie-based user/project API calls for the first authenticated pages.
-import { buildApiUrl } from "../../../services/api-client";
+import type { ProjectRunSummary as PlatformRunSummary } from "../../../entities/run-history/project-run";
+import { readProjectRuns, invalidateProjectRunReads } from "../../../services/workspace-repository/project-run-reads";
+import { ApiClientError, buildApiUrl } from "../../../services/api-client/index";
+import { authMfaChallengeResponseSchema, authSessionResponseSchema, projectInvitationResponseSchema } from "@uml-platform/contracts";
 import type {
-  DesignDiagramKind,
+  AuthMfaChallengeResponse,
+  AuthSessionResponse,
   FeasibilityRunSnapshot,
-  RunOperationType,
   RunTokenConsumption,
-  DiagramKind,
   DocumentKind,
   OnboardingStateResponse,
   OnboardingTour,
@@ -14,10 +16,10 @@ import type {
   ProviderModelDiscoveryResponse,
   ProviderModelDiscoveryProgressEvent,
   ProjectInviteeSearchResponse,
+  ProjectInvitationDto,
 } from "@uml-platform/contracts";
-import type { RunError } from "@uml-platform/contracts";
 import type { ProjectBackgroundKey } from "@uml-platform/contracts";
-import type { RunHistorySnapshot } from "../../../entities/run-history";
+import type { RunHistorySnapshot } from "../../../entities/run-history/index";
 import {
   isRequestAbort,
   localizeApiFailure,
@@ -81,80 +83,21 @@ export interface PlatformProjectMember {
   joinedAt?: string | null;
 }
 
-export interface PlatformProjectInvitation {
-  id: string;
-  projectId: string;
-  username: string;
-  role: string;
-  status: "invited" | "active" | "expired" | "revoked" | string;
-  invitedAt?: string | null;
-  expiresAt?: string | null;
-  project?: PlatformProject;
-}
+export type PlatformProjectInvitation = ProjectInvitationDto;
 
 export type PlatformRunTokenConsumption = RunTokenConsumption;
 
-export interface PlatformRunSummary {
-  runId: string;
-  operationType: RunOperationType;
-  projectId?: string;
-  status: string;
-  stage?: string | null;
-  runKind?: "requirements" | "design" | "document" | string | null;
-  documentKind?: DocumentKind | null;
-  selectedDiagrams?: DiagramKind[] | DesignDiagramKind[] | null;
-  requestedDiagrams?: (DiagramKind | DesignDiagramKind)[] | null;
-  model?: string | null;
-  tokenConsumption?: PlatformRunTokenConsumption;
-  createdByUserId?: string | null;
-  sourceRunId?: string | null;
-  sourceAction?: "retry" | "rerun" | string | null;
-  sourceRunStatus?: string | null;
-  derivedRunIds?: string[] | null;
-  latestAction?: "retry" | "rerun" | string | null;
-  latestActionRunId?: string | null;
-  latestActionAt?: string | null;
-  createdAt?: string | null;
-  startedAt?: string | null;
-  completedAt?: string | null;
-  updatedAt?: string | null;
-  errorMessage?: string | null;
-  error?: RunError | null;
-  diagramErrorSummary?: { diagramId: string; stage?: string | null; error?: RunError | null; message: string }[] | null;
-  missingArtifactSummary?: string[] | null;
-
-
-  terminal?: boolean | null;
-  snapshotAvailable?: boolean | null;
-  documentDownloadAvailable?: boolean | null;
-  documentId?: string | null;
-  documentFileName?: string | null;
-  documentVersion?: number | null;
-  documentStatus?: string | null;
-  documentRestoreAvailable?: boolean | null;
-  documentByteLength?: number | null;
-}
+export type { ProjectRunSummary as PlatformRunSummary } from "../../../entities/run-history/project-run";
 
 export interface PlatformDocument {
   id: string;
   projectId?: string;
-  name?: string;
   title?: string;
   fileName?: string;
-  type?: string;
   documentKind?: DocumentKind | string | null;
   status: string;
   version?: number;
   byteLength?: number | null;
-  editLock?: {
-    status?: string | null;
-    lockedBy?: string | null;
-    lockedAt?: string | null;
-  } | null;
-  download?: {
-    status?: string | null;
-    url?: string | null;
-  } | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -198,17 +141,7 @@ export interface PlatformProviderConfig {
   scopeId: string | null;
 }
 
-export interface PlatformSessionResponse {
-  user?: PlatformUser;
-  session?: PlatformAccountSession;
-  mfaChallenge?: PlatformMfaChallenge;
-  mfa?: {
-    required?: boolean;
-    challengeId?: string;
-    expiresAt?: string;
-    method?: string;
-  };
-}
+export type PlatformSessionResponse = AuthSessionResponse;
 
 export interface PlatformAccountSession {
   id: string;
@@ -239,10 +172,7 @@ export interface PlatformProjectListResponse {
   projects: PlatformProject[];
 }
 
-export interface PlatformMfaChallenge {
-  challengeId: string;
-  expiresAt?: string;
-}
+export type PlatformMfaChallenge = AuthMfaChallengeResponse["mfa"];
 
 export interface PlatformMfaSetup {
   secret: string;
@@ -252,13 +182,13 @@ export interface PlatformMfaSetup {
 
 export interface PlatformMfaState {
   enabled: boolean;
-  enforcement: "totp" | "placeholder" | "none";
+  enforcement: "totp";
 }
 
 export interface PlatformAccountProfileResponse {
   user: PlatformUser;
   session: PlatformAccountSession;
-  mfa?: PlatformMfaState;
+  mfa: PlatformMfaState;
   generationUsage?: {
     usedToday: number;
     limit: number | null;
@@ -496,21 +426,25 @@ export const platformApi = {
       formData,
     );
   },
-  login(input: { identifier: string; password: string }) {
-    return requestJson<PlatformSessionResponse>("/api/auth/login", {
+  async login(input: { identifier: string; password: string }) {
+    const response = await requestJson<unknown>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify(input),
     });
+    // Session creation and MFA challenges use the server's current response contracts.
+    return response && typeof response === "object" && "mfa" in response
+      ? authMfaChallengeResponseSchema.parse(response)
+      : authSessionResponseSchema.strict().parse(response);
   },
   register(input: {
     username: string;
     password: string;
     displayName: string;
   }) {
-    return requestJson<PlatformSessionResponse>("/api/auth/register", {
+    return requestJson<unknown>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify(input),
-    });
+    }).then(response => authSessionResponseSchema.strict().parse(response));
   },
   logout() {
     return requestJson<{ message?: string }>("/api/auth/logout", {
@@ -518,10 +452,10 @@ export const platformApi = {
     });
   },
   verifyMfa(input: { challengeId: string; code: string }) {
-    return requestJson<PlatformSessionResponse>("/api/auth/mfa/verify", {
+    return requestJson<unknown>("/api/auth/mfa/verify", {
       method: "POST",
       body: JSON.stringify(input),
-    });
+    }).then(response => authSessionResponseSchema.strict().parse(response));
   },
   listAccountSessions() {
     return requestJson<{ sessions: PlatformAccountSession[] }>(
@@ -648,19 +582,19 @@ export const platformApi = {
     projectId: string,
     input: { username: string; role: string },
   ) {
-    return requestJson<{ invitation?: PlatformProjectInvitation; member?: PlatformProjectMember }>(
+    return requestJson<unknown>(
       `/api/projects/${projectId}/invitations`,
       {
         method: "POST",
         body: JSON.stringify(input),
       },
-    );
+    ).then(response => projectInvitationResponseSchema.parse(response));
   },
   resendProjectInvitation(projectId: string, invitationId: string) {
-    return requestJson<{ invitation?: PlatformProjectInvitation; member?: PlatformProjectMember }>(
+    return requestJson<unknown>(
       `/api/projects/${projectId}/invitations/${invitationId}/resend`,
       { method: "POST" },
-    );
+    ).then(response => projectInvitationResponseSchema.parse(response));
   },
   revokeProjectInvitation(projectId: string, invitationId: string) {
     return requestJson<{ message?: string }>(
@@ -683,12 +617,15 @@ export const platformApi = {
       { method: "DELETE" },
     );
   },
-  listProjectRuns(projectId: string) {
-    return requestJson<{
-      generatedAt?: string;
-      projectId: string;
-      runs: PlatformRunSummary[];
-    }>(`/api/projects/${projectId}/runs`);
+  listProjectRuns(projectId: string, options?: { maxAgeMs?: number }) {
+    return readProjectRuns(projectId, options).catch(error => {
+      // Preserve the platform error contract for access-boundary and history consumers.
+      if (error instanceof ApiClientError) {
+        throw new PlatformApiError(error.message, error.status, error.apiError?.code ?? (error.status === 0 ? "NETWORK_FAILURE" : null),
+          error.apiError?.retryable ?? error.status === 0, error.apiError?.params ?? {});
+      }
+      throw error;
+    });
   },
   getProjectRun(projectId: string, runId: string, options: { includeEvents?: boolean; signal?: AbortSignal } = {}) {
     return requestJson<{
@@ -698,8 +635,8 @@ export const platformApi = {
       events?: unknown[];
     }>(`/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}${options.includeEvents ? '?includeEvents=true' : ''}`, { signal: options.signal });
   },
-  cancelProjectRun(projectId: string, runId: string) {
-    return requestJson<{
+  async cancelProjectRun(projectId: string, runId: string) {
+    const response = await requestJson<{
       run?: PlatformRunSummary;
       runId?: string;
       status?: string;
@@ -708,9 +645,11 @@ export const platformApi = {
       `/api/projects/${projectId}/runs/${runId}/cancel`,
       { method: "POST" },
     );
+    invalidateProjectRunReads(projectId);
+    return response;
   },
-  retryProjectRun(projectId: string, runId: string) {
-    return requestJson<{
+  async retryProjectRun(projectId: string, runId: string) {
+    const response = await requestJson<{
       run?: PlatformRunSummary;
       runId?: string;
       sourceRunId?: string;
@@ -721,12 +660,16 @@ export const platformApi = {
       `/api/projects/${projectId}/runs/${runId}/retry`,
       { method: "POST" },
     );
+    invalidateProjectRunReads(projectId);
+    return response;
   },
-  deleteProjectRun(projectId: string, runId: string) {
-    return requestJson<{ message?: string }>(
+  async deleteProjectRun(projectId: string, runId: string) {
+    const response = await requestJson<{ message?: string }>(
       `/api/projects/${projectId}/runs/${runId}`,
       { method: "DELETE" },
     );
+    invalidateProjectRunReads(projectId);
+    return response;
   },
   listProjectDocuments(projectId: string, options?: { includeDeleted?: boolean }) {
     return requestJson<{ documents: PlatformDocument[] }>(
@@ -791,19 +734,6 @@ export const platformApi = {
     onEvent: (event: ProviderModelDiscoveryProgressEvent) => void,
   ) {
     return requestProviderModelDiscoveryStream(input, onEvent);
-  },
-  testTemporaryProviderConfig(input: {
-    baseUrl: string;
-    apiKey: string;
-    model: string;
-  }) {
-    return requestJson<{ ok?: boolean; message?: string }>(
-      "/api/provider-configs/test-temporary",
-      {
-        method: "POST",
-        body: JSON.stringify(input),
-      },
-    );
   },
   createProviderConfig(input: {
     name: string;

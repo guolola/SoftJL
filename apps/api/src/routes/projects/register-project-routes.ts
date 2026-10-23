@@ -54,11 +54,9 @@ const projectWorkspaceSaveRequestSchema = z.object({
 export function registerProjectRoutes({
   app,
   authStore,
-  nodeEnv = process.env.NODE_ENV ?? null,
 }: {
   app: FastifyInstance;
   authStore: AuthStore;
-  nodeEnv?: string | null;
 }) {
   app.get("/api/projects", async (request, reply) => {
     const auth = await requireAuth(request, reply, authStore);

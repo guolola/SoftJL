@@ -1,3 +1,4 @@
+import { initialsFromName } from "./dashboard-view-model";
 // Covers display semantics that differ from the template's demo sales and conversion data.
 import { describe, expect, it } from 'vitest'
 import { buildDashboardViewModel } from './dashboard-view-model'
@@ -29,3 +30,9 @@ describe('dashboard view model', () => {
     expect(view.conversion.chartData.every(point => point.conversion === null)).toBe(true)
   })
 })
+
+it("formats owner initials for dashboard cards", () => {
+  expect(initialsFromName("Amanda Lee")).toBe("AL");
+  expect(initialsFromName("Cher")).toBe("CH");
+  expect(initialsFromName("")).toBe("?");
+});

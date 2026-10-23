@@ -35,7 +35,7 @@ import {
   buildGenerateModelsPrompt,
   scopeUseCaseModelForPrompt,
 } from "@uml-platform/prompts";
-import { type LlmTransport } from "../../llm.js";
+import { type LlmTransport } from "../../adapters/llm/llm-transport.js";
 import { type RenderClient } from "../../adapters/render/render-client.js";
 import {
   getGenerateModelsResponseFormat,
@@ -56,8 +56,7 @@ import {
 } from "../records/run-cancellation.js";
 
 import { DiagramReviewRenderError, reviewRenderedArtifact } from "./render/review-rendered-artifact.js";
-import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
-import { withConversationBranch } from "./shared/conversation-context.js";
+
 import { stageProgressValue } from "./shared/pipeline-events.js";
 import { createMessages } from "./shared/llm-messages.js";
 import {
@@ -557,7 +556,7 @@ export async function generateModelsWithRepair(
 
     try {
       content = repair.accept(content);
-      const parsed = parseRequirementDiagramModelsResult(content, rules, true);
+      const parsed = parseRequirementDiagramModelsResult(content, true);
       if (parsed.models.some((model) => !selectedDiagrams.includes(model.diagramKind))) throw new Error("返回了本次未请求的模型类型，必须修复结构化输出");
       const selectedSet = new Set(selectedDiagrams);
       const filteredModels = parsed.models.filter((model) =>
@@ -639,7 +638,6 @@ export async function runStagePipeline(
   providerSettings: ProviderSettings,
   llmTransport: LlmTransport,
   renderClient: RenderClient,
-  pngRenderClient?: PngRenderClient,
 ) {
   const snapshot = record.snapshot as RunSnapshot;
   llmTransport = withRequirementTokenUsage(record, providerSettings.model, llmTransport);
@@ -693,7 +691,7 @@ export async function runStagePipeline(
               if (!useCase) throw new Error("修复对象的上游用例不存在");
               parsed = coerceAnalysisModelForUseCase({ models: parseGeneratedAnalysisModels(raw).models as AnalysisRequirementModel[], requirementModelTraceability: [] }, useCase);
             } else {
-              parsed = parseRequirementDiagramModelsResult(raw, snapshot.rules, true);
+              parsed = parseRequirementDiagramModelsResult(raw, true);
             }
             const candidates = parsed.models.filter(candidate => candidate.diagramKind === current.diagramKind && candidate.modelId === current.modelId);
             if (candidates.length !== 1 || parsed.models.length !== 1) throw new Error("结构修复必须只返回当前模型并保持模型 ID");
@@ -809,7 +807,7 @@ export async function runStagePipeline(
     snapshot.requirementText = sourceText;
     snapshot.rules = rules;
     snapshot.requirementBaseline = acceptedBaseline;
-    record.conversationContext?.commitValidatedBranch("requirements:extract-rules", JSON.stringify({ rules }));
+
     emitEvent(
       record,
       artifactReadyRunEventSchema.parse({
@@ -940,7 +938,7 @@ export async function runStagePipeline(
           }),
         );
         throwIfRunCancelled(record);
-        record.conversationContext?.commitValidatedBranch(`requirement:${diagram}`, JSON.stringify(result.models));
+
         return { diagram, result };
       } catch (error) {
         throwIfRunCancelled(record);
@@ -986,11 +984,11 @@ export async function runStagePipeline(
       ] as DiagramKind[];
     }
 
-    record.conversationContext?.forkBranches(prerequisiteDiagrams.map((diagram) => `requirement:${diagram}`));
+
     const prerequisiteTasks = new Map(
       prerequisiteDiagrams.map((diagram) => [
         diagram,
-        withConversationBranch(`requirement:${diagram}`, () => generateRequirementDiagram(diagram)),
+        generateRequirementDiagram(diagram),
       ] as const),
     );
     if (needsAnalysis && prerequisiteTasks.has("usecase")) {
@@ -1128,7 +1126,7 @@ export async function runStagePipeline(
               subtaskStatus: "completed",
             }),
           );
-          record.conversationContext?.commitValidatedBranch(`requirement:${modelId}`, JSON.stringify(result.models));
+
           return result;
         } catch (error) {
           throwIfRunCancelled(record);
@@ -1158,11 +1156,11 @@ export async function runStagePipeline(
         }
       };
 
-      record.conversationContext?.forkBranches(analysisUseCases.map((useCase) => `requirement:${analysisModelIdForUseCase(useCase)}`));
+
       let analysisResults = await mapWithConcurrency(
         analysisUseCases,
         readRequirementAnalysisConcurrency(),
-        (useCase) => withConversationBranch(`requirement:${analysisModelIdForUseCase(useCase)}`, () => generateAnalysisForUseCase(useCase)),
+        (useCase) => generateAnalysisForUseCase(useCase),
       );
       throwIfRunCancelled(record);
       let analysisModels = analysisResults
@@ -1186,11 +1184,11 @@ export async function runStagePipeline(
         );
         if (missingUseCases.length === 0) break;
         // Retry missing artifacts only; this does not recheck or repair their declared sources.
-        record.conversationContext?.forkBranches(missingUseCases.map((useCase) => `requirement:${analysisModelIdForUseCase(useCase)}`));
+
         const retryResults = await mapWithConcurrency(
           missingUseCases,
           readRequirementAnalysisConcurrency(),
-          (useCase) => withConversationBranch(`requirement:${analysisModelIdForUseCase(useCase)}`, () => generateAnalysisForUseCase(useCase, attempt + 1)),
+          (useCase) => generateAnalysisForUseCase(useCase, attempt + 1),
         );
         analysisResults = [...analysisResults, ...retryResults];
         analysisModels = analysisResults

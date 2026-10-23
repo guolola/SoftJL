@@ -94,10 +94,7 @@ function AnimatedBeam(props: AnimatedBeamProps) {
     }
 
     const resizeObserver = new ResizeObserver(entries => {
-
-      for (const _entry of entries) {
-        updatePath()
-      }
+      if (entries.length > 0) updatePath()
     })
 
     if (containerRef.current) {

@@ -211,16 +211,7 @@ describe("traceability row builders", () => {
   });
 
   it("shows design upstream and requirement elements without requirement rules", () => {
-    const rows = buildDesignRows(
-      [
-        {
-          id: "r1",
-          type: "functional" as const,
-          text: "系统应支持借书。",
-
-        },
-      ],
-      {
+    const rows = buildDesignRows({
         usecase: {
           diagramKind: "usecase",
           title: "用例模型",
@@ -241,8 +232,7 @@ describe("traceability row builders", () => {
           systemBoundaries: [],
           relationships: [],
         },
-      },
-      {
+      }, {
         class: {
           diagramKind: "class",
           title: "设计类图",
@@ -261,20 +251,7 @@ describe("traceability row builders", () => {
           enums: [],
           relationships: [],
         },
-      },
-      [
-        {
-          ruleId: "r1",
-          target: {
-            diagramKind: "usecase",
-            modelId: "usecase",
-            elementId: "borrow-book",
-            elementKind: "usecase",
-            label: "借书",
-          },
-        },
-      ],
-      [
+      }, [
         {
           source: {
             diagramKind: "class",
@@ -305,8 +282,7 @@ describe("traceability row builders", () => {
           rationale:
             "未找到明确上游来源，系统仅按最接近的需求元素临时补齐；请在跟踪矩阵中采纳、忽略或稍后处理。",
         },
-      ],
-    );
+      ]);
 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.requirementRules).toEqual([]);

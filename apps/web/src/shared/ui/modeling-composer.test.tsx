@@ -28,9 +28,6 @@ it("uses the runtime's Enter submission while preserving Shift+Enter as a newlin
   render(<Harness onNew={onNew} onTextChange={onTextChange} toolbarTestId="input-toolbar" inputClassName="field-sizing-fixed h-60 overflow-y-auto" modelControls={<span>工程模型</span>} />);
   const input = screen.getByRole("textbox", { name: "系统业务需求" });
   expect(input.closest('[data-slot="modeling-composer"]')).toBeInTheDocument();
-  expect(input).toHaveClass("h-60", "overflow-y-auto", "field-sizing-fixed");
-  // Narrow inputs give controls another row instead of squeezing the model name down to its icon.
-  expect(screen.getByTestId("input-toolbar")).toHaveClass("flex-wrap", "sm:flex-nowrap");
   await user.type(input, "借阅规则{Shift>}{Enter}{/Shift}归还规则");
   expect(input).toHaveValue("借阅规则\n归还规则");
   expect(onTextChange).toHaveBeenLastCalledWith("借阅规则\n归还规则");

@@ -1,4 +1,4 @@
-// Regresses known provider aliases without allowing repairs to rewrite valid economics.
+// Verifies current generated fields, source links and preservation of valid economics.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
@@ -13,14 +13,14 @@ function sourcedExample() {
   return value;
 }
 
-test("normalizes purpose and links the integration to the context external system", () => {
+test("links the integration to the context external system without rewriting economics", () => {
   const value = sourcedExample();
   const originalCosts = structuredClone(
     value.candidates[0].implementation.costEstimates,
   );
   value.candidates[0].implementation.integrations = [{
     name: "统一身份平台",
-    purpose: "完成用户身份校验",
+    responsibility: "完成用户身份校验",
     sourceRequirementIds: ["r1"],
     assumption: "上下文只定义了系统边界，协议仍待确认。",
     provenance: "user-confirmed",
@@ -28,7 +28,6 @@ test("normalizes purpose and links the integration to the context external syste
 
   const result = normalizeFeasibilityImplementationDetailed(
     value,
-    new Set(["r1"]),
     [{ id: "external-auth", name: "统一身份平台" }],
   );
   const integration = result.plan.candidates[0]!.implementation!.integrations[0]!;
@@ -43,11 +42,10 @@ test("normalizes purpose and links the integration to the context external syste
       id: `candidate-1-cost-${index + 1}`,
     })),
   );
-  assert.ok(result.actions.includes("aliased-purpose-to-responsibility"));
   assert.ok(result.actions.includes("linked-integration-by-external-system-name"));
 });
 
-test("normalizes rationale, deduplicates scopes and removes declarations that conflict with items", () => {
+test("deduplicates absence scopes and removes declarations that conflict with items", () => {
   const value = sourcedExample();
   const implementation = value.candidates[0].implementation;
   implementation.benefitEstimates = implementation.benefitEstimates.filter(
@@ -56,22 +54,22 @@ test("normalizes rationale, deduplicates scopes and removes declarations that co
   implementation.absenceDeclarations = [
     {
       scope: "one-time-benefits",
-      rationale: "没有可识别的一次性收益。",
+      reason: "没有可识别的一次性收益。",
       provenance: "user-confirmed",
     },
     {
       scope: "one-time-benefits",
-      rationale: "重复声明应删除。",
+      reason: "重复声明应删除。",
       provenance: "user-confirmed",
     },
     {
       scope: "recurring-costs",
-      rationale: "与实际年度运维成本冲突。",
+      reason: "与实际年度运维成本冲突。",
       provenance: "user-confirmed",
     },
   ];
 
-  const result = normalizeFeasibilityImplementationDetailed(value, new Set(["r1"]), []);
+  const result = normalizeFeasibilityImplementationDetailed(value, []);
   const declarations =
     result.plan.candidates[0]!.implementation!.absenceDeclarations;
 
@@ -80,9 +78,39 @@ test("normalizes rationale, deduplicates scopes and removes declarations that co
     reason: "没有可识别的一次性收益。",
     provenance: "ai-estimate",
   }]);
-  assert.ok(result.actions.includes("aliased-rationale-to-reason"));
   assert.ok(result.actions.includes("removed-duplicate-absence-scope"));
   assert.ok(result.actions.includes("removed-conflicting-absence-declaration"));
+});
+
+test("rejects non-current integration fields instead of translating or dropping them", () => {
+  for (const includeCurrentField of [false, true]) {
+    const value = sourcedExample();
+    value.candidates[0].implementation.integrations = [{
+      name: "统一身份平台", purpose: "身份校验", sourceRequirementIds: ["r1"],
+      assumption: "", provenance: "ai-estimate", contextExternalSystemId: "auth",
+      ...(includeCurrentField ? { responsibility: "身份校验" } : {}),
+    }];
+    const before = structuredClone(value);
+    assert.throws(() => normalizeFeasibilityImplementationDetailed(value, [{ id: "auth", name: "统一身份平台" }]), /purpose|responsibility/);
+    assert.deepEqual(value, before);
+  }
+});
+
+test("rejects non-current absence fields even in conflicting or duplicate declarations", () => {
+  for (const scope of ["one-time-benefits", "recurring-costs"]) {
+    for (const includeCurrentField of [false, true]) {
+      const value = sourcedExample();
+      const implementation = value.candidates[0].implementation;
+      implementation.benefitEstimates = implementation.benefitEstimates.filter((item: any) => item.category !== "one-time");
+      implementation.absenceDeclarations = [
+        { scope, reason: "当前声明", provenance: "ai-estimate" },
+        { scope, rationale: "非现行字段", provenance: "ai-estimate", ...(includeCurrentField ? { reason: "声明" } : {}) },
+      ];
+      const before = structuredClone(value);
+      assert.throws(() => normalizeFeasibilityImplementationDetailed(value, []), /rationale|reason/);
+      assert.deepEqual(value, before);
+    }
+  }
 });
 
 test("preserves first-generation source IDs without guessing an existing rule", () => {
@@ -92,7 +120,6 @@ test("preserves first-generation source IDs without guessing an existing rule", 
 
   const result = normalizeFeasibilityImplementationDetailed(
     value,
-    new Set(["r1"]),
     [],
   );
 
@@ -112,6 +139,6 @@ test("candidate, business module and integration cannot replace sources with ass
   ]) {
     const value = sourcedExample();
     select(value).sourceRequirementIds = [];
-    assert.throws(() => normalizeFeasibilityImplementationDetailed(value, new Set(["r1"]), []), /必须在首次生成时携带真实需求来源/);
+    assert.throws(() => normalizeFeasibilityImplementationDetailed(value, []), /必须在首次生成时携带真实需求来源/);
   }
 });

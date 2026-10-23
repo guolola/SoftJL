@@ -37,7 +37,7 @@ import {
 } from "../../../shared/ui/feedback-dialog";
 import { cn } from "../../../shared/ui/utils";
 import { downloadBlobFile } from "../../../shared/lib/download";
-import { useWorkspaceProjectId, useWorkspaceRepository } from "../../../services/workspace-repository";
+import { useWorkspaceProjectId, useWorkspaceRepository } from "../../../services/workspace-repository/index";
 import { useWorkspaceSession } from "../../workspace-session/state";
 import { GenerationModelControls } from "../../workspace-session/components/generation-model-controls";
 import { ModelingGenerationButton } from "../../../shared/ui/modeling-generation-button";
@@ -748,7 +748,7 @@ export function InstructionDocumentsPage({
                 <Palette className="size-3.5" />{t("documentsPage.documentStyle")}
               </Button>
               <div className="flex min-w-0 items-center gap-2" data-testid="documents-generation-toolbar">
-                <GenerationModelControls ordinary={Boolean(ordinary)} disabled={selectionDisabled} />
+                <GenerationModelControls disabled={selectionDisabled} />
                 <ModelingGenerationButton label={t("common.generate")} busy={documentBatchRunning}
                   disabled={loading || documentBatchRunning || Boolean(generationBlockedReason)}
                   title={generationBlockedReason ?? undefined} onClick={() => void generateSelectedDocuments()} />

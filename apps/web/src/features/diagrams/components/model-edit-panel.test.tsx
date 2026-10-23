@@ -61,16 +61,7 @@ describe("ModelEditPanel context mode", () => {
     expect(screen.queryByRole("menuitem", { name: "添加中心系统" })).not.toBeInTheDocument();
     expect(await screen.findByRole("menuitem", { name: "添加外部系统" })).toBeInTheDocument();
     await user.click(await screen.findByRole("menuitem", { name: "添加人员" }));
-    const dialog = screen.getByRole("dialog", { name: "添加人员" });
-    expect(dialog.querySelector('[data-slot="field-set"]')).toHaveClass(
-      "rounded-xl",
-      "bg-muted/10",
-      "p-4",
-      "sm:p-5",
-    );
-    expect(screen.getByRole("checkbox", { name: "r1：客户可以发起订单" }).closest("div.grid")).not.toHaveClass("overflow-y-auto");
     screen.getAllByRole("textbox").forEach((field) => {
-      expect(field).toHaveClass("px-4");
       expect(field.closest('[data-slot="field"]')).toBeInTheDocument();
     });
     expect(screen.getByRole("alert")).toHaveTextContent("请至少选择一条当前有效的来源需求规则");

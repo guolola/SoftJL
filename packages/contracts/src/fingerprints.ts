@@ -2,8 +2,8 @@
 import {
   diagramModelSpecSchema,
   requirementModelTraceabilityEntrySchema,
-} from "./models.js";
-import { activeRequirementModels } from "./active-requirement-models.js";
+} from "./modeling/models.js";
+import { activeRequirementModels } from "./requirements/active-requirement-models.js";
 
 export const WORKSPACE_FINGERPRINT_VERSION = "fp:v3";
 

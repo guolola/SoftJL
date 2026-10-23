@@ -225,21 +225,23 @@ copy_release_payload() {
   cp -R "$SOURCE_DIR/apps/web/.next/static" "$TMP_DIR/apps/web/.next/standalone/apps/web/.next/static"
   cp -R "$SOURCE_DIR/apps/web/public" "$TMP_DIR/apps/web/.next/standalone/apps/web/public"
 
-  mkdir -p "$TMP_DIR/packages/contracts" "$TMP_DIR/packages/prompts"
+  mkdir -p "$TMP_DIR/packages/contracts" "$TMP_DIR/packages/prompts" "$TMP_DIR/packages/demo-fixtures"
   cp "$SOURCE_DIR/packages/contracts/package.json" "$TMP_DIR/packages/contracts/"
   cp "$SOURCE_DIR/packages/prompts/package.json" "$TMP_DIR/packages/prompts/"
+  cp "$SOURCE_DIR/packages/demo-fixtures/package.json" "$TMP_DIR/packages/demo-fixtures/"
   cp -R "$SOURCE_DIR/packages/contracts/dist" "$TMP_DIR/packages/contracts/dist"
   cp -R "$SOURCE_DIR/packages/prompts/dist" "$TMP_DIR/packages/prompts/dist"
+  cp -R "$SOURCE_DIR/packages/demo-fixtures/dist" "$TMP_DIR/packages/demo-fixtures/dist"
 
   mkdir -p "$TMP_DIR/scripts/deploy"
   cp "$SOURCE_DIR/scripts/deploy/baota-pm2-git-deploy.sh" "$TMP_DIR/scripts/deploy/"
 }
 
 ensure_plantuml_jar() {
-  local target="$TMP_DIR/plantuml/build/libs/$PLANTUML_JAR"
-  local source_jar="$SOURCE_DIR/plantuml/build/libs/$PLANTUML_JAR"
+  local target="$TMP_DIR/plantuml/$PLANTUML_JAR"
+  local source_jar="$SOURCE_DIR/plantuml/$PLANTUML_JAR"
   local shared_jar="$DEPLOY_PATH/shared/plantuml/$PLANTUML_JAR"
-  local current_jar="$DEPLOY_PATH/current/plantuml/build/libs/$PLANTUML_JAR"
+  local current_jar="$DEPLOY_PATH/current/plantuml/$PLANTUML_JAR"
 
   mkdir -p "$(dirname "$target")"
   if [[ -f "$source_jar" ]]; then
@@ -489,11 +491,12 @@ if [[ "$reused_ci_build" != true ]]; then
   (
     cd "$SOURCE_DIR"
     git rev-parse --verify "$RELEASE_SHA^{commit}" >/dev/null
-    rm -rf apps/api/dist apps/render-service/dist apps/web/.next packages/contracts/dist packages/prompts/dist
+    rm -rf apps/api/dist apps/render-service/dist apps/web/.next packages/contracts/dist packages/prompts/dist packages/demo-fixtures/dist
     run_timed "npm ci build dependencies" \
       npm ci --no-audit --no-fund --cache "$NPM_CACHE_DIR" --registry="$NPM_REGISTRY"
     run_timed "build contracts" npm run build:contracts
     run_timed "build prompts" npm run build:prompts
+    run_timed "build demo fixtures" npm run build:demo-fixtures
     run_timed "build api" npm run build:api
     run_timed "build render service" npm run build:render
     run_timed "build production web" npm run build:web:production:prepared

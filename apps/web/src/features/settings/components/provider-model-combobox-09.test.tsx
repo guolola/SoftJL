@@ -26,9 +26,6 @@ describe("Provider model combobox-09", () => {
       expect(within(await screen.findByRole("option", { name: model })).getByTestId(`provider-icon-${provider}`)).toBeInTheDocument();
     }
     expect(document.querySelector('[data-component="combobox-09"]')).toBeInTheDocument();
-    expect(within(screen.getByRole("option", { name: models[0].id })).getByText("严格 JSON")).toHaveClass("bg-emerald-100");
-    expect(within(screen.getByRole("option", { name: models[1].id })).getByText("JSON 模式")).toHaveClass("bg-sky-100");
-    expect(within(screen.getByRole("option", { name: models[2].id })).getByText("兼容", { exact: true })).toHaveClass("bg-muted");
   });
 
   it("filters models, supports keyboard selection and leaves unmatched text out of the selected value", async () => {

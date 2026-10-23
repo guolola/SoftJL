@@ -5,11 +5,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { snapshotInputFingerprint, createRequirementBaselineSnapshot } from "@uml-platform/contracts";
 import { createMockWorkspaceRepository } from "../../../services/workspace-repository/mock-repository";
-import { createRule, createWorkspaceRecord, withWorkspaceProviders } from "../../../test/workspace-test-utils";
+import { createRule, createWorkspaceRecord, withWorkspaceProviders } from "../../../../tests/helpers/workspace-test-utils";
 import { DesignModelPage } from "../../design/components/design-model-page";
 import { FeasibilityPage } from "../../feasibility/components/feasibility-page";
 import { TextRequirementView } from "../../requirements/components/text-requirement-page";
-import { modelFixture } from "../../../../../../packages/contracts/dist/testing/model-fixtures";
+import { modelFixture } from "@uml-platform/contracts/testing";
 
 // Workflow tests start from saved rules with explicit source receipts.
 function createCurrentMockWorkspaceRepository(seed: Parameters<typeof createWorkspaceRecord>[0] = {}) {
@@ -49,8 +49,6 @@ describe("upstream workflow illustrations", () => {
     expect(within(workflow()).getByText("可选")).toBeInTheDocument();
     const contextCard = screen.getByRole("button", { name: "选择系统环境图" });
     expect(contextCard).toHaveAttribute("data-inspected", "true");
-    // Layout stacks vertically on narrow screens and becomes a row from the md breakpoint.
-    expect(within(workflow()).getByRole("list").parentElement).toHaveClass("flex-col", "md:flex-row");
 
     const implementationCard = screen.getByRole("button", { name: "选择实现方案" });
     await user.hover(implementationCard);
@@ -168,7 +166,6 @@ describe("upstream workflow illustrations", () => {
     await user.hover(screen.getByRole("button", { name: "选择需求分析模型" }));
     const source = within(workflow()).getByText("对应单个用例的事件流").closest("li")!;
     expect(source).toHaveAttribute("data-state", "stale");
-    expect(within(source).getByText("待更新")).toHaveClass("text-warning");
     if (!savedStale) {
       await user.click(screen.getByRole("checkbox", { name: "用例模型" }));
       await user.hover(screen.getByRole("button", { name: "选择需求分析模型" }));

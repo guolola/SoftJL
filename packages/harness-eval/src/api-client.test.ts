@@ -48,7 +48,7 @@ test("evaluator logs in, authorizes fixture inputs and polling, and revokes its 
   assert.equal(snapshot.status, "failed");
   assert.ok(llmCalls > 0);
   const start = calls.find((call) => call.path === "/api/runs")!;
-  assert.equal(JSON.parse(start.body!).projectId, undefined);
+  assert.equal(JSON.parse(start.body!).projectId, project.id);
   assert.equal(JSON.parse(start.body!).requirementText, "用户登录后可以查看订单并提交取消申请。");
   assert.equal(records.get(snapshot.runId)?.metadata?.projectId, project.id);
   assert.equal(records.get(snapshot.runId)?.metadata?.userId, user.id);

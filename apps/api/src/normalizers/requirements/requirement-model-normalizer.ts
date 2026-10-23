@@ -1,12 +1,11 @@
 // Parses requirement models losslessly and validates graph semantics before traceability.
-import { diagramModelsResultSchema, useCaseDiagramSpecSchema, useCaseParticipationGaps, validateModelInput, ModelSemanticError, type RequirementRule } from "@uml-platform/contracts";
+import { diagramModelsResultSchema, useCaseDiagramSpecSchema, useCaseParticipationGaps, validateModelInput, ModelSemanticError } from "@uml-platform/contracts";
 import { readGeneratedRequirementSources } from "../traceability/generated-sources.js";
 import { ensureArray, isPlainRecord, parseJson } from "../json/parse-json.js";
 import { normalizeModelInput, omitModelNullValues as omitNullValues } from "../diagrams/model-input.js";
 
 export function parseRequirementDiagramModelsResult(
   value: string,
-  rules: RequirementRule[] = [],
   deferParticipationRepairs = false,
 ) {
   const parsed = parseJson<unknown>(value);

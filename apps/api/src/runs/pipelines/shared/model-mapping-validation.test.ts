@@ -1,8 +1,8 @@
 // Verifies source coverage remains mandatory when complete model responses replace mapping-only retries.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { modelFixture } from "../../../../../../packages/contracts/src/testing/model-fixtures.js";
-import { collectModelRefs } from "../../../normalizers/traceability/traceability-normalizer.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
+import { collectModelRefs } from "@uml-platform/contracts";
 import { assertRequirementMappings, assertDesignMappings } from "./model-mapping-validation.js";
 import { repairDiagnostics } from "../../../normalizers/structured-output/repair-diagnostics.js";
 

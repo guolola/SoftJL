@@ -1,6 +1,6 @@
 // Defines source-backed implementation tasks and agent reports without trusting claimed verification results.
 import { z } from "zod";
-import { modelElementRefSchema } from "../models.js";
+import { modelElementRefSchema } from "../modeling/models.js";
 import { mcpScopeSchema, mcpSourceVersionSchema } from "./index.js";
 
 const id = z.string().trim().min(1).max(512);

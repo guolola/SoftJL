@@ -116,7 +116,6 @@ test("persisted usage counts use tracker-side filters", async () => {
     taskTypes: [
       "requirements_to_uml",
       "design_modeling",
-      "code_generation",
       "document_generation",
     ],
     createdAfter: "2026-05-24T08:00:00.000Z",

@@ -1,6 +1,6 @@
+// Builds traceability matrix rows from workspace state without rendering UI.
 import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
 import { requirementTypeAppliesToModel } from "@uml-platform/contracts";
-// Builds traceability matrix rows from workspace state without rendering UI.
 import type {
   DesignDiagramKind,
   DiagramKind,
@@ -557,10 +557,8 @@ export function buildRequirementRows(
 }
 
 export function buildDesignRows(
-  _rules: RequirementRule[],
   requirementModels: ReturnType<typeof useWorkspaceSession>["models"],
   designModels: ReturnType<typeof useWorkspaceSession>["designModels"],
-  _requirementTraceability: ReturnType<typeof useWorkspaceSession>["requirementModelTraceability"],
   designTraceability: ReturnType<typeof useWorkspaceSession>["designModelTraceability"],
   scope?: MatrixScope,
   copy = DEFAULT_TRACEABILITY_ROW_COPY,

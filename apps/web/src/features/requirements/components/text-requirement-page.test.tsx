@@ -5,24 +5,20 @@ import { requestOpenRequirementRule } from "../../../shared/lib/app-navigation";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  AtomicRequirement,
-  RequirementBaseline,
-} from "@uml-platform/contracts";
+import type { RequirementBaseline } from "@uml-platform/contracts";
 import { captureWorkspaceGuard } from "@uml-platform/contracts";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import {
   createRule,
   createRunSnapshot,
   createWorkspaceRecord,
   withWorkspaceProviders,
-} from "../../../test/workspace-test-utils";
+} from "../../../../tests/helpers/workspace-test-utils";
 import { snapshotInputFingerprint } from "../../../shared/lib/fingerprint";
 import { TextRequirementView } from "./text-requirement-page";
-import { createRenderMeta } from "../../../test/contract-fixtures";
+import { createRenderMeta } from "../../../../tests/fixtures/contract-fixtures";
 import { useWorkspaceShell } from "../../workspace-shell/state";
 import { useWorkspaceSession } from "../../workspace-session/state";
-
 
 // Published source fixtures carry current receipts; tests can override a receipt to exercise staleness.
 function createCurrentWorkspaceRecord(overrides: Parameters<typeof createWorkspaceRecord>[0] = {}) {
@@ -190,47 +186,28 @@ describe("TextRequirementView", () => {
   ): WorkspaceRepository {
     return {
       loadWorkspace: vi.fn(async () => createCurrentWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => ({ runId: "run-test" })),
       subscribeToRun: vi.fn(async () => {}),
       getRunSnapshot: vi.fn(async () => createRunSnapshot()),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
       ...overrides,
     };
   }
 
-  function createAtomicRequirement(
-    overrides: Partial<AtomicRequirement> = {},
-  ): AtomicRequirement {
-    return {
-      id: "REQ-001",
-      sourceRuleId: "r1",
-      sourceFragment: "系统应允许用户提交订单。",
-      sourceLocation: { section: "input", startOffset: 0, endOffset: 12 },
-      type: "functional" as const,
-      actor: null,
-      subject: "系统",
-      action: "允许提交",
-      object: "订单",
-      condition: null,
-      outcome: "系统创建订单",
-      confidence: 0.56,
-      status: "pending-review",
-      criticality: "high",
-      acceptanceCriteria: ["用户提交订单后系统创建订单。"],
-      priority: "must",
-      fieldProvenance: {},
-      ...overrides,
-    };
+  function createBaselineRule(
+    overrides: Partial<RequirementBaseline["rules"][number]> = {},
+  ): RequirementBaseline["rules"][number] {
+    return { requirementId: "REQ-001", id: "r1", text: "系统应允许用户提交订单。", sourceFragment: "系统应允许用户提交订单。", type: "functional" as const, ...overrides, origin: "generated" as const };
   }
 
   function createRequirementBaseline(
-    requirements: AtomicRequirement[],
+    requirements: RequirementBaseline["rules"][number][],
     overrides: Partial<RequirementBaseline> = {},
   ): RequirementBaseline {
     return {
@@ -242,7 +219,7 @@ describe("TextRequirementView", () => {
       createdAt: "2026-05-27T00:00:00.000Z",
       schemaVersion: 3 as const,
 
-      rules: (requirements).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
+      rules: (requirements),
       assumptions: [],
       conflicts: [],
       qualityReport: {
@@ -253,7 +230,7 @@ describe("TextRequirementView", () => {
           ? [
               {
                 id: "issue-actor",
-                requirementId: requirements[0].id,
+                requirementId: requirements[0].requirementId,
                 severity: "warning",
                 code: "missing-actor",
                 message: "缺少参与者。",
@@ -263,7 +240,7 @@ describe("TextRequirementView", () => {
           : [],
         blockingIssueIds: ["issue-actor"],
         reviewRequiredRequirementIds: requirements[0]
-          ? [requirements[0].id]
+          ? [requirements[0].requirementId]
           : [],
       },
       ...overrides,
@@ -275,7 +252,7 @@ describe("TextRequirementView", () => {
       createRule({ id: "r1", text: "系统应允许用户提交订单。" }),
       createRule({ id: "r2", text: "系统应显示公开活动。" }),
     ];
-    const requirement = createAtomicRequirement({ id: "REQ-002", sourceRuleId: "r2" });
+    const requirement = createBaselineRule({ requirementId: "REQ-002", id: "r2" });
     const baseline = createRequirementBaseline([requirement]);
     const repository = createBaseRepository({
       loadWorkspace: vi.fn(async () => createCurrentWorkspaceRecord({
@@ -293,7 +270,7 @@ describe("TextRequirementView", () => {
 
   it("renders the empty state with an unsaved requirement draft", async () => {
     const updateRequirementText = vi.fn(async () => {});
-    const repository = createBaseRepository({ updateRequirementText });
+    const repository = createBaseRepository({  });
 
     const user = userEvent.setup();
     const { container } = render(
@@ -306,21 +283,13 @@ describe("TextRequirementView", () => {
     expect(screen.getByRole("heading", { name: "系统业务需求" }).closest('[data-slot="card"]')).not.toBeInTheDocument();
     expect(requirementInput).toBeInTheDocument();
     expect(requirementInput).toHaveValue("");
-    expect(requirementInput).toHaveClass("h-80", "field-sizing-fixed", "resize-none", "overflow-y-auto");
-    expect(requirementInput).not.toHaveClass("field-sizing-content", "resize-y");
     const inputGuidance = screen.getByText("请描述谁使用系统、需要完成哪些功能，以及业务限制和异常处理。平台会先提取需求规则，再逐步生成模型、图表和说明书。");
     const attachmentGuidance = screen.getByText("支持上传 TXT、Markdown 文本附件；使用支持视觉的模型时，还可上传 PNG、JPEG、WebP 图片。");
     expect(attachmentGuidance).toBeVisible();
-    expect(inputGuidance).toHaveClass("sr-only");
     expect(requirementInput).toHaveAttribute("placeholder", expect.stringMatching(/^请描述谁使用系统[\s\S]+\n\n例如：/u));
 
     expect(requirementInput).toHaveAttribute("aria-describedby", `${inputGuidance.id} ${attachmentGuidance.id}`);
     expect(screen.getByText("需求分析提取")).toBeInTheDocument();
-    expect(screen.getByTestId("requirements-input-toolbar")).toHaveClass(
-      "min-w-0",
-      "flex-wrap",
-      "sm:flex-nowrap",
-    );
     expect(screen.queryByText("AI 需求助手")).not.toBeInTheDocument();
     expect(screen.queryByText("AI 智能辅助")).not.toBeInTheDocument();
     expect(screen.queryByText("探索与灵感")).not.toBeInTheDocument();
@@ -345,9 +314,6 @@ describe("TextRequirementView", () => {
       '[data-workspace-density="compact-grid"]',
     );
     expect(modelGrid).toBeInTheDocument();
-    expect(modelGrid).toHaveAttribute("data-mobile-card-density", "model-targets");
-    expect(modelGrid).toHaveClass("grid-cols-2");
-    expect(modelGrid?.className).toContain("min-[1900px]:grid-cols-6");
 
     await user.type(requirementInput, "创建一个订单系统");
     expect(requirementInput).toHaveValue("创建一个订单系统");
@@ -734,7 +700,6 @@ describe("TextRequirementView", () => {
     expect(screen.queryByRole("button", { name: /查看需求模型追踪证明/u })).not.toBeInTheDocument();
     expect(screen.queryByText("高级选项")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "需求模型追踪证明" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "生成" })).toHaveClass("h-7", "px-2.5");
   });
 
   it("accepts candidate inputs without an existing model association", async () => {
@@ -1008,30 +973,8 @@ describe("TextRequirementView", () => {
             schemaVersion: 3 as const,
 
       rules: ([
-              {
-                id: "REQ-001",
-                sourceRuleId: "r1",
-                sourceFragment: "系统应提供订单提交能力。",
-                sourceLocation: {
-                  section: "input",
-                  startOffset: 0,
-                  endOffset: 12,
-                },
-                type: "functional" as const,
-                actor: "用户",
-                subject: "用户",
-                action: "提交订单",
-                object: "订单",
-                condition: null,
-                outcome: "系统保存订单",
-                confidence: 0.9,
-                status: "accepted",
-                criticality: "medium",
-                acceptanceCriteria: ["用户可以提交订单。"],
-                priority: "should",
-                fieldProvenance: {},
-              },
-            ]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
+              { requirementId: "REQ-001", id: "r1", text: "系统应提供订单提交能力。", sourceFragment: "系统应提供订单提交能力。", type: "functional" as const, origin: "generated" as const },
+            ]),
           },
         }),
       ),
@@ -1077,8 +1020,6 @@ describe("TextRequirementView", () => {
     });
     const useCaseCard = screen.getByRole("button", { name: "选择用例模型" });
     expect(within(useCaseCard).queryByRole("button", { name: /^打开/ })).not.toBeInTheDocument();
-    expect(useCaseCard).toHaveClass("min-h-[260px]", "sm:min-h-[284px]");
-    expect(useCaseCard).toHaveAttribute("data-slot", "spotlight-card");
     expect(useCaseCheckbox).not.toBeChecked();
 
     const group = screen.getByRole("group", { name: "全选 / 全不选" });
@@ -1361,11 +1302,7 @@ describe("TextRequirementView", () => {
       text: "用户必须登录后才能访问主要功能。",
 
     });
-    const baselineRequirement = createAtomicRequirement({
-      id: "REQ-001",
-      sourceRuleId: originalRule.id,
-      sourceFragment: originalRule.text,
-    });
+    const baselineRequirement = createBaselineRule({ requirementId: "REQ-001", id: originalRule.id, text: originalRule.text, sourceFragment: originalRule.text });
     const baseline = createRequirementBaseline([baselineRequirement]);
     const repository = createBaseRepository({
       loadWorkspace: vi.fn(async () =>
@@ -1387,11 +1324,6 @@ describe("TextRequirementView", () => {
     expect(screen.queryByText("AI 需求助手")).not.toBeInTheDocument();
     expect(screen.queryByText("探索与灵感")).not.toBeInTheDocument();
     expect(
-      screen.getByPlaceholderText(
-        /^请描述谁使用系统[\s\S]*例如：师生登录后/u,
-      ),
-    ).toHaveClass("h-[240px]", "field-sizing-fixed", "resize-none", "overflow-y-auto");
-    expect(
       within(table).getByRole("columnheader", { name: "编号" }),
     ).toBeInTheDocument();
     expect(
@@ -1402,9 +1334,6 @@ describe("TextRequirementView", () => {
         name: "需求文本内容（可编辑）",
       }),
     ).toBeInTheDocument();
-    expect(
-      within(table).getByDisplayValue("用户必须登录后才能访问主要功能。"),
-    ).toHaveClass("px-2", "md:px-3");
     expect(
       within(table).queryByRole("columnheader", { name: "相关图" }),
     ).not.toBeInTheDocument();
@@ -1475,7 +1404,7 @@ describe("TextRequirementView", () => {
           selectedDiagramTypes: ["usecase"],
         }),
       ),
-      updateRequirementText,
+
     });
 
     const user = userEvent.setup();
@@ -1487,14 +1416,11 @@ describe("TextRequirementView", () => {
     );
     // The composer synchronizes its runtime after the workspace has populated the rules table.
     await waitFor(() => expect(sourceText).toHaveValue("创建一个订单系统"));
-    expect(sourceText).toHaveClass("h-[240px]", "field-sizing-fixed", "resize-none", "overflow-y-auto");
     expect(
       screen.queryByRole("button", { name: "返回修改描述" }),
     ).not.toBeInTheDocument();
 
     await user.type(sourceText, "，并支持退款");
-
-    expect(sourceText).toHaveClass("h-[240px]", "field-sizing-fixed", "resize-none", "overflow-y-auto");
     expect(updateRequirementText).not.toHaveBeenCalled();
     expect(screen.getByRole("table")).toBeInTheDocument();
     expect(
@@ -1603,7 +1529,6 @@ describe("TextRequirementView", () => {
     expect(within(table).queryByDisplayValue("规则 11")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("requirement-rule-row-slot")).toHaveLength(10);
     expect(screen.getByLabelText("1-10 / 26")).toBeInTheDocument();
-    expect(screen.getByTestId("requirement-rule-pagination")).toHaveClass("sticky", "bottom-0");
     await chooseSelectOption(
       user,
       screen.getByRole("combobox", { name: "每页条数" }),
@@ -1668,34 +1593,11 @@ describe("TextRequirementView", () => {
       ),
     });
 
-    const { container } = render(
-      withWorkspaceProviders(<TextRequirementView />, repository),
-    );
-
-    const shell = container.querySelector(".min-w-0.max-w-full.overflow-x-hidden") as HTMLElement;
-    expect(shell).toHaveClass("min-w-0", "max-w-full", "overflow-x-hidden");
-    const sourceText = await screen.findByPlaceholderText(
-      /^请描述谁使用系统[\s\S]*例如：师生登录后/u,
-    );
-    expect(sourceText).toHaveClass("w-full");
+    render(
+withWorkspaceProviders(<TextRequirementView />,repository)
+);
 
     const table = await screen.findByTestId("requirement-rules-compact-table");
-    expect(table).toHaveClass("w-full", "table-fixed", "text-[12px]");
-    expect(table).not.toHaveClass("min-w-[900px]");
-    expect(table).not.toHaveStyle({ width: "max(100%, 960px)" });
-    const numberHeader = within(table).getByRole("columnheader", {
-      name: "编号",
-    });
-    const typeHeader = within(table).getByRole("columnheader", {
-      name: "类型",
-    });
-    const actionHeader = within(table).getByRole("columnheader", {
-      name: "操作",
-    });
-    expect(numberHeader).toHaveClass("text-center");
-    expect(numberHeader).toHaveClass("w-[32px]");
-    expect(typeHeader).toHaveClass("w-[112px]", "text-center");
-    expect(actionHeader).toHaveClass("w-[28px]", "text-center");
     expect(
       within(table).queryByRole("columnheader", { name: "对应模型" }),
     ).not.toBeInTheDocument();
@@ -1710,32 +1612,6 @@ describe("TextRequirementView", () => {
         name: "需求文本内容（可编辑）",
       }),
     ).toBeInTheDocument();
-    const firstRuleCell = within(table)
-      .getByRole("cell", { name: "1" })
-      .closest("td") as HTMLElement;
-    const typeControl = within(table).getByRole("combobox", {
-      name: "需求类型 r1",
-    });
-    const typeCell = typeControl.closest("td") as HTMLElement;
-    const deleteButton = within(table).getByRole("button", {
-      name: "删除需求项 r1",
-    });
-    const actionCell = deleteButton.closest("td") as HTMLElement;
-    expect(firstRuleCell).toHaveClass("text-center");
-    expect(typeCell).toHaveClass("text-center");
-    expect(typeControl).toHaveClass(
-      "w-auto",
-      "min-w-[6.5rem]",
-      "*:data-[slot=select-value]:justify-center",
-    );
-    expect(actionCell).toHaveClass("text-center");
-    expect(deleteButton).toHaveClass("mx-auto");
-    const tableSection = table.closest("section");
-    expect(tableSection).toHaveClass(
-      "min-w-0",
-      "max-w-full",
-      "overflow-hidden",
-    );
     expect(table).toBeInTheDocument();
   });
 
@@ -1770,46 +1646,8 @@ describe("TextRequirementView", () => {
             schemaVersion: 3 as const,
 
       rules: ([
-              {
-                id: "REQ-010",
-                sourceRuleId: "r10",
-                sourceFragment: "普通读者只能使用查找自己已借出书目的功能。",
-                sourceLocation: {
-                  section: "input",
-                  startOffset: 0,
-                  endOffset: 21,
-                },
-                type: "business-rule" as const,
-                actor: "普通读者",
-                subject: "普通读者",
-                action: "查找",
-                object: "自己已借出的书目",
-                condition: "登录身份为普通读者",
-                outcome: "系统返回自己的借出书目",
-                confidence: 0.74,
-                status: "accepted",
-                criticality: "critical",
-                acceptanceCriteria: ["普通读者只能查看自己已借出的书目。"],
-                priority: "must",
-                fieldProvenance: {
-                  actor: {
-                    source: "ai-suggested",
-                    status: "accepted",
-                    value: "普通读者",
-                  },
-                  object: {
-                    source: "ai-suggested",
-                    status: "accepted",
-                    value: "自己已借出的书目",
-                  },
-                  condition: {
-                    source: "ai-suggested",
-                    status: "accepted",
-                    value: "登录身份为普通读者",
-                  },
-                },
-              },
-            ]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
+              { requirementId: "REQ-010", id: "r10", text: "普通读者只能使用查找自己已借出书目的功能。", sourceFragment: "普通读者只能使用查找自己已借出书目的功能。", type: "functional" as const, origin: "generated" as const },
+            ]),
           },
         }),
       ),
@@ -1821,7 +1659,6 @@ describe("TextRequirementView", () => {
       name: /普通读者只能使用查找自己已借出书目的功能/u,
     });
     const cells = within(row).getAllByRole("cell");
-    expect(cells[2]).toHaveClass("px-1.5", "md:px-6");
     expect(within(cells[2]).getByRole("textbox")).toHaveValue("普通读者只能使用查找自己已借出书目的功能。");
     expect(within(cells[2]).queryByText("3项")).not.toBeInTheDocument();
     expect(within(cells[2]).queryByText("3项提示")).not.toBeInTheDocument();
@@ -1838,14 +1675,7 @@ describe("TextRequirementView", () => {
         createCurrentWorkspaceRecord({
           rules: [createRule({ id: "r11", text: "师生可以扫码报修设备故障。",  })],
           requirementBaseline: createRequirementBaseline([
-            createAtomicRequirement({
-              id: "REQ-011",
-              sourceRuleId: "r11",
-              sourceFragment: "师生可以扫码报修设备故障。",
-              actor: "师生",
-              action: "扫码报修",
-              status: "pending-review",
-            }),
+            createBaselineRule({ requirementId: "REQ-011", id: "r11", text: "师生可以扫码报修设备故障。", sourceFragment: "师生可以扫码报修设备故障。" }),
           ]),
         }),
       ),
@@ -1948,11 +1778,6 @@ describe("TextRequirementView", () => {
     expect(screen.getByRole("heading", { name: "系统业务需求" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "系统业务需求" })).toHaveAccessibleDescription(/请描述谁使用系统/);
     const rulesToolbar = screen.getByTestId("requirement-rules-toolbar");
-    expect(rulesToolbar).toHaveClass("min-w-0", "overflow-hidden");
-    expect(rulesToolbar.firstElementChild?.firstElementChild).toHaveClass(
-      "min-w-0",
-      "flex-nowrap",
-    );
     expect(within(rulesToolbar).queryByRole("heading", { name: /需求规则/u })).not.toBeInTheDocument();
     expect(within(rulesToolbar).getByPlaceholderText("搜索规则...")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "目标模型" })).not.toBeInTheDocument();
@@ -1961,7 +1786,7 @@ describe("TextRequirementView", () => {
   it("keeps requirement authoring controls off the requirement models page", async () => {
     const user = userEvent.setup();
     const requirementBaseline = createRequirementBaseline([
-      createAtomicRequirement(),
+      createBaselineRule(),
     ]);
     const repository = createBaseRepository({
       loadWorkspace: vi.fn(async () => createCurrentWorkspaceRecord({

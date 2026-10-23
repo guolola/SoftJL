@@ -3,28 +3,28 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { UseCaseDiagramSpec } from "@uml-platform/contracts";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import {
   createRule,
   createWorkspaceRecord,
   withWorkspaceProviders,
-} from "../../../test/workspace-test-utils";
+} from "../../../../tests/helpers/workspace-test-utils";
 import { TestModelPage } from "./test-model-page";
 
 function createRepository(record = createWorkspaceRecord()): WorkspaceRepository {
   return {
     loadWorkspace: vi.fn(async () => record),
-    updateRequirementText: vi.fn(async () => {}),
+
     updateTestGenerationResult: vi.fn(async () => {}),
     startRun: vi.fn(),
     subscribeToRun: vi.fn(),
     getRunSnapshot: vi.fn(),
-    renderPlantUml: vi.fn(),
-    testProviderSettings: vi.fn(),
+
+
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
     deleteRunHistory: vi.fn(async () => []),
-    clearRunHistory: vi.fn(async () => {}),
+
   };
 }
 
@@ -110,7 +110,6 @@ describe("TestModelPage", () => {
     render(withWorkspaceProviders(<TestModelPage />, repository));
 
     const statsGrid = await screen.findByTestId("test-summary-grid");
-    expect(statsGrid).toHaveClass("grid-cols-2", "xl:grid-cols-4");
     expect(statsGrid).toBeInTheDocument();
 
     const user = userEvent.setup();

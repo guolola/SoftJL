@@ -138,7 +138,7 @@ describe("deriveWorkspaceStatus", () => {
       visibleGenerationTask: null,
     });
 
-    expect(status.designTraceabilityStale).toBe(false);
+
     expect(status.staleDesignModelIds).toEqual([]);
     expect(status.staleDesignDiagrams).toEqual([]);
     expect(status.designStaleReasons["design-table"]).toBeUndefined();
@@ -202,12 +202,8 @@ describe("deriveWorkspaceStatus", () => {
 });
 
 describe("describeMissingDesignSources", () => {
-  it("names the missing design element mapping instead of returning a generic stale state", () => {
-    const details = describeMissingDesignSources({
-      models: [designTableModel],
-      traceability: [],
-      requirementModels: [requirementClassModel],
-    });
+  it("explains that first-generation source declarations are missing", () => {
+    const details = describeMissingDesignSources([]);
 
     expect(details).toContain("缺少首次生成的来源声明");
   });

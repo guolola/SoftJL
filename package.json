@@ -2,7 +2,7 @@
   "name": "softjl-community",
   "private": true,
   "license": "Apache-2.0",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "devDependencies": {
     "@types/node": "22.15.21",
     "concurrently": "9.1.2",
@@ -30,7 +30,7 @@
     "dev:api:safe": "cross-env API_PORT=4101 UML_DOCUMENT_STORAGE_DIR=.local-documents UML_ENABLE_GUEST_ACCESS=true UML_GUEST_USERNAME=guest UML_GUEST_PASSWORD=guest UML_GUEST_DISPLAY_NAME=Guest UML_LLM_GLOBAL_CONCURRENCY=10 UML_LLM_PROVIDER_CONCURRENCY=10 UML_LLM_PROJECT_CONCURRENCY=10 UML_LLM_USER_CONCURRENCY=10 UML_LLM_RUN_CONCURRENCY=10 npm run dev:api",
     "dev:render": "npm run dev --workspace @uml-platform/render-service",
     "build": "npm run build:packages && npm run build:apps",
-    "build:packages": "npm run build:contracts && npm run build:prompts",
+    "build:packages": "npm run build:contracts && npm run build:prompts && npm run build:demo-fixtures",
     "build:apps": "npm run build:api && npm run build:render && npm run build:web:prepared",
     "build:contracts": "npm run build --workspace @uml-platform/contracts",
     "build:prompts": "npm run build --workspace @uml-platform/prompts",
@@ -65,7 +65,8 @@
     "demo:render": "npm run demo --workspace @uml-platform/render-service",
     "demo:api:safe": "cross-env API_PORT=4101 UML_DOCUMENT_STORAGE_DIR=.local-documents UML_ENABLE_GUEST_ACCESS=true UML_GUEST_USERNAME=guest UML_GUEST_PASSWORD=guest UML_GUEST_DISPLAY_NAME=Guest UML_LLM_GLOBAL_CONCURRENCY=10 UML_LLM_PROVIDER_CONCURRENCY=10 UML_LLM_PROJECT_CONCURRENCY=10 UML_LLM_USER_CONCURRENCY=10 UML_LLM_RUN_CONCURRENCY=10 npm run demo:api",
     "test:ci": "node --test scripts/ci/*.test.mjs",
-    "verify": "node scripts/ci/verify.mjs"
+    "verify": "node scripts/ci/verify.mjs",
+    "build:demo-fixtures": "npm run build --workspace @uml-platform/demo-fixtures"
   },
   "engines": {
     "node": ">=22.19.0"

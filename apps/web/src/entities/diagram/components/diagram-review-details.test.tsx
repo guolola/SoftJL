@@ -37,7 +37,7 @@ describe("categorized review details", () => {
     expect(review.confirmedAt).toBeUndefined();
   });
   it("shows problems and treatment without the removed evidence disclosure or its content", () => {
-    const { container } = render(<DiagramReviewDetails review={review} />);
+    render(<DiagramReviewDetails review={review} />);
     fireEvent.click(screen.getByRole("button", { name: "业务内容疑问（1）" }));
     expect(screen.getAllByRole("heading").map((node) => node.textContent)).toEqual(["业务内容疑问（1）"]);
     expect(screen.queryByText("连线交叉")).not.toBeInTheDocument();
@@ -45,7 +45,6 @@ describe("categorized review details", () => {
     expect(screen.queryByText(/预期值：|实际值：|对应模型：|对应元素／关系：|依据：FK1/)).not.toBeInTheDocument();
     expect(screen.getByText(/外键标记错误/)).toBeVisible();
     expect(screen.getAllByText(/已拒绝/)[0]).toBeVisible();
-    expect(container.firstChild).toHaveClass("text-black", "dark:text-foreground");
   });
   it("retains original findings after human confirmation and displays successful repairs accurately", () => {
     render(<DiagramReviewDetails confirmed review={{ ...review, repairHistory: [{ ...review.repairHistory![0], status: "accepted", reason: "已通过校验" }] }} />);

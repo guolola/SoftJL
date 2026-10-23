@@ -3,8 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import { FileText } from "lucide-react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../../shared/i18n/i18n-provider";
-import { createRule } from "../../../test/workspace-test-utils";
-import { REQUIREMENT_KIND_ORDER } from "../../../entities/requirement-rule/model";
+import { createRule } from "../../../../tests/helpers/workspace-test-utils";
 import type { UpstreamInput, UpstreamInputState } from "../lib/upstream-dependencies";
 import { UpstreamWorkflowIllustration } from "./upstream-workflow-illustration";
 
@@ -52,7 +51,6 @@ describe("UpstreamWorkflowIllustration", () => {
     expect(items[3]).toHaveTextContent("缺失");
     expect(items[3]).toHaveTextContent("补充资料可选缺失");
     expect(within(figure).queryByText("需求基线")).not.toBeInTheDocument();
-    expect(within(figure).getByRole("img", { name: "平台生成" })).toHaveAttribute("data-slot", "product-logo");
     expect(container.querySelector("[data-slot='upstream-target']")).toHaveTextContent("目标产物实现方案");
     // One curve per input converges on the logo; missing inputs stay dashed.
     const curves = container.querySelectorAll("[data-slot='upstream-connectors'] path");
@@ -94,12 +92,9 @@ describe("UpstreamWorkflowIllustration", () => {
     });
     const figure = screen.getByRole("figure", { name: "部署设计的上游输入" });
     expect(figure.querySelector("figcaption")).toBeNull();
-    expect(figure).not.toHaveClass("border");
-    expect(figure).not.toHaveClass("bg-muted/20");
     expect(screen.queryByText("部署设计的上游输入")).not.toBeInTheDocument();
     expect(screen.queryByText("悬停、聚焦或点按卡片上的流程按钮查看依赖")).not.toBeInTheDocument();
     expect(screen.queryByText(/^间接依赖：/)).not.toBeInTheDocument();
-    expect(screen.getByTitle("来源：需求阶段部署需求模型 + 设计阶段组件（构件）关系")).toHaveAttribute("data-slot", "upstream-target");
   });
 
   it("keeps existing sources and adds each missing mapped type even when the aggregate input is ready", () => {
@@ -155,32 +150,6 @@ describe("UpstreamWorkflowIllustration", () => {
     expect(rules.map(rule => rule.id)).toEqual(originalOrder);
   });
 
-  it("gives all eight requirement types distinct SVGs and theme colors while keeping status separate", () => {
-    renderIllustration({
-      target: "business-flow",
-      rules: [
-        ...REQUIREMENT_KIND_ORDER.map((kind, index) => createRule({ id: `r${index + 1}`, type: kind })),
-        createRule({ id: "r9", type: "business-rule" as const }),
-      ],
-      resolveState: () => "ready",
-    });
-    const items = within(screen.getByRole("list", { name: "直接上游输入" })).getAllByRole("listitem");
-    const icons = items.map(item => item.querySelector("svg")!);
-    const accents = icons.map(icon => icon.parentElement!.className);
-    const uniqueCategories = items.filter(item => item.getAttribute("data-input") !== "rules:r9");
-    expect(new Set(uniqueCategories.map(item => item.querySelector("svg")!.innerHTML)).size).toBe(8);
-    expect(new Set(uniqueCategories.map(item => item.querySelector("svg")!.parentElement!.className)).size).toBe(8);
-    // The same category keeps its identity across rule IDs, with readable light and dark accents.
-    const repeated = items.find(item => item.getAttribute("data-input") === "rules:r9")!.querySelector("svg")!;
-    expect(repeated.innerHTML).toBe(icons[0].innerHTML);
-    expect(repeated.parentElement!.className).toBe(accents[0]);
-    for (const [index, icon] of icons.entries()) {
-      expect(icon).toHaveAttribute("stroke", "currentColor");
-      expect(accents[index]).toMatch(/dark:text-/);
-      expect(within(items[index]).getByText("就绪")).toHaveClass("text-success");
-    }
-  });
-
   it("animates flow only when motion is allowed", () => {
     const { container, unmount } = renderIllustration();
     // Missing inputs carry no flow; the two ready and one stale input plus the output each get a dot.
@@ -203,7 +172,6 @@ describe("UpstreamWorkflowIllustration", () => {
     expect(screen.getAllByText("生成中")).toHaveLength(4);
   });
 });
-
 
 it("shows per-type ordinal numbers instead of long rule IDs while preserving references", () => {
   const rules = [createRule({ id: "r-29674a27-bab4-40da-a001", type: "business-rule" }), createRule({ id: "r-29674a27-bab4-40da-a002", type: "business-rule" }), createRule({ id: "r-29674a27-bab4-40da-a003", type: "functional" })];

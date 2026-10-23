@@ -84,16 +84,7 @@ export function ProjectMembers({
         username,
         role: inviteRole,
       });
-      const nextMember =
-        response.member ??
-        invitationToMember(project.id, response.invitation ?? {
-          id: `invitation-${username}`,
-          projectId: project.id,
-          username,
-          role: inviteRole,
-          status: "invited",
-          invitedAt: new Date().toISOString(),
-        });
+      const nextMember = invitationToMember(project.id, response.invitation);
       setCurrentMembers((current) =>
         current.map((member) => (member.id === optimisticMember.id ? nextMember : member)),
       );
@@ -168,11 +159,7 @@ export function ProjectMembers({
     }
     try {
       const response = await platformApi.resendProjectInvitation(project.id, member.id);
-      const nextMember =
-        response.member ??
-        (response.invitation
-          ? invitationToMember(project.id, response.invitation)
-          : { ...member, status: "invited", invitedAt: new Date().toISOString() });
+      const nextMember = invitationToMember(project.id, response.invitation);
       setCurrentMembers((current) =>
         current.map((item) => (item.id === member.id ? { ...item, ...nextMember } : item)),
       );

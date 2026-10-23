@@ -1,10 +1,5 @@
 // Applies project naming without implicitly carrying facts between model tasks.
-import type { LlmTransport } from "../../../llm.js";
-
-// Generation helpers own their task-local message history. This wrapper adds
-// project naming without sharing conversation turns between sibling tasks.
-export function withConversationBranch<T>(_id: string, work: () => Promise<T>): Promise<T> { return work(); }
-export function withIsolatedConversationBranch<T>(_id: string, work: () => Promise<T>): Promise<T> { return work(); }
+import type { LlmTransport } from "../../../adapters/llm/llm-transport.js";
 
 function systemNameConstraint(systemName: string) {
   return `系统名称约束：本项目的系统统一命名为“${systemName}”。所有模型的标题、系统边界、中心系统和说明中提到本系统时都必须使用这个名称，不得改写、扩展或缩写。`;
@@ -31,10 +26,5 @@ export function createContextualLlmTransport(transport: LlmTransport, options: {
       yield* transport.streamChatCompletion({ ...input, messages });
     },
   };
-  return {
-    transport: contextual,
-    // Lifecycle hooks retained for callers; validated artifacts travel explicitly.
-    forkBranches(_ids: string[]) {},
-    commitValidatedBranch(_id: string, _summary: string) {},
-  };
+  return contextual;
 }

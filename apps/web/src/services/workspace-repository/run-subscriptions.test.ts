@@ -1,14 +1,12 @@
 // Verifies run subscriptions recover from broken SSE streams by polling terminal snapshots.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
-
   DesignRunSnapshot,
   DocumentRunSnapshot,
   RunEventInput,
   RunSnapshot,
 } from "@uml-platform/contracts";
 import {
-
   subscribeToDesignRunEvents,
   subscribeToDocumentRunEvents,
   subscribeToRequirementRunEvents,
@@ -129,7 +127,6 @@ function documentSnapshot(
     ...overrides,
   };
 }
-
 
 describe("run subscriptions", () => {
   afterEach(() => {

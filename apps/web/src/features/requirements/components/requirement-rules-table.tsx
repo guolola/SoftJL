@@ -33,14 +33,12 @@ export type RequirementRuleCategoryFilter =
 
 interface RequirementRulesTableProps {
   canEditRequirements: boolean;
-  currentRulePage: number;
   deleteRequirementRule: (id: string) => void;
   editBlockedReason: string;
   emptyRuleSlots: number;
   filteredRules: RequirementRule[];
   firstRuleIndex: number;
   generating: boolean;
-  lastRuleIndex: number;
   onAddRule: () => void;
   onViewRule: (ruleId: string) => void;
   pagedRules: RequirementRule[];
@@ -59,14 +57,12 @@ interface RequirementRulesTableProps {
 
 export function RequirementRulesTable({
   canEditRequirements,
-  currentRulePage: _currentRulePage,
   deleteRequirementRule,
   editBlockedReason,
   emptyRuleSlots,
   filteredRules,
   firstRuleIndex: firstRuleIndex,
   generating,
-  lastRuleIndex: _lastRuleIndex,
   onAddRule,
   onViewRule,
   pagedRules,

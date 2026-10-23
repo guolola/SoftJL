@@ -1,66 +1,42 @@
-// Converts validated ordinary models to native PlantUML primitives supported by the bundled renderer.
+// Renders the eight quick-modeling kinds using shared native renderers and an independent conceptual ER view.
 import { validateStandardModel, type StandardDiagramKind, type StandardModel } from "@uml-platform/contracts";
+import { generatePlantUmlArtifacts, generateDesignPlantUmlArtifacts } from "../../adapters/plantuml/model-renderer.js";
+import { umlAlias, umlLabel } from "../../adapters/plantuml/plantuml-text.js";
 
-// Escape both separators so valid contract IDs remain distinct, safe PlantUML aliases.
-const ref = (id: string) => `node_${id.replace(/[_-]/g, char => `_${char.charCodeAt(0).toString(16)}_`)}`;
-// Labels cannot introduce source lines, HTML/image tags, aliases or class-body delimiters.
-const label = (value: string) => value.replace(/[\r\n]/g, " ").replace(/\\/g, "\\\\").replace(/["<>!%${}]/g, char => `&#${char.charCodeAt(0)};`);
-const quote = (value: string) => `"${label(value)}"`;
+// PlantUML's Unicode escape keeps a literal dollar out of both its preprocessor and label replacement regex.
+const literalSymbol = (char: string) => char === "$" ? "<U+0024>" : `&#${char.charCodeAt(0)};`;
 
-export function standardDiagramSource(kind: StandardDiagramKind, input: StandardModel): string {
+// Preserve quick modeling's literal-label boundary while leaving native identifiers and references intact.
+function literalDisplayValues(value: unknown, key = ""): unknown {
+  if (typeof value === "string") return /^(id|actorOrLane)$|Ids?$/.test(key) ? value : value
+    .replace(/[\r\n]/g, " ").replace(/\\/g, "\\\\")
+    .replace(/["<>&!%${}]/g, literalSymbol);
+  if (Array.isArray(value)) return value.map(item => literalDisplayValues(item, key));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, literalDisplayValues(item, name)]));
+  return value;
+}
+
+export function buildStandardDiagram(kind: StandardDiagramKind, input: unknown) {
   const model = validateStandardModel(kind, input);
-  const lines = ["@startuml", "skinparam backgroundColor transparent", "skinparam shadowing false"];
-  if (kind === "sequence") return [...lines, "hide footbox",
-    ...model.nodes.map(node => `participant ${quote(node.label)} as ${ref(node.id)}`),
-    ...model.edges.map(edge => `${ref(edge.from)} ${edge.relation === "return" ? "-->" : "->"} ${ref(edge.to)}: ${label(edge.label)}`),
-    "@enduml",
-  ].join("\n");
-  lines.push("allowmixing", "hide empty members", kind === "function" || kind === "activity" ? "top to bottom direction" : "left to right direction");
-  if (kind === "activity") lines.push("skinparam rectangleRoundCorner 18");
-  if (kind === "class" || kind === "table") lines.push("skinparam classAttributeIconSize 0");
-  const renderNode = (node: StandardModel["nodes"][number]) => {
-    const alias = ref(node.id);
-    if (kind === "class" || kind === "table") {
-      lines.push(`${kind === "table" ? "entity" : "class"} ${quote(node.label)} as ${alias} {`,
-        ...node.fields.map(field => `  ${label(field)}`),
-        ...(node.methods.length ? ["  --", ...node.methods.map(method => `  ${label(method)}`)] : []), "}");
-    } else if (node.type === "start") lines.push(`circle " " as ${alias} #black`);
-    else if (node.type === "end") lines.push(`usecase "<size:18>●</size>" as ${alias}`);
-    else if (node.type === "decision") lines.push(`diamond ${quote(node.label)} as ${alias}`);
-    else if (node.type === "action") lines.push(`rectangle ${quote(node.label)} as ${alias} <<action>>`);
-    else lines.push(`${node.type === "actor" ? "actor" : node.type === "usecase" ? "usecase" : "rectangle"} ${quote(node.label)} as ${alias}`);
-    if (kind === "er") node.fields.forEach((field, index) => {
-      const attr = `attr_${ref(node.id)}_${index}`;
-      lines.push(`usecase ${quote(field)} as ${attr}`, `${alias} -- ${attr}`);
-    });
-  };
-  if (kind === "usecase") {
-    model.nodes.filter(node => node.type === "actor").forEach(renderNode);
-    lines.push('rectangle "系统" as system_boundary {');
-    model.nodes.filter(node => node.type === "usecase").forEach(renderNode);
-    lines.push("}");
-  } else if (kind === "activity" && model.swimlanes?.length) {
-    // Keep lane ownership visible in PlantUML while leaving every flow edge explicit below.
-    for (const lane of model.swimlanes) {
-      lines.push(`rectangle ${quote(lane.name)} as lane_${ref(lane.id)} <<partition>> {`);
-      model.nodes.filter(node => node.actorOrLane === lane.id).forEach(renderNode);
-      lines.push("}");
+  // Derived labels may include identifiers (for example unnamed foreign keys); cover those as well.
+  const source = renderSource(literalDisplayValues(model) as StandardModel)
+    .replace(/[!%$]/g, literalSymbol).replace(/<(?=img\b)/gi, "&#60;");
+  return { model, source };
+}
+
+function renderSource(model: StandardModel): string {
+  if (model.diagramKind === "function" || model.diagramKind === "usecase" || model.diagramKind === "activity") return generatePlantUmlArtifacts([model])[0]!.source;
+  if (model.diagramKind !== "er") return generateDesignPlantUmlArtifacts([model])[0]!.source;
+  const lines = ["@startuml", "skinparam shadowing false", "left to right direction", "allowmixing"];
+  for (const [i, entity] of model.entities.entries()) {
+    lines.push(`rectangle ${umlLabel(entity.name)} as ${umlAlias(entity.id)}`);
+    for (const [j, attribute] of entity.attributes.entries()) {
+      const alias = `attribute_${i}_${j}`;
+      lines.push(`usecase ${umlLabel(attribute.isKey ? `<u>${attribute.name}</u>` : attribute.name)} as ${alias}`, `${umlAlias(entity.id)} -- ${alias}`);
     }
-    model.nodes.filter(node => !node.actorOrLane).forEach(renderNode);
-  } else model.nodes.forEach(renderNode);
-  model.edges.forEach((edge, index) => {
-    if (kind === "er") {
-      const relation = `relation_${index}`;
-      lines.push(`diamond ${quote(edge.label || "关联")} as ${relation}`,
-        `${ref(edge.from)} ${quote(edge.fromCardinality!)} -- ${relation}`,
-        `${relation} -- ${quote(edge.toCardinality!)} ${ref(edge.to)}`);
-    } else {
-      const arrows = { association: kind === "usecase" || kind === "table" || kind === "class" ? "--" : "-->", include: "..>", extend: "..>", inheritance: "--|>", composition: "*--", aggregation: "o--", return: "..>" };
-      const from = `${ref(edge.from)}${edge.fromCardinality ? ` ${quote(edge.fromCardinality)}` : ""}`;
-      const to = `${edge.toCardinality ? `${quote(edge.toCardinality)} ` : ""}${ref(edge.to)}`;
-      const text = ["include", "extend"].includes(edge.relation) ? `«${edge.relation}» ${label(edge.label)}` : label(edge.label);
-      lines.push(`${from} ${arrows[edge.relation]} ${to}${text ? ` : ${text}` : ""}`);
-    }
-  });
+  }
+  for (const [i, relation] of model.relationships.entries()) lines.push(`diamond ${umlLabel(relation.name)} as relation_${i}`,
+    `${umlAlias(relation.sourceId)} ${umlLabel(relation.sourceMultiplicity)} -- relation_${i}`,
+    `relation_${i} -- ${umlLabel(relation.targetMultiplicity)} ${umlAlias(relation.targetId)}`);
   return [...lines, "@enduml"].join("\n");
 }

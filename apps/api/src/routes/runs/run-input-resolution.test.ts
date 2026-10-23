@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { snapshotInputFingerprint, designInputFingerprint, buildFeasibilityContextFingerprint, buildFeasibilityImplementationFingerprint, getModelGraphElements } from "@uml-platform/contracts";
-import { createBusinessFlowArtifact } from "../../test-fixtures/feasibility/business-flow.js";
-import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
+import { createBusinessFlowArtifact } from "../../../tests/fixtures/feasibility/business-flow.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
 import { resolveDesignRunInput, resolveDocumentRunInput, resolveRequirementRunInput } from "./run-input-resolution.js";
 
 import { buildRequirementBaseline } from "../../runs/baselines/requirement-baseline.js";
@@ -14,6 +14,15 @@ const rules = [{
   text: "用户可以提交维修预约。",
 
 }];
+
+test("project input rejects obsolete bare workspace state", async () => {
+  const result = await resolveRequirementRunInput(
+    { projectId: "p", selectedDiagrams: [] }, undefined,
+    async () => ({ requirementText: "旧的裸工作区", rules }) as never,
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.body.error.code, "PROJECT_WORKSPACE_INVALID");
+});
 
 test("project commands preserve saved rule classification without claiming actual model usage", async () => {
   const original = structuredClone(rules);

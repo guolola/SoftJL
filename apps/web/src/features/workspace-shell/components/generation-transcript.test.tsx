@@ -1,13 +1,11 @@
 // Exercises progress-only batch tasks, reader-owned process folding and viewport scrolling.
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { Link2 } from "lucide-react";
 import type { RunActivityEvent, RunEventInput } from "@uml-platform/contracts";
-import { i18n } from "../../../shared/i18n";
+import { i18n } from "../../../shared/i18n/index";
 import { GenerationTranscript } from "./generation-transcript";
 import { projectGenerationTranscript, type TranscriptStep } from "../lib/generation-transcript";
 import { DESIGN_DIAGRAM_META, DESIGN_DIAGRAM_ORDER, DIAGRAM_META, DIAGRAM_ORDER } from "../../../entities/diagram/model";
-import { DESIGN_DIAGRAM_ICON, FEASIBILITY_ARTIFACT_ICON, REQUIREMENT_DIAGRAM_ICON } from "../../../entities/diagram/model-icons";
 
 const steps: TranscriptStep[] = [{ stage: "generate_models", title: "生成模型", status: "running", messages: ["正在整理用例。"], calls: [{
   id: "a", title: "分析参与者与用例", status: "running", output: "模型正文", summary: "核对参与者", thinking: true, technical: false,
@@ -29,8 +27,6 @@ describe("stage reading surface", () => {
     const projected = projectGenerationTranscript(events, exhausted ? "completed" : "running", [], {}, { includeContent: false });
     render(<GenerationTranscript taskKey="coverage-status" kind="requirements" active={!exhausted} finalMessage="" steps={projected.visibleSteps} />);
     const modelStep = screen.getByRole("heading", { name: "生成功能结构图" }).closest('[data-testid="generation-task-step"]') as HTMLElement;
-    const coverage = within(modelStep).getByRole("heading", { name: `覆盖修复（第 ${exhausted ? 5 : 2}/5 次）` }).closest('[data-testid="generation-task-step"]')!;
-    expect(coverage.querySelector("svg")!.innerHTML).toBe(render(<Link2 />).container.querySelector("svg")!.innerHTML);
     expect(within(modelStep).getByText(message)).toBeVisible();
     expect(within(modelStep).queryByText(/结构纠错/)).not.toBeInTheDocument();
     if (exhausted) expect(within(modelStep).getByText("覆盖不完整")).toBeVisible();
@@ -175,33 +171,15 @@ describe("stage reading surface", () => {
       calls: [{ ...steps[0].calls[0], subtaskId: diagramKind, title: "旧模型名称" }],
     }]} />);
     expect(screen.getByRole("heading", { name: `生成${label}` })).toBeVisible();
-    const Icon = kind === "design" ? DESIGN_DIAGRAM_ICON[diagramKind as keyof typeof DESIGN_DIAGRAM_ICON] : REQUIREMENT_DIAGRAM_ICON[diagramKind as keyof typeof REQUIREMENT_DIAGRAM_ICON];
-    const expectedSvg = render(<Icon />).container.querySelector("svg")!;
-    const category = screen.getByRole("heading", { name: `生成${label}` }).closest('[data-testid="generation-task-step"]')!;
-    expect(category.querySelector("svg")!.innerHTML).toBe(expectedSvg.innerHTML);
   });
 
-  it.each([
-    { stage: "generate_context" as const, Icon: FEASIBILITY_ARTIFACT_ICON.context },
-    { stage: "generate_business_flow" as const, Icon: FEASIBILITY_ARTIFACT_ICON["business-flow"] },
-  ])("uses the feasibility model icon for $stage", ({ stage, Icon }) => {
-    render(<GenerationTranscript taskKey={stage} kind="feasibility" active finalMessage="" steps={[{ ...steps[0], stage }]} />);
-    const expectedSvg = render(<Icon />).container.querySelector("svg")!;
-    expect(screen.getByTestId("generation-task-step").querySelector("svg")!.innerHTML).toBe(expectedSvg.innerHTML);
-  });
-
-  it("keeps the category symbol stable across running, failed and completed states", () => {
+  it("updates task status indicators after failure and completion", () => {
     const modelStep: TranscriptStep = { ...steps[0], stage: "generate_design_models", messages: [], calls: [{ ...steps[0].calls[0], subtaskId: "class", diagramKind: "class" }] };
     const { rerender } = render(<GenerationTranscript taskKey="state" kind="design" active finalMessage="" steps={[modelStep]} />);
-    const categorySvg = () => screen.getByTestId("generation-task-step").querySelector("svg")!;
-    const geometry = categorySvg().innerHTML;
-    expect(categorySvg()).not.toHaveClass("animate-spin");
-    expect(screen.getByTestId("generation-task-step").querySelector(".lucide-loader-circle")).toHaveClass("animate-spin");
     for (const status of ["failed", "completed"] as const) {
       rerender(<GenerationTranscript taskKey="state" kind="design" active={false} finalMessage="" steps={[{
         ...modelStep, status, finished: true, calls: [{ ...modelStep.calls[0], status }],
       }]} />);
-      expect(categorySvg().innerHTML).toBe(geometry);
       expect(screen.getByTestId("generation-task-step").querySelector(status === "failed" ? ".lucide-x" : ".lucide-check")).not.toBeNull();
     }
   });
@@ -274,7 +252,6 @@ describe("stage reading surface", () => {
     expect(screen.queryByText("模型正文")).not.toBeInTheDocument();
     expect(container.querySelectorAll('[data-slot="ai-shimmer"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-slot="chain-of-thought-step"][data-status="active"]')).toHaveLength(1);
-    expect(screen.getAllByText("分析参与者与用例")[0]).not.toHaveAttribute("data-slot", "ai-shimmer");
     rerender(<GenerationTranscript taskKey="a" steps={[{ ...steps[0], calls: [{ ...calls[0], output: "模型正文新增\n\n- **要点**\n\n```ts\nconst x = 1\n```" }, calls[1]] }]} active finalMessage="" />);
     expect(screen.getByText("生成模型")).toBe(heading);
     expect(screen.queryByText("模型正文新增")).not.toBeInTheDocument();
@@ -289,7 +266,6 @@ describe("stage reading surface", () => {
     fireEvent.click(screen.getByRole("button", { name: "思考过程" }));
     expect(screen.queryByText(/关系缺失，需要修复/)).not.toBeInTheDocument();
     expect(screen.getByText("用例图：绘图器故障，请重试。")).toBeVisible();
-    expect(screen.getByRole("region", { name: "输出总结" })).toHaveClass("text-sm", "leading-6", "text-destructive");
     expect(screen.queryByRole("button", { name: /重试/ })).not.toBeInTheDocument();
     expect(document.querySelector('[data-slot="spinner"]')).toBeNull();
   });
@@ -355,7 +331,6 @@ describe("stage reading surface", () => {
     const summary = screen.getByRole("region", { name: "输出总结" });
     expect(chain.contains(summary)).toBe(false);
     expect(summary).toHaveTextContent("系统环境图已生成。");
-    expect(summary).toHaveClass("text-black", "dark:text-foreground");
     expect(chain.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

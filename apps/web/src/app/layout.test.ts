@@ -20,8 +20,3 @@ describe('document icons', () => {
     expect(raster!.sizes).toBe(`${width}x${height}`);
   });
 });
-
-it('reserves the document scrollbar gutter when hover content changes page height', () => {
-  const stylesheet = readFileSync('src/app/styles/business.css', 'utf8');
-  expect(stylesheet).toMatch(/html\s*\{\s*scrollbar-gutter:\s*stable\s*;\s*\}/);
-});

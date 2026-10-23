@@ -1,6 +1,6 @@
 // Verifies review claims and derives the exact changes authorized by confirmed facts.
 import { createHash } from "node:crypto";
-import { classifyDiagramReviewIssue, isExcludedDiagramReviewIssue, isUnverifiableReviewText, deriveTableModel, useCaseParticipationGaps, getModelGraphElements, validateModelInput, type DiagramModelSpec, type DesignDiagramModelSpec, type DiagramReviewFinding, type ModelingStage, type RequirementBaseline } from "@uml-platform/contracts";
+import { classifyDiagramReviewIssue, deriveTableModel, useCaseParticipationGaps, validateModelInput, type DiagramModelSpec, type DesignDiagramModelSpec, type DiagramReviewFinding, type ModelingStage, type RequirementBaseline } from "@uml-platform/contracts";
 
 export type ReviewModel = DiagramModelSpec | DesignDiagramModelSpec;
 export interface DiagramReviewBasis {
@@ -127,50 +127,6 @@ export function deriveAuthorizedRepairs(model: ReviewModel, basis: DiagramReview
   for (const finding of content) { put(expectedModel, finding.path!, finding.actual); finding.repairable = false; finding.category = "business_content"; }
   const structuralChanges = changes.filter((_, index) => !content.includes(findings[index]!));
   return { expectedModel, findings, changes: structuralChanges };
-}
-
-export function verifyReviewClaims(claims: DiagramReviewFinding[], model: ReviewModel, basis: DiagramReviewBasis | undefined): DiagramReviewFinding[] {
-  if (claims.some((claim) => claim.modelId !== (model.modelId ?? model.diagramKind))) throw new Error("检查输出引用了其他模型，无法核实");
-  const elements = new Set(getModelGraphElements(model).map((item) => item.id));
-  const relationships = new Set(("messages" in model ? model.messages : model.relationships).map((item) => item.id));
-  const authorized = basis ? deriveAuthorizedRepairs(model, basis).findings : [];
-  const diagnostics = basis ? validateModelInput(model, basis.stage).filter((item) => item.severity === "error") : [];
-  return claims.filter((claim) => !isExcludedDiagramReviewIssue(claim.observation)).map((claim) => {
-    const proof = authorized.find((item) => item.path === claim.path && stableJson(item.expected) === stableJson(claim.expected));
-    if (proof) return { ...proof, id: claim.id };
-    const unreadable = isUnverifiableReviewText(`${claim.code} ${claim.observation}`);
-    const inferred = claim.category;
-    const diagnostic = diagnostics.find((item) => (claim.path && item.path === claim.path) ||
-      ((item.elementId === claim.elementId || item.elementId === claim.relationshipId) && item.code === claim.code));
-    if (inferred === "model_structure" && diagnostic) return { ...claim, category: "model_structure", verification: "verified", repairable: true,
-      evidence: [{ source: "stage-contract", reference: diagnostic.code, detail: diagnostic.message }], path: diagnostic.path };
-    const structuralObservation = inferred === "model_structure" && !diagnostic;
-    const renderObservation = inferred === "render_mismatch";
-    // Provider evidence is retained as an observation, never promoted to service authorization.
-    return { ...claim, category: unreadable || structuralObservation || renderObservation ? "check_execution" : inferred === "other" || inferred === "business_constraint" ? "business_content" : inferred,
-      verification: unreadable || structuralObservation || renderObservation ? "inconclusive" : "unverified", repairable: false,
-      ...(structuralObservation ? { observation: `结构观察尚未得到规则核实：${claim.observation}` } : {}),
-      ...(renderObservation ? { observation: `图形观察尚未得到程序核实：${claim.observation}` } : {}),
-      evidence: claim.evidence.map((item) => ({ ...item, source: `provider-observation:${item.source}` })), ...(claim.elementId && !elements.has(claim.elementId) ? { elementId: undefined } : {}), ...(claim.relationshipId && !relationships.has(claim.relationshipId) ? { relationshipId: undefined } : {}) };
-  });
-}
-
-export function reviewObservationClaims(judgment: { passed: boolean; issues: string[]; findings: DiagramReviewFinding[] }, model: ReviewModel, layer: "model" | "image") {
-  const observations = judgment.findings.filter((item) => !isExcludedDiagramReviewIssue(item.observation));
-  for (const [index, observation] of filterDiagramReviewIssues(judgment.issues).entries()) {
-    if (observations.some((item) => item.observation === observation)) continue;
-    observations.push({ id: `issue:${index}`, modelId: model.modelId ?? model.diagramKind, layer, code: "provider-observation",
-      category: classifyDiagramReviewIssue(observation, layer), observation, evidence: [], verification: "unverified", repairable: false });
-  }
-  if (!observations.length && !judgment.issues.length && !judgment.findings.length && !judgment.passed) {
-    observations.push({ id: "no-conclusion", modelId: model.modelId ?? model.diagramKind, layer, code: "check-no-conclusion", category: "check_execution",
-      observation: "检查未返回可核实的结论", evidence: [], verification: "inconclusive", repairable: false });
-  }
-  return observations;
-}
-
-export function filterDiagramReviewIssues(issues: string[]): string[] {
-  return [...new Set(issues.flatMap((issue) => issue.split(/[；;\n]+/)).map((issue) => issue.trim()).filter((issue) => issue && !isExcludedDiagramReviewIssue(issue)))];
 }
 
 export function acceptRepairCandidate(candidate: ReviewModel, before: ReviewModel, authorized: AuthorizedRepair, basis: DiagramReviewBasis, validate?: (model: ReviewModel) => void) {

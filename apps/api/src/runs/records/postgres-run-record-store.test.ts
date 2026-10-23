@@ -1,5 +1,5 @@
 // Verifies the PostgreSQL-backed run record store contract used by API wiring.
-import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { RunEvent } from "@uml-platform/contracts";

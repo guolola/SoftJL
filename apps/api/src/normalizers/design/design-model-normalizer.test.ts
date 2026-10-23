@@ -1,9 +1,10 @@
 // Preserves design semantics and reports malformed models for structured repair.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
 import { deriveTableModel, ModelSemanticError } from "@uml-platform/contracts";
-import { parseDesignDiagramModelsOnly, parseDesignDiagramModelsResult } from "./design-model-normalizer.js";
+import { parseDesignDiagramModelsResult } from "./design-model-normalizer.js";
+const parseDesignDiagramModelsOnly = (value: string) => parseDesignDiagramModelsResult(JSON.stringify({ ...JSON.parse(value), designModelTraceability: [] }));
 const parse = (model: unknown) => parseDesignDiagramModelsOnly(JSON.stringify({ models: [model] })).models[0]!;
 test("empty envelope records consume no repair and every substantive model error retains its array position", () => {
   const model = modelFixture("design", "sequence");

@@ -1,4 +1,4 @@
-// Verifies shared schema compatibility and representative DTO contracts consumed across apps and packages.
+// Verifies current shared schemas and representative DTO contracts consumed across apps and packages.
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -246,39 +246,7 @@ test("contracts describe source-attributed requirement baselines", () => {
     sourceDocumentId: "inline-requirement",
     schemaVersion: 3 as const,
 
-      rules: ([
-      {
-        id: "REQ-001",
-        sourceFragment: "借阅者必须登录后才能借书。",
-        sourceLocation: { startOffset: 0, endOffset: 12, section: "input" },
-        type: "functional" as const,
-        actor: "借阅者",
-        subject: "借阅者",
-        action: "借书",
-        object: "图书",
-        condition: "登录后",
-        outcome: "系统允许借阅",
-        confidence: 0.86,
-        status: "accepted",
-        criticality: "critical",
-        acceptanceCriteria: ["借阅者未登录时不能借书。"],
-        fieldProvenance: {
-          actor: {
-            source: "source-text",
-            status: "accepted",
-            value: "借阅者",
-          },
-          object: {
-            source: "ai-suggested",
-            status: "pending-review",
-            value: "图书",
-            originalValue: null,
-            rationale: "原文说明借书行为，AI 建议对象为图书。",
-            issueIds: ["ISS-002"],
-          },
-        },
-      },
-    ]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
+      rules: [{ id: "REQ-001", requirementId: ("REQ-001"), text: ("借阅者必须登录后才能借书。"), sourceFragment: ("借阅者必须登录后才能借书。"), type: "functional" as const, origin: "generated" as const }],
     assumptions: [
       {
         id: "ASM-001",
@@ -600,25 +568,7 @@ test("contracts accept existing design context for incremental design runs", () 
     createdAt: "2026-06-05T00:00:00.000Z",
     schemaVersion: 3 as const,
 
-      rules: ([
-      {
-        id: "REQ-001",
-        sourceRuleId: "r1",
-        sourceFragment: "管理员可以借书和还书。",
-        type: "functional" as const,
-        actor: "管理员",
-        subject: "管理员",
-        action: "借书和还书",
-        object: "图书",
-        condition: null,
-        outcome: "完成借还书登记",
-        confidence: 0.9,
-        status: "accepted",
-        criticality: "high",
-        acceptanceCriteria: ["管理员完成借还书登记。"],
-        fieldProvenance: {},
-      },
-    ]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
+      rules: [{ id: "r1", requirementId: ("REQ-001"), text: ("管理员可以借书和还书。"), sourceFragment: ("管理员可以借书和还书。"), type: "functional" as const, origin: "generated" as const }],
     assumptions: [],
     conflicts: [],
     qualityReport: {
@@ -765,25 +715,7 @@ test("start run contracts accept optional project context", () => {
     createdAt: "2026-06-05T00:00:00.000Z",
     schemaVersion: 3 as const,
 
-      rules: ([
-      {
-        id: "REQ-001",
-        sourceRuleId: "r1",
-        sourceFragment: "生成设计模型",
-        type: "functional" as const,
-        actor: "用户",
-        subject: "用户",
-        action: "生成",
-        object: "设计模型",
-        condition: null,
-        outcome: "形成设计模型",
-        confidence: 0.9,
-        status: "accepted",
-        criticality: "high",
-        acceptanceCriteria: ["用户可以生成设计模型。"],
-        fieldProvenance: {},
-      },
-    ]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
+      rules: [{ id: "r1", requirementId: ("REQ-001"), text: ("生成设计模型"), sourceFragment: ("生成设计模型"), type: "functional" as const, origin: "generated" as const }],
     assumptions: [],
     conflicts: [],
     qualityReport: {
@@ -1731,6 +1663,17 @@ test("contracts accept managed provider references for project runs", () => {
 
   assert.equal(parsed.providerSettings.model, "gpt-5.5");
   assert.equal("providerConfigId" in parsed.providerSettings, true);
+});
+
+test("project provider references reject obsolete inline credentials even beside current fields", () => {
+  const request = { projectId: "project", requirementText: "生成模型", selectedDiagrams: ["usecase"] };
+  const credentials = { apiBaseUrl: "https://provider.example.test/v1", apiKey: "obsolete-inline-key", model: "model" };
+  for (const providerSettings of [credentials, { ...credentials, providerConfigId: "provider" }]) {
+    const input = { ...request, providerSettings };
+    const before = structuredClone(input);
+    assert.throws(() => startRunRequestSchema.parse(input));
+    assert.deepEqual(input, before);
+  }
 });
 
 test("contracts describe generated document library and generated output", () => {

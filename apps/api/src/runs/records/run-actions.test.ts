@@ -19,7 +19,7 @@ import {
 } from "./snapshots.js";
 import { createRunError } from "../pipelines/shared/errors.js";
 import { feasibilityInputsSchema } from "@uml-platform/contracts";
-import { createBusinessFlowArtifact } from "../../test-fixtures/feasibility/business-flow.js";
+import { createBusinessFlowArtifact } from "../../../tests/fixtures/feasibility/business-flow.js";
 
 const rule = {
   id: "REQ-001",

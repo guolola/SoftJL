@@ -96,26 +96,7 @@ test("software design documents preserve accepted numeric business constraints",
       sourceDocumentId: "requirements-input",
       schemaVersion: 3 as const,
 
-      rules: ([
-        {
-          id: "B03",
-          sourceFragment:
-            "报销总额达到5000元（包含正好5000元）时必须由直属经理审批。",
-          type: "business-rule" as const,
-          actor: "直属经理",
-          subject: "报销单",
-          action: "审批",
-          object: "报销单",
-          condition: "报销总额达到5000元（包含正好5000元）",
-          outcome: "进入直属经理审批",
-          confidence: 1,
-          status: "accepted",
-          criticality: "high",
-          acceptanceCriteria: ["正好5000元必须进入直属经理审批"],
-          fieldProvenance: {},
-          sourceRuleId: "R3",
-        },
-      ]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
+      rules: [{ id: "R3", requirementId: ("B03"), text: ("报销总额达到5000元（包含正好5000元）时必须由直属经理审批。"), sourceFragment: ("报销总额达到5000元（包含正好5000元）时必须由直属经理审批。"), type: "functional" as const, origin: "generated" as const }],
       assumptions: [],
       conflicts: [],
       qualityReport: {

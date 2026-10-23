@@ -2,6 +2,7 @@
 import type { StandardProjectState, DocumentSection } from "@uml-platform/contracts";
 import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
 import { renderDocumentBuffer } from "../render/document-renderer.js";
+import { buildStandardDiagram } from "../../normalizers/standard/diagram-source.js";
 
 export function standardDocumentSections(markdown: string, title: string): DocumentSection[] {
   const sections: DocumentSection[] = [];
@@ -26,10 +27,11 @@ export async function buildStandardDocument(state: StandardProjectState, kind: "
   const sections = standardDocumentSections(document.markdown, document.title);
   const kinds = kind === "requirementsSpec" ? ["function", "usecase", "activity"] : ["architecture", "er", "class", "sequence", "table"];
   const sources = new Map<string, string>();
-  const diagrams = (document.diagrams ?? Object.values(state.diagrams)).filter(item => item.status === "completed" && item.source && kinds.includes(item.kind));
+  const diagrams = (document.diagrams ?? Object.values(state.diagrams)).filter(item => item.status === "completed" && kinds.includes(item.kind));
   if (diagrams.length) sections.push({ level: 1, title: "模型图附录", body: [] });
   for (const diagram of diagrams) {
-    sources.set(diagram.id, diagram.source!);
+    // Render the saved model snapshot through the same contract as SVG generation, never a legacy source fallback.
+    sources.set(diagram.id, buildStandardDiagram(diagram.kind, diagram.model).source);
     sections.push({ level: 2, title: diagram.title, body: [], diagramKind: diagram.kind === "er" ? "class" : diagram.kind, diagramModelId: diagram.id });
   }
   // Ordinary projects share cover, numbering, fonts, contents and editor files with professional documents.

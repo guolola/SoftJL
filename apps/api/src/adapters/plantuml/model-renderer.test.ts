@@ -6,7 +6,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { deriveTableModel, getModelGraphElements, getStageModelSchemas, type AnyDiagramModel, type ModelingStage } from "@uml-platform/contracts";
-import { modelFixture, objectActivityFixture, parallelObjectActivityFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
+import { modelFixture, objectActivityFixture, parallelObjectActivityFixture } from "@uml-platform/contracts/testing";
 import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "./model-renderer.js";
 import { umlAlias } from "./plantuml-text.js";
 
@@ -14,7 +14,7 @@ function draw(model: AnyDiagramModel, stage: ModelingStage = "design") {
   return (stage === "design" ? generateDesignPlantUmlArtifacts([model as never]) : generatePlantUmlArtifacts([model as never], stage))[0]!;
 }
 const root = fileURLToPath(new URL("../../../../../", import.meta.url));
-const jars = resolve(root, "plantuml/build/libs");
+const jars = resolve(root, "plantuml");
 const jar = existsSync(jars) ? readdirSync(jars).find((file) => /^plantuml-.*\.jar$/.test(file) && !/sources|javadoc/.test(file)) : undefined;
 // CI runs on Linux while local verification may run on Windows.
 const java = process.env.JAVA_HOME ? resolve(process.env.JAVA_HOME, "bin", process.platform === "win32" ? "java.exe" : "java") : process.platform === "win32" ? "C:/Program Files/Eclipse Adoptium/jdk-21.0.12.101-hotspot/bin/java.exe" : "java";
@@ -38,7 +38,7 @@ for (const stage of ["feasibility", "requirements", "design"] as const) for (con
     assert.deepEqual(artifact, draw({ ...model, notes: [] }, stage), "Model notes must not affect diagrams or their review mapping");
     for (const item of getModelGraphElements(model)) {
       assert.ok(artifact.renderMapping?.elements.some((entry) => entry.elementId === item.id));
-      if (kind !== "function") assert.ok(svg.includes(umlAlias(item.id)), `${kind}: SVG omitted ${item.id}`);
+      if (kind !== "function" && !(kind === "activity" && artifact.renderMapping?.mode === "native")) assert.ok(svg.includes(umlAlias(item.id)), `${kind}: SVG omitted ${item.id}`);
     }
     const edges = "messages" in model ? model.messages : model.relationships;
     for (const edge of edges) assert.ok(artifact.renderMapping?.relationships.some((entry) => entry.relationshipId === edge.id));
@@ -151,9 +151,9 @@ test("review mapping preserves labels, symbols, ownership and distinct parallel 
   model.relationships.push({ ...model.relationships[1]!, id: "alternate", guard: "数量<10" });
   const artifact = draw(model, "requirements");
   assert.equal(artifact.renderMapping?.relationships.find((item) => item.relationshipId === "r2")?.label, "数量>=10");
-  assert.ok(artifact.renderMapping?.relationships.find((item) => item.relationshipId === "r2")?.statement?.includes("数量>=10"));
-  assert.ok(artifact.renderMapping?.relationships.find((item) => item.relationshipId === "alternate")?.statement?.includes("数量<10"));
-  assert.equal(artifact.renderMapping?.relationships[0]?.symbol, "-->");
+  assert.ok(artifact.renderMapping?.relationships.find((item) => item.relationshipId === "r2")?.statement?.includes("数量&#62;=10"));
+  assert.ok(artifact.renderMapping?.relationships.find((item) => item.relationshipId === "alternate")?.statement?.includes("数量&#60;10"));
+  assert.equal(artifact.renderMapping?.relationships[0]?.symbol, "->");
   assert.equal(artifact.renderMapping?.elements.find((item) => item.elementId === "work")?.ownerId, "system");
   assert.ok(!artifact.renderMapping?.auxiliary?.some((item) => item.kind === "legend"));
   compile(artifact.source);

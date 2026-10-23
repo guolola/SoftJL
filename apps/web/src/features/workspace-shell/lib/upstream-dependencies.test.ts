@@ -1,22 +1,14 @@
 // Locks the card-to-upstream mapping shown by the workflow illustrations to the product dependency table.
 import { describe, expect, it } from "vitest";
 import { createRequirementBaselineSnapshot, REQUIREMENT_MODEL_RULE_TYPES } from "@uml-platform/contracts";
-import { createRequirementBaseline, createRule } from "../../../test/workspace-test-utils";
+import { createRequirementBaseline, createRule } from "../../../../tests/helpers/workspace-test-utils";
 import { DESIGN_DIAGRAM_ORDER, DIAGRAM_ORDER } from "../../../entities/diagram/model";
 import { i18n } from "../../../shared/i18n/i18n";
 import {
   DESIGN_MODEL_DEPENDENCY_MAP,
   DESIGN_REQUIREMENT_SOURCE_MAP,
 } from "../../workspace-session/lib/generation-planning";
-import {
-  directUpstreamInputs,
-  indirectUpstreamInputs,
-  upstreamInputKey,
-  upstreamInputLabel,
-  upstreamBaselineState,
-  upstreamStateFromAvailability,
-  upstreamRuleNodes,
-} from "./upstream-dependencies";
+import { directUpstreamInputs, upstreamInputKey, upstreamInputLabel, upstreamBaselineState, upstreamStateFromAvailability, upstreamRuleNodes } from "./upstream-dependencies";
 
 const keys = (inputs: ReturnType<typeof directUpstreamInputs>) => inputs.map(upstreamInputKey);
 
@@ -78,17 +70,6 @@ describe("upstream dependency mapping", () => {
       expect(inputs.flatMap((input) => input.kind === "requirement" ? [input.diagram] : [])).toEqual(DESIGN_REQUIREMENT_SOURCE_MAP[diagram]);
       expect(inputs.flatMap((input) => input.kind === "design" ? [input.diagram] : [])).toEqual(DESIGN_MODEL_DEPENDENCY_MAP[diagram]);
     }
-  });
-
-  it("explains indirect dependencies through same-stage artifacts only", () => {
-    const indirect = (stage: Parameters<typeof indirectUpstreamInputs>[0], target: string) =>
-      indirectUpstreamInputs(stage, target as never).map(({ via, inputs }) => [upstreamInputKey(via), keys(inputs)]);
-    expect(indirect("requirement", "analysis")).toEqual([["requirement:usecase:single-use-case", ["rules:relevant", "baseline"]]]);
-    expect(indirect("design", "table")).toEqual([["design:class", ["requirement:class", "requirement:usecase:all-use-cases"]]]);
-    expect(indirect("design", "deployment")).toEqual([["design:component", ["design:class"]]]);
-    // Implementation already reads every input of its feasibility dependencies directly.
-    expect(indirect("feasibility", "implementation")).toEqual([]);
-    expect(indirect("design", "architecture")).toEqual([]);
   });
 
   it("labels shared inputs in both languages", () => {

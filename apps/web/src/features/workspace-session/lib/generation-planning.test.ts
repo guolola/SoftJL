@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { planRequirementAutoUpstream, resolveDesignGenerationDiagrams } from "./generation-planning";
 import { runSnapshotSchema } from "@uml-platform/contracts";
-import { librarySeatDemoFixture } from "../../../../../api/src/runs/demo/fixtures/library-seat-demo-fixture";
+import { librarySeatDemoFixture } from "@uml-platform/demo-fixtures";
 import { designGenerationSubtasks, requirementGenerationSubtasks, planDesignRequirementAutoUpstream } from "./generation-planning";
 
 describe("candidate input planning", () => {

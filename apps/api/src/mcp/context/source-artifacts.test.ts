@@ -1,7 +1,7 @@
 // Exercises saved design-to-requirement traces through source extraction, coding scopes and acceptance tasks.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { designDiagramModelSpecSchema, type AtomicRequirement, type ModelElementRef } from "@uml-platform/contracts";
+import { designDiagramModelSpecSchema, type ModelElementRef } from "@uml-platform/contracts";
 import { extractSourceArtifacts } from "./source-artifacts.js";
 import { buildContext } from "./implementation-context.js";
 import { buildImplementationTasks } from "./implementation-tasks.js";
@@ -14,11 +14,6 @@ const classModel = (modelId: string, elementId = "loan") => ({
   classes: [{ id: elementId, name: "Loan", attributes: [], operations: [] }], interfaces: [], enums: [], relationships: [],
 });
 function savedState() {
-  const requirement: AtomicRequirement = {
-    id: "REQ-001", sourceRuleId: "r1", sourceFragment: "private-requirement-body", type: "functional" as const,
-    actor: "学生", subject: "系统", action: "借阅", object: "图书", condition: null, outcome: "保存记录",
-    confidence: 1, status: "accepted", criticality: "high", acceptanceCriteria: ["借阅成功后保存一条记录"], fieldProvenance: {},
-  };
   const state = {
     rules: [{ id: "r1", type: "functional" as const, text: "private-rule-body",  }],
     requirementBaseline: {
@@ -26,10 +21,10 @@ function savedState() {
           runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
            assumptions: [], conflicts: [],
           qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
-          rules: ([requirement]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id,
-            text: "借阅成功后保存一条记录", sourceFragment: item.sourceFragment, origin: "generated",
+          rules: [{ id: "r1", requirementId: "REQ-001",
+            text: "借阅成功后保存一条记录", sourceFragment: "private-requirement-body", origin: "generated",
             type: "functional" as const,
-          })),
+          }],
         },
     models: { domain: classModel("domain") },
     requirementModelTraceability: [{ ruleId: "r1", target: ref("domain", "loan") }],

@@ -1,11 +1,11 @@
 // Restores one selected task and reconnects without restarting generation or mixing tasks.
 import { useEffect, useState } from "react";
 import type { RunEvent } from "@uml-platform/contracts";
-import { ApiClientError } from "../../../services/api-client";
+import { ApiClientError } from "../../../services/api-client/index";
 import { readRunTranscript, streamRunTranscript } from "../../../services/workspace-repository/run-transcript";
 import { createProgressTranscriptAccumulator } from "../../workspace-session/lib/run-transcript";
 
-export function useRunTranscript(projectId?: string | null, runId?: string | null, kind?: string | null) {
+export function useRunTranscript(projectId?: string | null, runId?: string | null) {
   const key = `${projectId ?? ""}:${runId ?? ""}`;
   const [state, setState] = useState<{ key: string; events: RunEvent[]; status?: string; model?: string | null; loading: boolean; disconnected: boolean; unavailable: boolean }>({ key, events: [], loading: false, disconnected: false, unavailable: false });
   useEffect(() => {
@@ -40,7 +40,7 @@ export function useRunTranscript(projectId?: string | null, runId?: string | nul
         cursor = Math.max(cursor, result.cursor ?? 0);
         setState((current) => ({ ...current, status: result.run.status, model: result.run.model }));
         if (!["queued", "running"].includes(result.run.status)) return;
-        await streamRunTranscript(projectId, runId, result.run.runKind ?? kind ?? "requirements", (event) => { delay = 1000; receive(event); }, controller.signal, cursor);
+        await streamRunTranscript(projectId, runId, result.run.runKind, (event) => { delay = 1000; receive(event); }, controller.signal, cursor);
       } catch (error) {
         flush();
         if (controller.signal.aborted || terminal) return;
@@ -55,6 +55,6 @@ export function useRunTranscript(projectId?: string | null, runId?: string | nul
     };
     void connect();
     return () => { controller.abort(); clearTimeout(timer); clearTimeout(flushTimer); };
-  }, [key, projectId, runId, kind]);
+  }, [key, projectId, runId]);
   return state.key === key ? state : { key, events: [], loading: Boolean(projectId && runId), disconnected: false, unavailable: false };
 }

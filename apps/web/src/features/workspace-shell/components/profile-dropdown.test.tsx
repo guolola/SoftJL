@@ -3,7 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it, vi } from 'vitest';
-import { i18n } from '../../../shared/i18n';
+import { i18n } from '../../../shared/i18n/index';
 import { ProfileDropdown } from './profile-dropdown';
 describe('header profile dropdown', () => {
   it('shows the available entries in order and opens each destination', async () => {

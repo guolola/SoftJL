@@ -1,15 +1,5 @@
-// Persists only the login identifier and removes passwords saved by older clients.
+// Persists the optional login identifier without storing authentication credentials.
 const REMEMBERED_LOGIN_IDENTIFIER_KEY = "uml-auth-remembered-username";
-const LEGACY_REMEMBERED_LOGIN_PASSWORD_KEY = "uml-auth-remembered-password";
-
-export function clearLegacyRememberedLoginPassword() {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(LEGACY_REMEMBERED_LOGIN_PASSWORD_KEY);
-  } catch {
-    // Storage may be blocked; optional preferences must not prevent authentication.
-  }
-}
 
 export function readRememberedLoginIdentifier() {
   if (typeof window === "undefined") return "";
@@ -23,7 +13,6 @@ export function readRememberedLoginIdentifier() {
 }
 
 export function writeRememberedLoginIdentifier(identifier: string, remember: boolean) {
-  clearLegacyRememberedLoginPassword();
   if (typeof window === "undefined") return;
   try {
     if (remember) {

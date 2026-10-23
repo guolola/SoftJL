@@ -9,7 +9,6 @@ import {
   mcpUpdatesInputSchema,
   assertCurrentWorkspaceState,
   resolveProjectMode,
-  standardProjectStateSchema,
   type McpScope,
 } from "@uml-platform/contracts";
 import type { McpConnection } from "../records/mcp-store.js";
@@ -92,7 +91,6 @@ export function createMcpToolService(
     const projectMode = resolveProjectMode(project.projectMode);
     const state = workspace?.state ?? {};
     if (projectMode === "professional") assertCurrentWorkspaceState(state);
-    else if (state.standardProject !== undefined) standardProjectStateSchema.parse(state.standardProject);
     const context = projectMode === "standard"
       ? buildStandardContext(state, normalizeScope(scope))
       : withImplementationArtifacts(buildContext(state, normalizeScope(scope)), projectId, access.config.origin);

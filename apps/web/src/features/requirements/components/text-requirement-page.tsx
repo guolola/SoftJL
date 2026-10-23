@@ -490,14 +490,12 @@ export function TextRequirementView({
     <div className="grid gap-4">
     <RequirementRulesTable
       canEditRequirements={canEditRequirements}
-      currentRulePage={currentRulePage}
       deleteRequirementRule={deleteRequirementRule}
       editBlockedReason={editBlockedReason}
       emptyRuleSlots={emptyRuleSlots}
       filteredRules={filteredRules}
       firstRuleIndex={firstRuleIndex}
       generating={generating}
-      lastRuleIndex={lastRuleIndex}
       onAddRule={() => setNewRuleDialogOpen(true)}
       onViewRule={setDetailRuleId}
       pagedRules={pagedRules}

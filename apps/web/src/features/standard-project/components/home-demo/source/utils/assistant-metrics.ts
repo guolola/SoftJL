@@ -11,14 +11,6 @@ export function getTextLength(parts: readonly TextPartLike[]): number {
   return length;
 }
 
-export function countToolCalls(parts: readonly { type: string }[]): number {
-  let count = 0;
-  for (const part of parts) {
-    if (part.type === "tool-call") count += 1;
-  }
-  return count;
-}
-
 export function getToolCallToolNames(
   parts: readonly ToolCallPartLike[],
 ): string[] {

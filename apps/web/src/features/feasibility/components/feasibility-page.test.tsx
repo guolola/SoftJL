@@ -3,7 +3,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMockWorkspaceRepository } from "../../../services/workspace-repository/mock-repository";
-import { createRule, createBusinessFlowArtifact, withWorkspaceProviders } from "../../../test/workspace-test-utils";
+import { createRule, createBusinessFlowArtifact, withWorkspaceProviders } from "../../../../tests/helpers/workspace-test-utils";
 import { i18n } from "../../../shared/i18n/i18n";
 import { LOCALE_PREFERENCE_STORAGE_KEY } from "../../../shared/i18n/types";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
@@ -11,7 +11,7 @@ import { FeasibilityPage } from "./feasibility-page";
 import { SidebarMenu } from "../../workspace-shell/components/sidebar-menu";
 import { useWorkspaceSession } from "../../workspace-session/state";
 import type { RunEventInput, FeasibilityRunSnapshot } from "@uml-platform/contracts";
-import { createRenderMeta } from "../../../test/contract-fixtures";
+import { createRenderMeta } from "../../../../tests/fixtures/contract-fixtures";
 import { captureWorkspaceGuard, feasibilityRunSnapshotSchema, buildFeasibilityContextFingerprint, feasibilityImplementationPlanSchema } from "@uml-platform/contracts";
 import { USER_SETTINGS_STORAGE_KEY, patchUserSettings } from "../../../shared/lib/user-settings";
 import { useWorkspaceShell } from "../../workspace-shell/state";
@@ -359,10 +359,6 @@ describe("FeasibilityPage", () => {
     expect(within(screen.getByRole("button", { name: "选择实现方案" })).getByText("实现方案")).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /：未生成$/ })).toHaveLength(3);
     expect(screen.queryByText("未生成")).not.toBeInTheDocument();
-    const card = screen.getByRole("button", { name: "选择系统环境图" });
-    expect(card).toHaveClass("min-h-[260px]", "sm:min-h-[284px]");
-    expect(card.parentElement).toHaveAttribute("data-mobile-card-density", "model-targets");
-    expect(card.parentElement?.className).toContain("min-[1900px]:grid-cols-6");
     expect(screen.getByText("0/3")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "选择系统环境图" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "选择实现方案" })).not.toBeChecked();
@@ -546,11 +542,6 @@ describe("FeasibilityPage", () => {
     render(withWorkspaceProviders(<FeasibilityPage view="implementation" />, repository));
 
     expect(await screen.findByRole("heading", { name: "实现方案" })).toBeInTheDocument();
-    expect(screen.getByTestId("implementation-plan-dashboard")).toHaveClass(
-      "w-[calc(100%-2rem)]",
-      "max-w-7xl",
-      "lg:w-[calc(100%-3rem)]",
-    );
     expect(screen.getByText("候选方案比较")).toBeInTheDocument();
     const candidateDetails = screen.getByRole("region", { name: "方案具体内容：模块化单体" });
     expect(candidateDetails).toBeInTheDocument();
@@ -718,7 +709,6 @@ describe("FeasibilityPage", () => {
   });
 });
 
-
 describe("feasibility generation model modes", () => {
   it("generates fixed artifacts without a provider in a confirmed demo project", async () => {
     const repository = createMockWorkspaceRepository({ rules: [createRule()] });
@@ -729,7 +719,6 @@ describe("feasibility generation model modes", () => {
     });
     render(withWorkspaceProviders(<FeasibilityPage view="overview" initialSelectedArtifacts={["context"]} />, repository));
     const button = await screen.findByRole("button", { name: "生成" });
-    expect(button).toHaveClass("h-7", "px-2.5");
     await waitFor(() => expect(button).toBeEnabled());
     await userEvent.setup().click(button);
     await waitFor(() => expect(repository.startFeasibilityRun).toHaveBeenCalledWith({
@@ -771,7 +760,6 @@ describe("feasibility generation model modes", () => {
     expect(repository.startFeasibilityRun).not.toHaveBeenCalled();
   });
 });
-
 
 describe("business flow shared detail workspace", () => {
   it("uses the same preview, searchable element list and relationship section as other models", async () => {

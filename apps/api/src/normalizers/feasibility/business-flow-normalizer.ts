@@ -13,7 +13,6 @@ function omitNullFields(value: unknown): unknown {
 
 export function normalizeFeasibilityBusinessFlow(
   value: unknown,
-  _validRequirementIds: ReadonlySet<string>,
 ): FeasibilityBusinessFlow {
   // Strict providers encode absent optional fields as null; required fields still fail schema validation.
   const input = omitNullFields(value);

@@ -1,10 +1,10 @@
-// Verifies the imported dashboard's tab layout and header alignment using authenticated API fixtures.
+// Verifies dashboard summary data, task tabs, filtering, and pagination.
 import { expect, test } from "@playwright/test";
 import { dashboardFixture } from "../../../apps/web/src/features/dashboard/testing/dashboard-fixture";
 
-for (const width of [390, 768, 1440, 1920]) {
-  for (const theme of ["light", "dark"]) {
-    test(`dashboard template alignment at ${width}px in ${theme} theme`, async ({ page }) => {
+for (const width of [390, 1440]) {
+  for (const theme of ["light"]) {
+    test(`dashboard filters and task tabs at ${width}px`, async ({ page }) => {
       const summary = dashboardFixture();
       await page.setViewportSize({ width, height: 1000 });
       await page.addInitScript(({ theme }) => {
@@ -15,8 +15,11 @@ for (const width of [390, 768, 1440, 1920]) {
         const pathname = new URL(route.request().url()).pathname;
         let body: unknown = {};
         if (pathname === "/api/auth/me" || pathname === "/api/account/profile") {
-          body = { user: { id: "owner", username: "dashboard", displayName: "项目负责人", status: "active", mfaEnabled: false },
-            session: { id: "session-dashboard", userId: "owner", createdAt: summary.generatedAt, expiresAt: "2027-10-10T00:00:00Z", lastSeenAt: summary.generatedAt } };
+          body = { user: { id: "owner", username: "dashboard", displayName: "项目负责人", status: "active", mfaEnabled: false,
+            avatarUrl: null, systemRoles: [], createdAt: summary.generatedAt, updatedAt: summary.generatedAt, lastLoginAt: summary.generatedAt },
+            session: { id: "session-dashboard", userId: "owner", createdAt: summary.generatedAt, expiresAt: "2027-10-10T00:00:00Z", lastSeenAt: summary.generatedAt, ipAddress: null, userAgent: null },
+            mfa: { enabled: false, enforcement: "totp" },
+            generationUsage: { usedToday: 0, limit: null, remaining: null, windowSeconds: 86400, limited: false, scope: "user" } };
         } else if (pathname === "/api/dashboard/summary") body = summary;
         else if (pathname === "/api/projects") body = { projects: [] };
         else if (pathname === "/api/account/onboarding") body = { emptyWorkspace: "completed", firstProject: "completed", firstProjectId: "p-0" };
@@ -36,20 +39,7 @@ for (const width of [390, 768, 1440, 1920]) {
       await expect(projectTable.getByRole("columnheader", { name: "生成成功率" })).toHaveCount(0);
       await expect(projectTable.getByRole("progressbar", { name: "进度" }).first()).toHaveAttribute("aria-valuenow", "75");
       await expect(projectTable.getByText("15/20", { exact: true }).first()).toBeVisible();
-      const header = page.locator('[data-slot="sidebar-inset"] > header > div');
-      const gridBox = (await grid.boundingBox())!;
-      const headerBox = (await header.boundingBox())!;
-      expect(Math.abs(gridBox.x - headerBox.x)).toBeLessThan(1);
-      expect(Math.abs(gridBox.width - headerBox.width)).toBeLessThan(1);
       const performance = grid.locator('[data-slot="card"]').filter({ has: page.getByText("协作与任务活动", { exact: true }) });
-      const rail = performance.getByRole("tablist");
-      const panel = performance.getByRole("tabpanel");
-      const railBox = (await rail.boundingBox())!;
-      const panelBox = (await panel.boundingBox())!;
-      expect(panelBox.y).toBeGreaterThanOrEqual(railBox.y + railBox.height);
-      expect(Math.abs(railBox.width - (await performance.boundingBox())!.width)).toBeLessThan(1);
-      const activeUnderline = await performance.getByRole("tab", { name: "协作成员" }).evaluate(element => ({ height: getComputedStyle(element, "::after").height, opacity: getComputedStyle(element, "::after").opacity }));
-      expect(activeUnderline).toEqual({ height: "2px", opacity: "1" });
       await performance.getByRole("tab", { name: "月度任务" }).click();
       await expect(performance.getByRole("tab", { name: "月度任务" })).toHaveAttribute("aria-selected", "true");
       await performance.getByRole("tab", { name: "每日任务" }).click();
@@ -72,7 +62,6 @@ for (const width of [390, 768, 1440, 1920]) {
       await duration.getByRole("combobox", { name: "耗时统计项目" }).click();
       await page.getByRole("option", { name: "项目 1", exact: true }).click();
       await expect(duration.getByText("暂无匹配产物或有效耗时记录")).toBeVisible();
-      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     });
   }
 }

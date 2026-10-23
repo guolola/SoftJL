@@ -5,8 +5,8 @@ import type {
   ChatMessage,
   LlmTransport,
   StreamChatCompletionInput,
-} from "../../llm.js";
-import { ProviderHttpError } from "../../llm.js";
+} from "./llm-transport.js";
+import { ProviderHttpError } from "./llm-transport.js";
 import {
   newTelemetryId,
   type RunTelemetryStore,

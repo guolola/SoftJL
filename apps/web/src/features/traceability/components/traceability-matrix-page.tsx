@@ -227,15 +227,7 @@ export function TraceabilityMatrixPage({
             traceabilityCopy,
           )
         : isDesign
-        ? buildDesignRows(
-            rules,
-            models,
-            designModels,
-            requirementModelTraceability,
-            designModelTraceability,
-            scope,
-            traceabilityCopy,
-          )
+        ? buildDesignRows(models, designModels, designModelTraceability, scope, traceabilityCopy)
         : buildRequirementRows(
             rules,
             models,

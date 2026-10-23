@@ -232,9 +232,9 @@ test("postgres document library uses DB metadata as the document source of truth
     );
 
     assert.equal(await library.deleteDocument("workspace-postgres", saved.id), true);
-    assert.deepEqual(await library.listDocuments("workspace-postgres"), []);
+    assert.deepEqual(await library.listAllDocuments(), []);
     assert.equal(
-      (await library.listDocuments("workspace-postgres", {
+      (await library.listAllDocuments({
         includeDeleted: true,
       }))[0]?.status,
       "deleted",
@@ -243,7 +243,7 @@ test("postgres document library uses DB metadata as the document source of truth
     const restored = await library.restoreDocument("workspace-postgres", saved.id);
     assert.equal(restored?.status, "active");
     assert.equal(
-      (await library.listDocuments("workspace-postgres"))[0]?.id,
+      (await library.listAllDocuments())[0]?.id,
       saved.id,
     );
   } finally {

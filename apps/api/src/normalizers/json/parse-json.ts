@@ -65,24 +65,6 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-export function normalizeStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .flatMap((item) => normalizeStringArray(item))
-      .filter((item, index, array) => item.trim().length > 0 && array.indexOf(item) === index);
-  }
-  if (typeof value === "string") {
-    return value
-      .split(/\r?\n|[;；]/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  if (value === null || value === undefined) {
-    return [];
-  }
-  return [String(value).trim()].filter(Boolean);
-}
-
 export function ensureArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }

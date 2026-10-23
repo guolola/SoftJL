@@ -2,7 +2,7 @@
 import { useEffect, useRef } from "react";
 import type { DesignRunSnapshot, FeasibilityArtifactKind, FeasibilityRunSnapshot, RunEventInput, RunSnapshot } from "@uml-platform/contracts";
 import { completedFeasibilityArtifacts, feasibilityArtifactFromEvent } from "../../feasibility/lib/feasibility-run-progress";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import type { GenerationTask, GenerationTaskRunSummary } from "../model/session-state";
 import { shouldRefreshRunSnapshotFromEvent } from "./run-events";
 

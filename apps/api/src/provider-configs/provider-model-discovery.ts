@@ -14,7 +14,7 @@ import {
   ProviderHttpError,
   listOpenAiCompatibleModels,
   probeOpenAiCompatibleStreamingChat,
-} from "../llm.js";
+} from "../adapters/llm/llm-transport.js";
 import type { ProviderHostnameResolver } from "./provider-url-policy.js";
 
 type RawProviderModel = Pick<

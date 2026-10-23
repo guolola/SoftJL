@@ -67,7 +67,7 @@ export function StandardDiagramDetailPage({ diagram, disabled, canEdit, onSave }
             normalizedSvgMarkup={svg} svgMarkup={svg} svgUrl={viewport.svgUrl} svgScale={viewport.svgScale}
             svgCanvasRef={viewport.svgCanvasRef} isPanning={viewport.isPanning} svgPanOffset={viewport.svgPanOffset}
             onUpdateSvgScale={viewport.updateSvgScale} onStartPan={viewport.startCanvasPan} onMovePan={viewport.moveCanvasPan} onStopPan={viewport.stopCanvasPan}
-            highlighted={highlighted} highlightAliases={highlighted ? [highlighted.id, `node_${highlighted.id.replace(/[_-]/g, char => `_${char.charCodeAt(0).toString(16)}_`)}`] : []} highlightRequestId={highlightRequest}
+            highlighted={highlighted} highlightAliases={highlighted ? [highlighted.id, `n_${Array.from(new TextEncoder().encode(highlighted.id), byte => byte.toString(16).padStart(2, "0")).join("")}`] : []} highlightRequestId={highlightRequest}
             diagramError={diagram.error ? { error: diagram.error } : null} diagramLabel={diagram.title}
             isOverviewPanelOpen={overview} overviewPanelId={overviewId} compactViewport={compact}
             onOpenOverviewPanel={() => setOverview(true)} onCloseOverviewPanel={() => setOverview(false)} onFocusAction={() => setSelectedId(null)}

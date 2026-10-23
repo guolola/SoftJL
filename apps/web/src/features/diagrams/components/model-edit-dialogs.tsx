@@ -31,6 +31,8 @@ type DeleteTargetDialogState =
   | null;
 
 export function ModelEditDialogs({
+  commitError,
+  readOnly = false,
   elementEditor,
   relationEditor,
   deleteTarget,
@@ -54,6 +56,8 @@ export function ModelEditDialogs({
   elementValidationMessage,
   relationValidationMessage,
 }: {
+  commitError?: string;
+  readOnly?: boolean;
   elementEditor: ElementEditorDialogState;
   relationEditor: RelationEditorDialogState;
   deleteTarget: DeleteTargetDialogState;
@@ -111,6 +115,7 @@ export function ModelEditDialogs({
               {elementValidationMessage}
             </FieldError>
           ) : null}
+          {commitError && <p role="alert" className="text-sm text-destructive">{commitError}</p>}
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
               type="button"
@@ -123,7 +128,7 @@ export function ModelEditDialogs({
             <Button
               type="button"
               onClick={onCommitElement}
-              disabled={!hasEditingElement || saving || Boolean(elementValidationMessage)}
+              disabled={!hasEditingElement || saving || readOnly || Boolean(elementValidationMessage)}
             >
               {saving ? <Loader2 className="size-4 animate-spin" /> : null}
               {elementEditor?.mode === "create" ? "确认添加" : "确认编辑"}
@@ -162,6 +167,7 @@ export function ModelEditDialogs({
               {relationValidationMessage}
             </FieldError>
           ) : null}
+          {commitError && <p role="alert" className="text-sm text-destructive">{commitError}</p>}
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
               type="button"
@@ -174,7 +180,7 @@ export function ModelEditDialogs({
             <Button
               type="button"
               onClick={onCommitRelation}
-              disabled={!hasEditingRelation || saving || Boolean(relationValidationMessage)}
+              disabled={!hasEditingRelation || saving || readOnly || Boolean(relationValidationMessage)}
             >
               {saving ? <Loader2 className="size-4 animate-spin" /> : null}
               {relationEditor?.mode === "create" ? "确认添加" : "确认编辑"}
@@ -196,9 +202,10 @@ export function ModelEditDialogs({
                 : "删除关系"}
             </DialogTitle>
             <DialogDescription>
-              将删除{deleteTarget?.label ?? "当前项"}，并清理相关引用或关系。确认删除后会自动保存并更新当前图。
+              将删除{deleteTarget?.label ?? "当前项"}。确认后会校验模型、保存并更新当前图；若仍有引用，请先调整相关关系或元素。
             </DialogDescription>
           </DialogHeader>
+          {commitError && <p role="alert" className="text-sm text-destructive">{commitError}</p>}
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
               type="button"
@@ -212,7 +219,7 @@ export function ModelEditDialogs({
               type="button"
               variant="destructive"
               onClick={onConfirmDelete}
-              disabled={saving}
+              disabled={saving || readOnly}
             >
               {saving ? <Loader2 className="size-4 animate-spin" /> : null}
               确认删除

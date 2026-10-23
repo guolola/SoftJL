@@ -1,10 +1,9 @@
-// Measures scoped review inputs and retained model-repair messages without provider calls or billing estimates.
+// Measures scoped sequence source inputs and retained model-repair messages without provider calls or billing estimates.
 import assert from "node:assert/strict";
 import { getEncoding } from "js-tiktoken";
 import { createRequirementBaselineSnapshot } from "@uml-platform/contracts";
-import { reviewPromptContext } from "../../../packages/prompts/src/prompt-context.ts";
-import { modelFixture } from "../../../packages/contracts/src/testing/model-fixtures.ts";
-import { buildGenerateDesignSequencePrompt } from "@uml-platform/prompts";
+import { modelFixture } from "@uml-platform/contracts/testing";
+import { buildGenerateDesignSequencePrompt, scopeUseCaseModelForPrompt } from "@uml-platform/prompts";
 import { ModelGenerationConversation } from "../src/runs/pipelines/shared/model-generation-conversation.ts";
 import { createMessages } from "../src/runs/pipelines/shared/llm-messages.ts";
 
@@ -19,7 +18,8 @@ usecase.relationships = [{ id: "include", sourceId: "wanted", targetId: "include
 const basis = { baseline, rules: [rule], upstreamModels: [usecase, ...Array.from({ length: 8 }, (_, i) => ({
   ...modelFixture("requirements", "class"), modelId: `unrelated-${i}`, notes: ["其他业务说明。".repeat(100)],
 }))] };
-const scoped = reviewPromptContext("design", model, basis);
+// Reuse the current pipeline's source selector; the broad fixture is only a synthetic comparison input.
+const scoped = { ...basis, upstreamModels: [scopeUseCaseModelForPrompt(usecase, "wanted")] };
 assert.deepEqual(scoped.upstreamModels[0].useCases.map(item => item.id), ["wanted", "included"]);
 assert.ok(JSON.stringify(scoped).includes(rule.text));
 
@@ -39,7 +39,7 @@ const tokens = value => encoding.encode(typeof value === "string" ? value : JSON
 const comparison = (before, after) => ({ beforeTokens: tokens(before), afterTokens: tokens(after),
   reductionPercent: Number(((1 - tokens(after) / tokens(before)) * 100).toFixed(1)) });
 console.log(JSON.stringify({ fixture: "20 use cases, 8 unrelated models, one sequence model with missing provenance", tokenizer: "cl100k_base",
-  reviewContext: comparison({ basis, model }, { basis: scoped, model }),
+  sequenceSourceContext: comparison({ basis, model }, { basis: scoped, model }),
   modelRepairConversation: { initialRequestTokens: tokens(initial), firstRepairRequestTokens: tokens(repairedRequest),
     retainedPrefixTokens: tokens(initial), addedMessagesTokens: tokens(repairedRequest) - tokens(initial) },
   scope: "Synthetic request inputs only. Repair retains history and adds input; no cache, total-token, latency or billing savings are inferred." }, null, 2));

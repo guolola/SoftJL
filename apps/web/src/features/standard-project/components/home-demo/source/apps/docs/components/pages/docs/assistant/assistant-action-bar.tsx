@@ -2,16 +2,10 @@
 "use client";
 import { homeText, useHomeLocale } from "../../../../../../../integration/home-locale";
 
-
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ActionBarPrimitive, AuiIf } from "@assistant-ui/react";
+
 import { useAui, useAuiState } from "@assistant-ui/store";
-import {
-  ThumbsUpIcon,
-  ThumbsDownIcon,
-  CopyIcon,
-  CheckIcon,
-} from "lucide-react";
+import { ThumbsUpIcon, ThumbsDownIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../../../../../lib/utils";
 import { analytics } from "../../../../../../../integration/analytics";
@@ -240,33 +234,5 @@ export function FeedbackActions({
         </button>
       </FeedbackPopover>
     </>
-  );
-}
-
-export function AssistantActionBar(): ReactNode {
-  useHomeLocale();
-  const content = useAuiState((s) => s.message.content);
-  const isRunning = useAuiState((s) => s.message.status?.type === "running");
-
-  // Don't show feedback buttons while message is still streaming or if no content
-  if (isRunning || !hasNonWhitespaceText(content)) {
-    return null;
-  }
-
-  return (
-    <ActionBarPrimitive.Root className="mt-2 flex items-center gap-1.5">
-      <ActionBarPrimitive.Copy
-        aria-label={homeText("Copy response")}
-        className="text-muted-foreground/70 hover:text-foreground p-1 transition-colors"
-      >
-        <AuiIf condition={(s) => s.message.isCopied}>
-          <CheckIcon className="size-4" />
-        </AuiIf>
-        <AuiIf condition={(s) => !s.message.isCopied}>
-          <CopyIcon className="size-4" />
-        </AuiIf>
-      </ActionBarPrimitive.Copy>
-      <FeedbackActions surface="docs_assistant" />
-    </ActionBarPrimitive.Root>
   );
 }

@@ -1,7 +1,7 @@
 // Runs fixed feasibility demo data through the real validation and persistence pipeline.
 import { feasibilityInputsSchema } from "@uml-platform/contracts";
 import type { RenderClient } from "../../adapters/render/render-client.js";
-import type { LlmTransport } from "../../llm.js";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 import type { RunRecord } from "../records/run-record-store.js";
 import { throwIfRunCancelled } from "../records/run-cancellation.js";
 import {

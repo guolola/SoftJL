@@ -3,9 +3,9 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18nextProvider } from "react-i18next";
-import { WorkspaceRepositoryProvider, createMockWorkspaceRepository } from "../../../services/workspace-repository";
+import { WorkspaceRepositoryProvider, createMockWorkspaceRepository } from "../../../services/workspace-repository/index";
 import { patchUserSettings, loadUserSettings } from "../../../shared/lib/user-settings";
-import { i18n } from "../../../shared/i18n";
+import { i18n } from "../../../shared/i18n/index";
 import { GenerationModelControls } from "./generation-model-controls";
 
 const context = (model: string, reasoning = true) => ({ model, contextBudget: 100000, capacity: {
@@ -19,9 +19,9 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(context("model-a")), { status: 200 })));
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-function Harness({ disabled = false, ordinary = false, copies = 1 }) {
+function Harness({ disabled = false, ordinary: _ordinary = false, copies = 1 }) {
   return <I18nextProvider i18n={i18n}><WorkspaceRepositoryProvider repository={createMockWorkspaceRepository()} projectId="project-1">
-    {Array.from({ length: copies }, (_, index) => <GenerationModelControls key={index} disabled={disabled} ordinary={ordinary} />)}
+    {Array.from({ length: copies }, (_, index) => <GenerationModelControls key={index} disabled={disabled} />)}
   </WorkspaceRepositoryProvider></I18nextProvider>;
 }
 

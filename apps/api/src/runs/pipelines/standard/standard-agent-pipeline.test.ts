@@ -1,5 +1,6 @@
 // Exercises real Pi sessions/tools/compaction with a deterministic provider stream and no external model calls.
-import { compatibleTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import { compatibleTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
+import { standardModelFixture } from "@uml-platform/contracts/testing";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createAssistantMessageEventStream, getCurrentSystemPrompt, getCurrentTools, type AssistantMessage, type Context } from "@earendil-works/pi-ai";
@@ -9,11 +10,14 @@ import { runStandardAgent } from "./standard-agent-pipeline.js";
 import { restoreStandardSession } from "../../records/standard-agent-session.js";
 import { applyConversationRevision, resolveConversationRevision } from "../../records/standard-conversation-revision.js";
 import { prepareStandardAgentTurn } from "./standard-agent-turn.js";
+import { Type } from "typebox";
+import { join } from "node:path";
+import { readStandardModelingResource, standardModelingResourceRoot } from "./standard-modeling-knowledge.js";
 
 const settings = { modelCapability: compatibleTestModelCapability("deepseek-v4.1-flash"), apiBaseUrl: "https://example.test", apiKey: "test-only", model: "deepseek-v4.1-flash" };
 const usage = { input: 20, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 30, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-const node = { id: "book", label: "图书", type: "class" as const, fields: ["name: string"], methods: [] };
-const model = { nodes: [node], edges: [] };
+const model = standardModelFixture("class");
+const revisedModel = { ...model, classes: [{ ...model.classes[0], attributes: [{ name: "name", type: "string", visibility: "private" as const, constraints: [] }, { name: "ISBN", type: "string", visibility: "private" as const, constraints: [] }] }, ...model.classes.slice(1)] };
 const outline = { title: "图书管理", summary: "借阅", roles: [{ id: "reader", name: "读者", description: "借阅" }], businesses: [{ id: "borrow", name: "借阅", roleIds: ["reader"], description: "借阅", steps: ["提交"], exceptions: [] }], entities: [{ id: "book", name: "图书", attributes: ["名称"] }], relationships: [], modules: ["借阅"], assumptions: [] };
 function reply(content: AssistantMessage["content"], tokens = 30): AssistantMessage {
   return { role: "assistant", content, api: "openai-completions", provider: "uml-managed", model: settings.model, usage: { ...usage, input: tokens - 10, totalTokens: tokens }, stopReason: content.some(part => part.type === "toolCall") ? "toolUse" : "stop", timestamp: Date.now() };
@@ -34,6 +38,128 @@ function memory() {
 }
 const render = async () => ({ svg: "<svg>updated</svg>", renderMeta: { engine: "test", generatedAt: new Date().toISOString(), sourceLength: 1, durationMs: 1 } });
 const transport = { async *streamChatCompletion() { yield JSON.stringify({ summary: "用户要求图书类增加ISBN，仍仅学生可以借阅。" }); } };
+
+test("native Pi saves all eight current contracts and cannot overwrite them with a generic payload", async () => {
+  const store = memory(); const rendered: string[] = [];
+  await store.save(state => {
+    state.generationScope = { status: "confirmed", kinds: [...standardDiagramKinds] };
+    for (const kind of standardDiagramKinds) state.diagrams[kind] = { id: kind, kind, title: kind, status: "completed", model: standardModelFixture(kind) };
+  });
+  await runStandardAgent("p", { operation: "chat", message: "检查并保存当前八类模型" }, store.get(), {
+    settings, save: store.save, transport, signal: new AbortController().signal,
+    render: async artifact => { rendered.push(artifact.modelId); return render(); },
+    stream: stream((_, turn) => {
+      if (turn === 0) return call("read_diagram", { ids: [...standardDiagramKinds] });
+      const kind = standardDiagramKinds[turn - 1];
+      if (kind) return call("save_diagram", { id: kind, model: standardModelFixture(kind) });
+      if (turn === 9) return call("save_diagram", { id: "class", model: { nodes: [], edges: [] } });
+      return reply([{ type: "text", text: "已保存当前模型，拒绝旧格式。" }]);
+    }),
+  });
+  assert.deepEqual(rendered, [...standardDiagramKinds]);
+  for (const kind of standardDiagramKinds) assert.deepEqual(store.get().diagrams[kind].model, standardModelFixture(kind));
+  const saves = store.get().conversation!.flatMap(message => message.tools ?? []).filter(tool => tool.name === "save_diagram");
+  assert.equal(saves.filter(tool => tool.status === "completed").length, 8);
+  assert.equal(saves.filter(tool => tool.status === "failed").length, 1);
+});
+
+test("native Pi extension tools and lifecycle hooks join the durable project session", async () => {
+  const store = memory(); const events: string[] = [];
+  await runStandardAgent("p", { operation: "chat", message: "检查当前项目约定" }, store.get(), {
+    settings, save: store.save, render, transport, signal: new AbortController().signal,
+    extensionFactories: [pi => {
+      pi.on("session_start", () => { events.push("start"); });
+      pi.on("before_agent_start", event => ({ systemPrompt: `${event.systemPrompt}\n已加载项目扩展。` }));
+      pi.on("tool_call", event => { events.push(event.toolName); });
+      pi.registerTool({ name: "inspect_modeling", label: "检查建模", description: "检查当前项目约定。", parameters: Type.Object({}),
+        async execute() {
+          // The tool must not run before its assistant intent reaches durable storage.
+          assert.ok(store.get().piSession!.entries.some((entry: any) => entry.type === "message" && entry.message.role === "assistant"
+            && entry.message.content.some((part: any) => part.type === "toolCall" && part.name === "inspect_modeling")));
+          return { content: [{ type: "text", text: "扩展已检查项目约定" }], details: {} };
+        } });
+    }],
+    stream: stream((context, turn) => {
+      assert.match(context.systemPrompt!, /已加载项目扩展/);
+      assert.ok(context.tools!.some(tool => tool.name === "read_project"));
+      assert.ok(context.tools!.some(tool => tool.name === "inspect_modeling"));
+      assert.ok(!context.tools!.some(tool => ["bash", "write", "edit"].includes(tool.name)));
+      if (turn === 0) return call("read_project", {});
+      if (turn === 1) return call("inspect_modeling", {});
+      assert.match(JSON.stringify(context.messages), /扩展已检查项目约定/);
+      return reply([{ type: "text", text: "项目约定检查完成。" }]);
+    }),
+  });
+  assert.deepEqual(events, ["start", "read_project", "inspect_modeling"]);
+  assert.deepEqual(store.get().conversation!.flatMap(message => message.tools ?? []).map(tool => [tool.name, tool.status]),
+    [["read_project", "completed"], ["inspect_modeling", "completed"]]);
+  const other = memory();
+  await runStandardAgent("other", { operation: "chat", message: "介绍项目" }, other.get(), {
+    settings, save: other.save, render, transport, signal: new AbortController().signal,
+    stream: stream(context => {
+      assert.ok(!context.tools!.some(tool => tool.name === "inspect_modeling"));
+      assert.doesNotMatch(context.systemPrompt!, /已加载项目扩展/);
+      return reply([{ type: "text", text: "另一个项目。" }]);
+    }),
+  });
+});
+
+test("Pi discovers native skills and reads their bodies and references through the restricted native read tool", async () => {
+  const store = memory();
+  const skillPath = "skills/uml-graduation-modeling/SKILL.md";
+  const referencePath = "skills/uml-graduation-modeling/references/class.md";
+  const [skill, reference, agents] = await Promise.all([skillPath, referencePath, "AGENTS.md"].map(async path => (await readStandardModelingResource(path)).toString("utf8")));
+  await runStandardAgent("p", { operation: "chat", message: "解释图书类关系" }, store.get(), {
+    settings, save: store.save, render, transport, signal: new AbortController().signal,
+    stream: stream((context, turn) => {
+      assert.ok(context.systemPrompt!.includes(agents), "runtime AGENTS is always provided");
+      assert.match(context.systemPrompt!, /<name>uml-graduation-modeling<\/name>/);
+      assert.match(context.systemPrompt!, /<name>graduation-deliverables<\/name>/);
+      assert.ok(!context.systemPrompt!.includes(reference), "reference bodies are loaded on demand");
+      assert.ok(context.tools!.some(tool => tool.name === "read"));
+      if (turn === 0) return call("read", { path: join(standardModelingResourceRoot, skillPath) });
+      if (turn === 1) {
+        assert.ok(context.messages.some(message => message.role === "toolResult" && message.content.some(part => part.type === "text" && part.text.includes(skill))));
+        return call("read", { path: join(standardModelingResourceRoot, referencePath) });
+      }
+      assert.ok(context.messages.some(message => message.role === "toolResult" && message.content.some(part => part.type === "text" && part.text.includes(reference))));
+      return reply([{ type: "text", text: "已按建模规范解释整体与部分。" }]);
+    }),
+  });
+  assert.deepEqual(store.get().conversation!.flatMap(message => message.tools ?? []).map(tool => [tool.name, tool.status]), [["read", "completed"], ["read", "completed"]]);
+});
+
+test("native tool interception prevents writes bundled after an inquiry", async () => {
+  const store = memory(); const original = store.get().diagrams;
+  await runStandardAgent("p", { operation: "chat", message: "询问预约规则" }, store.get(), {
+    settings, save: store.save, render, transport, signal: new AbortController().signal,
+    stream: stream((context, turn) => {
+      if (turn === 0) return reply([
+        { type: "toolCall", id: "ask", name: "ask_questions", arguments: { questions: [{ id: "approval", title: "预约是否审批？", options: ["需要", "不需要"], recommendation: "需要" }] } },
+        { type: "toolCall", id: "write", name: "save_diagram", arguments: { id: "class", model } },
+      ]);
+      assert.equal(turn, 1);
+      assert.match(JSON.stringify(context.messages), /等待用户补充需求/);
+      return reply([{ type: "text", text: "等待你的回答。" }]);
+    }),
+  });
+  assert.equal(store.get().rounds.length, 1);
+  assert.deepEqual(store.get().diagrams, original);
+  assert.equal(store.get().conversation!.flatMap(message => message.tools ?? []).find(tool => tool.name === "save_diagram")!.status, "failed");
+});
+
+test("failed or colliding extensions stop before any model request", async () => {
+  for (const extension of [() => { throw new Error("extension unavailable"); }, (pi: import("@earendil-works/pi-coding-agent").ExtensionAPI) => {
+    pi.registerTool({ name: "read_project", label: "Duplicate", description: "duplicate", parameters: Type.Object({}),
+      async execute() { throw new Error("must not execute"); } });
+  }]) {
+    const store = memory();
+    await assert.rejects(runStandardAgent("p", { operation: "chat", message: "介绍项目" }, store.get(), {
+      settings, save: store.save, render, transport, signal: new AbortController().signal, extensionFactories: [extension],
+      stream: () => { throw new Error("must not request model"); },
+    }), /快速建模扩展加载失败/);
+  }
+});
 
 test("the LLM asks for model scope through a durable tool question and resumes from structured answers", async () => {
   let state = createStandardProjectState();
@@ -86,7 +212,7 @@ test("untyped scope questions are rejected and repeated questions receive distin
 test("Pi resumes the same project context and changes only the requested diagram", async () => {
   const store = memory();
   await runStandardAgent("p", { operation: "chat", message: "记住我只需要学生借阅" }, store.get(), { settings, save: store.save, render, transport, signal: new AbortController().signal,
-    stream: stream(context => { assert.ok(context.tools?.some(tool => tool.name === "save_diagram")); assert.ok(!context.tools?.some(tool => ["bash", "read", "write", "edit"].includes(tool.name))); return reply([{ type: "text", text: "已记住学生借阅范围。" }]); }) });
+    stream: stream(context => { assert.ok(context.tools?.some(tool => tool.name === "save_diagram")); assert.ok(!context.tools?.some(tool => ["bash", "write", "edit"].includes(tool.name))); return reply([{ type: "text", text: "已记住学生借阅范围。" }]); }) });
   assert.equal(store.get().conversation?.length, 2);
   assert.equal(store.get().conversation?.at(-1)?.suggestions?.length, 3);
   await runStandardAgent("p", { operation: "chat", message: "在图书类加上ISBN字段" }, store.get(), { settings, save: store.save, render, transport, signal: new AbortController().signal,
@@ -94,10 +220,10 @@ test("Pi resumes the same project context and changes only the requested diagram
       assert.match(JSON.stringify(context.messages), /记住我只需要学生借阅/);
       assert.match(context.systemPrompt!, /仅学生可以借阅/);
       if (turn === 0) return call("read_diagram", { ids: ["class"] });
-      if (turn === 1) return call("save_diagram", { id: "class", model: { nodes: [{ ...node, fields: ["name: string", "ISBN: string"] }], edges: [] } });
+      if (turn === 1) return call("save_diagram", { id: "class", model: revisedModel });
       return reply([{ type: "text", text: "已在图书类加入ISBN字段。" }]);
     }) });
-  assert.deepEqual(store.get().diagrams.class!.model!.nodes[0]!.fields, ["name: string", "ISBN: string"]);
+  assert.deepEqual(store.get().diagrams.class!.model, revisedModel);
   assert.equal(store.get().diagrams.table!.svg, "<svg>keep</svg>");
   assert.equal(store.get().conversation?.length, 6);
   assert.deepEqual(store.get().conversation?.flatMap(message => message.tools ?? []).map(tool => [tool.name, tool.status]), [["read_diagram", "completed"], ["save_diagram", "completed"]]);
@@ -116,7 +242,7 @@ test("a later narrower choice replaces the generation scope while keeping prior 
   assert.equal(store.get().diagrams.table!.svg, "<svg>keep</svg>");
 });
 
-for (const [kind, label, nodeType] of [["architecture", "总体架构图", "component"], ["er", "是，加入并生成领域概念图", "entity"]] as const) {
+for (const [kind, label] of [["architecture", "总体架构图"], ["er", "是，加入并生成领域概念图"]] as const) {
   test(`later structured consent adds ${kind}, survives acknowledgement and regeneration, and preserves saved diagrams`, async () => {
     const store = memory(); const existing = store.get().diagrams;
     await store.save(state => {
@@ -132,7 +258,7 @@ for (const [kind, label, nodeType] of [["architecture", "总体架构图", "comp
     assert.deepEqual(store.get().generationScope, { status: "confirmed", kinds: [kind] });
     let generations = 0;
     await runStandardAgent("p", command, store.get(), { settings, save: store.save, render, signal: new AbortController().signal,
-      transport: { async *streamChatCompletion() { generations++; yield JSON.stringify({ nodes: [{ id: "core", label: "核心", type: nodeType }], edges: [] }); } },
+      transport: { async *streamChatCompletion() { generations++; yield JSON.stringify(standardModelFixture(kind)); } },
       stream: stream((context, turn) => {
         if (turn === 0) return call("read_project", {});
         if (turn === 1) {
@@ -183,7 +309,7 @@ for (const accept of [true, false]) {
     await store.save(state => { state.generationScope = { status: "confirmed", kinds: ["class", "er"] }; });
     let generated = 0; let rendered = 0;
     const deps = { settings, save: store.save, render: async () => { rendered++; return render(); }, signal: new AbortController().signal,
-      transport: { async *streamChatCompletion() { generated++; yield JSON.stringify({ nodes: [{ id: "book", type: "entity", label: "图书" }], edges: [] }); } } };
+      transport: { async *streamChatCompletion() { generated++; yield JSON.stringify(standardModelFixture("er")); } } };
     const question = { id: "alternative", title: "生成状态图？", multiple: false, options: ["生成状态图", "取消"], recommendation: "领域概念可表达实体关系，但无法表达状态迁移。",
       scopeChoices: [{ id: "yes", label: "生成状态图", kinds: ["er"], recommended: true }, { id: "no", label: "取消", kinds: [], recommended: false }] };
     await runStandardAgent("p", { operation: "chat", message: "为借阅状态流转补充UML状态图" }, store.get(), { ...deps,
@@ -271,13 +397,13 @@ test("a scoped single-diagram edit rejects sibling writes and preserves the othe
       if (turn === 0) return call("save_diagram", { id: "table", model });
       if (turn === 1) {
         assert.match(JSON.stringify(context.messages), /超出用户本轮确认/);
-        return call("save_diagram", { id: "class", model: { nodes: [{ ...node, fields: ["name: string", "ISBN: string"] }], edges: [] } });
+        return call("save_diagram", { id: "class", model: revisedModel });
       }
       return reply([{ type: "text", text: "仅修改了类图。" }]);
     }),
   });
   assert.deepEqual(store.get().diagrams.table, sibling);
-  assert.deepEqual(store.get().diagrams.class!.model!.nodes[0]!.fields, ["name: string", "ISBN: string"]);
+  assert.deepEqual(store.get().diagrams.class!.model, revisedModel);
 });
 
 test("records real stream timing, chunks and provider output tokens, and keeps successful replies if suggestions fail", async () => {

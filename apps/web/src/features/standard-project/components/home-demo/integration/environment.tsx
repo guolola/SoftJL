@@ -1,4 +1,4 @@
-// Supplies project data to nonvisual adapters; all conversation UI comes from the upstream source.
+// Supplies durable project state and actions to imported elements and project integration components.
 import { createContext, useContext, type ReactNode } from "react";
 import type { ModelContextSettings, StandardProjectState } from "@uml-platform/contracts";
 import type { SendConversationCommand } from "../../../hooks/use-conversation-runtime";

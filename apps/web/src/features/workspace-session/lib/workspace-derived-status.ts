@@ -1,28 +1,13 @@
 // Derives stale flags, generation blockers, and visible run status for the session provider.
 import { designRequirementModelIds, validateModelInput, type DiagramModelSpec, type RequirementBaseline } from "@uml-platform/contracts";
-import type {
-  DesignDiagramType,
-  DiagramType,
-} from "../../../entities/diagram/model";
+import type { DesignDiagramType, DiagramType } from "../../../entities/diagram/model";
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
 import type { GenerationTask, RunDiagnostics } from "../model/session-state";
 import { getDesignModelId, getRequirementModelId } from "../../../entities/diagram/model";
 import type { createEmptyRunUiState } from "./run-ui-state";
-import {
-  designFingerprintMatches,
-  designInputFingerprintFor,
-  fingerprintMatches,
-  hasDesignSources,
-  hasRequirementSources,
-  isRequirementDiagramStale,
-  requirementInputFingerprintFor,
-} from "./workspace-context";
-import {
-  orderedDesignDiagrams,
-  orderedRequirementDiagrams,
-  collectExistingRequirementDiagramKinds,
-} from "./generation-planning";
+import { designFingerprintMatches, designInputFingerprintFor, fingerprintMatches,  hasRequirementSources, isRequirementDiagramStale, requirementInputFingerprintFor } from "./workspace-context";
+import { orderedDesignDiagrams, orderedRequirementDiagrams, collectExistingRequirementDiagramKinds } from "./generation-planning";
 
 type RunUiState = ReturnType<typeof createEmptyRunUiState>;
 
@@ -122,22 +107,8 @@ export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
     ),
     input.requirementModelTraceability,
   );
-  const hasDesignModels = Object.keys(input.designModels).length > 0;
-  const designFreshnessComplete =
-    !hasDesignModels ||
-    Object.entries(input.designModels).every(([modelId]) =>
-      designFingerprintMatches(
-        input.designInputFingerprints[modelId],
-        currentDesignInputFingerprint,
-      ),
-    );
-  const designTraceabilityComplete = hasDesignSources(
-    Object.values(input.designModels),
-    input.designModelTraceability,
-    input.manualModelEditStatus,
-    Object.values(input.models),
-  );
-  const requirementInputStale =
+
+const requirementInputStale =
     generatedRequirementDiagramSet.size > 0 &&
     (isRulesStale || staleDiagrams.length > 0);
   const requirementTraceabilityStale =
@@ -178,26 +149,16 @@ export function deriveWorkspaceStatus(input: WorkspaceDerivedStatusInput) {
       .filter((model) => staleDesignModelIds.includes(getDesignModelId(model)))
       .map((model) => model.diagramKind),
   );
-  const designTraceabilityStale =
-    hasDesignModels &&
-    (requirementTraceabilityStale ||
-      !designFreshnessComplete ||
-      !designTraceabilityComplete);
 
-  return {
+return {
     designGenerationBlockedReason,
     designStaleReasons: staleDesignReasons,
-    designTraceabilityStale,
-    errorMessage:
-      input.visibleGenerationTask?.errorMessage ?? input.runUiState.errorMessage,
-    isRulesStale,
+
+isRulesStale,
     rulesStaleReason,
     requirementTraceabilityStale,
-    runMessage:
-      input.visibleGenerationTask?.message ?? input.runUiState.runMessage,
-    runProgress:
-      input.visibleGenerationTask?.progress ?? input.runUiState.runProgress,
-    runStatus:
+
+runStatus:
       input.visibleGenerationTask?.status ?? input.runUiState.runStatus,
     staleDesignDiagrams,
     staleDesignModelIds,

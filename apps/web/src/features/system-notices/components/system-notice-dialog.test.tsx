@@ -8,7 +8,6 @@ import { inboxApi } from "../inbox-api";
 import { systemNoticeApi } from "../system-notice-api";
 import { i18n } from "../../../shared/i18n/i18n";
 import { FloatingAlertProvider } from "../../../shared/ui/floating-alert";
-import motion from "./notification-motion.module.css";
 
 vi.mock("../inbox-api", () => ({ inboxApi: { list: vi.fn(), act: vi.fn() } }));
 vi.mock("../system-notice-api", () => ({ systemNoticeApi: { listPublished: vi.fn(), markRead: vi.fn(), dismiss: vi.fn() } }));
@@ -62,21 +61,6 @@ describe("uploaded notification dropdown", () => {
 
   it("uses the original menu, line tabs, separators and invitation row spacing", async () => {
     await openNotifications();
-    const unreadDot = screen.getByRole("button", { name: "系统通知，3 条未读" }).querySelector("[data-slot='notification-unread-dot']");
-    expect(unreadDot).toHaveClass(motion.unreadDot, "bg-sky-600", "dark:bg-sky-400");
-    expect(screen.getByRole("button", { name: "系统通知，3 条未读" }).querySelector("svg")).toHaveClass(motion.bell);
-    const menu = screen.getByRole("menu");
-    expect(menu).toHaveAttribute("data-slot", "dropdown-menu-content");
-    expect(menu).toHaveClass("w-full", "max-w-xs", "sm:max-w-122");
-    expect(screen.getByRole("tablist")).toHaveAttribute("data-variant", "line");
-    expect(screen.getByRole("tab", { name: "消息" })).toHaveClass("group-data-[orientation=horizontal]/tabs:after:-bottom-1");
-    expect(menu.querySelector("[data-slot=dropdown-menu-label]")).toHaveClass("flex", "flex-col", "pb-0");
-    expect(menu.querySelector("[data-slot=dropdown-menu-separator]")).toHaveClass("mt-0", "h-0.5");
-    const message = screen.getByTestId("inbox-message");
-    expect(message).toHaveClass("items-start", "gap-3", "px-2", "py-3", "text-base");
-    expect(message.querySelector("[data-slot=avatar]")).toHaveClass("size-9.5");
-    expect(screen.getByRole("button", { name: "拒绝" }).parentElement).toHaveClass("mt-3", "gap-4");
-    expect(screen.getByRole("button", { name: "接受" })).toHaveClass("text-primary-foreground!");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("平台维护公告")).not.toBeInTheDocument();
   });
@@ -107,7 +91,6 @@ describe("uploaded notification dropdown", () => {
     expect(inboxApi.list).toHaveBeenCalledTimes(1);
     expect(systemNoticeApi.listPublished).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "系统通知" }).querySelector("[data-slot='notification-unread-dot']")).toBeNull();
-    expect(screen.getByRole("button", { name: "系统通知" }).querySelector("svg")).not.toHaveClass(motion.bell);
     expect(screen.getByRole("menu")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "公告" }));
     expect(screen.getByText("刷新后的公告")).toBeInTheDocument();

@@ -383,7 +383,6 @@ const loginEventColumns = `
   created_at
 `;
 
-
 const adminInvitationColumns = `
   id,
   username,
@@ -678,26 +677,7 @@ export function createPostgresAuthRepository(db: Queryable) {
       return Number(result.rows[0]?.revoked_count ?? 0);
     },
 
-    async revokeSessionsForUser(userId: string) {
-      const result = await db.query<{ revoked_count: number | string }>(
-        `
-          with revoked as (
-            update sessions
-            set revoked_at = now()
-            where user_id = $1
-              and revoked_at is null
-              and expires_at > now()
-            returning 1
-          )
-          select count(*)::int as revoked_count from revoked
-        `,
-        [userId],
-      );
-
-      return Number(result.rows[0]?.revoked_count ?? 0);
-    },
-
-    async createMfaChallenge(userId: string) {
+async createMfaChallenge(userId: string) {
       const token = randomUUID();
       const expiresAt = new Date(
         Date.now() + MFA_CHALLENGE_TOKEN_TTL_MS,
@@ -1370,5 +1350,3 @@ export function createPostgresAuthRepository(db: Queryable) {
     },
   };
 }
-
-export type PostgresAuthRepository = ReturnType<typeof createPostgresAuthRepository>;

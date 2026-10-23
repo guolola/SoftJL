@@ -165,7 +165,7 @@ function buildCaseProjectTemplate(seed: CaseSeed): CaseProjectTemplate {
       { requirementId: `${seed.id}-R1`, targetId: "lane-1", targetKind: "swimlane" },
       { requirementId: `${seed.id}-R3`, targetId: "lane-2", targetKind: "swimlane" },
     ],
-  }, new Set(requirementSnapshot.rules.map((rule) => rule.id)));
+  });
   const businessFlow = { ...flow, plantUml: generatePlantUmlArtifacts([flow.model])[0]! };
   const feasibilitySnapshot = buildFeasibilitySnapshot(seed, requirementSnapshot, businessFlow);
   const designSnapshot = buildDesignSnapshot(seed, requirementSnapshot);

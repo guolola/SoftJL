@@ -1,15 +1,15 @@
 // Verifies explicit design generation selections and dependency blockers independently of task retries.
 import { describe, expect, it } from "vitest";
 import { diagramModelSpecSchema, runSnapshotSchema, type DesignDiagramModelSpec } from "@uml-platform/contracts";
-import { librarySeatDemoFixture } from "../../../../../api/src/runs/demo/fixtures/library-seat-demo-fixture";
-import { modelFixture } from "../../../../../../packages/contracts/dist/testing/model-fixtures";
+import { librarySeatDemoFixture } from "@uml-platform/demo-fixtures";
+import { modelFixture } from "@uml-platform/contracts/testing";
 import type { DesignDiagramType } from "../../../entities/diagram/model";
 import { createEmptyWorkspace } from "../../../services/workspace-repository/workspace-state";
 import { designInputFingerprint, snapshotInputFingerprint } from "../../../shared/lib/fingerprint";
 import { analyzeDesignGenerationPreflight } from "./generation-preflight";
 import { analyzeRequirementGenerationPreflight } from "./generation-preflight";
 import { PROJECT_WORKSPACE_TARGET_REQUEST_EVENT } from "../../../shared/lib/app-navigation";
-import { createRule } from "../../../test/workspace-test-utils";
+import { createRule } from "../../../../tests/helpers/workspace-test-utils";
 
 function designModel(diagramKind: DesignDiagramModelSpec["diagramKind"]) {
   return {

@@ -16,7 +16,7 @@ const convert = (message: StandardConversationMessage): ThreadMessageLike => ({ 
     content: [...(message.reasoning ? [{ type: "reasoning" as const, text: message.reasoning }] : []),
       ...(message.tools ?? []).map(tool => ({ type: "tool-call" as const, toolCallId: tool.id, toolName: tool.name, args: {},
         ...(tool.status !== "running" ? { result: tool.status, isError: tool.status === "failed" } : {}) })), { type: "text", text: message.text }],
-    attachments: message.attachments?.map(toAssistantAttachment), metadata: { custom: { quote: message.quote, durationMs: message.durationMs },
+    attachments: message.attachments?.map(toAssistantAttachment), metadata: { custom: { quote: message.quote },
       ...(message.timing ? { timing: message.timing } : {}),
       ...(message.feedback ? { submittedFeedback: { type: message.feedback } } : {}) },
     // Pi finishes emitting the assistant message before executing its tools. Keep the

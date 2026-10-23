@@ -1,16 +1,11 @@
+import { getStructuredResponseFormat } from "../model-capabilities.js";
 // Verifies feasibility prompts and OpenAI strict schemas share a contract-valid shape.
 import assert from "node:assert/strict";
-import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import test from "node:test";
 import { completeFeasibilityImplementationPlanSchema } from "@uml-platform/contracts";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
-import {
-  FEASIBILITY_SECTION_REPAIR_RESPONSE_FORMATS,
-  GENERATE_FEASIBILITY_CONTEXT_RESPONSE_FORMAT,
-  GENERATE_FEASIBILITY_BUSINESS_FLOW_RESPONSE_FORMAT,
-  GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT,
-  getGenerateFeasibilityImplementationResponseFormat,
-} from "./feasibility-response-formats.js";
+import { GENERATE_FEASIBILITY_CONTEXT_RESPONSE_FORMAT, GENERATE_FEASIBILITY_BUSINESS_FLOW_RESPONSE_FORMAT, GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT } from "./feasibility-response-formats.js";
 
 function assertStrictObjects(schema: unknown, path = "schema") {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
@@ -59,19 +54,14 @@ test("feasibility response formats satisfy OpenAI strict object requirements", (
   assertStrictObjects(
     GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT.json_schema.schema,
   );
-  for (const responseFormat of Object.values(
-    FEASIBILITY_SECTION_REPAIR_RESPONSE_FORMATS,
-  )) {
-    assertStrictObjects(responseFormat.json_schema.schema);
-  }
 });
 
 test("capability routing returns strict, json object and compatible response formats", () => {
-  const strict = getGenerateFeasibilityImplementationResponseFormat({
+  const strict = getStructuredResponseFormat({
     model: "strict",
     modelCapability: strictTestModelCapability("strict"),
-  });
-  const jsonObject = getGenerateFeasibilityImplementationResponseFormat({
+  }, GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT);
+  const jsonObject = getStructuredResponseFormat({
     model: "json",
     modelCapability: {
       ...strictTestModelCapability("json"),
@@ -81,13 +71,13 @@ test("capability routing returns strict, json object and compatible response for
       strictJson: false,
       probeStatus: "json_object",
     },
-  });
-  const compatible = getGenerateFeasibilityImplementationResponseFormat({
+  }, GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT);
+  const compatible = getStructuredResponseFormat({
     model: "unknown-model",
     modelCapability: { ...strictTestModelCapability("unknown-model"), supportsJsonSchema: false,
       supportsJsonObject: false, structuredOutputMode: "compatible", modeLabel: "兼容模式", strictJson: false,
       probeStatus: "compatible" },
-  });
+  }, GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT);
 
   assert.equal(strict?.type, "json_schema");
   assert.equal(jsonObject?.type, "json_object");

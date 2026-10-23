@@ -2,6 +2,7 @@
 import type { RunError, RunOperationType } from "@uml-platform/contracts";
 import {
   assertCurrentRunSnapshot,
+  runOperationTypeSchema,
 } from "@uml-platform/contracts";
 import {
   createRunHistoryTitle,
@@ -12,7 +13,7 @@ import {
   type RunHistoryItem,
   type RunHistoryDiagramErrorSummary,
   type RunHistorySnapshot,
-} from "../../entities/run-history";
+} from "../../entities/run-history/index";
 
 import { localizeRunFailure } from "../../shared/i18n/api-errors";
 
@@ -103,9 +104,9 @@ type ProjectRunResponse =
   | ProjectRunDetailResponse["run"];
 
 export function normalizeProjectHistoryResponse(payload: unknown): RunHistoryItem[] {
-  if (!payload || typeof payload !== "object") return [];
-  const record = payload as { runs?: ProjectRunsResponse["runs"] };
-  return (record.runs ?? [])
+  const record = payload as ProjectRunsResponse | null;
+  if (!record || !Array.isArray(record.runs)) throw new SyntaxError("Current project run list is required");
+  return record.runs
     .map((run) => projectRunSummaryToHistoryItem(run))
     .filter((item): item is RunHistoryItem => item !== null);
 }
@@ -115,16 +116,20 @@ export function projectRunSummaryToHistoryItem(
   snapshot?: RunHistorySnapshot | null,
 ): RunHistoryItem | null {
   if (snapshot) assertCurrentRunSnapshot(snapshot);
-  const runId = run?.runId?.trim();
-  if (!runId) return null;
+  // Summary-only reads obey current identity too; missing metadata cannot become a synthetic requirement run.
+  runOperationTypeSchema.exclude(["unknown"]).parse(run?.operationType);
+  if (typeof run?.runId !== "string" || !run.runId.trim() || !["requirements", "design", "document", "feasibility"].includes(run.runKind ?? ""))
+    throw new SyntaxError("Current project run identity is required");
+  const runId = run.runId.trim();
+  const runKind = run.runKind!;
   const documentDownloadAvailable =
     run.status === "completed" && Boolean(run.documentDownloadAvailable);
   const createdAt =
     run.completedAt ??
     run.startedAt ??
     run.createdAt ??
-    run.updatedAt ??
-    new Date().toISOString();
+    run.updatedAt;
+  if (typeof createdAt !== "string" || !createdAt.trim()) throw new SyntaxError("Recorded project run date is required");
   const title = snapshot
     ? createRunHistoryTitle(runHistorySnapshotRequirementText(snapshot))
     : projectRunStageTitle(run);
@@ -143,7 +148,7 @@ export function projectRunSummaryToHistoryItem(
     snapshot: historySnapshot ?? null,
     providerModel: run.model ?? "默认模型",
     status: run.status ?? null,
-    runKind: run.runKind ?? null,
+    runKind,
     stage: run.stage ?? null,
     stageLabel: snapshot ? null : projectRunKindLabel(run),
     summary: snapshot ? null : projectRunSummary(run),

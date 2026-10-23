@@ -10,8 +10,6 @@ import type {
   RunSnapshot,
 } from "@uml-platform/contracts";
 import {
-  DESIGN_DIAGRAM_META,
-  DIAGRAM_META,
   getModelTaskLabel,
 } from "../diagram/model";
 
@@ -62,8 +60,7 @@ export interface RunHistoryItem {
   missingArtifactCount?: number | null;
   missingArtifactSummary?: string[] | null;
 
-
-  snapshotAvailable?: boolean | null;
+snapshotAvailable?: boolean | null;
   documentDownloadAvailable?: boolean | null;
 }
 
@@ -80,7 +77,6 @@ export class RunHistoryStorageError extends Error {
     this.name = "RunHistoryStorageError";
   }
 }
-
 
 export function isDesignRunSnapshot(
   snapshot: RunHistorySnapshot,
@@ -179,7 +175,6 @@ function compactTraceEntries<T extends Record<string, unknown>>(entries: T[]) {
   }));
 }
 
-
 export function compactRunHistorySnapshot(
   snapshot: RunHistorySnapshot,
 ): RunHistorySnapshot {
@@ -269,17 +264,6 @@ export function deleteRunHistoryItem(id: string) {
   return persistRunHistory(next);
 }
 
-export function clearRunHistoryItems() {
-  persistRunHistory([]);
-}
-
-export function getRunHistorySnapshotLabel(snapshot: RunHistorySnapshot) {
-  if (isDocumentRunSnapshot(snapshot)) return "说明书";
-
-  if (isDesignRunSnapshot(snapshot)) return "设计阶段";
-  return "需求阶段";
-}
-
 function summarizeDiagramError(error: RunHistoryDiagramErrorSummary) {
   const message = localizeRunFailure(
     error.error ?? error.message,
@@ -316,76 +300,4 @@ export function formatDocumentMissingArtifactSummary(
       ? `等 ${count} 项`
       : `${count} 项`;
   return `缺失图 ${suffix}：${preview}`;
-}
-
-function readSnapshotDiagramErrorSummary(
-  snapshot: RunHistorySnapshot,
-): RunHistoryDiagramErrorSummary[] {
-  if (!("diagramErrors" in snapshot)) return [];
-  return Object.entries(snapshot.diagramErrors).flatMap(([diagramId, value]) => {
-    if (!value?.error) return [];
-    const message = localizeRunFailure(
-      value.error,
-      "模型生成失败，请稍后重试。",
-    );
-    return [
-      {
-        diagramId,
-        stage: value.stage,
-        error: value.error,
-        message,
-      },
-    ];
-  });
-}
-
-export function getRunHistorySnapshotSummary(snapshot: RunHistorySnapshot) {
-  if (isDocumentRunSnapshot(snapshot)) {
-    return [
-      `${snapshot.fileName ?? "说明书.docx"} · ${snapshot.byteLength} bytes`,
-      formatDocumentMissingArtifactSummary(snapshot.missingArtifacts),
-    ].filter(Boolean).join(" · ");
-  }
-
-
-  if (isDesignRunSnapshot(snapshot)) {
-    const labels = snapshot.selectedDiagrams
-      .map((diagram) => DESIGN_DIAGRAM_META[diagram].label)
-      .join("、");
-    const diagramErrors = formatRunHistoryDiagramErrorSummary(
-      readSnapshotDiagramErrorSummary(snapshot),
-      { design: true },
-    );
-    return [labels || "设计模型", diagramErrors].filter(Boolean).join(" · ");
-  }
-
-  if (
-    snapshot.status === "failed" &&
-    snapshot.selectedDiagrams.length === 0
-  ) {
-    return [
-      "需求规则抽取失败",
-      snapshot.error
-        ? localizeRunFailure(snapshot.error, "生成任务失败，请稍后重试。")
-        : null,
-    ].filter(Boolean).join("：");
-  }
-
-  const requestedLabels = snapshot.requestedDiagrams
-    ?.map((diagram) => DIAGRAM_META[diagram].label)
-    .join("、");
-  const labels = snapshot.selectedDiagrams
-    .map((diagram) => DIAGRAM_META[diagram].label)
-    .join("、");
-  const dependencyLabels = snapshot.dependencyDiagrams
-    ?.map((diagram) => DIAGRAM_META[diagram].label)
-    .join("、");
-  const targetSummary =
-    requestedLabels && dependencyLabels
-      ? `请求${requestedLabels}，自动补齐${dependencyLabels}`
-      : labels;
-  const diagramErrors = formatRunHistoryDiagramErrorSummary(
-    readSnapshotDiagramErrorSummary(snapshot),
-  );
-  return [targetSummary || "仅规则", diagramErrors].filter(Boolean).join(" · ");
 }

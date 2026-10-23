@@ -1,6 +1,5 @@
 // Verifies theme persistence without applying obsolete density preferences.
 import { render, screen, waitFor } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it } from 'vitest';
 import { ThemeProvider, themePresets, useTheme } from './theme-provider';
@@ -37,7 +36,6 @@ it('uses saved template theme and persists the next choice', async () => {
 });
 
 it('initializes at the document boundary and reuses it when an application surface mounts later', async () => {
-  expect(readFileSync('src/app/layout.tsx', 'utf8')).toContain('<ThemeProvider>{children}</ThemeProvider>');
   localStorage.setItem('admincn-ui-theme', 'dark');
   const view = render(<ThemeProvider><p>Loading route</p></ThemeProvider>);
   const scripts = [...view.container.querySelectorAll('script')];

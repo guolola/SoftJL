@@ -1,5 +1,5 @@
 // Verifies stable operation identity, accepted-only outputs, historical provenance, and completion prerequisites.
-import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -95,22 +95,13 @@ test("modeling excludes input rules and old models, including a same-ID model un
   });
   assert.deepEqual(missingRequestedModelOutputs(run.snapshot), []);
 });
-test("historical events cannot reconstruct missing operation and output receipts", () => {
+test("missing operation and output manifests are rejected without changing the snapshot", () => {
   const run = record();
   delete run.snapshot.operationType;
   delete run.snapshot.outputManifest;
   run.snapshot.models.push(usecase);
   const before = JSON.stringify(run.snapshot);
-  const events: RunRecord["events"] = [
-    {
-      type: "artifact_ready",
-      stage: "render_svg",
-      artifactKind: "svg",
-      diagramKind: "usecase",
-      modelId: "uc-new",
-      subtaskStatus: "completed",
-    },
-  ];
+  assert.throws(() => buildRunArtifactItems(run.snapshot));
   assert.equal(JSON.stringify(run.snapshot), before);
 });
 test("historical success with only an old class cannot satisfy a requested use case", () => {
@@ -220,15 +211,13 @@ test("modern completed records cannot use inherited same-kind models to hide mis
   snapshot.status = "completed";
   assert.equal(runOutputView(snapshot).resultConsistency, "missing_requested_output");
 });
-test("legacy receipts without model identity do not attribute ambiguous same-kind inputs", () => {
+test("snapshots without an output manifest are rejected before attributing model outputs", () => {
   const snapshot = createEmptySnapshot("ambiguous", "需求", ["usecase"], [rule], {
     models: [usecase, { ...usecase, modelId: "uc-old" }],
   });
   delete snapshot.outputManifest;
-  const events: RunRecord["events"] = [
-    { type: "artifact_ready", stage: "render_svg", artifactKind: "svg", diagramKind: "usecase" },
-  ];
-  assert.throws(() => runOutputView(snapshot, events));
+  assert.throws(() => runOutputView(snapshot));
+  assert.throws(() => buildRunArtifactItems(snapshot));
 });
 test("a current singleton image is grouped with its accepted model", () => {
   const snapshot = createEmptySnapshot("merged", "需求", ["usecase"], [rule], {

@@ -11,7 +11,7 @@ import type {
   RunStage,
 } from "@uml-platform/contracts";
 import { assertCurrentRunSnapshot, ModelSemanticError, runEventSchema } from "@uml-platform/contracts";
-import { ApiClientError, buildApiUrl, requestJson } from "../api-client";
+import { ApiClientError, buildApiUrl, requestJson } from "../api-client/index";
 import { projectHeaders, requireProjectScope } from "./project-scope";
 import { snapshotErrorMessage } from "./run-payload";
 import { localizeRunFailure } from "../../shared/i18n/api-errors";

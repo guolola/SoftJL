@@ -1,9 +1,9 @@
 // Verifies cumulative requirement and design previews preserve protection against real edits.
 import { describe, expect, it } from "vitest";
 import { captureWorkspaceGuard, designGenerationBaseFingerprints, protectedDesignGenerationKinds, workspaceGuardConflicts, type AnalysisSequenceDiagramSpec, type DesignDiagramModelSpec } from "@uml-platform/contracts";
-import { modelFixture } from "../../../../../../packages/contracts/dist/testing/model-fixtures";
-import { createDesignRunSnapshot, createRunSnapshot, createRenderMeta } from "../../../test/contract-fixtures";
-import { createWorkspaceRecord } from "../../../test/workspace-test-utils";
+import { modelFixture } from "@uml-platform/contracts/testing";
+import { createDesignRunSnapshot, createRunSnapshot, createRenderMeta } from "../../../../tests/fixtures/contract-fixtures";
+import { createWorkspaceRecord } from "../../../../tests/helpers/workspace-test-utils";
 import { modelPreviewGuardConflicts, rememberModelPreviewTargets } from "./model-preview-guard";
 
 describe("design preview publication guards", () => {

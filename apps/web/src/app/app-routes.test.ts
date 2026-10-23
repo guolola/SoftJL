@@ -9,6 +9,9 @@ describe("matchAppRoute dashboard", () => {
   it("does not expose the retired exam placeholder", () => {
     expect(matchAppRoute("/exam")).toEqual({ kind: "not-found", path: "/exam" });
   });
+  it.each(["/features", "/workflow", "/cases", "/pricing", "/account/billing", "/billing/alipay/return", "/admin", "/organizations", "/courses", "/classes", "/teams"])("excludes the hosted-only route %s", path => {
+    expect(matchAppRoute(path)).toEqual({ kind: "not-found", path });
+  });
   it.each(["lineage", "history", "settings", "members", "documents"])("matches the project %s page", section => {
     expect(matchAppRoute(`/projects/project%20one/${section}`)).toEqual({
       kind: "project-workspace", path: `/projects/project%20one/${section}`, projectId: "project one", section,

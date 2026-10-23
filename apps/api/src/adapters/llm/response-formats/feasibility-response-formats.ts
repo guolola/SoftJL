@@ -1,9 +1,6 @@
 // Defines strict response schemas for complete feasibility context and implementation generation.
-import type { JsonSchemaResponseFormat } from "../../../llm.js";
-import {
-  getStructuredResponseFormat,
-  type ModelCapabilitySource,
-} from "../../../model-capabilities.js";
+import type { JsonSchemaResponseFormat } from "../llm-transport.js";
+
 import { toOpenAiStrictJsonSchema } from "./openai-strict-schema.js";
 import { feasibilityBusinessFlowSchema, contractResponseSchema } from "@uml-platform/contracts";
 
@@ -226,75 +223,3 @@ export const GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT: JsonSchemaResp
     })),
   },
 };
-
-function candidateSectionRepairFormat(
-  name: string,
-  keys: readonly string[],
-): JsonSchemaResponseFormat {
-  const implementationProperties = (
-    implementationSchema.properties as Record<string, unknown>
-  );
-  return {
-    type: "json_schema",
-    json_schema: {
-      name,
-      strict: true,
-      schema: toOpenAiStrictJsonSchema(strictObject({
-        candidateIndex: { type: "integer", minimum: 0, maximum: 1 },
-        patch: strictObject(
-          Object.fromEntries(keys.map((key) => [key, implementationProperties[key]])),
-        ),
-      })),
-    },
-  };
-}
-
-export const REPAIR_FEASIBILITY_TECHNICAL_RESPONSE_FORMAT =
-  candidateSectionRepairFormat("feasibility_technical_repair", [
-    "architecture",
-    "dataStrategy",
-    "integrations",
-    "integrationRationale",
-    "deploymentAndOperations",
-    "securityAndCompliance",
-  ]);
-export const REPAIR_FEASIBILITY_DELIVERY_RESPONSE_FORMAT =
-  candidateSectionRepairFormat("feasibility_delivery_repair", [
-    "milestones",
-    "risks",
-  ]);
-export const REPAIR_FEASIBILITY_ECONOMICS_RESPONSE_FORMAT =
-  candidateSectionRepairFormat("feasibility_economics_repair", [
-    "analysisPeriodAssumption",
-    "costEstimates",
-    "benefitEstimates",
-    "absenceDeclarations",
-  ]);
-export const REPAIR_FEASIBILITY_VERDICT_RESPONSE_FORMAT =
-  candidateSectionRepairFormat("feasibility_verdict_repair", [
-    "verdicts",
-    "decision",
-    "preconditions",
-  ]);
-
-export const FEASIBILITY_SECTION_REPAIR_RESPONSE_FORMATS = {
-  technical: REPAIR_FEASIBILITY_TECHNICAL_RESPONSE_FORMAT,
-  delivery: REPAIR_FEASIBILITY_DELIVERY_RESPONSE_FORMAT,
-  economics: REPAIR_FEASIBILITY_ECONOMICS_RESPONSE_FORMAT,
-  verdict: REPAIR_FEASIBILITY_VERDICT_RESPONSE_FORMAT,
-} as const;
-
-export function getGenerateFeasibilityContextResponseFormat(
-  model: ModelCapabilitySource,
-) {
-  return getStructuredResponseFormat(model, GENERATE_FEASIBILITY_CONTEXT_RESPONSE_FORMAT);
-}
-
-export function getGenerateFeasibilityImplementationResponseFormat(
-  model: ModelCapabilitySource,
-) {
-  return getStructuredResponseFormat(
-    model,
-    GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT,
-  );
-}

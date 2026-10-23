@@ -13,7 +13,7 @@ describe("restored task transcript", () => {
   it("stops reconnecting when stored events violate the current contract", async () => {
     vi.useFakeTimers();
     vi.mocked(readRunTranscript).mockRejectedValue(Object.assign(new Error("Invalid event contract"), { name: "ZodError" }));
-    const { result } = renderHook(() => useRunTranscript("project", "a", "requirements"));
+    const { result } = renderHook(() => useRunTranscript("project", "a"));
     await act(async () => { await Promise.resolve(); });
     expect(result.current.unavailable).toBe(true);
     expect(result.current.events).toEqual([]);
@@ -23,12 +23,12 @@ describe("restored task transcript", () => {
   });
   it("merges persisted and live replay once", async () => {
     const first = event("a", "first");
-    vi.mocked(readRunTranscript).mockResolvedValue({ events: [first], run: { status: "running", runKind: "requirements" } });
+    vi.mocked(readRunTranscript).mockResolvedValue({ cursor: 0, events: [first], run: { status: "running", runKind: "requirements" } });
     vi.mocked(streamRunTranscript).mockImplementation(async (_project, _run, _kind, onEvent) => {
       onEvent(first); onEvent({ ...first, eventId: "output", phase: "output", text: "内容" });
       onEvent({ type: "cancelled", createdAt: "2026-10-18T00:00:00.000Z", eventId: "end", message: "停止" });
     });
-    const { result } = renderHook(() => useRunTranscript("project", "a", "requirements"));
+    const { result } = renderHook(() => useRunTranscript("project", "a"));
     await waitFor(() => expect(result.current.events).toHaveLength(2));
     expect(JSON.stringify(result.current.events)).not.toContain("内容");
     expect(result.current.loading).toBe(false);
@@ -39,12 +39,12 @@ describe("restored task transcript", () => {
     let signalA!: AbortSignal;
     vi.mocked(readRunTranscript).mockImplementation(async (_project, runId, signal) => {
       if (runId === "a") { signalA = signal; return new Promise((resolve) => { resolveA = resolve; }); }
-      return { events: [event("b", "b1")], run: { status: "completed", model: "deepseek-flash" } };
+      return { cursor: 0, events: [event("b", "b1")], run: { status: "completed", runKind: "requirements", model: "deepseek-flash" } };
     });
-    const { result, rerender } = renderHook(({ id }) => useRunTranscript("project", id, "requirements"), { initialProps: { id: "a" } });
+    const { result, rerender } = renderHook(({ id }) => useRunTranscript("project", id), { initialProps: { id: "a" } });
     rerender({ id: "b" });
     await waitFor(() => expect(result.current.events[0]?.eventId).toBe("b1"));
-    await act(async () => resolveA({ events: [event("a", "a1")], run: { status: "completed", model: "old-model" } }));
+    await act(async () => resolveA({ cursor: 0, events: [event("a", "a1")], run: { status: "completed", runKind: "requirements", model: "old-model" } }));
     expect(signalA.aborted).toBe(true);
     expect(result.current.events.map((item) => item.eventId)).toEqual(["b1"]);
     expect(result.current.model).toBe("deepseek-flash");
@@ -53,10 +53,10 @@ describe("restored task transcript", () => {
   it("reconnects after transport failure while retaining the existing conversation", async () => {
     vi.useFakeTimers();
     const first = event("a", "first");
-    vi.mocked(readRunTranscript).mockResolvedValue({ events: [first], run: { status: "running", runKind: "requirements" } });
+    vi.mocked(readRunTranscript).mockResolvedValue({ cursor: 0, events: [first], run: { status: "running", runKind: "requirements" } });
     vi.mocked(streamRunTranscript).mockRejectedValueOnce(new TypeError("network"))
       .mockImplementationOnce(async (_project, _run, _kind, onEvent) => { onEvent(first); onEvent({ type: "cancelled", createdAt: "2026-10-18T00:00:00.000Z", eventId: "end", message: "停止" }); });
-    const { result } = renderHook(() => useRunTranscript("project", "a", "requirements"));
+    const { result } = renderHook(() => useRunTranscript("project", "a"));
     await act(async () => { await Promise.resolve(); });
     expect(result.current.disconnected).toBe(true);
     expect(result.current.events).toHaveLength(1);

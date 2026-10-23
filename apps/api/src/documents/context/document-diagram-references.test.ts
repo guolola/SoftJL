@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { startDocumentRunRequestSchema, type DocumentKind } from "@uml-platform/contracts";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
-import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
 import { bindDocumentDiagramReferences, documentDiagramAssets } from "./document-diagram-references.js";
 import { fallbackDocumentSections, mergeDocumentSectionsWithTemplate } from "./document-context.js";
 import { renderDocumentBuffer } from "../render/document-renderer.js";

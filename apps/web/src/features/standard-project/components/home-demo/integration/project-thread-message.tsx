@@ -8,6 +8,7 @@ import { EditComposer } from "../source/composer";
 import { DisclosureTrigger, disclosureContentClass } from "../source/trace";
 import { Reasoning, ReasoningRoot, ReasoningContent, ReasoningText } from "../source/elements/reasoning.aui";
 import { useHomeDemo } from "./environment";
+import { questionRoundForMessage } from "../../../lib/conversation-question-flow";
 import { DaySeparator } from "./elements/day-separator";
 import { ProjectToolCall, ProjectToolTimeline, useToolPresentation } from "./project-tools";
 
@@ -67,7 +68,7 @@ function ProjectAssistantRun({ messages }: { messages: readonly StandardConversa
       </ReasoningContent>
     </ReasoningRoot>}
     {messages.map(message => renderMessage(message, MessageAttention))}
-    {messages.map((message, index) => message.text.trim() || message.attachments?.length || (waiting && index === messages.length - 1)
+    {messages.map((message, index) => message.text.trim() || message.attachments?.length || questionRoundForMessage(state, message.id) || (waiting && index === messages.length - 1)
       ? renderMessage(message, MessageAnswer) : null)}
   </div>;
 }

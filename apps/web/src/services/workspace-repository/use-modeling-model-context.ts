@@ -1,7 +1,7 @@
 // Resolves current model capabilities for engineering or ordinary project generation controls.
 import { useEffect, useState } from "react";
 import { modelContextSettingsSchema, type ModelContextSettings } from "@uml-platform/contracts";
-import { requestJson } from "../api-client";
+import { requestJson } from "../api-client/index";
 import { loadUserSettings, USER_SETTINGS_CHANGED_EVENT, USER_SETTINGS_STORAGE_KEY } from "../../shared/lib/user-settings";
 
 export function useModelingModelContext(projectId: string | null) {

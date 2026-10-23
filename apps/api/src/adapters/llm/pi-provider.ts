@@ -7,7 +7,7 @@ import type { ProviderSettings, ModelCapacity } from "@uml-platform/contracts";
 import type { LlmScheduler, LlmScheduleContext } from "./llm-scheduler.js";
 import type { RunTelemetryStore } from "../../runs/records/run-telemetry-store.js";
 import { assertManagedProviderBaseUrlResolvesPublicly, normalizeManagedProviderBaseUrl } from "../../provider-configs/provider-url-policy.js";
-import { resolveOpenAiBaseUrl } from "../../llm.js";
+import { resolveOpenAiBaseUrl } from "./llm-transport.js";
 import { normalizeRunError } from "../../runs/pipelines/shared/errors.js";
 
 function safePiError(error: unknown) {

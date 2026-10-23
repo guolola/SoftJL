@@ -8,10 +8,10 @@ import type {
 } from "../model/session-state";
 import type { RunStatus } from "../../../entities/workspace/model";
 import {
-  appendDiagnosticStream,
+
   createEmptyDiagnostics,
   getProgressFromEvent,
-  isMeaningfulLlmChunkEvent,
+
   shouldDisplayDiagnosticEvent,
   summarizeEvent,
 } from "./diagnostics";
@@ -29,20 +29,6 @@ function runFailureMessage(event: RunEventInput) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function phaseSummaryFromEvent(event: RunEventInput, fallback: string | null) {
-
-  if (event.type === "stage_progress" && event.message) {
-    return event.message;
-  }
-  if (event.type === "completed") {
-    return "生成完成，可以查看或导出结果。";
-  }
-  if (event.type === "failed") {
-    return runFailureMessage(event);
-  }
-  return fallback;
 }
 
 function eventFailureMessage(event: RunEventInput) {
@@ -81,9 +67,7 @@ export function createGenerationTask(input: {
     messageCode: "RUN_QUEUED",
     errorMessage: null,
 
-    phaseSummary: input.message,
-    technicalDetailsCollapsed: true,
-    diagnostics: {
+diagnostics: {
       ...createEmptyDiagnostics(),
       runKind: input.kind,
       providerModel: input.providerModel,
@@ -714,20 +698,6 @@ function taskMessageFromEvent(
   return task.message;
 }
 
-function taskPhaseSummaryFromEvent(
-  event: RunEventInput,
-  subtasks: GenerationSubtask[],
-  fallback: string | null,
-) {
-  if (event.type === "completed") {
-    const failed = failedSubtaskCount(subtasks);
-    if (failed > 0) {
-      return `生成结束，但 ${failed} 个子任务失败。`;
-    }
-  }
-  return phaseSummaryFromEvent(event, fallback);
-}
-
 export function updateDiagnosticsFromEvent(
   current: RunDiagnostics,
   event: RunEventInput,
@@ -742,23 +712,8 @@ export function updateDiagnosticsFromEvent(
         ? diagnosticEvent.at
         : current.finishedAt,
     activeStage: "stage" in event ? event.stage : current.activeStage,
-    streamText:
-      event.type === "llm_chunk" && isMeaningfulLlmChunkEvent(event)
-        ? appendDiagnosticStream(current.streamText, event.chunk)
-        : current.streamText,
-    chunkCount:
-      isMeaningfulLlmChunkEvent(event) ? current.chunkCount + 1 : current.chunkCount,
-    stageStartedAt:
-      event.type === "stage_started"
-        ? { ...current.stageStartedAt, [event.stage]: diagnosticEvent.at }
-        : current.stageStartedAt,
-    stageMessages:
-      event.type === "stage_progress" && event.message
-        ? { ...current.stageMessages, [event.stage]: event.message }
-        : current.stageMessages,
 
-
-    requirementTrace:
+requirementTrace:
       event.type === "completed" && "requirementTrace" in event.snapshot
         ? event.snapshot.requirementTrace ?? []
         : current.requirementTrace,
@@ -795,8 +750,7 @@ export function updateTaskFromEvent(
     status: nextStatus,
     progress: progress ?? task.progress,
 
-    phaseSummary: taskPhaseSummaryFromEvent(event, subtasks, task.phaseSummary),
-    message: nextMessage,
+message: nextMessage,
     messageCode:
       event.type === "failed"
         ? event.error.code
@@ -861,14 +815,4 @@ export function assignTaskRunId(
 
 export function isTaskActive(task: GenerationTask) {
   return task.status === "queued" || task.status === "running";
-}
-
-export function isTaskClearableCompleted(task: GenerationTask) {
-  if (task.status !== "completed" || task.errorMessage) return false;
-  return !task.subtasks.some(
-    (subtask) =>
-      subtask.status === "failed" ||
-      subtask.status === "pending_review" ||
-      Boolean(subtask.errorMessage),
-  );
 }

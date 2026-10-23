@@ -129,15 +129,15 @@ describe("api-client", () => {
     });
   });
 
-  it("keeps errorMessage as a compatibility fallback", async () => {
+  it("uses the localized HTTP message when a server returns unstructured text", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("legacy detail", { status: 500 })),
+      vi.fn(async () => new Response("private proxy detail", { status: 500 })),
     );
 
     await expect(
-      requestJson("/api/legacy", { errorMessage: "当前操作失败，请重试。" }),
-    ).rejects.toMatchObject({ message: "当前操作失败，请重试。" });
+      requestJson("/api/billing/summary"),
+    ).rejects.toMatchObject({ message: i18n.t("errors.http.server") });
   });
 
   it("downloads blobs and reads utf-8 filenames", async () => {

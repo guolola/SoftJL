@@ -1,9 +1,9 @@
 // Verifies source provenance, actual vision calls, replay and atomic acceptance for engineering inputs.
-import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ModelingAttachment, ProviderSettings, RunSnapshot } from "@uml-platform/contracts";
-import type { LlmTransport, StreamChatCompletionInput } from "../../../llm.js";
+import type { LlmTransport, StreamChatCompletionInput } from "../../../adapters/llm/llm-transport.js";
 import { createInMemoryLlmScheduler, createScheduledLlmTransport } from "../../../adapters/llm/llm-scheduler.js";
 import { createEmptySnapshot } from "../../records/snapshots.js";
 import { cancelRunRecord, createQueuedRunFromSource } from "../../records/run-actions.js";
@@ -47,8 +47,7 @@ function setup(options: { text?: string; attachments?: ModelingAttachment[]; rej
   const conversation = createContextualLlmTransport(createScheduledLlmTransport({ transport: providerTransport,
     scheduler: createInMemoryLlmScheduler(), context: { runId: "attachment-run", model: settings.model, taskType: "requirements_to_uml" },
   }));
-  record.conversationContext = conversation;
-  return { record, calls, run: () => runStagePipeline(record, settings, conversation.transport, render) };
+  return { record, calls, run: () => runStagePipeline(record, settings, conversation, render) };
 }
 
 test("reads real image bytes, screens named document and image sources, then accepts one coherent baseline", async () => {
@@ -189,7 +188,7 @@ test("duplicate attachment identifiers cannot share vision transcription history
     assert.deepEqual(request.messages.map(message => message.role), ["system", "user"]);
     yield calls === 1 ? "用户可以预约。" : "管理员可以审核。";
   } });
-  const source = await prepareRequirementInput({ record, snapshot: record.snapshot as RunSnapshot, providerSettings: settings, llmTransport: conversation.transport });
+  const source = await prepareRequirementInput({ record, snapshot: record.snapshot as RunSnapshot, providerSettings: settings, llmTransport: conversation });
   assert.equal(calls, 2);
   assert.equal(source, '【图片转录："流程.png"】\n用户可以预约。\n\n【图片转录："另一个流程.png"】\n管理员可以审核。');
 });

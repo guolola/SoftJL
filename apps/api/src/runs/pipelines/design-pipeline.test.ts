@@ -38,7 +38,7 @@ test("selecting a use case excludes sibling traces even when element IDs are sha
   assert.deepEqual(result, before);
 });
 
-test("single legacy model without an ID keeps existing element traces while dropping absent elements", () => {
+test("a singleton response with optional model identity keeps its declared traces", () => {
   const result = coerceSequenceModelForUseCase({
     models: [model(undefined, useCase.id, "config-service")],
     designModelTraceability: [trace(undefined, "config-service"), trace(undefined, "missing")],
@@ -60,15 +60,15 @@ test("ID-free traces shared by sibling models cannot be assigned to the selected
 test("design generation repairs complete output in the same direct dependency conversation", async () => {
   const { createEmptyDesignSnapshot, createEmptySnapshot } = await import("../records/snapshots.js");
   const { generateDesignModelsWithRepair } = await import("./design-pipeline.js");
-  const { strictTestModelCapability } = await import("../../test-fixtures/providers/model-capability.js");
-  const { modelFixture } = await import("../../../../../packages/contracts/src/testing/model-fixtures.js");
+  const { strictTestModelCapability } = await import("../../../tests/fixtures/providers/model-capability.js");
+  const { modelFixture } = await import("@uml-platform/contracts/testing");
   const baseline = createEmptySnapshot("source", "生成订单", ["usecase"], [{ id: "r1", type: "functional", text: "生成订单" }]).requirementBaseline!;
   const snapshot = createEmptyDesignSnapshot("trust", { selectedDiagrams: ["component"], requirementBaseline: baseline, requirementModels: [], requirementModelTraceability: [] });
   const run = { snapshot, events: [], listeners: new Set(), terminal: false } as import("../records/run-record-store.js").RunRecord;
   let calls = 0;
   const generated = modelFixture("design", "component");
   const upstream = { ...modelFixture("design", "class"), modelId: "design-class" };
-  const { collectModelRefs } = await import("../../normalizers/traceability/traceability-normalizer.js");
+  const { collectModelRefs } = await import("@uml-platform/contracts");
   const declaration = { source: { modelId: "component", diagramKind: "component", elementId: "c", elementKind: "component", label: "组件" }, targets: [{ modelId: "design-class", diagramKind: "class", elementId: "upstream-class", elementKind: "class", label: "上游设计类" }] };
   declaration.targets[0]!.elementId = "order";
   const result = await generateDesignModelsWithRepair(run, { apiBaseUrl: "https://llm.test", apiKey: "test", model: "test", modelCapability: strictTestModelCapability("test") }, { async *streamChatCompletion(input) {
@@ -79,7 +79,7 @@ test("design generation repairs complete output in the same direct dependency co
       assert.match(String(input.messages.at(-1)!.content), /映射仍缺少/);
     }
     yield calls === 1 ? JSON.stringify({ models: [generated], designModelTraceability: [declaration] }) : JSON.stringify({ models: [generated], designModelTraceability: collectModelRefs([generated]).refs.map(source => ({ source, targets: declaration.targets })) });
-  } }, baseline, [], ["component"], "只读取上游设计类图", "generate_design_models", { upstreamDesignModels: [upstream] });
+  } }, [], ["component"], "只读取上游设计类图", "generate_design_models", { upstreamDesignModels: [upstream] });
   assert.equal(calls, 2);
   assert.equal(result.designModelTraceability.length, 3);
   assert.equal(result.designModelTraceability[0]!.targets[0]!.elementId, "order");
@@ -89,9 +89,9 @@ test("design generation repairs complete output in the same direct dependency co
 test("generation and repair both match event-flow references against the actual upstream model", async () => {
   const { createEmptyDesignSnapshot, createEmptySnapshot } = await import("../records/snapshots.js");
   const { generateDesignModelsWithRepair } = await import("./design-pipeline.js");
-  const { strictTestModelCapability } = await import("../../test-fixtures/providers/model-capability.js");
-  const { modelFixture } = await import("../../../../../packages/contracts/src/testing/model-fixtures.js");
-  const { collectModelRefs } = await import("../../normalizers/traceability/traceability-normalizer.js");
+  const { strictTestModelCapability } = await import("../../../tests/fixtures/providers/model-capability.js");
+  const { modelFixture } = await import("@uml-platform/contracts/testing");
+  const { collectModelRefs } = await import("@uml-platform/contracts");
   const baseline = createEmptySnapshot("source", "生成订单", ["usecase"], [{ id: "r1", type: "functional", text: "生成订单" }]).requirementBaseline!;
   const upstream = modelFixture("requirements", "usecase");
   if (upstream.diagramKind !== "usecase") throw new Error("fixture");
@@ -112,7 +112,7 @@ test("generation and repair both match event-flow references against the actual 
     yield JSON.stringify({ models: [generated], designModelTraceability: collectModelRefs([generated]).refs.map(source => ({
       source, targets: [{ modelId: upstream.modelId, diagramKind: "usecase", elementId: calls === 1 ? "missing-flow" : "EF_ORDER_MAIN", elementKind: "eventFlow", label: "下单主流程" }],
     })) });
-  } }, baseline, [upstream], ["sequence"], "根据已提供用例模型生成 JSON", "generate_design_sequence");
+  } }, [upstream], ["sequence"], "根据已提供用例模型生成 JSON", "generate_design_sequence");
   assert.equal(calls, 2);
   assert.deepEqual(result.models, [generated]);
   assert.ok(result.designModelTraceability.every(binding => binding.targets[0]!.elementId === "EF_ORDER_MAIN"));

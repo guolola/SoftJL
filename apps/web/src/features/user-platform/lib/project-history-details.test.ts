@@ -1,7 +1,7 @@
 // Verifies business categories follow explicit run intent regardless of execution stage.
 import { describe, expect, it } from "vitest";
 import { getHistoryOperation, hasHistoryRetryFailure, historyDiagramLabel, historyRetryTargets } from "./project-history-details";
-import { createDesignRunSnapshot, createRunSnapshot } from "../../../test/contract-fixtures";
+import { createDesignRunSnapshot, createRunSnapshot } from "../../../../tests/fixtures/contract-fixtures";
 import type { DiagramModelSpec } from "@uml-platform/contracts";
 import { i18n } from "../../../shared/i18n/i18n";
 import type { PlatformRunSummary } from "../services/platform-api";

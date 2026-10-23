@@ -1,7 +1,7 @@
 // Coordinates single-lease Provider circuit recovery probes without exposing stored secrets.
 import type { ApiError, ProviderSettings } from "@uml-platform/contracts";
 import { getHealthcheckResponseFormat } from "../adapters/llm/response-formats/index.js";
-import { runOpenAiCompatibleChatCompletionHealthcheck } from "../llm.js";
+import { runOpenAiCompatibleChatCompletionHealthcheck } from "../adapters/llm/llm-transport.js";
 import type {
   ProviderConfigStore,
   ProviderConfigView,
@@ -114,6 +114,12 @@ export async function resolveProviderCircuitAccess({
   probeLeaseMs?: number;
   runHealthcheck?: typeof runOpenAiCompatibleChatCompletionHealthcheck;
 }): Promise<ProviderCircuitResolution> {
+  const modelCapability = providerConfig.modelCapabilities[model];
+  if (!modelCapability) {
+    return { ok: false, statusCode: 400, error: {
+      code: "PROVIDER_MODEL_CAPABILITY_MISSING", category: "validation", retryable: false,
+    } };
+  }
   if (providerConfig.breakerState === "closed") {
     const apiKey = await providerConfigs.getSecret(providerConfig.id);
     return apiKey
@@ -154,12 +160,11 @@ export async function resolveProviderCircuitAccess({
   }
 
   try {
-    const modelCapability = providerConfig.modelCapabilities[model];
     await runHealthcheck({
       apiBaseUrl: providerConfig.baseUrl,
       apiKey,
       model,
-      responseFormat: getHealthcheckResponseFormat(modelCapability ?? model),
+      responseFormat: getHealthcheckResponseFormat(modelCapability),
       responseTimeoutMs: probeTimeoutMs,
     });
   } catch (error) {

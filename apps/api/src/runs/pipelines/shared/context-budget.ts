@@ -1,6 +1,6 @@
 // Rejects oversized engineering requests without discarding business facts.
 import type { ModelCapacity } from "@uml-platform/contracts";
-import type { LlmTransport, StreamChatCompletionInput } from "../../../llm.js";
+import type { LlmTransport, StreamChatCompletionInput } from "../../../adapters/llm/llm-transport.js";
 import { createRunError, RunPipelineError } from "./errors.js";
 import { getEncoding, getEncodingNameForModel, type Tiktoken, type TiktokenModel } from "js-tiktoken";
 

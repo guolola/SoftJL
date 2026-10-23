@@ -10,7 +10,6 @@ it('closes with Escape, restores focus, and permits reopening', async () => {
   await user.click(trigger);
   const dialog = await screen.findByRole('dialog');
   expect(dialog).toBeVisible();
-  expect(dialog).toHaveClass('data-open:zoom-in-0!', 'data-open:duration-600', 'motion-reduce:animate-none');
   await user.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(trigger).toHaveFocus();

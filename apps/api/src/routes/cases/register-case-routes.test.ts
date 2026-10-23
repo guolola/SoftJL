@@ -27,7 +27,7 @@ const caseIds = [
 ] as const;
 
 const plantUmlJarPath = fileURLToPath(
-  new URL("../../../../../plantuml/build/libs/plantuml-1.2026.3beta8.jar", import.meta.url),
+  new URL("../../../../../plantuml/plantuml-1.2026.3beta8.jar", import.meta.url),
 );
 
 const mockRenderClient: RenderClient = async (artifact) => ({

@@ -1,9 +1,10 @@
-// Exercises project model navigation and traceability with production-shaped stale scoped models.
+// Supplies saved scoped project models; explicit overrides select stale or failed scenarios.
 import { type Page } from "@playwright/test";
-import { designInputFingerprint, snapshotInputFingerprint } from "@uml-platform/contracts";
+import { assertCurrentWorkspaceState, designInputFingerprint, snapshotInputFingerprint } from "@uml-platform/contracts";
 
 export const projectId = "project-model-navigation";
 const now = "2026-06-11T04:00:00.000Z";
+const renderMeta = { engine: "plantuml", generatedAt: now, sourceLength: 0, durationMs: 0 };
 
 function json(body: unknown, status = 200) {
   return {
@@ -17,6 +18,7 @@ function useCase(id: string, name: string) {
   return {
     id,
     name,
+    systemBoundaryId: "seat-reservation-system",
     goal: `${name}成功完成`,
     description: `${name}业务用例`,
     preconditions: [],
@@ -94,7 +96,7 @@ export function createWorkspaceState() {
         diagramKind: "sequence",
         modelId: `sequence:${id}`,
         svg: `<svg width="180" height="60"><text x="8" y="24">${name}</text></svg>`,
-        renderMeta: { engine: "plantuml", generatedAt: now, sourceLength: 1, durationMs: 1 },
+        renderMeta,
       },
     ]),
   );
@@ -188,7 +190,7 @@ export function createWorkspaceState() {
       usecase: {
         diagramKind: "usecase",
         svg: '<svg width="180" height="60"><text x="8" y="24">用例模型</text></svg>',
-        renderMeta: { engine: "plantuml", generatedAt: now, sourceLength: 1, durationMs: 1 },
+        renderMeta,
       },
     },
     diagramErrors: {},
@@ -228,6 +230,7 @@ export function createWorkspaceState() {
         tables: [
           {
             id: "tbl_user",
+            relationalConstraints: [{ id: "pk-user", type: "primary-key", columnIds: ["user_id"] }],
             name: "user",
             chineseName: "用户",
             englishName: "user",
@@ -261,6 +264,7 @@ export function createWorkspaceState() {
           },
           {
             id: "tbl_reservation",
+            relationalConstraints: [{ id: "pk-reservation", type: "primary-key", columnIds: ["reservation_id"] }],
             name: "reservation",
             chineseName: "预约",
             englishName: "reservation",
@@ -310,7 +314,10 @@ export function createWorkspaceState() {
           elementKind: "class",
           label: "SeatReservationService",
         },
-        upstreamDesignRefs: [{ diagramKind: "sequence", modelId: "sequence:uc-3", elementId: "send-reservation-request", elementKind: "message", label: "发送预约请求" }],
+        upstreamDesignRefs: [{
+          diagramKind: "sequence", modelId: "sequence:uc-3", elementId: "send-reservation-request",
+          elementKind: "message", label: "发送预约请求",
+        }],
         targets: [
           {
             diagramKind: "usecase",
@@ -328,13 +335,13 @@ export function createWorkspaceState() {
       class: {
         diagramKind: "class",
         svg: '<svg width="220" height="80"><text x="8" y="28">SeatReservationService</text></svg>',
-        renderMeta: { engine: "plantuml", generatedAt: now, sourceLength: 1, durationMs: 1 },
+        renderMeta,
       },
       table: {
         diagramKind: "table",
         svg:
           '<svg width="260" height="120"><g><rect x="4" y="4" width="160" height="92"/><text x="12" y="24">user</text></g><text x="12" y="48">user_id : varchar</text><text x="12" y="72">openid : varchar</text></svg>',
-        renderMeta: { engine: "plantuml", generatedAt: now, sourceLength: 1, durationMs: 1 },
+        renderMeta,
       },
     },
     designDiagramErrors: {},
@@ -342,6 +349,17 @@ export function createWorkspaceState() {
 }
 
 export async function mockProjectApi(page: Page, workspaceOverrides: Record<string, unknown> = {}) {
+  const saved = createWorkspaceState();
+  const savedRulesFingerprint = snapshotInputFingerprint({ requirementText: saved.requirementText, rules: saved.rules });
+  const savedDesignFingerprint = designInputFingerprint(Object.values(saved.models), saved.requirementModelTraceability);
+  const state = {
+    ...saved,
+    diagramInputFingerprints: Object.fromEntries(Object.keys(saved.models).map(id => [id, savedRulesFingerprint])),
+    designInputFingerprints: Object.fromEntries(Object.keys(saved.designModels).map(id => [id, savedDesignFingerprint])),
+    ...workspaceOverrides,
+  };
+  // Fail at fixture setup instead of silently exercising an empty, rejected workspace.
+  assertCurrentWorkspaceState(state);
   const unhandledRequests: string[] = [];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -357,6 +375,7 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
             displayName: "Model Nav Reviewer",
             status: "active",
             mfaEnabled: false,
+            avatarUrl: null, systemRoles: [], createdAt: now, updatedAt: now, lastLoginAt: now,
           },
           session: {
             id: "session-1",
@@ -367,8 +386,15 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
             ipAddress: "127.0.0.1",
             userAgent: "Playwright",
           },
+          mfa: { enabled: false, enforcement: "totp" },
+          generationUsage: { usedToday: 0, limit: null, remaining: null, windowSeconds: 86400, limited: false, scope: "user" },
         }),
       );
+      return;
+    }
+
+    if (pathname === "/api/account/onboarding") {
+      await route.fulfill(json({ emptyWorkspace: "completed", firstProject: "completed", firstProjectId: projectId }));
       return;
     }
 
@@ -454,22 +480,11 @@ export async function mockProjectApi(page: Page, workspaceOverrides: Record<stri
     }
 
     if (pathname === `/api/projects/${projectId}/workspace`) {
-      const saved = createWorkspaceState();
-      const savedRulesFingerprint = snapshotInputFingerprint({ requirementText: saved.requirementText, rules: saved.rules });
-      const savedDesignFingerprint = designInputFingerprint(Object.values(saved.models), saved.requirementModelTraceability);
-      const state = {
-        ...saved,
-        diagramInputFingerprints: Object.fromEntries(Object.keys(saved.models).map(id => [id, savedRulesFingerprint])),
-        designInputFingerprints: Object.fromEntries(Object.keys(saved.designModels).map(id => [id, savedDesignFingerprint])),
-        ...workspaceOverrides,
-      };
-      // Freshly accepted fixture rules must carry the same source fingerprint as a real saved workspace.
-      const requirementInputFingerprint = snapshotInputFingerprint({ requirementText: state.requirementText, rules: state.rules });
       await route.fulfill(
         json({
           projectId,
           version: 3,
-          state: { ...state, requirementInputFingerprint, ...("requirementInputFingerprint" in workspaceOverrides ? { requirementInputFingerprint: workspaceOverrides.requirementInputFingerprint } : {}) },
+          state,
         }),
       );
       return;

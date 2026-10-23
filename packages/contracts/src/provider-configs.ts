@@ -67,27 +67,11 @@ export const resolvedProviderSettingsSchema = z.object({
 });
 export type ProviderSettings = z.infer<typeof resolvedProviderSettingsSchema>;
 
-export const managedProviderSettingsSchema = z.object({
+export const providerSettingsSchema = z.object({
   providerConfigId: z.string().min(1),
   model: z.string().min(1),
-});
-export type ManagedProviderSettings = z.infer<
-  typeof managedProviderSettingsSchema
->;
-
-export const providerSettingsSchema = managedProviderSettingsSchema;
+}).strict();
 export type ProviderSettingsInput = z.infer<typeof providerSettingsSchema>;
-
-export const imageProviderSettingsSchema = resolvedProviderSettingsSchema.extend({
-  model: z.enum([
-    "gpt-image-2",
-    "gemini-3.1-flash-image-preview-2k",
-    "nano-banana-pro",
-  ]),
-});
-export type ImageProviderSettings = z.infer<
-  typeof imageProviderSettingsSchema
->;
 
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const optionalNullableTimestampSchema = isoTimestampSchema.nullable();

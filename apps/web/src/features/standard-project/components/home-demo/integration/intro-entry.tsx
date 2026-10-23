@@ -3,7 +3,6 @@ import { useAuiState } from "@assistant-ui/react";
 import { Composer as OriginalComposer } from "../source/composer";
 import { IntroSuggestions } from "./intro/intro-suggestions";
 import Miscellaneous70 from "./intro/miscellaneous-70";
-import BentoGrid from "./intro/bento-grid-23";
 
 export { EditComposer } from "../source/composer";
 export { FollowUps } from "../source/suggestions";
@@ -22,10 +21,5 @@ export function Composer() {
 }
 
 export function Suggestions() {
-  return <>
-    <IntroSuggestions />
-    <div className="agent-feature-showcase" data-testid="agent-feature-showcase">
-      <BentoGrid />
-    </div>
-  </>;
+  return <IntroSuggestions />;
 }

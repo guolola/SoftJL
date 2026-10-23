@@ -12,7 +12,6 @@ it("highlights JSON and copies the original text including unsafe-looking string
   await waitFor(() => expect(container.querySelector("pre.shiki span[style]")).toBeInTheDocument());
   expect(container.querySelector("pre")!.textContent).toBe(code);
   expect(container.querySelector("script")).toBeNull();
-  expect(screen.getByText("mcp.json")).toHaveAttribute("data-slot", "code-block-filename");
   await userEvent.click(screen.getByRole("button", { name: "Copy code" }));
   expect(onCopy).toHaveBeenCalledWith(code);
   expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();

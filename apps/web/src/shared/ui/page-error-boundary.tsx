@@ -1,6 +1,6 @@
 // Renders the template server-error page for unrecoverable page rendering failures.
 import { Component, type ReactNode } from 'react';
-import ServerError from '../template/views/pages/misc/server-error-500';
+import ServerError from '../template/views/pages/misc/server-error-500/index';
 
 export class PageErrorBoundary extends Component<{ children: ReactNode; resetKey?: string }, { failed: boolean }> {
   state = { failed: false };

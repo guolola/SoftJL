@@ -1,5 +1,5 @@
 // Supplies small canonical graphs for contract, renderer and editor regression tests.
-import { getStageModelSchema, type ModelingStage, type AnyDiagramModel } from "../model-semantics.js";
+import { getStageModelSchema, type ModelingStage, type AnyDiagramModel } from "../modeling/model-semantics.js";
 
 export function modelFixture(stage: ModelingStage, kind: string): AnyDiagramModel {
   const base = { diagramKind: kind, modelId: kind, title: "模型", summary: "业务模型", notes: [] };

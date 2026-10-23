@@ -207,6 +207,23 @@ test("complete implementation generation requires exactly two full candidates an
   assert.equal(completeFeasibilityImplementationPlanSchema.safeParse(contradictory).success, false);
 });
 
+test("implementation plans reject non-current integration and absence fields", () => {
+  const current = { overview: "当前方案", candidates: [completeCandidate("一"), completeCandidate("二")], recommendedCandidateId: "一", recommendationRationale: "范围适用" };
+  for (const includeCurrentField of [false, true]) {
+    const integrationInput = structuredClone(current) as any;
+    integrationInput.candidates[0].implementation.integrations = [{
+      id: "auth", name: "认证", purpose: "校验身份", contextExternalSystemId: "auth", sourceRequirementIds: ["r1"],
+      assumption: "", provenance: "ai-estimate", ...(includeCurrentField ? { responsibility: "校验身份" } : {}),
+    }];
+    assert.equal(feasibilityImplementationPlanSchema.safeParse(integrationInput).success, false);
+    const absenceInput = structuredClone(current) as any;
+    absenceInput.candidates[0].implementation.absenceDeclarations = [{
+      scope: "integrations", rationale: "无需集成", provenance: "ai-estimate", ...(includeCurrentField ? { reason: "无需集成" } : {}),
+    }];
+    assert.equal(feasibilityImplementationPlanSchema.safeParse(absenceInput).success, false);
+  }
+});
+
 test("implementation plans reject global details, missing provenance and legacy provenance", () => {
   const current = { overview: "当前方案", candidates: [completeCandidate("一"), completeCandidate("二")], recommendedCandidateId: "一", recommendationRationale: "范围适用" };
   assert.equal(feasibilityImplementationPlanSchema.safeParse(current).success, true);

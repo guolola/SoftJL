@@ -15,7 +15,6 @@ import { ChartColumnBigIcon, ActivityIcon, ArrowRightIcon, UsersIcon } from 'luc
 import { DashboardBlockMenu, type DashboardBlockActions } from './dashboard-block-menu'
 
 const PerformanceCard = ({ className, title, members, area, bar, ...actions }: PerformanceProps & DashboardBlockActions) => {
-
   const avatars = members.members.map(member => ({ src: member.src, fallback: member.initials, name: member.name }))
   const physicalProductsChartData = area.chartData.map(point => ({ month: point.label, sales: point.value }))
   const dailySalesChartData = bar.chartData.map(point => ({ day: point.label, sales: point.value }))

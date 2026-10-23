@@ -1,10 +1,10 @@
 // Defines strict JSON schema response formats for cross-cutting LLM calls.
-import { type JsonSchemaResponseFormat } from "../../../llm.js";
+import { type JsonSchemaResponseFormat } from "../llm-transport.js";
 import { contractResponseSchema, extractedRequirementsSchema } from "@uml-platform/contracts";
 import {
   getStructuredResponseFormat,
   type ModelCapabilitySource,
-} from "../../../model-capabilities.js";
+} from "../model-capabilities.js";
 import { toOpenAiStrictJsonSchema } from "./openai-strict-schema.js";
 
 const documentSectionTableSchema = {

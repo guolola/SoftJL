@@ -1,10 +1,10 @@
 // Keeps ordinary run progress server-owned so reloading or changing views preserves completed diagrams and questions.
-import { i18n } from "../../../shared/i18n";
+import { i18n } from "../../../shared/i18n/index";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { StandardProjectState, StandardModel, StandardConversationMessage } from "@uml-platform/contracts";
 import { standardApi, type StandardCommand } from "../services/standard-api";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
-import { ApiClientError } from "../../../services/api-client";
+import { ApiClientError } from "../../../services/api-client/index";
 import { identifyCommand, pendingCommand, retainCommand } from "../services/command-recovery";
 import { clearConversationDraft } from "./use-conversation-draft";
 import { primeCompletionChime } from "../../../shared/lib/completion-chime";

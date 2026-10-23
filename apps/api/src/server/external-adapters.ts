@@ -2,7 +2,7 @@
 import {
   createRealLlmTransport,
   type LlmTransport,
-} from "../llm.js";
+} from "../adapters/llm/llm-transport.js";
 import {
   createInMemoryLlmScheduler,
   createLlmSchedulerLimitsFromEnv,

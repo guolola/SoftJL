@@ -2,12 +2,19 @@
 import { describe, expect, it } from "vitest";
 import {
   getProviderAllowedModels,
+  getProviderModelCapabilities,
   getProviderLabel,
   resolveProviderModel,
   sortProviderConfigsByScope,
 } from "./provider-config-models";
 
 describe("provider config model helpers", () => {
+  it("rejects mode-less saved capabilities instead of upgrading boolean flags", () => {
+    expect(getProviderModelCapabilities({ allowedModels: ["legacy", "current"], modelCapabilities: {
+      legacy: { supportsJsonSchema: true },
+      current: { structuredOutputMode: "json_object", supportsJsonSchema: true },
+    } })).toEqual({ current: expect.objectContaining({ structuredOutputMode: "json_object", supportsJsonSchema: false }) });
+  });
   it("uses only the provider allowed model list as selectable models", () => {
     expect(
       getProviderAllowedModels({

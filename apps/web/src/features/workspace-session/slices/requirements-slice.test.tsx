@@ -1,24 +1,24 @@
 // Covers requirement slice behavior independently from WorkspaceSessionProvider.
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import { requirementInputFingerprintFor } from "../lib/workspace-context";
 import { useRequirementsSlice } from "./requirements-slice";
 
 function createRepository(): WorkspaceRepository {
   return {
     loadWorkspace: vi.fn(),
-    updateRequirementText: vi.fn(),
+
     updateRequirementRules: vi.fn(),
     startRun: vi.fn(),
     subscribeToRun: vi.fn(),
     getRunSnapshot: vi.fn(),
-    renderPlantUml: vi.fn(),
-    testProviderSettings: vi.fn(),
+
+
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(),
     deleteRunHistory: vi.fn(),
-    clearRunHistory: vi.fn(),
+
   };
 }
 
@@ -36,10 +36,10 @@ describe("useRequirementsSlice", () => {
 
     expect(result.current.requirementText).toBe("新的需求");
     expect(result.current.textVersion).toBe(1);
-    expect(repository.updateRequirementText).not.toHaveBeenCalled();
+
 
     act(() => vi.advanceTimersByTime(500));
-    expect(repository.updateRequirementText).not.toHaveBeenCalled();
+
     expect(result.current.hasUncommittedRequirementDraft).toBe(true);
     act(() => result.current.setCommittedRequirementText("新的需求"));
     expect(result.current.hasUncommittedRequirementDraft).toBe(false);
@@ -58,7 +58,7 @@ describe("useRequirementsSlice", () => {
     });
 
     expect(result.current.requirementText).toBe("此日历仅供公众使用");
-    expect(repository.updateRequirementText).not.toHaveBeenCalled();
+
   });
 
 
@@ -105,7 +105,7 @@ describe("useRequirementsSlice", () => {
     );
 
     act(() => {
-      result.current.clearRequirementRules();
+      for (const rule of result.current.rules) result.current.deleteRequirementRule(rule.id);
     });
 
     expect(result.current.rules).toEqual([]);

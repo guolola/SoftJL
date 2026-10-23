@@ -4,7 +4,7 @@ import type { Pool } from "pg";
 import { createPostgresPoolFromEnv, getDatabaseUrl } from "../db/postgres.js";
 import { withTransaction } from "../db/transactions.js";
 import { catalog, catalogById, findPromptForMessage, type CatalogEntry } from "./catalog.js";
-import type { LlmTransport, ChatMessage } from "../llm.js";
+import type { LlmTransport, ChatMessage } from "../adapters/llm/llm-transport.js";
 
 
 type Status = "draft" | "pending" | "published" | "superseded";
@@ -74,6 +74,9 @@ export class PromptRuntimeStore {
     }
     const rows = await this.pool.query<VersionRow>(
       "select v.* from prompt_runtime_active a join prompt_runtime_versions v on v.id=a.version_id");
+    if (rows.rows.some((row) => !catalogById.has(row.prompt_id))) {
+      throw new PromptRuntimeError("已发布提示词不属于当前目录，请按当前目录重新配置。", 409);
+    }
     return Object.fromEntries(rows.rows.map((row) => [row.prompt_id, { id: row.id, content: row.content }]));
   }
 
@@ -134,7 +137,7 @@ export class PromptRuntimeStore {
     return versionFromRow(result.rows[0]);
   }
 
-  async submit(id: string, versionId: string, actor: string) {
+  async submit(id: string, versionId: string) {
     editable(id);
     if (!this.pool) {
       const row = (this.memory.get(id) ?? []).find((item) => item.id === versionId && item.status === "draft");

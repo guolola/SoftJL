@@ -25,10 +25,7 @@ function fileNameWithDuplicateSuffix(fileName: string, suffix: number) {
   )}`;
 }
 export interface DocumentLibrary {
-  listDocuments(
-    workspaceId: string,
-    options?: { projectId?: string | null; includeDeleted?: boolean },
-  ): Promise<DocumentLibraryItem[]>;
+
   listAllDocuments(options?: {
     projectId?: string | null;
     includeDeleted?: boolean;
@@ -383,7 +380,7 @@ export function createFileDocumentLibrary(rootDir: string): DocumentLibrary {
   }
 
   return {
-    listDocuments,
+
     listAllDocuments,
     getDocument,
     getDocumentBuffer,

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { floatingAlert as toast } from "../../../shared/ui/floating-alert";
 import { ProjectCreateForm } from "./project-create-form";
 import { PROJECT_BACKGROUND_OPTIONS } from "../lib/project-backgrounds";
+import { consumeProjectIntroduction } from "../../../shared/lib/project-introduction";
 
 vi.mock("../../../shared/ui/floating-alert", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../shared/ui/floating-alert")>();
@@ -13,6 +14,7 @@ vi.mock("../../../shared/ui/floating-alert", async (importOriginal) => {
 
 describe("ProjectCreateForm", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
@@ -31,7 +33,7 @@ describe("ProjectCreateForm", () => {
       if (url.pathname === "/api/projects" && init?.method === "POST") {
         return new Response(
           JSON.stringify({
-            project: { projectMode: "professional",
+            project: { projectMode: JSON.parse(String(init.body)).projectMode,
               id: "project-created",
               name: "测试项目",
               description: null,
@@ -71,6 +73,9 @@ describe("ProjectCreateForm", () => {
     const payload = JSON.parse(String(call?.[1]?.body));
     expect(payload).toMatchObject({ name: "订单系统", description: "订单管理", projectMode: "standard" });
     expect(PROJECT_BACKGROUND_OPTIONS.map(({ key }) => key)).toContain(payload.backgroundKey);
+    expect(consumeProjectIntroduction("project-created", "standard")).toBe(true);
+    expect(consumeProjectIntroduction("project-created", "standard")).toBe(false);
+    expect(consumeProjectIntroduction("project-created", "professional")).toBe(false);
   });
 
   it("creates invitation-only projects without visibility or hierarchy settings", async () => {
@@ -109,6 +114,7 @@ describe("ProjectCreateForm", () => {
     expect(screen.getByRole("button", { name: "创建并进入项目" })).toBeDisabled();
     fireEvent.submit(form);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(consumeProjectIntroduction("project-created", "standard")).toBe(false);
     finishCreation(new Response(JSON.stringify({ project: {
       id: "project-created", projectMode: "standard", name: "订单系统", description: null,
       status: "active", ownerUserId: "owner-user", updatedAt: "2026-06-21T00:00:00.000Z",
@@ -124,6 +130,8 @@ describe("ProjectCreateForm", () => {
     expect(screen.getByRole("radio", { name: "快速建模" })).toBeChecked();
     const quickCard = screen.getByRole("radio", { name: "快速建模" }).closest("label")!;
     const engineeringCard = screen.getByRole("radio", { name: "工程建模" }).closest("label")!;
+    expect(quickCard.querySelector('[data-slot="badge"]')).toHaveTextContent("快速建模");
+    expect(engineeringCard.querySelector('[data-slot="badge"]')).toHaveTextContent("工程建模");
     expect(screen.getByRole("radio", { name: "快速建模" })).toHaveAccessibleDescription("适合初学者和希望快速验证想法的用户。通过对话灵活建模，不进行链路校验。");
     expect(screen.getByRole("radio", { name: "工程建模" })).toHaveAccessibleDescription("适合开展课程设计或工程实践的学生与团队。按规范流程分步建模，校验链路并追踪变更影响，过程更严谨。");
     expect(quickCard.querySelector('[data-project-mode-illustration="chat"]')).toHaveAttribute("aria-hidden", "true");
@@ -133,10 +141,27 @@ describe("ProjectCreateForm", () => {
     expect(engineeringCard.querySelectorAll("button, input")).toHaveLength(1);
     expect(screen.getByText("聊天式")).toBeVisible();
     expect(screen.getByText("工作流式")).toBeVisible();
-    await user.click(screen.getByRole("radio", { name: "工程建模" }));
+    await user.click(screen.getByText("工程建模", { selector: '[data-slot="badge"]' }));
+    expect(screen.getByRole("radio", { name: "工程建模" })).toBeChecked();
     await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
     const call = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(JSON.parse(String(call?.[1]?.body)).projectMode).toBe("professional");
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(consumeProjectIntroduction("project-created", "standard")).toBe(false);
+    expect(consumeProjectIntroduction("project-created", "professional")).toBe(true);
+  });
+
+  it("does not queue an introduction when project creation fails", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubCreateProjectFetch();
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ message: "创建失败" }), {
+      status: 500, headers: { "Content-Type": "application/json" },
+    }));
+    render(<ProjectCreateForm onNavigate={vi.fn()} />);
+    await user.type(screen.getByLabelText("项目名称"), "失败的项目");
+    await user.click(screen.getByRole("button", { name: "创建并进入项目" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(consumeProjectIntroduction("project-created", "standard")).toBe(false);
   });
 
   it("shows every field together and preserves mode and details while editing", async () => {

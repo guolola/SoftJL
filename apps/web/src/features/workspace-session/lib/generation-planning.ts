@@ -357,7 +357,6 @@ export function resolveDesignGenerationDiagrams(
 }
 
 export function analyzeDesignGeneration(
-  requestedDiagrams: DesignDiagramType[],
   effectiveDiagrams: DesignDiagramType[],
   dependencyDiagrams: DesignDiagramType[],
   existingDiagrams: DesignDiagramType[],

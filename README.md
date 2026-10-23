@@ -25,7 +25,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Version-v2.2.4-2563eb?style=flat-square" alt="Current product version v2.2.4" />
+  <img src="https://img.shields.io/badge/Version-v2.2.5-2563eb?style=flat-square" alt="Current product version v2.2.5" />
   <img src="https://img.shields.io/badge/Frontend-React%20%2B%20Next.js-61dafb?style=flat-square" alt="React and Next.js" />
   <img src="https://img.shields.io/badge/API-Fastify%20%2B%20Zod-111827?style=flat-square" alt="Fastify and Zod" />
   <img src="https://img.shields.io/badge/UML-PlantUML-f59e0b?style=flat-square" alt="PlantUML" />
@@ -126,7 +126,7 @@ Review generated content, organize documents according to your school's requirem
 
 | Capability | Community | Hosted | Scope and requirements |
 | --- | :---: | :---: | --- |
-| 📝 Requirement rules and confirmation | ✅ | ✅ | Extraction, quality review, revision, human confirmation and acceptance criteria |
+| 📝 Requirement rules and confirmation | ✅ | ✅ | Extraction, source evidence, revision and requirement-to-model mapping |
 | 🧭 Feasibility: system context | ✅ | ✅ | System boundaries, external actors and interactions |
 | 🧭 Feasibility: business/system flow | ✅ | ✅ | Business processes and system workflows |
 | 🧭 Feasibility: implementation options | ✅ | ✅ | Candidate solutions, costs, benefits and risks |
@@ -205,20 +205,15 @@ Core services include document generation, built-in DOCX preview and downloads. 
 
 Add your provider in account model settings, test the connection and select a model. Configure persistence and encryption secrets for deployment, and disable development guest access and legacy plaintext provider settings.
 
-## What changed in v2.2.4
+## What changed in v2.2.5
 
-This release improves Quick Modeling scope confirmation, invitations and profile updates:
+- Align shared contract domains, application integration tests and the independent demo-fixtures workspace.
+- Use typed Quick Modeling structures, native activity swimlanes and editors for each supported model.
+- Load maintained modeling skills and explicit Pi extensions through the native resource loader, with restricted resource reads.
+- Add structured QuestionFlow inquiries, saved receipts, actual reply timing and project introduction controls.
+- Reject obsolete model and requirement formats explicitly; deploy the complete API resources and the relocated PlantUML jar.
 
-- Confirm model scope with server-validated option IDs; reject stale questions, invalid selections and attempts to expand the selected diagram types.
-- Explain unsupported Quick Modeling requests and require explicit choices before generating a supported alternative; recommendations and earlier consent cannot bypass confirmation.
-- Search registered invitees by username or display name, with avatars, request debouncing and filtering of existing members, inactive users and yourself.
-- Choose from 12 bundled animated avatars or upload GIFs without losing animation; profile changes update navigation avatars without reloading the project.
-- Filter projects by Standard or Professional mode, while retaining shared-project filtering and the community edition's direct project entry.
-
-This release uses the current `current_platform_schema_v3` installation baseline. Existing v1/v2 databases are rejected; use a clean database. SMTP and emailed invitation links are retired.
-
-Mapping metadata fields `reviewStatus`, `confidence` and the `auto-filled-pending-review` value are retired. Workspaces containing them are rejected by the current contract; recreate affected projects and models. No automatic data conversion is provided.
-
+See [release notes and upgrade requirements](release-notes.md). Hosted billing, operations administration, exams and marketing pages remain excluded.
 ## Architecture
 
 | Directory | Responsibility |
@@ -236,7 +231,7 @@ The root `npm run dev` builds shared packages automatically; use `npm run build:
 
 ## Release and upgrades
 
-Current version: **v2.2.4**. See [release notes and setup requirements](release-notes.md), including retired avatar paths and model-selection questions. New installations initialize an empty database with `current_platform_schema_v3`; existing data must meet current contracts. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
+Current version: **v2.2.5**. See [release notes and setup requirements](release-notes.md), including obsolete model formats, API resources and the relocated PlantUML runtime. New installations initialize an empty database with `current_platform_schema_v3`; existing data must meet current contracts. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
 
 ## Documentation
 

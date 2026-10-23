@@ -14,7 +14,7 @@ import {
   type FeasibilityImplementationPlan,
   type FeasibilityInputs,
 } from "@uml-platform/contracts";
-import { useWorkspaceRepository } from "../../../services/workspace-repository";
+import { useWorkspaceRepository } from "../../../services/workspace-repository/index";
 import { Badge } from "../../../shared/ui/badge";
 import { Button } from "../../../shared/ui/button";
 import { Card } from "../../../shared/ui/card";
@@ -39,7 +39,7 @@ import {
   USER_SETTINGS_CHANGED_EVENT,
   loadUserSettings,
 } from "../../../shared/lib/user-settings";
-import { ApiClientError } from "../../../services/api-client";
+import { ApiClientError } from "../../../services/api-client/index";
 import {
   FeedbackReopenButton,
   type FeedbackDialogState,

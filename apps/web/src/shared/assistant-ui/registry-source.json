@@ -1,0 +1,19 @@
+{
+  "registryItem": "@assistant-ui/elements-question-flow",
+  "installation": "npx shadcn@latest add \"@assistant-ui/elements-question-flow\"",
+  "documentation": "https://www.assistant-ui.com/elements/question-flow",
+  "adaptations": [
+    "workspace import paths",
+    "Chinese and English UI text",
+    "stable ref forwarding callback dependencies"
+  ],
+  "installedSourceSha256": {
+    "elements/option-list.tsx": "c1d105dadf1a3e43c8835121eb17a9984dc8b95bc53d3b3617e22ba3bfba2601",
+    "elements/question-flow.tsx": "e0e7fb0d28a098a3cc6008a8e5efb928af2dcdc85118c7e3e86967492d2a8293",
+    "elements/receipt-focus.ts": "604de805db4c296aab9d4bf6dafdba22bd30b5731cbec8143c3edf8a1b30390a",
+    "elements/surfaces.tsx": "142336d363682f965fd7091ce171762e02cb45bbfafa93dfe628b369d06c97fe",
+    "utils/range.ts": "ed80abd6c696b7101ca44c37b8ffd208b2bd3216594f7802890bad13068a1255",
+    "utils/useIsomorphicLayoutEffect.ts": "4879efba5bb6aa438a6085c1d205bb2b43f919692c8453dd7ee1af1b7747eeec"
+  },
+  "hashesDescribe": "Installed files after workspace path normalization, before UI text localization."
+}

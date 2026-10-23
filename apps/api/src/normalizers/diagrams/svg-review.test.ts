@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ModelRenderMapping } from "@uml-platform/contracts";
-import { verifySvgMapping } from "./svg-review.js";
+import { verifySvgMapping } from "../../../tests/fixtures/render/svg-mapping-verifier.js";
 
 const mapping = {
   mode: "native", elements: [{ elementId: "actor", alias: "a" }, { elementId: "case", alias: "b" }],
@@ -32,8 +32,8 @@ test("parallel relationships require separate SVG links; containment comments ar
   const svg = `${entities}<g class="link" id="link_a_b" data-entity-1="a" data-entity-2="b"/></svg>`;
   assert.deepEqual(verifySvgMapping(svg, parallel, "class", "class").findings.map((item) => item.relationshipId), ["r2"]);
 });
-test("obsolete activity mappings are rejected rather than treated as current renders", () => {
-  assert.throws(() => verifySvgMapping(`${entities}</svg>`, mapping, "activity", "activity"), /must use explicit-graph/);
+test("native activity mappings do not claim stable SVG identities", () => {
+  assert.deepEqual(verifySvgMapping(`${entities}</svg>`, mapping, "activity", "activity"), { identifiable: false, findings: [] });
 });
 
 test("current PlantUML qualified names resolve generated IDs for nested nodes and association links", () => {

@@ -1,5 +1,5 @@
 // Verifies bounded, localized follow-ups without external calls or fabricated fallback suggestions.
-import { compatibleTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import { compatibleTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createAssistantMessageEventStream, getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";

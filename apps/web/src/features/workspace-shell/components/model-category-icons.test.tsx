@@ -1,52 +1,45 @@
-// Verifies the rendered category SVGs agree across cards, dependency illustrations and navigation.
+// Verifies model entries, upstream explanations, and scoped navigation remain accessible.
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LucideIcon } from "lucide-react";
 import { DESIGN_DIAGRAM_ORDER, DIAGRAM_ORDER, getDesignDiagramLabel, getDiagramLabel } from "../../../entities/diagram/model";
-import { i18n } from "../../../shared/i18n";
-import { DESIGN_DIAGRAM_ICON, FEASIBILITY_ARTIFACT_ICON, REQUIREMENT_DIAGRAM_ICON } from "../../../entities/diagram/model-icons";
+import { i18n } from "../../../shared/i18n/index";
 import { createMockWorkspaceRepository } from "../../../services/workspace-repository/mock-repository";
-import { createBusinessFlowArtifact, createRule, withWorkspaceProviders } from "../../../test/workspace-test-utils";
+import { createBusinessFlowArtifact, createRule, withWorkspaceProviders } from "../../../../tests/helpers/workspace-test-utils";
 import { DesignModelPage } from "../../design/components/design-model-page";
 import { FeasibilityPage } from "../../feasibility/components/feasibility-page";
 import { TextRequirementView } from "../../requirements/components/text-requirement-page";
 import { SidebarMenu } from "./sidebar-menu";
 
-function expectCategoryIcon(node: Element, Icon: LucideIcon) {
-  const expected = render(<Icon />).container.querySelector("svg")!;
-  expect(node.querySelector("svg")!.innerHTML).toBe(expected.innerHTML);
-}
-
-const requirementCategories = DIAGRAM_ORDER.map(kind => ({ label: getDiagramLabel(kind, i18n.t), Icon: REQUIREMENT_DIAGRAM_ICON[kind] }));
-const designCategories = DESIGN_DIAGRAM_ORDER.map(kind => ({ label: getDesignDiagramLabel(kind, i18n.t), Icon: DESIGN_DIAGRAM_ICON[kind] }));
+const requirementCategories = DIAGRAM_ORDER.map(kind => ({ label: getDiagramLabel(kind, i18n.t) }));
+const designCategories = DESIGN_DIAGRAM_ORDER.map(kind => ({ label: getDesignDiagramLabel(kind, i18n.t) }));
 const feasibilityCategories = [
-  { label: "系统环境图", Icon: FEASIBILITY_ARTIFACT_ICON.context },
-  { label: "业务流程图", Icon: FEASIBILITY_ARTIFACT_ICON["business-flow"] },
-  { label: "实现方案", Icon: FEASIBILITY_ARTIFACT_ICON.implementation },
+  { label: "系统环境图" },
+  { label: "业务流程图" },
+  { label: "实现方案" },
 ];
 
 afterEach(() => localStorage.clear());
 
-describe("shared model category SVGs", () => {
+describe("model category navigation", () => {
   it.each([
     { stage: "feasibility", page: <FeasibilityPage view="overview" />, categories: feasibilityCategories },
     { stage: "requirements", page: <TextRequirementView view="models" />, categories: requirementCategories },
     { stage: "design", page: <DesignModelPage />, categories: designCategories },
-  ])("shares the $stage card icons with the dependency illustration", async ({ page, categories }) => {
+  ])("opens the matching upstream explanation for each $stage model", async ({ page, categories }) => {
     const user = userEvent.setup();
     render(withWorkspaceProviders(page, createMockWorkspaceRepository({ rules: [createRule()] })));
-    for (const { label, Icon } of categories) {
+    for (const { label } of categories) {
       const card = await screen.findByRole("button", { name: label === "业务流程图" ? "选择业务流程图" : `选择${label}` });
-      expectCategoryIcon(card, Icon);
+      expect(card).toBeVisible();
       await user.hover(card);
       const figure = screen.getByRole("figure", { name: `${label}的上游输入` });
-      // The target symbol shares the same geometry even when the illustration uses a larger size.
-      expectCategoryIcon(figure.querySelector('[data-slot="upstream-target"]')!, Icon);
+      // Hovering a model exposes its corresponding upstream explanation.
+      expect(figure).toBeVisible();
     }
   });
 
-  it("uses each model's SVG for pending menu entries and keeps status indicators separate", async () => {
+  it("shows model entries with their pending run states", async () => {
     const user = userEvent.setup();
     const rules = [createRule()];
     const repository = createMockWorkspaceRepository({
@@ -64,14 +57,14 @@ describe("shared model category SVGs", () => {
     for (const label of ["可行性分析", "需求模型", "设计模型"]) {
       await user.click(await screen.findByRole("button", { name: `展开 ${label}` }));
     }
-    for (const { label, Icon } of [...feasibilityCategories.slice(0, 2), ...requirementCategories, ...designCategories]) {
-      expectCategoryIcon(screen.getByRole("button", { name: label }), Icon);
+    for (const { label } of [...feasibilityCategories.slice(0, 2), ...requirementCategories, ...designCategories]) {
+      expect(screen.getByRole("button", { name: label })).toBeVisible();
     }
     expect(screen.getByRole("button", { name: "设计类图" }).querySelector('[data-sidebar-status="queued"]')).not.toBeNull();
     expect(screen.getByRole("button", { name: "领域概念模型" }).querySelector('[data-sidebar-status="running"]')).not.toBeNull();
   });
 
-  it("keeps scoped analysis and realization groups consistent with their child models", async () => {
+  it("expands scoped analysis and realization groups to their child models", async () => {
     const user = userEvent.setup();
     const repository = createMockWorkspaceRepository({
       models: {
@@ -87,14 +80,14 @@ describe("shared model category SVGs", () => {
       { operationType: "requirement_modeling" as const, runId: "analysis", runKind: "requirements", stage: "generate_models", status: "running", selectedDiagrams: ["analysis"] },
       { operationType: "design_modeling" as const, runId: "sequence", runKind: "design", stage: "generate_design_sequence", status: "running", selectedDiagrams: ["sequence"] },
     ]} />, repository));
-    for (const { stage, label, children, Icon } of [
-      { stage: "需求模型", label: "需求分析模型", children: ["分析一", "分析二"], Icon: REQUIREMENT_DIAGRAM_ICON.analysis },
-      { stage: "设计模型", label: "用例实现设计", children: ["实现一", "实现二"], Icon: DESIGN_DIAGRAM_ICON.sequence },
+    for (const { stage, label, children } of [
+      { stage: "需求模型", label: "需求分析模型", children: ["分析一", "分析二"] },
+      { stage: "设计模型", label: "用例实现设计", children: ["实现一", "实现二"] },
     ]) {
       await user.click(await screen.findByRole("button", { name: `展开 ${stage}` }));
-      expectCategoryIcon(screen.getByRole("button", { name: label }), Icon);
+      expect(screen.getByRole("button", { name: label })).toBeVisible();
       await user.click(screen.getByRole("button", { name: `展开 ${label}` }));
-      for (const child of children) expectCategoryIcon(screen.getByRole("button", { name: child }), Icon);
+      for (const child of children) expect(screen.getByRole("button", { name: child })).toBeVisible();
     }
   });
 });

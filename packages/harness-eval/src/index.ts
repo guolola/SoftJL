@@ -6,7 +6,7 @@ import { assertEvaluationApiConfig, createEvaluationApiClient } from "./api-clie
 import {
   extractProtectedRequirementFacts,
   unsupportedRequirementFacts,
-  type AtomicRequirement,
+  runSnapshotSchema,
   type DiagramKind,
   type RunSnapshot,
 } from "@uml-platform/contracts";
@@ -39,7 +39,8 @@ export interface EvalCaseResult {
   effectiveTraceTotal: number;
   effectiveTraceCoverageRate: number | null;
   terminalStateConsistent: boolean;
-  qualityScore: number;
+
+qualityScore: number;
   automaticVerdict: "pass" | "fail";
 }
 
@@ -143,15 +144,16 @@ function createMockSnapshot(fixture: EvalFixture): RunSnapshot {
     text: fact,
 
   }));
-  return {
-    operationType: "requirement_modeling", outputManifest: [], runId: `mock-${fixture.id}`,
+  return runSnapshotSchema.parse({
+    operationType: "requirement_modeling",
+    outputManifest: [],
+    runId: `mock-${fixture.id}`,
     requirementText: fixture.requirementText,
     selectedDiagrams: fixture.selectedDiagrams,
     analysisTargetUseCaseIds: [],
     requirementBaseline: null,
     coverageMatrix: null,
     traceabilityMatrix: null,
-    requirementModelTraceability: [],
     visualReviews: {},
     rules: expectedRules.length > 0 ? expectedRules : [
       {
@@ -168,6 +170,7 @@ function createMockSnapshot(fixture: EvalFixture): RunSnapshot {
       },
     ],
     models: [],
+    requirementModelTraceability: [],
     plantUml: [],
     svgArtifacts: fixture.selectedDiagrams.map((diagramKind) => ({
       diagramKind,
@@ -184,13 +187,10 @@ function createMockSnapshot(fixture: EvalFixture): RunSnapshot {
     currentStage: "render_svg",
     status: "completed",
     error: null,
-  };
+  });
 }
 
-function semanticCarrier(text: string): Pick<
-  AtomicRequirement,
-  "actor" | "subject" | "action" | "object" | "condition" | "outcome"
-> {
+function semanticCarrier(text: string) {
   return {
     actor: null,
     subject: null,
@@ -202,7 +202,8 @@ function semanticCarrier(text: string): Pick<
 }
 
 function summarizeQuality(fixture: EvalFixture, snapshot: RunSnapshot) {
-  const actualText = (snapshot.requirementBaseline?.rules ?? snapshot.rules).map(rule => rule.text).join("；");
+  const actualText = (snapshot.requirementBaseline?.rules ?? snapshot.rules)
+    .map((rule) => rule.text).join("；");
   const expectedFacts = fixture.expectedFacts.flatMap((text) =>
     extractProtectedRequirementFacts(semanticCarrier(text)),
   );
@@ -254,7 +255,8 @@ function summarizeQuality(fixture: EvalFixture, snapshot: RunSnapshot) {
         ? effectiveTraceCovered / effectiveTraceTotal
         : null,
     terminalStateConsistent,
-  };
+
+};
 }
 
 function summarizeSnapshot(

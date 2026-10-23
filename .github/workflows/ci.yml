@@ -62,7 +62,7 @@ jobs:
         run: npm ci
 
       - name: Verify PlantUML jar
-        run: test -f plantuml/build/libs/plantuml-1.2026.3beta8.jar
+        run: test -f plantuml/plantuml-1.2026.3beta8.jar
 
       - name: Build shared packages for tests
         run: |

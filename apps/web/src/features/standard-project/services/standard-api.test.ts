@@ -1,5 +1,6 @@
+import { standardModelFixture } from "@uml-platform/contracts/testing";
 // Exercises the actual API wrapper so browser JSON requests cannot silently become text/plain.
-import type { StandardModel } from "@uml-platform/contracts";
+import { createStandardProjectState, standardDiagramKinds, type StandardModel } from "@uml-platform/contracts";
 import { afterEach, expect, it, vi } from "vitest";
 import { patchUserSettings } from "../../../shared/lib/user-settings";
 import { standardApi } from "./standard-api";
@@ -9,11 +10,11 @@ afterEach(() => {
   localStorage.clear();
 });
 
-function captureRequests() {
+function captureRequests(state: unknown = createStandardProjectState()) {
   const requests: Request[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
     requests.push(new Request(new URL(url, "http://localhost"), init));
-    return new Response(JSON.stringify({ state: {} }), {
+    return new Response(JSON.stringify({ state }), {
       headers: { "Content-Type": "application/json" },
     });
   }));
@@ -35,7 +36,7 @@ it("submits requirements and follow-up messages as JSON with the selected model"
 
 it("declares JSON for saving requirements and diagrams", async () => {
   const requests = captureRequests();
-  const model: StandardModel = { nodes: [{ id: "book", label: "图书", type: "class", fields: [], methods: [] }], edges: [] };
+  const model: StandardModel = standardModelFixture("class");
   await standardApi.saveDescription("project-test", "更新后的需求");
   await standardApi.saveModel("project-test", "diagram-test", model);
   expect(requests.map(request => request.method)).toEqual(["PATCH", "PUT"]);
@@ -52,4 +53,25 @@ it("leaves bodyless cancel actions without a JSON content type", async () => {
     expect(request.headers.has("Content-Type")).toBe(false);
     expect(await request.text()).toBe("");
   }
+});
+
+it.each(standardDiagramKinds)("%s saves and reads the current contract without a generic adapter", async kind => {
+  const model = standardModelFixture(kind);
+  const state = { ...createStandardProjectState(), diagrams: { [kind]: { id: kind, kind, title: kind, status: "completed", model } } };
+  const requests = captureRequests(state);
+  const saved = await standardApi.saveModel("p", kind, model);
+  expect(await requests[0].json()).toEqual(model);
+  expect(saved.state.diagrams[kind].model).toEqual(model);
+  expect((await standardApi.read("p")).state.diagrams[kind].model).toEqual(model);
+});
+
+it("rejects obsolete outgoing models before sending a request", () => {
+  const requests = captureRequests();
+  expect(() => standardApi.saveModel("p", "class", { nodes: [], edges: [] } as unknown as StandardModel)).toThrow();
+  expect(requests).toHaveLength(0);
+});
+
+it("rejects obsolete model responses instead of constructing editable state", async () => {
+  captureRequests({ ...createStandardProjectState(), diagrams: { class: { id: "class", kind: "class", title: "旧模型", status: "completed", model: { nodes: [], edges: [] } } } });
+  await expect(standardApi.read("p")).rejects.toThrow();
 });

@@ -10,11 +10,7 @@ import { currentSchemaSql } from "./current-schema.js";
 import { PGlite } from "@electric-sql/pglite";
 import { createPostgresAuthRepository } from "../auth/postgres-auth-repository.js";
 import { createProviderUsageTracker } from "../provider-configs/provider-usage-tracker.js";
-import {
-  checkDatabaseHealth,
-  withTransaction,
-  type Queryable,
-} from "./transactions.js";
+import { withTransaction, type Queryable } from "./transactions.js";
 
 class FakeClient implements Queryable {
   readonly queries: string[] = [];
@@ -206,13 +202,6 @@ test("obsolete schema ledgers are rejected without applying repair SQL", async (
   await assert.rejects(runMigrations(client), /schema is obsolete/);
   assert.equal(client.queries.at(-1), "ROLLBACK");
   assert.doesNotMatch(client.queries.join("\n"), /create table users/i);
-});
-
-test("health check reports ok when SELECT 1 succeeds", async () => {
-  const health = await checkDatabaseHealth(new FakeClient());
-
-  assert.equal(health.ok, true);
-  assert.equal(typeof health.checkedAt, "string");
 });
 
 test("transaction helper commits successful work and releases the client", async () => {

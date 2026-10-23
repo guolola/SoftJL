@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AssistantRuntimeProvider, MessageNotSentError, useExternalStoreRuntime, WebSpeechDictationAdapter, type AppendMessage, type ThreadMessageLike } from "@assistant-ui/react";
 import type { StandardAttachment } from "@uml-platform/contracts";
 import { useTranslation } from "react-i18next";
-import { useWorkspaceProjectId } from "../../../services/workspace-repository";
+import { useWorkspaceProjectId } from "../../../services/workspace-repository/index";
 import { ModelingComposer } from "../../../shared/ui/modeling-composer";
 import { ModelingComposerAttachments } from "../../../shared/ui/modeling-composer-attachments";
 import { ModelingModelSelector } from "../../../shared/ui/modeling-model-selector";
@@ -13,7 +13,7 @@ import { patchUserSettings } from "../../../shared/lib/user-settings";
 import { useModelingReasoning } from "../../../shared/lib/modeling-reasoning";
 import { getProviderModelLabel, inferProviderModelGroup } from "../../../shared/lib/provider-model-display";
 import { createConversationAttachments, toProjectAttachment } from "../../../shared/lib/modeling-attachments";
-import { useRequirementModelContext } from "../hooks/use-requirement-model-context";
+import { useModelingModelContext } from "../../../services/workspace-repository/use-modeling-model-context";
 import { useRequirementTextHistory } from "../hooks/use-requirement-text-history";
 import { clearRequirementComposerDraft, readRequirementComposerDraft, saveRequirementComposerDraft } from "../lib/requirement-composer-draft";
 
@@ -38,7 +38,7 @@ const EMPTY_MESSAGES: ThreadMessageLike[] = [];
 export function RequirementComposer(props: Props) {
   const { t, i18n } = useTranslation();
   const projectId = useWorkspaceProjectId();
-  const { settings, modelContext } = useRequirementModelContext(projectId);
+  const { settings, modelContext } = useModelingModelContext(projectId);
   const [reasoning, setReasoning] = useModelingReasoning();
   const [speech, setSpeech] = useState<object>({});
   const [draftReady, setDraftReady] = useState(false);

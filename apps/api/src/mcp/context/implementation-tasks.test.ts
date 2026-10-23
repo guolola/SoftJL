@@ -1,13 +1,8 @@
 // Verifies source-backed task identity, real element references, readiness and scoped implementation evidence.
 import { requirementRuleFacts } from "@uml-platform/contracts";
-import { requirementRuleSchema } from "@uml-platform/contracts";
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  mcpImplementationTaskSchema,
-  type AtomicRequirement,
-  type ModelElementRef,
-} from "@uml-platform/contracts";
+import { mcpImplementationTaskSchema, type ModelElementRef } from "@uml-platform/contracts";
 import { buildImplementationTasks } from "./implementation-tasks.js";
 import { buildContext } from "./implementation-context.js";
 import { contentHash, type SourceArtifact } from "./source-artifacts.js";
@@ -21,12 +16,9 @@ function artifact(id: string, stage: SourceArtifact["stage"], payload: Record<st
   };
 }
 function requirement(id = "BORROW", criteria = ["第5本可借，第6本借阅被拒绝"], sourceRuleId?: string) {
-  const value: AtomicRequirement = {
-    id, sourceFragment: `${id} 功能`, type: "functional" as const, actor: "学生", subject: "系统", action: "借阅",
-    object: "书", condition: null, outcome: "保存借阅记录", confidence: 1, status: "accepted",
-    criticality: "high", acceptanceCriteria: criteria, fieldProvenance: {}, ...(sourceRuleId ? { sourceRuleId } : {}),
-  };
-  return artifact(`requirement:${id}`, "requirements", { requirement: { ...value, text: [...new Set(criteria)].sort().join("；") } }, { requirementIds: [id, ...(sourceRuleId ? [sourceRuleId] : [])] });
+  return artifact(`requirement:${id}`, "requirements", { requirement: {
+    id, text: [...new Set(criteria)].sort().join("；"), ...(sourceRuleId ? { sourceRuleId } : {}),
+  } }, { requirementIds: [id, ...(sourceRuleId ? [sourceRuleId] : [])] });
 }
 function rule(id: string, requirementIds = [id]) {
   return artifact(`rule:${id}`, "requirements", { rule: { id, type: "business-rule" as const, text: `${id} 原始规则正文`,  } }, { requirementIds });
@@ -102,12 +94,9 @@ test("linked sources follow a dependency closure while missing sources never bec
   assert.ok(blocking(task).some((issue) => issue.code === "source-dependency-missing"));
 });
 
-test("historical acceptance and trace reviews do not block while stale and conflicting saved sources do", () => {
+test("current acceptance and trace references allow unknown freshness while conflicts and stale sources block", () => {
   const accepted = requirement();
   const pending = modelArtifact("pending", "design");
-  const value = accepted.payload.requirement as AtomicRequirement;
-  value.status = "rejected";
-  value.fieldProvenance = { acceptanceCriteria: { source: "ai-suggested", status: "rejected" } };
   pending.payload.traceability = [{ source: ref("pending", "loan"), targets: [ref("business", "borrow-case")], rationale: "待确认" }];
   pending.version.freshness = "unknown";
   assert.equal(blocking(buildImplementationTasks([accepted, pending])[0]).length, 0);
@@ -213,8 +202,8 @@ test("context functional scopes generate only their requirements and never mutat
           runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
            assumptions: [], conflicts: [],
           qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
-          rules: ([borrow.payload.requirement, returnRequirement.payload.requirement]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id,
-            text: item.sourceFragment, sourceFragment: item.sourceFragment, origin: "generated",
+          rules: [borrow.payload.requirement, returnRequirement.payload.requirement].map(item => ({ id: item.id, requirementId: item.id,
+            text: item.text, origin: "generated",
             type: "functional" as const,
           })),
         },

@@ -1,6 +1,6 @@
 // Owns generation result and confirmation dialog state for the session provider.
 import { useCallback, useState } from "react";
-import { requirementBaselineTraceEntries, type RequirementBaseline } from "@uml-platform/contracts";
+import type { RequirementBaseline } from "@uml-platform/contracts";
 import {
   completedRunResultMessage,
   generationResultFeedback,
@@ -60,9 +60,7 @@ export function failedRunResultDialog(input: {
     ? input.failure.details.ruleIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
     : [];
   const ruleLabels = ruleIds.map((ruleId) => {
-    const requirementId = (input.requirementBaseline ? requirementBaselineTraceEntries(input.requirementBaseline) : []).find(
-      (requirement) => requirement.sourceRuleId === ruleId,
-    )?.id;
+    const requirementId = input.requirementBaseline?.rules.find(rule => rule.id === ruleId)?.requirementId;
     return requirementId ? `${ruleId}（${requirementId}）` : ruleId;
   });
   const primaryAction = target === "pending-rules"

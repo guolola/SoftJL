@@ -1,6 +1,6 @@
 // Selects explicitly configured demo projects without loading fixed artifacts into normal API startup.
 import type { ProviderSettings } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../llm.js";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 
 export const offlineDemoProviderSettings: ProviderSettings = {
   apiBaseUrl: "https://offline-demo.local",

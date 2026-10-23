@@ -2,39 +2,18 @@
 import { createHttpErrorResponse } from "../../server/http-error-response.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import {
-  buildAcceptedRequirementSnapshot,
-  buildFeasibilityContextFingerprint,
-  readFeasibilityBusinessFlowArtifact,
-  contextDiagramSpecSchema,
-  contextTraceRowSchema,
-  feasibilityInputsSchema,
-  feasibilityRunSnapshotSchema,
-  queuedRunEventSchema,
-  startFeasibilityRunRequestSchema,
-  type ProviderSettings,
-} from "@uml-platform/contracts";
+import { buildAcceptedRequirementSnapshot, buildFeasibilityContextFingerprint, readFeasibilityBusinessFlowArtifact, contextDiagramSpecSchema, contextTraceRowSchema, feasibilityInputsSchema, feasibilityRunSnapshotSchema, queuedRunEventSchema, startFeasibilityRunRequestSchema, type ProviderSettings } from "@uml-platform/contracts";
 import type { RenderClient } from "../../adapters/render/render-client.js";
-import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
+
 import type { LlmScheduler } from "../../adapters/llm/llm-scheduler.js";
-import type { LlmTransport } from "../../llm.js";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 import type { ProviderConfigStore } from "../../provider-configs/provider-config-store.js";
 import type { ModelCatalog } from "../../provider-configs/model-catalog.js";
-import {
-  resolveProviderRateLimitPolicy,
-  type ProviderUsageTracker,
-} from "../../provider-configs/provider-usage-tracker.js";
+import { resolveProviderRateLimitPolicy, type ProviderUsageTracker } from "../../provider-configs/provider-usage-tracker.js";
 import type { GenerationUsageService } from "../../generation/generation-usage.js";
 import { generatePlantUmlArtifacts } from "../../adapters/plantuml/model-renderer.js";
 import { createEmptyFeasibilitySnapshot } from "../../runs/records/snapshots.js";
-import {
-  emitEvent,
-  refreshRunRecordIfAvailable,
-  releaseRunRecordIfAvailable,
-  type RunRecord,
-  type RunRecordMetadata,
-  type RunRecordStore,
-} from "../../runs/records/run-record-store.js";
+import { emitEvent, refreshRunRecordIfAvailable, releaseRunRecordIfAvailable, type RunRecord, type RunRecordMetadata, type RunRecordStore } from "../../runs/records/run-record-store.js";
 import { registerRunEventsRoute } from "../../runs/records/run-events.js";
 import { flushRunStoreIfAvailable, type RunQueue } from "../../runs/queue/run-queue.js";
 import {
@@ -100,7 +79,6 @@ export function registerFeasibilityRoutes({
   app,
   runs,
   renderClient,
-  pngRenderClient,
   llmTransport,
   llmScheduler,
   providerConfigs,
@@ -120,7 +98,6 @@ export function registerFeasibilityRoutes({
   app: FastifyInstance;
   runs: RunRecordStore;
   renderClient: RenderClient;
-  pngRenderClient?: PngRenderClient;
   llmTransport: LlmTransport;
   llmScheduler?: LlmScheduler;
   providerConfigs?: ProviderConfigStore;
@@ -274,7 +251,6 @@ export function registerFeasibilityRoutes({
         llmTransport,
         llmScheduler,
         renderClient,
-        pngRenderClient,
 
         analyticsStore,
       });

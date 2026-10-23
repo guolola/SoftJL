@@ -1,6 +1,6 @@
 // Checks that flow matrices preserve explicit node/lane/edge mappings without inventing sources.
 import { describe, expect, it } from "vitest";
-import { createBusinessFlowArtifact, createRule } from "../../../test/workspace-test-utils";
+import { createBusinessFlowArtifact, createRule } from "../../../../tests/helpers/workspace-test-utils";
 import { buildBusinessFlowRows } from "./business-flow-rows";
 
 describe("business flow trace rows", () => {

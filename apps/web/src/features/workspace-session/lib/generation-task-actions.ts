@@ -11,7 +11,7 @@ import type {
 import {
   createClientTaskId,
   createGenerationTask,
-  isTaskClearableCompleted,
+
   isTaskActive,
 } from "./generation-tasks";
 
@@ -103,7 +103,7 @@ function settleTaskFromTerminalRun(
             ? "RUN_INTERRUPTED"
             : "RUN_FAILED",
     errorMessage,
-    phaseSummary: message,
+
     finishedAt,
     diagnostics: {
       ...task.diagnostics,
@@ -159,21 +159,7 @@ export function useGenerationTaskActions() {
     setSelectedGenerationTaskId(id);
   }, []);
 
-  const clearCompletedGenerationTasks = useCallback(() => {
-    setGenerationTasks((current) => {
-      const retained = current.filter(
-        (task) => !isTaskClearableCompleted(task),
-      );
-      setSelectedGenerationTaskId((selectedId) =>
-        selectedId && retained.some((task) => task.clientTaskId === selectedId)
-          ? selectedId
-          : (retained[0]?.clientTaskId ?? null),
-      );
-      return retained;
-    });
-  }, []);
-
-  const enqueueGenerationTask = useCallback(
+const enqueueGenerationTask = useCallback(
     (input: {
       kind: GenerationTaskKind;
       title: string;
@@ -303,7 +289,7 @@ export function useGenerationTaskActions() {
   ) || activeServerRunIds.length > 0;
 
   return {
-    clearCompletedGenerationTasks,
+
     enqueueGenerationTask,
     generating,
     generationTasks,

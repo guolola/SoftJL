@@ -1,6 +1,6 @@
 // Persists provider configuration views and encrypted API keys in PostgreSQL.
 import { randomUUID } from "node:crypto";
-import { createSecretKey, encryptSecret, decryptSecret, hashSecret } from "./provider-secret.js";
+import { createSecretKey, encryptSecret, decryptSecret, hashSecret } from "./provider-config-secrets.js";
 import type { ProviderModelCapabilityMap } from "@uml-platform/contracts";
 import { providerConfigScopeTypeSchema, providerModelCapabilityMapSchema } from "@uml-platform/contracts";
 import { z } from "zod";
@@ -60,14 +60,6 @@ type AuditLogRow = {
   result: ProviderAuditLog["result"] | "failure";
   created_at: string | Date;
 };
-
-export type PostgresProviderConfigRepository = ReturnType<
-  typeof createPostgresProviderConfigRepository
->;
-
-
-
-
 
 function toIsoString(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value;

@@ -26,7 +26,7 @@ import type { RunRecordStore } from "../runs/records/run-record-store.js";
 import type { RenderClient } from "../adapters/render/render-client.js";
 import type { PngRenderClient } from "../adapters/render/png-render-client.js";
 import type { PdfRenderClient } from "../adapters/render/pdf-render-client.js";
-import type { LlmTransport } from "../llm.js";
+import type { LlmTransport } from "../adapters/llm/llm-transport.js";
 import type { LlmScheduler } from "../adapters/llm/llm-scheduler.js";
 import type { RunQueue } from "../runs/queue/run-queue.js";
 import { runDesignStagePipeline } from "../runs/pipelines/design-pipeline.js";
@@ -96,7 +96,6 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
     registerProjectRoutes({
         app,
         authStore,
-        nodeEnv,
     });
     registerDashboardRoutes({ app, authStore, runs, documentLibrary });
     registerCaseRoutes({ app, authStore, renderClient });
@@ -177,7 +176,6 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
         modelCatalog,
         runs,
         renderClient,
-        pngRenderClient,
         llmTransport,
         llmScheduler,
         runQueue,

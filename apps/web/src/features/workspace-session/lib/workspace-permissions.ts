@@ -1,7 +1,7 @@
 // Loads permissions and server-authorized generation mode without leaking access across projects.
 import { useEffect, useState } from "react";
 import type { GenerationExecutionMode } from "@uml-platform/contracts";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 
 type WorkspacePermissions = {
   canUpdateWorkspace: boolean;

@@ -5,9 +5,7 @@ import { useHomeLocale } from "../../integration/home-locale";
 
 import { forwardRef, memo, useCallback, useRef } from "react";
 import {
-  useAuiState,
   type ReasoningMessagePartComponent,
-  type ReasoningGroupComponent,
 } from "@assistant-ui/react";
 import { useDisclosureScrollLock } from "../../../../hooks/use-disclosure-scroll-lock";
 import { MarkdownText } from "./markdown-text";
@@ -68,30 +66,6 @@ const ReasoningRoot = forwardRef<
 
 const ReasoningImpl: ReasoningMessagePartComponent = () => { useHomeLocale(true); return <MarkdownText />; };
 
-const ReasoningGroupImpl: ReasoningGroupComponent = ({
-  children,
-  startIndex,
-  endIndex,
-}) => {
-  useHomeLocale();
-  const isReasoningStreaming = useAuiState((s) => {
-    if (s.message.status?.type !== "running") return false;
-    for (let index = startIndex; index <= endIndex; index++) {
-      if (s.message.parts[index]?.status.type === "running") return true;
-    }
-    return false;
-  });
-
-  return (
-    <ReasoningRoot streaming={isReasoningStreaming}>
-      <ReasoningTrigger active={isReasoningStreaming} />
-      <ReasoningContent aria-busy={isReasoningStreaming}>
-        <ReasoningText>{children}</ReasoningText>
-      </ReasoningContent>
-    </ReasoningRoot>
-  );
-};
-
 const Reasoning = memo(
   ReasoningImpl,
 ) as unknown as ReasoningMessagePartComponent & {
@@ -109,19 +83,8 @@ Reasoning.Content = ReasoningContent;
 Reasoning.Text = ReasoningText;
 Reasoning.Fade = ReasoningFade;
 
-/**
- * @deprecated This wrapper targets the legacy `components.ReasoningGroup`
- * prop on `<MessagePrimitive.Parts>`. Use `<MessagePrimitive.GroupedParts>`
- * with a `groupBy` returning `"group-reasoning"` and compose `ReasoningRoot`
- * / `ReasoningTrigger` / `ReasoningContent` / `ReasoningText` directly.
- * See `thread.aui.tsx` for an example.
- */
-const ReasoningGroup = memo(ReasoningGroupImpl);
-ReasoningGroup.displayName = "ReasoningGroup";
-
 export {
   Reasoning,
-  ReasoningGroup,
   ReasoningRoot,
   ReasoningTrigger,
   ReasoningContent,

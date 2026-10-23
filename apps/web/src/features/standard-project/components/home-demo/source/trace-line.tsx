@@ -2,8 +2,7 @@
 "use client";
 import { homeText, useHomeLocale } from "../integration/home-locale";
 
-
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { ShimmerLabel } from "./elements/surfaces";
 import { cn } from "./lib/utils";
 
@@ -33,28 +32,6 @@ export function TraceMarker({
       {">"}
     </span>
   );
-}
-
-export function useToolDuration(isRunning: boolean): number | null {
-  const startTimeRef = useRef<number | null>(null);
-  const [duration, setDuration] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (isRunning && startTimeRef.current === null) {
-      startTimeRef.current = Date.now();
-      setDuration(null);
-    } else if (!isRunning && startTimeRef.current !== null) {
-      setDuration(Date.now() - startTimeRef.current);
-      startTimeRef.current = null;
-    }
-  }, [isRunning]);
-
-  return duration;
-}
-
-export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 export function TraceLine({

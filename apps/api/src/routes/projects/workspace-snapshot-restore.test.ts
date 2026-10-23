@@ -1,21 +1,12 @@
 // Verifies project workspace snapshot restoration across requirement, design, code, and document artifacts.
 import assert from "node:assert/strict";
 import test from "node:test";
-import type {
-  AtomicRequirement,
-
-  DesignDiagramModelSpec,
-  DesignRunSnapshot,
-  DesignSvgArtifact,
-  DiagramModelSpec,
-  RequirementBaseline,
-  RunSnapshot,
-} from "@uml-platform/contracts";
+import type { DesignDiagramModelSpec, DesignRunSnapshot, DesignSvgArtifact, DiagramModelSpec, RunSnapshot } from "@uml-platform/contracts";
 import { snapshotInputFingerprint } from "@uml-platform/contracts";
 import { createEmptySnapshot, createEmptyDesignSnapshot } from "../../runs/records/snapshots.js";
 import { buildRequirementBaseline } from "../../runs/baselines/requirement-baseline.js";
 import { restoreRunSnapshotToWorkspaceState } from "./workspace-snapshot-restore.js";
-import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
 
 test("snapshot restoration rejects obsolete provenance and model payloads without changing current state", () => {
   const currentState = { models: {}, designInputFingerprints: { class: "existing-source" } };
@@ -30,6 +21,40 @@ test("snapshot restoration rejects obsolete provenance and model payloads withou
     ...snapshot, models: [{ diagramKind: "usecase", title: "obsolete" }] as unknown as RunSnapshot["models"],
   } }));
   assert.deepEqual(currentState, before);
+});
+
+for (const design of [false, true]) test(`${design ? "design" : "requirement"} recovery never treats saved context or previews as accepted outputs`, () => {
+  const model = modelFixture(design ? "design" : "requirements", "class");
+  const id = model.modelId ?? model.diagramKind;
+  const currentModel = { ...model, title: "当前人工编辑" };
+  const modelField = design ? "designModels" : "models";
+  const sourceField = design ? "designPlantUml" : "plantUml";
+  const svgField = design ? "designSvgArtifacts" : "svgArtifacts";
+  const before = { [modelField]: { [id]: currentModel }, [sourceField]: { [id]: "当前源码" } };
+  const snapshot = design
+    ? createEmptyDesignSnapshot("context-only", { selectedDiagrams: ["class"], requirementBaseline: buildRequirementBaseline({ runId: "baseline", requirementText: "", rules: [] }),
+      requirementModels: [], requirementModelTraceability: [], existingDesignModels: [model as DesignDiagramModelSpec] })
+    : createEmptySnapshot("context-only", "", ["class"], [], { models: [model as DiagramModelSpec] });
+  snapshot.status = "completed";
+  snapshot.plantUml = [{ diagramKind: "class", modelId: id, source: "未验收源码" }];
+  snapshot.svgArtifacts = [designSvgArtifact("class", id)];
+  const original = structuredClone(snapshot);
+  const restored = restoreRunSnapshotToWorkspaceState({ currentState: before, snapshot });
+  assert.deepEqual(restored[modelField], before[modelField]);
+  assert.deepEqual(restored[sourceField], before[sourceField]);
+  assert.deepEqual(restored[svgField] ?? {}, {});
+  assert.deepEqual(snapshot, original, "recovery must never backfill an output receipt");
+});
+
+test("design recovery does not invent requirement outputs or fingerprints from its dependency models", () => {
+  const rule = { id: "rule", type: "functional" as const, text: "用户查看课程" };
+  const snapshot = createEmptyDesignSnapshot("design-context", { selectedDiagrams: ["class"],
+    requirementBaseline: buildRequirementBaseline({ runId: "baseline", requirementText: rule.text, rules: [rule] }),
+    requirementModels: [modelFixture("requirements", "usecase")], requirementModelTraceability: [] });
+  const currentState = { models: {}, generatedDiagramTypes: [], diagramInputFingerprints: {}, diagramVersions: {}, requirementInputFingerprint: null };
+  const restored = restoreRunSnapshotToWorkspaceState({ currentState, snapshot });
+  for (const field of Object.keys(currentState))
+    assert.deepEqual(restored[field], currentState[field as keyof typeof currentState], `${field} must come from the requirement run's own accepted output`);
 });
 
 for (const design of [false, true]) test(`${design ? "sequence" : "analysis"} retry publication preserves sibling models, previews, fingerprints and outstanding errors`, () => {
@@ -194,59 +219,6 @@ function requirementRule(
   };
 }
 
-function atomicRequirement(
-  overrides: Partial<AtomicRequirement> = {},
-): AtomicRequirement {
-  return {
-    id: "REQ-001",
-    sourceRuleId: "r1",
-    sourceFragment: "用户通过邮箱注册账号。",
-    sourceLocation: { section: "input", startOffset: 0, endOffset: 10 },
-    type: "functional" as const,
-    actor: "用户",
-    subject: "用户",
-    action: "注册",
-    object: "账号",
-    condition: null,
-    outcome: "系统创建账号",
-    confidence: 0.86,
-    status: "accepted",
-    criticality: "high",
-    acceptanceCriteria: ["用户提交邮箱后系统创建账号。"],
-    priority: "must",
-    fieldProvenance: {},
-    ...overrides,
-  };
-}
-
-function requirementBaseline(
-  requirements: AtomicRequirement[],
-  overrides: Partial<RequirementBaseline> = {},
-): RequirementBaseline {
-  return {
-      id: "baseline-test",
-      version: 1,
-      sourceInputFingerprint: "test-source-input",
-    runId: "run-baseline",
-    sourceDocumentId: "inline-requirement",
-    createdAt: "2026-06-18T00:00:00.000Z",
-    assumptions: [],
-    conflicts: [],
-    schemaVersion: 3 as const,
-
-      rules: (requirements).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
-    qualityReport: {
-      runId: "run-baseline",
-      status: "passed",
-      summary: "需求规则已确认。",
-      issues: [],
-      blockingIssueIds: [],
-      reviewRequiredRequirementIds: [],
-    },
-    ...overrides,
-  };
-}
-
 
 function designSnapshot(
   overrides: Partial<DesignRunSnapshot> = {},
@@ -295,6 +267,7 @@ for (const stage of ["requirements", "design"] as const) {
       ? designSnapshot({ selectedDiagrams: ["table"], requestedDiagrams: ["table"], models: [newModel as DesignDiagramModelSpec], plantUml: [{ diagramKind: "table", modelId: "custom-new", source: "new-source" }] })
       : createEmptySnapshot("custom-id-run", "", ["usecase"], [], { models: [newModel as DiagramModelSpec] });
     if (!design) (snapshot as RunSnapshot).plantUml = [{ diagramKind: "usecase", modelId: "custom-new", source: "new-source" }];
+    snapshot.outputManifest = [{ kind: "model", id: "custom-new", diagramKind: design ? "table" : "usecase" }];
     snapshot.status = "completed";
     const restored = restoreRunSnapshotToWorkspaceState({ currentState, snapshot });
     assert.ok(!Object.hasOwn(restored[modelField] as object, "custom-old"));
@@ -321,9 +294,10 @@ test("restore stores snapshot input fingerprints for requirement diagrams after 
     rulesV1,
     {
       models: [requirementUseCaseModel()],
-      plantUml: [{ diagramKind: "usecase", source: "@startuml\n@enduml" }],
     },
   ) as RunSnapshot;
+  snapshot.plantUml = [{ diagramKind: "usecase", source: "@startuml\n@enduml" }];
+  snapshot.outputManifest = [{ kind: "model", id: "usecase", diagramKind: "usecase" }];
   snapshot.status = "completed";
   snapshot.currentStage = "render_svg";
 
@@ -414,9 +388,10 @@ test("restore writes requirement rules from model snapshots when text still matc
     rules,
     {
       models: [requirementUseCaseModel()],
-      plantUml: [{ diagramKind: "usecase", source: "@startuml\n@enduml" }],
     },
   ) as RunSnapshot;
+  snapshot.plantUml = [{ diagramKind: "usecase", source: "@startuml\n@enduml" }];
+  snapshot.outputManifest = [{ kind: "model", id: "usecase", diagramKind: "usecase" }];
   snapshot.status = "completed";
   snapshot.currentStage = "render_svg";
 
@@ -450,9 +425,10 @@ test("restore replaces requirement input when terminal auto-sync requests it", (
     newRules,
     {
       models: [requirementUseCaseModel()],
-      plantUml: [{ diagramKind: "usecase", source: "@startuml\n@enduml" }],
     },
   ) as RunSnapshot;
+  snapshot.plantUml = [{ diagramKind: "usecase", source: "@startuml\n@enduml" }];
+  snapshot.outputManifest = [{ kind: "model", id: "usecase", diagramKind: "usecase" }];
   snapshot.status = "completed";
   snapshot.currentStage = "render_svg";
 
@@ -488,6 +464,7 @@ test("restore replaces old design records by successful selected design kind", (
   const newSequence = sequenceDesignModel("sequence:uc-1", "uc-1");
   const snapshot = designSnapshot({
     models: [newSequence],
+    outputManifest: [{ kind: "model", id: "sequence:uc-1", diagramKind: "sequence", sourceUseCaseId: "uc-1" }],
     plantUml: [
       {
         diagramKind: "sequence",
@@ -649,6 +626,7 @@ test("restore applies successful design artifacts from failed partial snapshots"
   const tableModel = tableDesignModel();
   const snapshot = designSnapshot({
     selectedDiagrams: ["table", "component"],
+    outputManifest: [{ kind: "model", id: "table", diagramKind: "table" }],
     requestedDiagrams: ["table", "component"],
     status: "failed",
     error: {
@@ -744,6 +722,10 @@ test("restore keeps requirement analysis model instances keyed by modelId", () =
     analysisModel("uc_search", "检索设备"),
     analysisModel("uc_reserve", "提交预约"),
   ];
+  snapshot.outputManifest = [
+    { kind: "model", id: "analysis:uc_search", diagramKind: "analysis", sourceUseCaseId: "uc_search" },
+    { kind: "model", id: "analysis:uc_reserve", diagramKind: "analysis", sourceUseCaseId: "uc_reserve" },
+  ];
   snapshot.plantUml = snapshot.models.map((model) => ({
     diagramKind: "analysis",
     modelId: model.modelId,
@@ -815,6 +797,7 @@ test("new workspace does not mark context requirement models generated without a
   ) as RunSnapshot;
   snapshot.status = "completed";
   snapshot.currentStage = "render_svg";
+  snapshot.outputManifest = [{ kind: "model", id: "class", diagramKind: "class" }];
   snapshot.models = [
     {
       diagramKind: "usecase",
@@ -987,6 +970,7 @@ test("restore applies successful requirement artifacts from cancelled partial sn
   ) as RunSnapshot;
   snapshot.status = "cancelled";
   snapshot.currentStage = "generate_models";
+  snapshot.outputManifest = [{ kind: "model", id: "deployment", diagramKind: "deployment" }];
   snapshot.models = [
     {
       diagramKind: "deployment",

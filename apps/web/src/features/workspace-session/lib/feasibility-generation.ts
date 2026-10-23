@@ -1,11 +1,11 @@
 // Owns feasibility generation and accepted results for the entire workspace session.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { workspaceGuardConflicts, type FeasibilityArtifactKind, type FeasibilityRunSnapshot } from "@uml-platform/contracts";
+import { workspaceGuardConflicts, type FeasibilityArtifactKind, type FeasibilityRunSnapshot, type GenerationExecutionMode, type RunEventInput } from "@uml-platform/contracts";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
-import { useWorkspaceRepository } from "../../../services/workspace-repository";
+import { useWorkspaceRepository } from "../../../services/workspace-repository/index";
 import { createStartFeasibilityRunInput } from "../../../services/workspace-repository/start-inputs";
-import { ApiClientError } from "../../../services/api-client";
+import { ApiClientError } from "../../../services/api-client/index";
 import { localizeApiFailure } from "../../../shared/i18n/api-errors";
 import { generationModelBlockedReason as readGenerationModelBlockedReason } from "../../../shared/lib/generation-model";
 import { useFeedbackDialog, type FeedbackDialogState } from "../../../shared/ui/feedback-dialog";
@@ -18,9 +18,17 @@ import type { WorkspaceSessionState } from "../model/session-state";
 type ArtifactKind = FeasibilityArtifactKind;
 type Input = Pick<WorkspaceSessionState, "requirementText" | "rules" | "requirementBaseline" | "rulesVersion" |
   "requirementModelTraceability" | "designModelTraceability" | "generationTasks" |
-  "canUpdateWorkspace" | "canStartRuns" | "generationExecutionMode" | "workspacePermissionReason" |
-  "syncFeasibilityArtifacts" | "beginFeasibilityGenerationTask" | "attachFeasibilityGenerationRun" |
-  "updateFeasibilityGenerationTask" | "failFeasibilityGenerationTask">;
+  "canUpdateWorkspace" | "canStartRuns" | "workspacePermissionReason" | "syncFeasibilityArtifacts"> & {
+    generationExecutionMode: GenerationExecutionMode;
+    beginFeasibilityGenerationTask: (input: {
+      selectedArtifacts?: FeasibilityArtifactKind[];
+      providerModel: string;
+      startedAtMs: number;
+    }) => string;
+    attachFeasibilityGenerationRun: (clientTaskId: string, runId: string, providerModel: string) => void;
+    updateFeasibilityGenerationTask: (clientTaskId: string, event: RunEventInput) => void;
+    failFeasibilityGenerationTask: (clientTaskId: string, message: string) => void;
+  };
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export function useFeasibilityGeneration({ requirementText, rules, requirementBaseline, rulesVersion,

@@ -1,7 +1,6 @@
 // Verifies dynamic provider model display helpers do not provide model candidates.
 import { describe, expect, it } from "vitest";
 import {
-  getProviderModelDisplayName,
   getProviderModelLabel,
   inferProviderModelGroup,
   normalizeProviderModelCapability,
@@ -10,11 +9,7 @@ import {
 describe("provider model display helpers", () => {
   it("formats labels from dynamic provider model ids", () => {
     expect(getProviderModelLabel("Pro/moonshotai/Kimi-K2.6")).toBe("Kimi-K2.6");
-    expect(getProviderModelDisplayName("Qwen/Qwen3.7-Max")).toMatchObject({
-      triggerLabel: "Qwen3.7-Max",
-      vendorLabel: "Qwen",
-      shortLabel: "Qwen3.7-Max",
-    });
+    expect(getProviderModelLabel("Qwen/Qwen3.7-Max")).toBe("Qwen3.7-Max");
   });
 
   it("infers groups without making models selectable", () => {
@@ -28,8 +23,13 @@ describe("provider model display helpers", () => {
     });
   });
 
-  it("normalizes missing capabilities as compatible", () => {
-    expect(normalizeProviderModelCapability("qwen3.7-max")).toMatchObject({
+  it("keeps missing modes unknown even when retired flags claim support", () => {
+    expect(normalizeProviderModelCapability("qwen3.7-max")).toBeNull();
+    expect(normalizeProviderModelCapability("qwen3.7-max", { supportsJsonSchema: true })).toBeNull();
+  });
+
+  it("derives display fields only from an explicit current output mode", () => {
+    expect(normalizeProviderModelCapability("qwen3.7-max", { structuredOutputMode: "compatible" })).toMatchObject({
       id: "qwen3.7-max",
       structuredOutputMode: "compatible",
       supportsJsonSchema: false,

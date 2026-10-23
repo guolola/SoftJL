@@ -5,7 +5,6 @@ import type { Queryable } from "../db/transactions.js";
 export type ProviderTaskType =
   | "requirements_to_uml"
   | "design_modeling"
-  | "code_generation"
   | "document_generation"
   | "provider_test"
   | (string & {});

@@ -1,10 +1,11 @@
+import { roundTripRunRecordStore } from "../../../../tests/fixtures/runs/run-record-round-trip.js";
 // Verifies durable stream batching, parallel attribution, cancellation flush and public reasoning summaries.
-import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runEventSchema, type RunActivityEvent } from "@uml-platform/contracts";
 import { createEmptySnapshot } from "../../records/snapshots.js";
-import { createRunRecordStore, emitEvent, serializeRunRecordStore, type RunRecord } from "../../records/run-record-store.js";
+import { createRunRecordStore, emitEvent, type RunRecord } from "../../records/run-record-store.js";
 import { createRunLlmChunkHandlers } from "./llm-chunk-events.js";
 import { collectTextResult } from "./structured-output.js";
 
@@ -29,8 +30,8 @@ test("parallel calls retain identities, batch output and replay exactly after se
   assert.equal(new Set(events.map((event) => event.eventId)).size, events.length);
   events.forEach((event) => assert.equal(runEventSchema.safeParse(event).success, true));
   const store = createRunRecordStore(); store.set(run.snapshot.runId, run);
-  const restored = createRunRecordStore(serializeRunRecordStore(store)).get(run.snapshot.runId)!;
-  assert.deepEqual(restored.events, run.events);
+  const restored = roundTripRunRecordStore(store).get(run.snapshot.runId)!;
+  assert.deepEqual(restored.events, JSON.parse(JSON.stringify(run.events)));
 });
 
 test("cancellation flushes pending text before terminal and rejects subsequent chunks", () => {
@@ -72,7 +73,7 @@ test("records input images once with the consuming call and restores the same im
   assert.equal(new Set(events.map((event) => event.callId)).size, 1);
   events.forEach((event) => assert.equal(runEventSchema.safeParse(event).success, true));
   const store = createRunRecordStore(); store.set(run.snapshot.runId, run);
-  assert.deepEqual(createRunRecordStore(serializeRunRecordStore(store)).get(run.snapshot.runId)!.events, run.events);
+  assert.deepEqual(roundTripRunRecordStore(store).get(run.snapshot.runId)!.events, JSON.parse(JSON.stringify(run.events)));
 });
 
 test("interleaved parallel reasoning stays attached to each model call", () => {
@@ -102,8 +103,8 @@ test("cancellation flushes reasoning before terminal and replay retains it", () 
   assert.equal(activity(run).find((event) => event.phase === "reasoning")?.text, "正在比较两个模型");
   assert.equal(run.events.at(-1)?.type, "cancelled");
   const store = createRunRecordStore(); store.set(run.snapshot.runId, run);
-  const restored = createRunRecordStore(serializeRunRecordStore(store)).get(run.snapshot.runId)!;
-  assert.deepEqual(restored.events, run.events);
+  const restored = roundTripRunRecordStore(store).get(run.snapshot.runId)!;
+  assert.deepEqual(restored.events, JSON.parse(JSON.stringify(run.events)));
 });
 
 test("failed calls flush text and a retry uses a different identity", async () => {

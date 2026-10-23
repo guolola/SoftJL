@@ -2,7 +2,7 @@
 import { MAX_GENERATION_REPAIR_ATTEMPTS } from "@uml-platform/contracts";
 import { CURRENT_DIAGRAM_REVIEW_VERSION, diagramVisualReviewSchema, stageProgressRunEventSchema, validateModelInput, ModelSemanticError, type DiagramVisualReview, type ProviderSettings, type DiagramReviewFinding } from "@uml-platform/contracts";
 import { JSON_ONLY_SYSTEM_PROMPT } from "@uml-platform/prompts";
-import type { ChatMessage, LlmTransport } from "../../../llm.js";
+import type { ChatMessage, LlmTransport } from "../../../adapters/llm/llm-transport.js";
 import type { RenderClient } from "../../../adapters/render/render-client.js";
 import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "../../../adapters/plantuml/model-renderer.js";
 import { parseJson } from "../../../normalizers/json/parse-json.js";
@@ -73,7 +73,7 @@ export async function reviewRenderedArtifact(input: {
   });
   const render = async (candidate: ReviewModel): Promise<Rendered> => {
     const artifact = stage === "design" ? generateDesignPlantUmlArtifacts([candidate as Parameters<typeof generateDesignPlantUmlArtifacts>[0][number]])[0]! : generatePlantUmlArtifacts([candidate as Parameters<typeof generatePlantUmlArtifacts>[0][number]], stage === "feasibility" ? "feasibility" : "requirements")[0]!;
-    const value = await bounded((signal) => renderArtifactWithRepair(record, providerSettings, llmTransport, input.renderClient, candidate, artifact, stage, signal));
+    const value = await bounded((signal) => renderArtifactWithRepair(record, input.renderClient, candidate, artifact, stage, signal));
     throwIfRunCancelled(record); if (value.status !== "success") throw new Error(value.errorMessage); return value;
   };
   const fail = (message: string): never => { stopReason = message; const review = result(); progress(review.reason, "failed"); throw new DiagramReviewRenderError(message, review); };

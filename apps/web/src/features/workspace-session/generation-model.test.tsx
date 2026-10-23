@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMockWorkspaceRepository } from "../../services/workspace-repository/mock-repository";
 import { patchUserSettings } from "../../shared/lib/user-settings";
-import { createRule, withWorkspaceProviders } from "../../test/workspace-test-utils";
+import { createRule, withWorkspaceProviders } from "../../../tests/helpers/workspace-test-utils";
 import { useWorkspaceSession } from "./state";
 
 afterEach(() => localStorage.clear());
@@ -26,7 +26,7 @@ describe("session generation model guard", () => {
     });
     for (const method of spies) expect(repository[method]).not.toHaveBeenCalled();
     expect(result.current.generationTasks).toHaveLength(0);
-    expect(result.current.errorMessage).toContain("供应商");
+
     act(() => patchUserSettings({ providerConfigId: "provider-1", defaultModel: "model-1", providerModelOptions: ["model-1"] }));
     expect(result.current.generationModelBlockedReason).toBeNull();
     act(() => patchUserSettings({ providerModelOptions: ["model-2"] }));

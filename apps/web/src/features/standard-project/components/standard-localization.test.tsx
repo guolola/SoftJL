@@ -3,10 +3,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createStandardProjectState, type StandardProjectState } from '@uml-platform/contracts';
-import { withWorkspaceProviders } from '../../../test/workspace-test-utils';
-import { createMockWorkspaceRepository } from '../../../services/workspace-repository';
+import { withWorkspaceProviders } from '../../../../tests/helpers/workspace-test-utils';
+import { createMockWorkspaceRepository } from '../../../services/workspace-repository/index';
 import { LanguagePreferenceMenu } from '../../../shared/i18n/components/language-preference-menu';
-import { i18n } from '../../../shared/i18n';
+import { i18n } from '../../../shared/i18n/index';
 import { standardProjectEn, standardProjectZh } from '../../../shared/i18n/standard-project-resources';
 import { StandardWorkspace } from './standard-workspace';
 import { patchUserSettings } from "../../../shared/lib/user-settings";
@@ -23,7 +23,7 @@ beforeEach(async () => {
 afterEach(async () => { localStorage.clear(); await act(() => i18n.changeLanguage('zh-CN')); });
 function mount() {
   const repository = createMockWorkspaceRepository(); repository.listDocuments = vi.fn(async () => []);
-  return render(withWorkspaceProviders(<StandardWorkspace projectId="p" projectName="用户项目名称" canEdit header={<LanguagePreferenceMenu />} onNavigate={vi.fn()} onSettings={vi.fn()} onOpenAccount={vi.fn()} />, repository));
+  return render(withWorkspaceProviders(<StandardWorkspace projectId="p" canEdit header={<LanguagePreferenceMenu />} onNavigate={vi.fn()} onOpenAccount={vi.fn()} />, repository));
 }
 
 it('switches source and platform labels while preserving the draft', async () => {

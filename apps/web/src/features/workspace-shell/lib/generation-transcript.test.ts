@@ -1,9 +1,9 @@
 // Exercises user-visible ordering, replay and parallel output independently of presentation.
 import { describe, expect, it } from "vitest";
 import type { RunActivityEvent, RunEventInput } from "@uml-platform/contracts";
-import { createRunSnapshot } from "../../../test/workspace-test-utils";
+import { createRunSnapshot } from "../../../../tests/helpers/workspace-test-utils";
 import { mergeTranscriptEvents } from "../../workspace-session/lib/run-transcript";
-import { projectGenerationTranscript, readableTaskText, readableOutput } from "./generation-transcript";
+import { projectGenerationTranscript, readableTaskText } from "./generation-transcript";
 
 const activity = (id: string, callId: string, phase: RunActivityEvent["phase"], text?: string): RunActivityEvent => ({
   type: "run_activity", eventId: id, callId, phase, text, format: "technical", runId: "run-a", stage: "generate_models", subtaskId: callId,
@@ -319,12 +319,6 @@ describe("generation transcript", () => {
     const result = projectGenerationTranscript(events, "completed", [], { usecase: { ...review, confirmedAt: "confirmed" } });
     expect(result.steps[0].calls[0].status).toBe(status === "failed" ? "failed" : "pending_review");
     expect(result.steps[0].status).toBe(result.steps[0].calls[0].status);
-  });
-  it("streams document paragraphs without leaking JSON keys or inventing prose", () => {
-    const item = { ...activity("doc", "doc", "output", '{"sections":[{"title":"概述","body":["第一段。","正在生成'), stage: "generate_document_text" as const };
-    const call = projectGenerationTranscript([item]).steps[0].calls[0];
-    expect(readableOutput(call)).toBe("第一段。\n\n正在生成");
-    expect(readableOutput({ ...call, output: '{"sections":[' })).toBe("");
   });
   it("separates interleaved parallel calls and deduplicates replayed fragments", () => {
     const events = [activity("a1", "usecase", "started"), activity("b1", "activity", "started"), activity("a2", "usecase", "output", "用例"), activity("b2", "activity", "output", "流程")];

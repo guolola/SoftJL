@@ -12,7 +12,6 @@ import {
   designRecordBelongsToDiagramKinds,
   designTraceabilityTouchesDiagramKinds,
   modelRecordBelongsToDiagramKinds,
-
   type DesignRunSnapshot,
   type RequirementBaseline,
   type RunSnapshot,
@@ -27,13 +26,12 @@ import {
   type DiagramType,
 } from "../../entities/diagram/model";
 import {
-
   isDesignRunSnapshot,
   isDocumentRunSnapshot,
   runHistorySnapshotRequirementText,
   runHistorySnapshotRules,
   type RunHistorySnapshot,
-} from "../../entities/run-history";
+} from "../../entities/run-history/index";
 import type { RequirementRule } from "../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../entities/workspace/model";
 import {

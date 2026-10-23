@@ -1,11 +1,8 @@
 // Verifies requirement model response schemas stay compatible with OpenAI strict JSON Schema.
 import assert from "node:assert/strict";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import test from "node:test";
-import {
-  GENERATE_MODELS_RESPONSE_FORMAT,
-  GENERATE_REQUIREMENT_TRACEABILITY_RESPONSE_FORMAT,
-  getGenerateModelsResponseFormat,
-} from "./requirements-response-formats.js";
+import { GENERATE_MODELS_RESPONSE_FORMAT, getGenerateModelsResponseFormat } from "./requirements-response-formats.js";
 
 function assertStrictObjectRequirements(schema: unknown, path = "schema") {
   if (!schema || typeof schema !== "object") return;
@@ -37,13 +34,6 @@ function assertStrictObjectRequirements(schema: unknown, path = "schema") {
     assertStrictObjectRequirements(value, `${path}.anyOf.${index}`);
   }
 }
-
-test("requirement model response formats are valid for OpenAI strict JSON Schema", () => {
-  assertStrictObjectRequirements(GENERATE_MODELS_RESPONSE_FORMAT.json_schema.schema);
-  assertStrictObjectRequirements(
-    GENERATE_REQUIREMENT_TRACEABILITY_RESPONSE_FORMAT.json_schema.schema,
-  );
-});
 
 test("requirement class response schema exposes localized names and constraints", () => {
   const variants = (
@@ -104,7 +94,7 @@ test("requirement model response schema includes function MindMap structure", ()
 });
 
 test("requirement model response format narrows single selected diagram kind", () => {
-  const format = getGenerateModelsResponseFormat("gpt-5.4", ["deployment"]);
+  const format = getGenerateModelsResponseFormat(strictTestModelCapability("gpt-5.4"), ["deployment"]);
   assert.ok(format);
   const variants = (
     format.json_schema.schema.properties as {

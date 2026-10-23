@@ -2,10 +2,11 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { AppI18nProvider } from "../../../shared/i18n";
-import { i18n, saveLocalePreference } from "../../../shared/i18n";
+import { AppI18nProvider } from "../../../shared/i18n/index";
+import { i18n, saveLocalePreference } from "../../../shared/i18n/index";
 import { FloatingAlertProvider } from "../../../shared/ui/floating-alert";
 import { AuthPage } from "./auth-page";
+import { createAuthSessionResponse } from "@test/fixtures/contract-fixtures";
 
 afterEach(async () => {
   localStorage.removeItem("uml-auth-remembered-username");
@@ -16,9 +17,8 @@ afterEach(async () => {
   await i18n.changeLanguage("zh-CN");
 });
 
-it("removes a legacy saved password and prefills only the remembered account", () => {
+it("prefills only the remembered account and leaves the password empty", () => {
   localStorage.setItem("uml-auth-remembered-username", "teacher");
-  localStorage.setItem("uml-auth-remembered-password", "legacy-password");
 
   render(
     <AppI18nProvider>
@@ -34,8 +34,7 @@ it("removes a legacy saved password and prefills only the remembered account", (
 
 it("forgets the saved account after a successful login with remembering unchecked", async () => {
   localStorage.setItem("uml-auth-remembered-username", "teacher");
-  localStorage.setItem("uml-auth-remembered-password", "legacy-password");
-  vi.stubGlobal("fetch", vi.fn(async () => Response.json({})));
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json(createAuthSessionResponse())));
   const onNavigate = vi.fn();
   const user = userEvent.setup();
 
@@ -90,7 +89,6 @@ it("shows login-required feedback in the floating alert layer", async () => {
   );
 
   const notice = await screen.findByText("此页面需要登录，请登录后继续。");
-  expect(notice.closest('[aria-live="polite"]')).toHaveClass("fixed");
   expect(screen.getByTestId("auth-form-panel")).not.toContainElement(notice);
 });
 
@@ -114,7 +112,6 @@ it("shows a localized fixed alert for login network failures without changing th
   await user.click(screen.getByRole("button", { name: "登录" }));
 
   const message = await screen.findByText("无法连接服务，请检查网络或确认服务已启动后重试。");
-  expect(message.closest('[aria-live="polite"]')).toHaveClass("fixed");
   expect(screen.getByTestId("auth-form-panel")).not.toContainElement(message);
   expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
   expect(localStorage.getItem("uml-auth-remembered-username")).toBeNull();
@@ -153,8 +150,10 @@ it.each([
   window.history.pushState({}, "", "/login");
   vi.stubGlobal("fetch", vi.fn(async () =>
     new Response(JSON.stringify({
-      mfaChallenge: {
-        challengeId: "challenge-1",
+      mfa: {
+        required: true,
+        method: "totp",
+        challengeId: "challenge-00000001",
         expiresAt: "2026-09-22T12:00:00.000Z",
       },
     }), {

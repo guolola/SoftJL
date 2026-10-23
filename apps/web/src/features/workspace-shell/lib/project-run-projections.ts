@@ -13,8 +13,6 @@ type ActiveStatus = "queued" | "running";
 
 const requirementDiagramSet = new Set<string>(DIAGRAM_ORDER);
 const designDiagramSet = new Set<string>(DESIGN_DIAGRAM_ORDER);
-const REQUIRED_REQUIREMENT_FALLBACKS: DiagramType[] = ["usecase", "class"];
-const REQUIRED_DESIGN_FALLBACKS: DesignDiagramType[] = ["sequence", "class"];
 
 export function isActiveProjectRun(run: Pick<PlatformRunSummary, "status">) {
   return run.status === "queued" || run.status === "running";
@@ -52,25 +50,17 @@ export function activeStatusForProjectRunKind(
     );
 }
 
-function activeRequirementRunIsModelStage(run: PlatformRunSummary) {
-  return run.stage !== "extract_rules";
-}
-
 function requirementDiagramsFromRun(run: PlatformRunSummary) {
-  const selected = ((run.selectedDiagrams ?? []) as DiagramKind[])
+  return ((run.selectedDiagrams ?? []) as DiagramKind[])
     .filter((diagram): diagram is DiagramType => requirementDiagramSet.has(diagram));
-  return selected.length > 0 || !activeRequirementRunIsModelStage(run)
-    ? selected
-    : REQUIRED_REQUIREMENT_FALLBACKS;
 }
 
 function designDiagramsFromRun(run: PlatformRunSummary) {
   const requested = ((run.requestedDiagrams ?? []) as DesignDiagramKind[])
     .filter((diagram): diagram is DesignDiagramType => designDiagramSet.has(diagram));
   if (requested.length > 0) return requested;
-  const selected = ((run.selectedDiagrams ?? []) as DesignDiagramKind[])
+  return ((run.selectedDiagrams ?? []) as DesignDiagramKind[])
     .filter((diagram): diagram is DesignDiagramType => designDiagramSet.has(diagram));
-  return selected.length > 0 ? selected : REQUIRED_DESIGN_FALLBACKS;
 }
 
 export function activeRequirementProjectDiagramStatuses(

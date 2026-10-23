@@ -2,28 +2,13 @@
 // illustration, and tests read this mapping; design inputs derive from the generation planner maps.
 import { type RequirementRuleType, type FeasibilityArtifactKind, type RequirementBaseline, type RequirementRule } from "@uml-platform/contracts";
 import type { TFunction } from "i18next";
-import {
-  ClipboardCheck,
-  ListChecks,
-  Paperclip,
-  type LucideIcon,
-} from "lucide-react";
-import {
-  DESIGN_DIAGRAM_ORDER,
-  DIAGRAM_ORDER,
-  getDesignDiagramLabel,
-  getDiagramLabel,
-  type DesignDiagramType,
-  type DiagramType,
-} from "../../../entities/diagram/model";
+import { ClipboardCheck, ListChecks, Paperclip, type LucideIcon } from "lucide-react";
+import { DESIGN_DIAGRAM_ORDER, DIAGRAM_ORDER, getDesignDiagramLabel, getDiagramLabel, type DesignDiagramType, type DiagramType } from "../../../entities/diagram/model";
 import { DESIGN_DIAGRAM_ICON, FEASIBILITY_ARTIFACT_ICON, REQUIREMENT_DIAGRAM_ICON } from "../../../entities/diagram/model-icons";
-import { getRuleDisplayLabel, REQUIREMENT_KIND_ORDER, } from "../../../entities/requirement-rule/model";
+import { getRuleDisplayLabel, REQUIREMENT_KIND_ORDER } from "../../../entities/requirement-rule/model";
 import { RULE_KIND_COLOR_INDEX, RULE_KIND_ICON } from "../../../entities/requirement-rule/model-icons";
 export { DESIGN_DIAGRAM_ICON, FEASIBILITY_ARTIFACT_ICON, REQUIREMENT_DIAGRAM_ICON } from "../../../entities/diagram/model-icons";
-import {
-  DESIGN_MODEL_DEPENDENCY_MAP,
-  DESIGN_REQUIREMENT_SOURCE_MAP,
-} from "../../workspace-session/lib/generation-planning";
+import { DESIGN_MODEL_DEPENDENCY_MAP, DESIGN_REQUIREMENT_SOURCE_MAP } from "../../workspace-session/lib/generation-planning";
 
 export const FEASIBILITY_ARTIFACT_ORDER = ["context", "business-flow", "implementation"] as const satisfies readonly FeasibilityArtifactKind[];
 
@@ -117,24 +102,6 @@ export function upstreamInputKey(input: UpstreamInput) {
   }
 }
 
-// Inputs that are artifacts of the same stage have their own inputs; those are indirect dependencies.
-function sameStageArtifactInputs(stage: UpstreamStage, input: UpstreamInput): readonly UpstreamInput[] | null {
-  if (stage === "feasibility" && input.kind === "feasibility") return FEASIBILITY_UPSTREAM_INPUTS[input.artifact];
-  if (stage === "requirement" && input.kind === "requirement") return REQUIREMENT_UPSTREAM_INPUTS[input.diagram];
-  if (stage === "design" && input.kind === "design") return DESIGN_UPSTREAM_INPUTS[input.diagram];
-  return null;
-}
-
-/** One level of indirect inputs, grouped by the direct same-stage artifact that carries them. */
-export function indirectUpstreamInputs<S extends UpstreamStage>(stage: S, target: UpstreamStageTarget[S]) {
-  const direct = directUpstreamInputs(stage, target);
-  const directKeys = new Set(direct.map(upstreamInputKey));
-  return direct.flatMap((via) => {
-    const inputs = (sameStageArtifactInputs(stage, via) ?? []).filter((input) => !directKeys.has(upstreamInputKey(input)));
-    return inputs.length > 0 ? [{ via, inputs }] : [];
-  });
-}
-
 const ruleIdCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 
 export function sortUpstreamRules(rules: readonly RequirementRule[]) {
@@ -181,11 +148,6 @@ export function upstreamInputLabel(input: UpstreamInput, t: TFunction, rules?: r
       return getDiagramLabel(input.diagram, t);
     case "design": return getDesignDiagramLabel(input.diagram, t);
   }
-}
-
-/** Names the artifact behind an input, e.g. the use-case model behind its event flows. */
-export function upstreamArtifactLabel(input: UpstreamInput, t: TFunction) {
-  return input.kind === "requirement" ? getDiagramLabel(input.diagram, t) : upstreamInputLabel(input, t);
 }
 
 export function upstreamInputIcon(input: UpstreamInput, ruleKind?: RequirementRuleType): LucideIcon {

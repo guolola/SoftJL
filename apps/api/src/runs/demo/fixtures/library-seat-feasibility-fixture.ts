@@ -1,7 +1,6 @@
 // Supplies deterministic feasibility artifacts for the library seat demo without provider requests.
 import { completeFeasibilityImplementationPlanSchema, contextDiagramSpecSchema, feasibilityBusinessFlowSchema, feasibilityInputsSchema } from "@uml-platform/contracts";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
-import { generatePlantUmlArtifacts } from "../../../adapters/plantuml/model-renderer.js";
 
 export const librarySeatFeasibilityInputs = feasibilityInputsSchema.parse({
   projectName: "图书馆座位预约系统", expectedUsers: "学生、图书馆管理员", targetEnvironment: "支持手机和桌面浏览器的校园 Web 应用",
@@ -93,9 +92,6 @@ export const librarySeatFeasibilityPlan = completeFeasibilityImplementationPlanS
     },
   })),
 });
-
-export const librarySeatContextPlantUml = generatePlantUmlArtifacts([librarySeatFeasibilityContext])[0]!;
-export const librarySeatFlowPlantUml = generatePlantUmlArtifacts([librarySeatFeasibilityFlow.model])[0]!;
 
 const svgHead = '<svg xmlns="http://www.w3.org/2000/svg" role="img" font-family="sans-serif" font-size="16" text-anchor="middle"';
 const arrow = '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="#475569"/></marker></defs>';

@@ -5,7 +5,7 @@ import {
   createBusinessFlowArtifact,
   createRule,
   createWorkspaceRecord,
-} from "../../../test/workspace-test-utils";
+} from "../../../../tests/helpers/workspace-test-utils";
 import { buildCrossStageRequirementCoverage } from "./cross-stage-requirement-coverage";
 
 describe("buildCrossStageRequirementCoverage", () => {

@@ -4,7 +4,6 @@ import {
   reuseRequirementBaseline,
   snapshotInputFingerprint,
   candidateRulesForDiagram,
-
   completedRunEventSchema,
   designTraceabilityTouchesDiagramKinds,
   designRunSnapshotSchema,
@@ -12,19 +11,17 @@ import {
   stageProgressRunEventSchema,
   stageStartedRunEventSchema,
   startDocumentRunRequestSchema,
-
   type DesignDiagramKind,
   type DesignRunSnapshot,
   type DiagramKind,
   type ProviderSettings,
   type RunSnapshot,
   type RunStage,
-
   type StartDesignRunRequest,
   type StartDocumentRunRequest,
   type StartRunRequest,
 } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../llm.js";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 import {
   generateDesignPlantUmlArtifacts,
   generatePlantUmlArtifacts,
@@ -37,7 +34,7 @@ import { createStageLifecycle } from "../pipelines/shared/stage-lifecycle.js";
 import { stageProgressValue } from "../pipelines/shared/pipeline-events.js";
 import { createRunError } from "../pipelines/shared/errors.js";
 import { buildRequirementStageTrustedChain } from "../traceability/trusted-chain-traceability.js";
-import { librarySeatDemoFixture } from "./fixtures/library-seat-demo-fixture.js";
+import { librarySeatDemoFixture } from "@uml-platform/demo-fixtures";
 import {
   librarySeatRequirementPlantUmlArtifacts,
   librarySeatRequirementRenderedSvgArtifacts,
@@ -124,7 +121,6 @@ function selectedOrAvailable<T extends string>(requested: T[], available: T[]) {
   const selected = requested.filter((kind) => availableSet.has(kind));
   return selected.length > 0 ? selected : available;
 }
-
 
 function requirementKinds(snapshot: RunSnapshot) {
   return Array.from(

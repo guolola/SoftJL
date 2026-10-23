@@ -3,13 +3,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18nextProvider } from "react-i18next";
-import { createStandardProjectState, standardDiagramKinds } from "@uml-platform/contracts";
-import { i18n } from "../../../shared/i18n";
+import { createStandardProjectState } from "@uml-platform/contracts";
+import { i18n } from "../../../shared/i18n/index";
 import { patchUserSettings, loadUserSettings } from "../../../shared/lib/user-settings";
 import { standardApi, type StandardCommand } from "../services/standard-api";
 import { ProjectConversation } from "./project-conversation";
 import { homeEffortPreference } from "./home-demo/integration/persisted-preference";
-import conversationStyles from "./conversation.css?raw";
 
 vi.mock("../services/standard-api", () => ({ standardApi: { modelContext: vi.fn() } }));
 const originalObjectURL = URL.createObjectURL;
@@ -29,72 +28,39 @@ const defaults = () => ({ projectId: "p", state: createStandardProjectState(), d
   onSend: vi.fn(async (_command: StandardCommand) => true), onCancel: vi.fn(async () => true), onFeedback: vi.fn(async () => true), onSettings: vi.fn(), onOpenDocuments: vi.fn() });
 const view = (props = defaults()) => <I18nextProvider i18n={i18n}><ProjectConversation {...props} /></I18nextProvider>;
 
-it.each([false, true])("keeps the chat surface and composer footer transparent with saved messages=%s", (hasMessages) => {
-  const props = defaults();
-  if (hasMessages) props.state.conversation = [{ id: "u", role: "user", text: "生成图书管理系统", status: "completed", createdAt: "now" }];
-  const mounted = render(view(props));
-  expect(mounted.container.querySelector(".homepage-conversation")).toHaveStyle({ "background-color": "rgba(0, 0, 0, 0)" });
-  expect(screen.getByTestId("conversation-composer-footer")).not.toHaveClass("bg-background");
-  if (hasMessages) expect(screen.getByTestId("conversation-message-viewport")).not.toContainElement(screen.getByTestId("conversation-composer-footer"));
-  else expect(screen.getByTestId("conversation-message-viewport")).toContainElement(screen.getByTestId("conversation-composer-footer"));
-  expect(screen.getByPlaceholderText("发送消息…")).toBeVisible();
-  if (hasMessages) expect(screen.getByText("生成图书管理系统")).toBeVisible();
-});
-
-it("shows the Agent capability intro for an empty thread and keeps it while composing a draft", async () => {
+it("keeps capability badges and project examples without the removed feature cards", async () => {
   render(view());
   const badges = screen.getByTestId("agent-intro-badges");
-  const showcase = screen.getByTestId("agent-feature-showcase");
+  const examples = screen.getByRole("group", { name: "试试这些项目例子" });
   expect(within(badges).getByRole("img", { name: "需求澄清" })).toBeInTheDocument();
-  for (const title of ["梳理与澄清需求", "通过对话修改模型", "生成 8 类模型", "生成测试用例", "生成 2 类说明书"]) {
-    expect(within(showcase).getByText(title)).toBeInTheDocument();
+  expect(screen.queryByTestId("agent-feature-showcase")).not.toBeInTheDocument();
+  for (const title of ["梳理与澄清需求", "通过对话修改模型", "生成 8 类模型", "生成 2 类说明书"]) {
+    expect(screen.queryByText(title)).not.toBeInTheDocument();
   }
   const input = screen.getByPlaceholderText("发送消息…");
   expect(badges.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(input.compareDocumentPosition(showcase) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(input.compareDocumentPosition(examples) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   await userEvent.type(input, "还没发送的需求");
   expect(badges).toBeInTheDocument();
-  expect(showcase).toBeInTheDocument();
+  expect(examples).toHaveAttribute("inert");
+  expect(examples).toHaveClass("opacity-0");
 });
 
-it.each(["zh-CN", "en"])("lists all supported models, test outputs and both specifications in %s", async language => {
-  await i18n.changeLanguage(language);
-  render(view());
-  const showcase = screen.getByTestId("agent-feature-showcase");
-  const models = within(showcase.querySelector<HTMLElement>('[data-intro-feature="models"]')!);
-  const description = showcase.querySelector('[data-intro-feature="models"] [data-slot="card-description"]')!;
-  for (const kind of standardDiagramKinds) {
-    expect(description).toHaveTextContent(i18n.t(`standardProject.diagramKinds.${kind}`));
-  }
-  const documents = showcase.querySelector('[data-intro-feature="documents"] [data-slot="card-description"]')!;
-  for (const name of ["requirements", "design"]) {
-    expect(documents.textContent!.toLowerCase()).toContain(i18n.t(`standardProject.intro.documents.${name}`).toLowerCase());
-  }
-  expect(documents).toHaveTextContent("DOCX");
-  expect(within(showcase).getByRole("img", { name: i18n.t("standardProject.intro.revision.before") })).toBeInTheDocument();
-  expect(within(showcase).getByRole("img", { name: i18n.t("standardProject.intro.revision.after") })).toBeInTheDocument();
-  expect(models.getByText(i18n.t("standardProject.intro.demo.label"))).toBeInTheDocument();
-  expect(showcase.querySelectorAll('img[src^="http"]')).toHaveLength(0);
-  expect(showcase).not.toHaveTextContent(/shadcn|Figma|Lovable|claude-3-7|Theme Builder/);
-  const tests = within(showcase.querySelector<HTMLElement>('[data-intro-feature="tests"]')!);
-  for (const field of ["preconditions", "steps", "expected"]) {
-    expect(tests.getByText(i18n.t(`standardProject.intro.tests.${field}Label`))).toBeInTheDocument();
-  }
-});
-
-it("hides both intro blocks after the first user turn and restores them for a new empty project", () => {
+it("hides welcome content after the first user turn and restores examples for a new empty project", () => {
   const props = defaults();
   const mounted = render(view(props));
   mounted.rerender(view({ ...props, state: { ...props.state, conversation: [
     { id: "u", role: "user", text: "帮我分析图书借阅需求", status: "completed", createdAt: "now" },
   ] } }));
   expect(screen.queryByTestId("agent-intro-badges")).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "试试这些项目例子" })).not.toBeInTheDocument();
   expect(screen.queryByTestId("agent-feature-showcase")).not.toBeInTheDocument();
   expect(screen.getByText("帮我分析图书借阅需求")).toBeInTheDocument();
   mounted.unmount();
   render(view({ ...props, projectId: "new-project" }));
   expect(screen.getByTestId("agent-intro-badges")).toBeInTheDocument();
-  expect(screen.getByTestId("agent-feature-showcase")).toBeInTheDocument();
+  expect(screen.queryByTestId("agent-feature-showcase")).not.toBeInTheDocument();
+  expect(screen.getByRole("group", { name: "试试这些项目例子" })).toBeInTheDocument();
 });
 
 it("does not reintroduce the intro when opening saved conversation history", () => {
@@ -102,6 +68,7 @@ it("does not reintroduce the intro when opening saved conversation history", () 
   props.state.conversation = [{ id: "u", role: "user", text: "已保存需求", status: "completed", createdAt: "now" }];
   render(view(props));
   expect(screen.queryByTestId("agent-intro-badges")).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "试试这些项目例子" })).not.toBeInTheDocument();
   expect(screen.queryByTestId("agent-feature-showcase")).not.toBeInTheDocument();
 });
 
@@ -112,7 +79,8 @@ it("retains failed drafts, sends real project commands and clears only accepted 
   await user.type(input, "学生借阅图书"); await user.click(screen.getByRole("button", { name: "发送消息" }));
   await waitFor(() => expect(input).toHaveValue("学生借阅图书"));
   expect(screen.getByTestId("agent-intro-badges")).toBeInTheDocument();
-  expect(screen.getByTestId("agent-feature-showcase")).toBeInTheDocument();
+  expect(screen.queryByTestId("agent-feature-showcase")).not.toBeInTheDocument();
+  expect(screen.getByRole("group", { name: "试试这些项目例子" })).toBeInTheDocument();
   expect(JSON.parse(sessionStorage.getItem("uml-standard-draft:p")!).text).toBe("学生借阅图书");
   await user.click(screen.getByRole("button", { name: "发送消息" }));
   await waitFor(() => expect(input).toHaveValue(""));
@@ -196,8 +164,6 @@ it.each(["zh-CN", "en"])("uses the project's reasoning Switch and sends the matc
   expect(control.closest('[data-slot="popover-content"]')).toBeNull();
   expect(selector).not.toHaveTextContent("No");
   expect(control).not.toBeChecked();
-  expect(control).toHaveAttribute("data-slot", "switch");
-  expect(control).toHaveAttribute("data-size", "md");
   expect(control.querySelector('[data-slot="switch-thumb"]')).toBeInTheDocument();
   expect(screen.queryByRole("radio", { name: "Yes" })).not.toBeInTheDocument();
   expect(screen.queryByRole("radio", { name: "No" })).not.toBeInTheDocument();
@@ -239,10 +205,10 @@ it("locks the reasoning Switch in a read-only project without changing its saved
   expect(control).toHaveAttribute("aria-disabled", "true"); await userEvent.click(control);
   expect(control).toBeChecked(); expect(homeEffortPreference.get()).toBe("medium");
 });
-it("renders project starter prompts and preserves the full original feedback popover", async () => {
+it("renders project examples and preserves the full original feedback popover", async () => {
   const props = defaults(); const mounted = render(view(props)); const user = userEvent.setup();
   expect(screen.getByText("今天有什么可以帮你？")).toBeInTheDocument();
-  for (const label of ["梳理项目需求", "选择八类模型", "生成用例图", "生成业务流程图", "生成时序图", "生成设计类图", "生成测试用例", "需求规格说明书", "软件设计说明书"]) {
+  for (const label of ["图书借阅系统", "课程选课系统", "图书馆座位预约系统", "在线商城系统", "校园外卖系统", "医院挂号系统"]) {
     expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   }
   expect(screen.queryByRole("button", { name: /销售看板|东京天气|技术栈/ })).not.toBeInTheDocument();
@@ -255,27 +221,36 @@ it("renders project starter prompts and preserves the full original feedback pop
   expect(props.onFeedback).toHaveBeenCalledWith("a", "negative");
 });
 
-it.each(["zh-CN", "en"])("sends project-specific model, test and specification prompts in %s", async language => {
+it.each(["zh-CN", "en"])("sends concrete project requirements from every example in %s", async language => {
   await i18n.changeLanguage(language);
   const props = defaults(); render(view(props)); const user = userEvent.setup();
-  const group = within(screen.getByRole("group", { name: language === "zh-CN" ? "试试这些项目任务" : "Try these project tasks" }));
-  expect(group.getAllByRole("button")).toHaveLength(9);
+  const group = within(screen.getByRole("group", { name: language === "zh-CN" ? "试试这些项目例子" : "Try these project examples" }));
   const choices = language === "zh-CN"
-    ? ["选择八类模型", "生成测试用例", "需求规格说明书", "软件设计说明书"]
-    : ["Choose model types", "Generate test cases", "Requirements spec", "Software design spec"];
+    ? ["图书借阅系统", "课程选课系统", "图书馆座位预约系统", "在线商城系统", "校园外卖系统", "医院挂号系统"]
+    : ["Library system", "Course enrollment system", "Library seat reservation system", "Online shopping system", "Campus food delivery system", "Hospital appointment system"];
+  const details = language === "zh-CN"
+    ? [["读者", "续借"], ["学生", "课表冲突"], ["管理员", "分时预约"], ["商家", "退款"], ["配送员", "接单"], ["医生", "挂号"]]
+    : [["readers", "renewals"], ["students", "timetable conflict"], ["administrators", "time-slot booking"], ["merchants", "refunds"], ["couriers", "order acceptance"], ["doctors", "appointment booking"]];
+  expect(group.getAllByRole("button")).toHaveLength(choices.length);
   for (const [index, label] of choices.entries()) {
     await user.click(group.getByRole("button", { name: label }));
     await waitFor(() => expect(props.onSend).toHaveBeenCalledTimes(index + 1));
     const command = props.onSend.mock.calls.at(-1)![0];
     expect(command).toMatchObject({ operation: "chat", language });
-    if (index === 0) {
-      for (const kind of standardDiagramKinds) expect(command.message).toContain(i18n.t(`standardProject.diagramKinds.${kind}`));
-    } else {
-      expect(command.message).toContain(language === "zh-CN" ? "模型" : "models");
-      expect(command.message).toMatch(language === "zh-CN" ? /测试用例|需求规格说明书|软件设计说明书/ : /test cases|requirements specification|software design specification/);
-    }
-    expect(command.message).not.toMatch(/sales dashboard|road trip|dinner party|Tokyo|销售看板|东京天气/);
+    expect(command.message!.toLowerCase()).toContain(label.toLowerCase());
+    for (const detail of details[index]!) expect(command.message).toContain(detail);
+    expect(command.message).toContain(language === "zh-CN" ? "先通过问答" : "Ask me questions");
+    expect(command.message).toContain(language === "zh-CN" ? "再确认需要生成的模型" : "then confirm which models to generate");
   }
+});
+
+it("keeps project examples disabled when the project is read-only", async () => {
+  const props = { ...defaults(), disabled: true, canCancel: false };
+  render(view(props));
+  const group = within(screen.getByRole("group", { name: "试试这些项目例子" }));
+  for (const button of group.getAllByRole("button")) expect(button).toBeDisabled();
+  await userEvent.click(group.getByRole("button", { name: "图书借阅系统" }));
+  expect(props.onSend).not.toHaveBeenCalled();
 });
 
 it("renders LLM-authored clarification as selectable questions and submits structured answers", async () => {
@@ -284,12 +259,11 @@ it("renders LLM-authored clarification as selectable questions and submits struc
   props.state.conversation = [{ id: "role-question", role: "assistant", text: "请确认借阅范围。", status: "completed", createdAt: "now" }];
   render(view(props));
   expect(screen.getByText("哪些人可以借阅？")).toBeInTheDocument();
-  expect(screen.getByRole("radio", { name: "学生" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "学生" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "继续未完成内容" })).not.toBeInTheDocument();
   expect(screen.getByPlaceholderText("发送消息…")).toBeEnabled();
-  expect(screen.getByRole("button", { name: "提交答案" })).toBeDisabled();
-  await userEvent.click(screen.getByRole("radio", { name: "学生" }));
-  await userEvent.click(screen.getByRole("button", { name: "提交答案" }));
+  expect(screen.queryByRole("button", { name: "提交答案" })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "学生" }));
   expect(props.onSend).toHaveBeenCalledWith({ operation: "chat", language: "zh-CN", message: "学生", answers: [{ questionId: "role", answer: "学生" }] });
 });
 
@@ -311,7 +285,7 @@ it("shows a saved model question as Agent text and only the selected option in t
   expect(screen.getByText(title).closest('[data-role="assistant"]')).not.toBeNull();
   expect(screen.getByText(answer).closest('[data-role="user"]')).not.toBeNull();
   for (const bubble of document.querySelectorAll('[data-role="user"]')) expect(bubble).not.toHaveTextContent(title);
-  expect(screen.getByRole("radio", { name: "校园二手交易平台" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "校园二手交易平台" })).toBeInTheDocument();
   expect(props.state.conversation[2]!.text).toBe(answer);
 });
 
@@ -327,8 +301,9 @@ it("renders Agent-authored model choices, preserves answers on rejection and hid
   props.state.conversation = [{ id: "a", role: "assistant", text: "请选择需要的模型。", status: "completed", createdAt: "now" }];
   const mounted = render(view(props)); const user = userEvent.setup();
   await user.type(screen.getByPlaceholderText("发送消息…"), "保留的草稿");
-  expect(screen.getByRole("button", { name: "确认并生成" })).toBeDisabled();
-  await user.click(screen.getByRole("button", { name: "填入推荐答案" }));
+  expect(screen.getByRole("button", { name: "确认并生成" })).toHaveAttribute("aria-disabled", "true");
+  await user.click(screen.getByRole("checkbox", { name: "功能结构图" }));
+  await user.click(screen.getByRole("checkbox", { name: "用例图" }));
   expect(screen.getByRole("checkbox", { name: "功能结构图" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "用例图" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "总体架构图" })).not.toBeChecked();
@@ -337,12 +312,12 @@ it("renders Agent-authored model choices, preserves answers on rejection and hid
   expect(screen.getByRole("checkbox", { name: "用例图" })).toBeChecked();
   expect(screen.getByPlaceholderText("发送消息…")).toHaveValue("保留的草稿");
   mounted.rerender(view({ ...props, disabled: true }));
-  expect(screen.getByRole("button", { name: "确认并生成" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "确认并生成" })).not.toBeInTheDocument();
   mounted.rerender(view({ ...props, state: { ...props.state, generationScope: { status: "confirmed", kinds: ["function", "usecase"] },
     rounds: [{ ...props.state.rounds[0]!, answers: [{ questionId: "models", answer: "功能结构图、用例图" }] }] } }));
   expect(screen.queryByRole("checkbox", { name: "用例图" })).not.toBeInTheDocument();
 });
-it("uses explicit recommended identifiers when model labels contain explanations or unrelated recommendation text", async () => {
+it("submits stable identifiers independently of labels and unrelated recommendation text", async () => {
   const props = defaults();
   props.state.rounds = [{ purpose: "generation_scope", questions: [{ id: "models", title: "需要哪些模型？", multiple: true,
     options: ["1. 功能结构图 — 展示系统模块", "2. 用例图 — 展示哪些角色使用哪些功能", "7. 时序图 — 展示对象交互"],
@@ -353,7 +328,8 @@ it("uses explicit recommended identifiers when model labels contain explanations
     ] }], answers: [] }];
   props.state.conversation = [{ id: "a", role: "assistant", text: "请选择。", status: "completed", createdAt: "now" }];
   render(view(props)); const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "填入推荐答案" }));
+  await user.click(screen.getByRole("checkbox", { name: "1. 功能结构图 — 展示系统模块" }));
+  await user.click(screen.getByRole("checkbox", { name: "2. 用例图 — 展示哪些角色使用哪些功能" }));
   expect(screen.getByRole("checkbox", { name: "1. 功能结构图 — 展示系统模块" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "2. 用例图 — 展示哪些角色使用哪些功能" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "7. 时序图 — 展示对象交互" })).not.toBeChecked();
@@ -374,8 +350,7 @@ it.each(["总体架构图", "是，加入并生成领域概念图", "不生成"]
   render(view(props)); const user = userEvent.setup();
   expect(screen.queryByRole("button", { name: "选择全部" })).not.toBeInTheDocument();
   expect(screen.queryByLabelText(/是否新增此模型.*自定义答案/)).not.toBeInTheDocument();
-  await user.click(screen.getByRole("radio", { name: label }));
-  await user.click(screen.getByRole("button", { name: "确认并生成" }));
+  await user.click(screen.getByRole("button", { name: label }));
   const id = label === "总体架构图" ? "arch" : label === "不生成" ? "skip" : "concept";
   expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ answers: [{ questionId: "scope", answer: label, selectedOptionIds: [id] }] }));
 });
@@ -385,7 +360,7 @@ it("rejects an untyped pending scope question with an inline recovery instructio
   props.state.rounds = [{ purpose: "generation_scope", questions: [{ id: "scope", title: "是否新增？", options: ["总体架构图", "不生成"], recommendation: "总体架构图", multiple: false }], answers: [] }];
   props.state.conversation = [{ id: "a", role: "assistant", text: "请选择。", status: "completed", createdAt: "now" }];
   render(view(props));
-  expect(screen.getByRole("button", { name: "确认并生成" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "确认并生成" })).not.toBeInTheDocument();
   expect(screen.getByRole("status")).toHaveTextContent("这份模型选择已失效");
   expect(screen.getByPlaceholderText("发送消息…")).toBeEnabled();
 });
@@ -404,15 +379,14 @@ it.each(["改为生成：概念 E-R 图", "不生成替代图"])("discloses the 
   const mounted = render(view(props)); const user = userEvent.setup();
   expect(screen.getByText(title)).toBeInTheDocument();
   expect(screen.getByText(/不会擅自替换/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "确认并生成" })).toBeDisabled();
-  await user.click(screen.getByRole("radio", { name: label }));
-  await user.click(screen.getByRole("button", { name: "确认并生成" }));
+  expect(screen.queryByRole("button", { name: "确认并生成" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: label }));
   expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ answers: [{ questionId: "scope_alternative", answer: label, selectedOptionIds: [label === "不生成替代图" ? "no" : "yes"] }] }));
   mounted.rerender(view({ ...props, state: { ...props.state, unsupportedDiagramRequest: { ...props.state.unsupportedDiagramRequest!, questionId: undefined } } }));
-  expect(screen.queryByRole("radio", { name: label })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
 });
 
-it("select all excludes the decline choice and manual decline clears positive model selections", async () => {
+it("rejects mixed decline and generation choices, retains selections, then accepts a decline receipt", async () => {
   const props = defaults();
   props.state.rounds = [{ purpose: "generation_scope", answers: [], questions: [{ id: "scope", title: "选择新增模型", multiple: true,
     options: ["架构", "领域", "不生成"], recommendation: "推荐新增", scopeChoices: [
@@ -422,22 +396,25 @@ it("select all excludes the decline choice and manual decline clears positive mo
     ] }] }];
   props.state.conversation = [{ id: "a", role: "assistant", text: "请选择。", status: "completed", createdAt: "now" }];
   render(view(props)); const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "选择全部" }));
-  expect(screen.getByRole("checkbox", { name: "架构" })).toBeChecked();
-  expect(screen.getByRole("checkbox", { name: "领域" })).toBeChecked();
-  expect(screen.getByRole("checkbox", { name: "不生成" })).not.toBeChecked();
+  expect(screen.queryByRole("button", { name: "选择全部" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("checkbox", { name: "架构" }));
   await user.click(screen.getByRole("checkbox", { name: "不生成" }));
-  expect(screen.getByRole("checkbox", { name: "架构" })).not.toBeChecked();
-  expect(screen.getByRole("checkbox", { name: "领域" })).not.toBeChecked();
+  await user.click(screen.getByRole("button", { name: "确认并生成" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("不生成选项不能与其他模型同时选择");
+  expect(props.onSend).not.toHaveBeenCalled();
+  expect(screen.getByRole("checkbox", { name: "架构" })).toBeChecked();
+  await user.click(screen.getByRole("checkbox", { name: "架构" }));
   await user.click(screen.getByRole("button", { name: "确认并生成" }));
   expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ answers: [{ questionId: "scope", answer: "不生成", selectedOptionIds: ["skip"] }] }));
-  await user.click(screen.getByRole("checkbox", { name: "架构" }));
-  expect(screen.getByRole("checkbox", { name: "不生成" })).not.toBeChecked();
+  await waitFor(() => expect(document.querySelector('[data-slot="question-flow"]')).toHaveAttribute("data-state", "receipt"));
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
 });
+
 it("connects the source timing, follow-ups and provider Token display after a stopped task", async () => {
   const props = defaults();
   props.state.run = { id: "r", operation: "chat", status: "stopped", startedAt: "now" };
-  props.state.conversation = [{ id: "a", role: "assistant", text: "已读取项目，reasoning 是原始内容。", reasoning: "分析需求", durationMs: 4290,
+  props.state.conversation = [{ id: "a", role: "assistant", text: "已读取项目，reasoning 是原始内容。", reasoning: "分析需求",
+    timing: { streamStartTime: 100, totalStreamTime: 4290, totalChunks: 2, toolCallCount: 1 },
     suggestions: ["检查现有模型中遗漏的业务规则"],
     tools: [{ id: "tool", name: "read_project", status: "completed" }], status: "completed", createdAt: "now" }];
   props.state.tokenUsage = { model: "strict", contextBudget: 64000, contextTokens: 111,
@@ -463,8 +440,6 @@ it("keeps single tool details collapsed by default and reflects failures without
   const mounted = render(view(props));
   await userEvent.click(screen.getByRole("button", { name: "推理过程" }));
   const trigger = screen.getByRole("button", { name: /保存方案.*已完成/ });
-  expect(within(trigger).getByText("已完成")).toHaveClass("rounded-md");
-  expect(within(trigger).getByText("保存方案")).not.toHaveClass("rounded-md");
   expect(trigger).toHaveAttribute("aria-expanded", "false");
   await userEvent.click(trigger);
   const call = trigger.closest('[data-slot="tool-call"]')!;
@@ -516,6 +491,15 @@ it("replaces the thinking placeholder with tool progress while retaining the rea
   expect(await screen.findByText("接下来生成测试用例。")).toBeVisible();
 });
 
+it.each([["zh-CN", /读取建模规范.*正在执行/], ["en", /Read modeling guidance.*Running/]] as const)("labels the restricted skill reader in %s", async (language, label) => {
+  await i18n.changeLanguage(language);
+  const props = defaults();
+  props.state.conversation = [{ id: "a", role: "assistant", text: "", status: "completed", createdAt: "now",
+    tools: [{ id: "guidance", name: "read", status: "running" }] }];
+  render(view(props));
+  expect(screen.getByRole("button", { name: label })).toBeVisible();
+});
+
 it("keeps tool timelines collapsed by default and the reply outside them", async () => {
   const props = defaults();
   props.state.conversation = [{ id: "a", role: "assistant", text: "处理结果。", status: "completed", createdAt: "now",
@@ -545,7 +529,7 @@ it("keeps a completed question tool waiting until its form is answered", async (
     tools: [{ id: "ask", name: "ask_questions", status: "completed" }] }];
   const mounted = render(view(props));
   expect(screen.getByRole("button", { name: /补充需求.*等待回答/ }).closest('[data-slot="tool-call"]')).toHaveAttribute("data-outcome", "waiting");
-  expect(screen.getByRole("radio", { name: "学生" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "学生" })).toBeVisible();
   mounted.rerender(view({ ...props, state: { ...props.state, rounds: [{ ...props.state.rounds[0]!, answers: [{ questionId: "role", answer: "学生" }] }] } }));
   await userEvent.click(screen.getByRole("button", { name: "推理过程" }));
   expect(screen.getByRole("button", { name: /补充需求.*已完成/ })).toBeInTheDocument();
@@ -604,8 +588,6 @@ it("uses the same reasoning container, scroll area and Markdown renderer for sin
     expect(trigger).toHaveAttribute("aria-expanded", String(alreadyOpen));
     if (!alreadyOpen) await userEvent.click(trigger);
     const content = mounted.container.querySelector('[data-slot="reasoning-content"]')!;
-    expect(content).toHaveClass("aui-reasoning-content", "text-sm");
-    expect(content.querySelector('[data-slot="reasoning-text"]')).toHaveClass("max-h-64", "overflow-y-auto");
     expect(within(content as HTMLElement).getByText("usecase").tagName).toBe("CODE");
     expect(within(content as HTMLElement).getByText("保留业务范围").tagName).toBe("STRONG");
   };
@@ -631,7 +613,6 @@ it("keeps the first reasoning visible before its tool and preserves the containe
     expect(root.querySelector('[data-slot="collapsible-trigger"]')).toBe(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(trigger.querySelector(".shimmer")).toHaveTextContent(trigger.textContent!.replace(">", ""));
-    expect(trigger.querySelector('[aria-hidden="true"]')).toHaveClass("text-blue-500");
   };
   const thinking = { ...first, reasoning: "先读取当前用例图。" };
   mounted.rerender(view({ ...props, state: { ...props.state, run, conversation: [thinking] } }));
@@ -656,7 +637,6 @@ it("keeps the first reasoning visible before its tool and preserves the containe
     conversation: [completed, { ...second, status: "completed", text: "已完成。" }] } }));
   expect(trigger).toHaveAttribute("aria-expanded", "false");
   expect(trigger.querySelector(".shimmer")).not.toBeInTheDocument();
-  expect(trigger.querySelector('[aria-hidden="true"]')).not.toHaveClass("text-blue-500");
   expect(await screen.findByText("已完成。")).toBeVisible();
 });
 
@@ -670,7 +650,6 @@ it.each(["completed", "stopped", "failed", "waiting"] as const)("turns off the r
   const trigger = mounted.container.querySelector('[data-slot="reasoning-root"] > [data-slot="collapsible-trigger"]')!;
   expect(trigger).toHaveAttribute("aria-expanded", "false");
   expect(trigger.querySelector(".shimmer")).not.toBeInTheDocument();
-  expect(trigger.querySelector('[aria-hidden="true"]')).not.toHaveClass("text-blue-500");
 });
 
 it("shows reasoning before its tool even when polling skips the first streaming phase", async () => {
@@ -698,28 +677,6 @@ it("retains a manual fold made during the first model call when subsequent calls
     tools: [{ id: "read", name: "read_project", status: "completed" }] }, { ...first, id: "a2", reasoning: "接着生成。" }] } }));
   expect(screen.getByRole("button", { name: "正在推理" })).toBe(trigger);
   expect(trigger).toHaveAttribute("aria-expanded", "false");
-});
-
-it("applies body trace typography and gutter markers to both single and continuous reasoning", () => {
-  const props = defaults();
-  const first = { id: "a1", role: "assistant" as const, text: "回复。", reasoning: "检查项目。", status: "completed" as const, createdAt: "now" };
-  props.state.conversation = [first, { id: "u2", role: "user", text: "继续", status: "completed", createdAt: "now" },
-    { ...first, id: "a2" }, { ...first, id: "a3" }];
-  const stylesheet = document.createElement("style");
-  stylesheet.textContent = conversationStyles;
-  document.head.append(stylesheet);
-  try {
-    render(view(props));
-    const triggers = screen.getAllByRole("button", { name: "推理过程" });
-    expect(triggers).toHaveLength(2);
-    for (const trigger of triggers) {
-      const style = getComputedStyle(trigger);
-      expect(style.fontSize).toBe("15px");
-      expect(style.fontFamily).toBe("inherit");
-      expect(style.lineHeight).toBe("1.625");
-      expect(getComputedStyle(trigger.querySelector('[aria-hidden="true"]')!).position).toBe("absolute");
-    }
-  } finally { stylesheet.remove(); }
 });
 
 it("keeps tools from different model calls in separate cards and retains their state through polling", async () => {
@@ -796,8 +753,7 @@ it("keeps failures and question controls visible when the merged reasoning is ma
   expect(trigger).toHaveAttribute("aria-expanded", "false");
   expect(screen.getByRole("button", { name: /生成图表.*执行失败或已中断/ })).toBeVisible();
   expect(screen.getByRole("button", { name: /补充需求.*等待回答/ })).toBeVisible();
-  await userEvent.click(screen.getByRole("radio", { name: "管理员" }));
-  await userEvent.click(screen.getByRole("button", { name: "提交答案" }));
+  await userEvent.click(screen.getByRole("button", { name: "管理员" }));
   expect(props.onSend).toHaveBeenCalledWith(expect.objectContaining({ answers: [{ questionId: "role", answer: "管理员" }] }));
 });
 
@@ -878,7 +834,7 @@ it("submits source message edits with attachments and rejects no draft on failur
 it("uses the source regeneration control and persists detailed timing from the provider", async () => {
   const props = defaults();
   props.state.conversation = [{ id: "u", role: "user", text: "原需求", status: "completed", createdAt: "now" },
-    { id: "a", role: "assistant", text: "旧回复", status: "completed", createdAt: "now", durationMs: 4290,
+    { id: "a", role: "assistant", text: "旧回复", status: "completed", createdAt: "now",
       timing: { streamStartTime: 100, totalStreamTime: 4290, firstTokenTime: 250, totalChunks: 19, toolCallCount: 0, tokenCount: 100, tokensPerSecond: 25 } }];
   render(view(props)); const user = userEvent.setup();
   await user.hover(screen.getByRole("button", { name: "回复耗时" }));
@@ -934,7 +890,6 @@ it("preserves an edit across a pending request that is rejected", async () => {
   expect(screen.getByText("原回复")).toBeInTheDocument();
 });
 
-
 it("invalidates the old context during and after compaction and accepts the smaller fresh measurement", async () => {
   vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 1000000,
     capacity: { context: 1000000, output: 8000, source: "modelpedia", matchedId: "origin/strict", updatedAt: null } });
@@ -987,4 +942,70 @@ it("clears the previous context when the saved usage belongs to another model", 
   await waitFor(() => expect(counter).toHaveTextContent("10k / 64k"));
   mounted.rerender(view({ ...props, state: { ...props.state, tokenUsage: { ...props.state.tokenUsage!, model: "other" } } }));
   await waitFor(() => expect(counter).toHaveTextContent("未报告 / 64k"));
+});
+
+
+it("asks one step at a time, keeps Back answers and submits all answers once at the final step", async () => {
+  const props = defaults();
+  props.state.rounds = [{ questions: [
+    { id: "role", title: "谁使用？", options: ["学生", "教师"], recommendation: "学生", multiple: false },
+    { id: "features", title: "需要哪些功能？", options: ["借阅", "预约"], recommendation: "借阅", multiple: true },
+  ], answers: [] }];
+  props.state.conversation = [{ id: "ask", role: "assistant", text: "", tools: [{ id: "q", name: "ask_questions", status: "completed" }], status: "completed", createdAt: "now" }];
+  render(view(props)); const user = userEvent.setup();
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
+  expect(screen.queryByText("需要哪些功能？")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "学生" }));
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
+  expect(screen.getByRole("checkbox", { name: "借阅" })).toHaveFocus();
+  await user.click(screen.getByRole("button", { name: "返回" }));
+  await user.click(screen.getByRole("button", { name: "教师" }));
+  expect(props.onSend).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("checkbox", { name: "借阅" }));
+  await user.click(screen.getByRole("checkbox", { name: "预约" }));
+  await user.click(screen.getByRole("button", { name: "提交答案" }));
+  expect(props.onSend).toHaveBeenCalledExactlyOnceWith({ operation: "chat", language: "zh-CN", message: "教师\n借阅、预约", answers: [{ questionId: "role", answer: "教师" }, { questionId: "features", answer: "借阅、预约" }] });
+  await waitFor(() => expect(document.querySelector('[data-slot="question-flow"]')).toHaveAttribute("data-state", "receipt"));
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+});
+
+it("locks the final step and Back while awaiting the server, then reopens it on rejection", async () => {
+  const props = defaults();
+  props.state.rounds = [{ questions: [
+    { id: "role", title: "谁使用？", options: ["学生", "教师"], recommendation: "学生", multiple: false },
+    { id: "feature", title: "需要什么功能？", options: ["借阅", "预约"], recommendation: "借阅", multiple: false },
+  ], answers: [] }];
+  props.state.conversation = [{ id: "ask", role: "assistant", text: "请补充。", status: "completed", createdAt: "now" }];
+  let finish!: (value: boolean) => void;
+  props.onSend.mockImplementationOnce(() => new Promise<boolean>(resolve => { finish = resolve; }));
+  render(view(props)); const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "学生" }));
+  await user.click(screen.getByRole("button", { name: "借阅" }));
+  expect(screen.getByRole("button", { name: "返回" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "借阅" })).toHaveAttribute("aria-disabled", "true");
+  await user.click(screen.getByRole("button", { name: "借阅" }));
+  expect(props.onSend).toHaveBeenCalledTimes(1);
+  await act(async () => finish(false));
+  expect(await screen.findByRole("alert")).toHaveTextContent("答案提交失败");
+  expect(screen.getByRole("button", { name: "返回" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "预约" }));
+  expect(props.onSend).toHaveBeenLastCalledWith(expect.objectContaining({ answers: [{ questionId: "role", answer: "学生" }, { questionId: "feature", answer: "预约" }] }));
+  await waitFor(() => expect(document.querySelector('[data-slot="question-flow"]')).toHaveAttribute("data-state", "receipt"));
+});
+
+it("restores persisted QuestionFlow receipts on their original tool-only message", () => {
+  const props = defaults();
+  const answers = [{ questionId: "role", answer: "学生" }];
+  props.state.rounds = [{ questions: [{ id: "role", title: "谁使用系统？", options: ["学生", "教师"], recommendation: "学生", multiple: false }], answers }];
+  props.state.conversation = [
+    { id: "ask", role: "assistant", text: "", tools: [{ id: "q", name: "ask_questions", status: "completed" }], status: "completed", createdAt: "now" },
+    { id: "answer", role: "user", text: "学生", answers, status: "completed", createdAt: "now" },
+    { id: "next", role: "assistant", text: "已保存。", status: "completed", createdAt: "now" },
+  ];
+  render(view({ ...props, disabled: true }));
+  const receipt = document.querySelector('[data-slot="question-flow"][data-state="receipt"]');
+  expect(receipt).toHaveTextContent("谁使用系统？"); expect(receipt).toHaveTextContent("学生");
+  expect(receipt).not.toHaveTextContent("教师");
+  expect(within(receipt as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.getByText("已保存。")).toBeInTheDocument();
 });

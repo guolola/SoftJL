@@ -7,7 +7,7 @@ import {
   createScheduledLlmTransport,
   type LlmScheduleContext,
 } from "./llm-scheduler.js";
-import type { LlmTransport, StreamChatCompletionInput } from "../../llm.js";
+import type { LlmTransport, StreamChatCompletionInput } from "./llm-transport.js";
 import type { LlmRequestTelemetry } from "../../runs/records/run-telemetry-store.js";
 
 function context(patch: Partial<LlmScheduleContext> = {}): LlmScheduleContext {

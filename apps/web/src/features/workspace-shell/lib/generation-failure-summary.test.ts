@@ -1,6 +1,6 @@
 // Covers concise failure categories and preserves actionable input errors without raw diagnostics.
 import { afterEach, describe, expect, it } from "vitest";
-import { i18n } from "../../../shared/i18n";
+import { i18n } from "../../../shared/i18n/index";
 import { generationFailureSummary } from "./generation-failure-summary";
 
 afterEach(async () => { await i18n.changeLanguage("zh-CN"); });

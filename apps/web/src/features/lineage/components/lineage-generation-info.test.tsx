@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
-import { i18n } from '../../../shared/i18n';
+import { i18n } from '../../../shared/i18n/index';
 import { GenerationStamp, GenerationDetails } from './lineage-generation-info';
 import type { GenerationInfo } from '../lib/lineage-generation';
 const info: GenerationInfo = { instanceId: 'one', label: 'Login sequence', generated: true, scope: 'instance', durationMs: 200, member: { id: 'member', projectId: 'project', userId: 'alice', displayName: 'Alice Wang', username: 'alice', role: 'owner', status: 'active' } };

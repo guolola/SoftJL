@@ -1,13 +1,11 @@
 // Persists ordinary workflow transitions using the existing workspace optimistic concurrency contract.
-import { createStandardProjectState, standardProjectStateSchema, type StandardProjectState } from "@uml-platform/contracts";
+import { createStandardProjectState, storedStandardProjectStateSchema, type StandardProjectState } from "@uml-platform/contracts";
 import type { AuthStore } from "../../auth/in-memory-auth-store.js";
 import { interruptStandardRunMessages } from "./standard-run-messages.js";
 
 export function readStandardState(state: Record<string, unknown>, description = ""): StandardProjectState {
   if (!Object.hasOwn(state, "standardProject")) return createStandardProjectState(description);
-  // Validate public fields without dropping the current private Pi context and idempotency receipts.
-  standardProjectStateSchema.parse(state.standardProject);
-  return structuredClone(state.standardProject as StandardProjectState);
+  return structuredClone(storedStandardProjectStateSchema.parse(state.standardProject));
 }
 
 export async function updateStandardState(store: AuthStore, projectId: string, userId: string,
@@ -16,11 +14,13 @@ export async function updateStandardState(store: AuthStore, projectId: string, u
     const workspace = await store.getProjectWorkspace(projectId);
     const state = readStandardState(workspace.state);
     update(state);
+    // Validate the updated model tree before writing; rejection leaves the workspace untouched.
+    const current = storedStandardProjectStateSchema.parse(state);
     const saved = await store.saveProjectWorkspace({
       projectId, baseVersion: workspace.version, updatedByUserId: userId,
-      state: { ...workspace.state, standardProject: state }, sourceRunId: workspace.sourceRunId,
+      state: { ...workspace.state, standardProject: current }, sourceRunId: workspace.sourceRunId,
     });
-    if (saved.ok) return state;
+    if (saved.ok) return current;
   }
   throw new Error("项目正在被其他成员更新，请稍后重试");
 }

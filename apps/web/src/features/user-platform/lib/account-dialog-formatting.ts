@@ -1,9 +1,6 @@
 // Formats account dialog labels, dates, and usage summaries without owning UI state.
-import { formatSessionDevice } from "./session-device";
-import type {
-  PlatformLoginEvent,
-  PlatformUser,
-} from "../services/platform-api";
+
+import type { PlatformUser } from "../services/platform-api";
 
 export const AVATAR_FILE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
@@ -38,15 +35,4 @@ export function accountStatusLabel(
     default:
       return status || labels.unknown;
   }
-}
-
-export function loginOutcomeLabel(
-  outcome: PlatformLoginEvent["outcome"],
-  labels = { success: "成功", failed: "失败" },
-) {
-  return outcome === "success" ? labels.success : labels.failed;
-}
-
-export function loginDetail(event: PlatformLoginEvent, noDetails = "暂无详情", unknownDevice = "未知设备") {
-  return event.message || (event.userAgent ? formatSessionDevice(event.userAgent, unknownDevice) : noDetails);
 }

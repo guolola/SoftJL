@@ -3,7 +3,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { i18n } from '../../../shared/i18n';
+import { i18n } from '../../../shared/i18n/index';
 import { DefaultSidebar } from '../../../shared/template/layout/default-sidebar';
 import { SidebarProvider, useSidebar } from '../../../shared/ui/sidebar';
 import { AuthenticatedRouteSessionProvider } from '../../user-platform/components/authenticated-route-session';
@@ -11,6 +11,7 @@ import { AUTH_SESSION_CHANGED_EVENT, platformApi, type PlatformAccountProfileRes
 import { floatingAlert } from '../../../shared/ui/floating-alert';
 import { SidebarUserDropdown } from './sidebar-user-dropdown';
 const profile: PlatformAccountProfileResponse = {
+  mfa: { enabled: false, enforcement: "totp" },
   user: { id: 'user-1', username: 'sidebar-user', displayName: '侧栏用户', avatarUrl: null, status: 'active', mfaEnabled: false },
   session: { id: 'session-1', userId: 'user-1', createdAt: '', expiresAt: '', lastSeenAt: '', ipAddress: null, userAgent: null },
 };

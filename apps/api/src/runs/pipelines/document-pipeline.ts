@@ -21,7 +21,7 @@ import {
 import {
   buildGenerateDocumentContentPrompt,
 } from "@uml-platform/prompts";
-import { type LlmTransport } from "../../llm.js";
+import { type LlmTransport } from "../../adapters/llm/llm-transport.js";
 import type { DocumentLibrary } from "../../documents/library/document-library.js";
 import { type PngRenderClient } from "../../adapters/render/png-render-client.js";
 import { getDocumentContentResponseFormat } from "../../adapters/llm/response-formats/index.js";
@@ -43,7 +43,7 @@ import { throwIfRunCancelled } from "../records/run-cancellation.js";
 import { assertRequirementBaselineAllowsDownstream } from "../baselines/requirement-baseline.js";
 import { stageProgressValue } from "./shared/pipeline-events.js";
 import { createMessages } from "./shared/llm-messages.js";
-import { withConversationBranch } from "./shared/conversation-context.js";
+
 import {
   collectTextResult,
   logFailedStructuredOutput,
@@ -225,7 +225,7 @@ async function generateDocumentChapters(record: RunRecord, input: StartDocumentR
       throwIfRunCancelled(record);
       const index = next++;
       try {
-        const generated = await withConversationBranch(`document:chapter:${index}`, () => generateDocumentSectionsWithRepair(record, input, provider, transport, { index, sections: chapters[index]!, outline }));
+        const generated = await generateDocumentSectionsWithRepair(record, input, provider, transport, { index, sections: chapters[index]!, outline });
         results[index] = chapters[index]!.map((section, offset) => mergeDocumentSectionsWithTemplate([section], [generated[offset]!])[0]!);
       } catch (error) { failed = true; throw error; }
       emitEvent(record, stageProgressRunEventSchema.parse({ type: "stage_progress", stage: "generate_document_text", progress: 55, subtaskId: `document:chapter:${index}`, subtaskLabel: chapters[index]![0]!.title, subtaskStatus: "completed" }));

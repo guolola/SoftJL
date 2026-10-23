@@ -1,6 +1,7 @@
-// Repairs deterministic provider aliases and validates complete feasibility plans before persistence.
+// Normalizes generated estimates and validates current feasibility plans before persistence.
 import {
   completeFeasibilityImplementationPlanSchema,
+  feasibilityAbsenceDeclarationSchema,
   type FeasibilityImplementationPlan,
 } from "@uml-platform/contracts";
 import { z } from "zod";
@@ -106,19 +107,11 @@ function normalizeAbsenceDeclarations(
   const declarations: UnknownRecord[] = [];
 
   for (const rawItem of value) {
-    if (!isRecord(rawItem)) continue;
-    let item = { ...rawItem };
-    if (
-      (typeof item.reason !== "string" || !item.reason.trim()) &&
-      typeof item.rationale === "string" &&
-      item.rationale.trim()
-    ) {
-      item.reason = item.rationale;
-      actions.push("aliased-rationale-to-reason");
-    }
-    delete item.rationale;
-    item = forceAiProvenance(item, actions);
-    const scope = typeof item.scope === "string" ? item.scope : "";
+    // Validate before deduplication so invalid fields cannot disappear in a discarded declaration.
+    const item = feasibilityAbsenceDeclarationSchema.parse(
+      isRecord(rawItem) ? forceAiProvenance(rawItem, actions) : rawItem,
+    );
+    const scope = item.scope;
     if (seen.has(scope)) {
       actions.push("removed-duplicate-absence-scope");
       continue;
@@ -139,16 +132,6 @@ function normalizeIntegration(
   actions: string[],
 ) {
   const item = { ...rawItem };
-  if (
-    (typeof item.responsibility !== "string" || !item.responsibility.trim()) &&
-    typeof item.purpose === "string" &&
-    item.purpose.trim()
-  ) {
-    item.responsibility = item.purpose;
-    actions.push("aliased-purpose-to-responsibility");
-  }
-  delete item.purpose;
-
   if (externalSystems && !item.contextExternalSystemId) {
     const name = typeof item.name === "string" ? item.name.trim().toLocaleLowerCase() : "";
     const matches = externalSystems.filter(
@@ -255,7 +238,6 @@ function normalizeStructuralOutput(
 
 export function normalizeFeasibilityImplementationDetailed(
   value: unknown,
-  validRequirementIds: ReadonlySet<string>,
   externalSystems?: readonly FeasibilityContextExternalSystem[],
 ): FeasibilityNormalizationResult {
   const actions: string[] = [];

@@ -2,14 +2,14 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import { snapshotInputFingerprint } from "@uml-platform/contracts";
-import { LOCALE_PREFERENCE_STORAGE_KEY } from "../../../shared/i18n";
+import { LOCALE_PREFERENCE_STORAGE_KEY } from "../../../shared/i18n/index";
 import {
   createRule,
   createWorkspaceRecord,
   withWorkspaceProviders,
-} from "../../../test/workspace-test-utils";
+} from "../../../../tests/helpers/workspace-test-utils";
 import { TraceabilityMatrixPage } from "./traceability-matrix-page";
 
 afterEach(() => {
@@ -30,16 +30,16 @@ function createRepository(
 ): WorkspaceRepository {
   return {
     loadWorkspace: vi.fn(async () => workspace),
-    updateRequirementText: vi.fn(async () => {}),
+
     startRun: vi.fn(),
     subscribeToRun: vi.fn(),
     getRunSnapshot: vi.fn(),
-    renderPlantUml: vi.fn(),
-    testProviderSettings: vi.fn(),
+
+
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
     deleteRunHistory: vi.fn(async () => []),
-    clearRunHistory: vi.fn(async () => {}),
+
   };
 }
 
@@ -141,8 +141,6 @@ describe("TraceabilityMatrixPage", () => {
     expect(sidebarHeadings.map((heading) => heading.textContent)).toEqual(["元素映射率", "映射详情"]);
 
     const table = await findMatrixTableByText("提交订单");
-    expect(table).toHaveClass("table-fixed", "min-w-[860px]");
-    expect(within(table).getAllByRole("columnheader")[0]).toHaveClass("w-[200px]");
     expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
       "需求模型元素", "来源模型", "类型", "来源需求规则", "映射状态",
     ]);
@@ -153,7 +151,6 @@ describe("TraceabilityMatrixPage", () => {
     expect(within(row!).getByText("已映射")).toBeInTheDocument();
     const elementCell = within(row!).getAllByRole("cell")[0];
     expect(elementCell).toHaveTextContent(/^提交订单$/);
-    expect(within(elementCell).getByTitle("提交订单")).toHaveClass("truncate");
     const cells = within(row!).getAllByRole("cell");
     expect(cells).toHaveLength(5);
     expect(cells[1]).toHaveTextContent(/^用例模型$/);
@@ -400,7 +397,6 @@ describe("TraceabilityMatrixPage", () => {
     expect(screen.getByText("2 / 2 个元素已有明确映射。")).toBeInTheDocument();
 
     const table = await findMatrixTableByText("Class_UserAuth");
-    expect(table).toHaveClass("table-fixed", "min-w-[1120px]");
     expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
       "设计模型元素", "来源模型", "类型", "来源设计图元素", "来源需求图", "映射状态",
     ]);

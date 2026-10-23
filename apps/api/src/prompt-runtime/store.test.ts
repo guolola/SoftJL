@@ -1,12 +1,13 @@
 // Covers prompt catalog visibility, version transitions, and run-level pinning.
-import { strictTestModelCapability } from "../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { Pool } from "pg";
 import { catalog, findPromptForMessage } from "./catalog.js";
 import { PromptRuntimeStore, applyPublishedInstructions, withPinnedPrompts } from "./store.js";
-import type { LlmTransport } from "../llm.js";
+import type { LlmTransport } from "../adapters/llm/llm-transport.js";
 import { createRequirementBaselineSnapshot } from "@uml-platform/contracts";
-import { buildGenerateDesignModelsPrompt } from "@uml-platform/prompts";
+import { buildFocusedRepairPrompt, buildGenerateDesignModelsPrompt, buildModelRepairPrompt } from "@uml-platform/prompts";
 
 for (const kind of ["architecture", "class", "navigation", "component", "deployment", "table"] as const) {
   test(`published instructions reach the actual ${kind} generation prompt`, async () => {
@@ -16,7 +17,7 @@ for (const kind of ["architecture", "class", "navigation", "component", "deploym
     const id = `design.model.${kind}`;
     assert.equal(findPromptForMessage(prompt)?.id, id);
     const version = await store.createDraft(id, `已发布的 ${kind} 约束`, "operator");
-    await store.submit(id, version.id, "operator");
+    await store.submit(id, version.id);
     await store.approve(id, version.id, "operator");
     const applied = applyPublishedInstructions(prompt, await store.publishedSnapshot());
     assert.equal(applied.split("\n")[0], `已发布的 ${kind} 约束`);
@@ -48,13 +49,13 @@ test("published versions affect new snapshots only and can be rolled back or dis
   const revised = await store.updateDraft(id, draft.id, "新任务指令 A", 1, "operator");
   assert.equal(revised.revision, 2);
   assert.equal(applyPublishedInstructions(defaultPrompt, await store.publishedSnapshot()), defaultPrompt);
-  await store.submit(id, draft.id, "operator");
+  await store.submit(id, draft.id);
   await store.approve(id, draft.id, "operator");
   const pinnedA = await store.publishedSnapshot();
   assert.equal(applyPublishedInstructions(defaultPrompt, pinnedA), "新任务指令 A\n固定输出契约");
 
   const next = await store.createDraft(id, "新任务指令 B", "operator");
-  await store.submit(id, next.id, "operator");
+  await store.submit(id, next.id);
   await store.approve(id, next.id, "operator");
   const pinnedB = await store.publishedSnapshot();
   const transport: LlmTransport = {
@@ -81,4 +82,32 @@ test("published versions affect new snapshots only and can be rolled back or dis
 test("diagram-specific prompts select the matching leaf", () => {
   const prompt = "请根据已确认的需求规则和 RequirementBaseline 生成需求阶段 UML 结构化模型。\n只生成以下图类型：\nclass\n";
   assert.equal(findPromptForMessage(prompt)?.id, "requirements.model.class");
+});
+
+test("only current repair workflows are configurable and published instructions reach their prompts", async () => {
+  const store = new PromptRuntimeStore(null);
+  for (const id of ["requirements.repair", "requirements.trace", "requirements.trace-repair", "design.repair", "design.trace", "design.trace-repair", "feasibility.json-repair", "feasibility.plan-repair", "feasibility.section-repair", "documents.repair"]) {
+    await assert.rejects(() => store.detail(id), { statusCode: 404 });
+    await assert.rejects(() => store.createDraft(id, "obsolete instruction", "operator"), { statusCode: 404 });
+  }
+  const prompts = [
+    { id: "shared.model-repair", source: "model-repair-prompts.ts", prompt: buildModelRepairPrompt({ error: "invalid reference", diagnostics: [] }) },
+    { id: "shared.field-repair", source: "generation-repair-prompts.ts", prompt: buildFocusedRepairPrompt({
+      targetId: "document", mode: "field-patch", baseFingerprint: "current", paths: ["sections.0.body"], round: 1,
+      error: "invalid body", current: {}, references: [],
+    }) },
+  ];
+  for (const { id, source, prompt } of prompts) {
+    assert.equal(findPromptForMessage(prompt)?.id, id);
+    assert.equal((await store.detail(id)).source, source);
+    const draft = await store.createDraft(id, "当前修复指令", "operator");
+    await store.submit(id, draft.id);
+    await store.approve(id, draft.id, "operator");
+    assert.equal(applyPublishedInstructions(prompt, await store.publishedSnapshot()), "当前修复指令" + prompt.slice(prompt.indexOf("\n")));
+  }
+});
+
+test("persisted published instructions reject removed catalog entries without adapting them", async () => {
+  const pool = { query: async () => ({ rows: [{ prompt_id: "requirements.trace" }] }) } as unknown as Pool;
+  await assert.rejects(() => new PromptRuntimeStore(pool).publishedSnapshot(), { statusCode: 409 });
 });

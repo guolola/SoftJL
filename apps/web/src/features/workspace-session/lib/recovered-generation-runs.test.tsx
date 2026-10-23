@@ -2,9 +2,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { RunEventInput, RunSnapshot } from "@uml-platform/contracts";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import type { RunSubscriptionOptions } from "../../../services/workspace-repository/types";
-import { createRunSnapshot } from "../../../test/workspace-test-utils";
+import { createRunSnapshot } from "../../../../tests/helpers/workspace-test-utils";
 import { useRecoveredGenerationRuns } from "./recovered-generation-runs";
 import { createGenerationTask } from "./generation-tasks";
 

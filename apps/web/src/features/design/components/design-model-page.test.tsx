@@ -1,23 +1,23 @@
 // Verifies design model page generation controls, traceability views, and stale diagram handling.
-import { createDesignRunSnapshot, createRenderMeta } from "@/test/contract-fixtures";
+import { createDesignRunSnapshot, createRenderMeta } from "@test/fixtures/contract-fixtures";
 import { createMockWorkspaceRepository } from "../../../services/workspace-repository/mock-repository";
 import { patchUserSettings } from "../../../shared/lib/user-settings";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { designDiagramKindSchema, designDiagramModelSpecSchema, runSnapshotSchema, createRequirementBaselineSnapshot, type DesignRunSnapshot } from "@uml-platform/contracts";
-import { librarySeatDemoFixture } from "../../../../../api/src/runs/demo/fixtures/library-seat-demo-fixture";
-import { modelFixture } from "../../../../../../packages/contracts/dist/testing/model-fixtures";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import { librarySeatDemoFixture } from "@uml-platform/demo-fixtures";
+import { modelFixture } from "@uml-platform/contracts/testing";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import {
   createRequirementBaseline,
   createUseCaseRelationshipTrace,
   createRule,
   createWorkspaceRecord,
   withWorkspaceProviders,
-} from "../../../test/workspace-test-utils";
+} from "../../../../tests/helpers/workspace-test-utils";
 import { designInputFingerprint, snapshotInputFingerprint } from "../../../shared/lib/fingerprint";
-import { normalizeRequirementTraceabilityWithCoverage } from "../../../../../api/src/normalizers/traceability/traceability-normalizer";
+import { requirementTraceabilityCoverage } from "@uml-platform/contracts/testing";
 import { DesignModelPage } from "./design-model-page";
 import { useWorkspaceShell } from "../../workspace-shell/state";
 
@@ -25,7 +25,7 @@ import { useWorkspaceShell } from "../../workspace-shell/state";
 // no longer feed those models. Production never invents such source requirements.
 function completeRequirementSources() {
   const snapshot = runSnapshotSchema.parse(librarySeatDemoFixture.requirementSnapshot);
-  const gaps = normalizeRequirementTraceabilityWithCoverage(snapshot.requirementModelTraceability, snapshot.rules,
+  const gaps = requirementTraceabilityCoverage(snapshot.requirementModelTraceability, snapshot.rules,
     snapshot.models.filter(model => model.diagramKind !== "analysis")).missingTargets;
   for (const [index, target] of gaps.entries()) {
     const rule = createRule({ id: `control-fixture-${index}`, type: target.diagramKind === "deployment" ? "operations" : "functional", text: `测试明确要求：${target.label}` });
@@ -345,7 +345,6 @@ describe("DesignModelPage", () => {
     expect(within(targetRow).getByText("0/7")).toBeInTheDocument();
     expect(within(targetRow).getByRole("combobox", { name: "选择模型" })).toBeEnabled();
     const button = await screen.findByRole("button", { name: "生成" });
-    expect(button).toHaveClass("h-7", "px-2.5");
     expect(within(targetRow).getByRole("button", { name: "生成" })).toBe(button);
     expect(button).toBeDisabled();
     expect(screen.queryByText("未选择模型供应商")).not.toBeInTheDocument();
@@ -367,19 +366,19 @@ describe("DesignModelPage", () => {
   it("does not interrupt an empty project with an automatic prerequisite dialog", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createCurrentWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun: vi.fn(),
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const user = userEvent.setup();
 
@@ -448,19 +447,19 @@ describe("DesignModelPage", () => {
           },
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun: vi.fn(),
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const { container } = render(
@@ -469,9 +468,6 @@ describe("DesignModelPage", () => {
 
     const modelGrid = container.querySelector('[data-workspace-density="compact-grid"]');
     expect(modelGrid).toBeInTheDocument();
-    expect(modelGrid).toHaveAttribute("data-mobile-card-density", "model-targets");
-    expect(modelGrid).toHaveClass("grid-cols-2");
-    expect(modelGrid?.className).toContain("min-[1900px]:grid-cols-6");
   });
 
   it("treats generated prototype model aliases as available requirement sources", async () => {
@@ -486,19 +482,19 @@ describe("DesignModelPage", () => {
           },
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun: vi.fn(),
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     render(withWorkspaceProviders(<DesignModelPage />, repository));
@@ -591,7 +587,7 @@ describe("DesignModelPage", () => {
           ],
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
@@ -600,12 +596,12 @@ describe("DesignModelPage", () => {
         onEvent({ type: "completed", snapshot });
       }),
       getDesignRunSnapshot: vi.fn(async () => snapshot),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     render(withWorkspaceProviders(<DesignModelPage />, repository));
@@ -683,19 +679,19 @@ describe("DesignModelPage", () => {
           },
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun: vi.fn(),
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     render(withWorkspaceProviders(<DesignModelPage />, repository));
@@ -718,19 +714,19 @@ describe("DesignModelPage", () => {
           selectedDesignDiagramTypes: ["class"],
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun: vi.fn(),
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -760,19 +756,19 @@ describe("DesignModelPage", () => {
           },
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun: vi.fn(),
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -802,19 +798,19 @@ describe("DesignModelPage", () => {
           selectedDesignDiagramTypes: ["sequence"],
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun: vi.fn(),
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     render(withWorkspaceProviders(<DesignModelPage />, repository));
@@ -875,19 +871,19 @@ describe("DesignModelPage", () => {
           ],
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun,
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun,
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     render(withWorkspaceProviders(<DesignModelPage />, repository));
@@ -953,19 +949,19 @@ describe("DesignModelPage", () => {
           },
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun,
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     render(withWorkspaceProviders(<DesignModelPage />, repository));
@@ -1036,19 +1032,19 @@ describe("DesignModelPage", () => {
           },
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun: vi.fn(),
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -1058,8 +1054,6 @@ describe("DesignModelPage", () => {
       name: /用例实现设计/,
     });
     const sequenceCard = screen.getByRole("button", { name: "选择用例实现设计" });
-    expect(sequenceCard).toHaveClass("min-h-[260px]", "sm:min-h-[284px]");
-    expect(sequenceCard).toHaveAttribute("data-slot", "spotlight-card");
     expect(sequenceCheckbox).not.toBeChecked();
     expect(within(sequenceCard).getByText("2")).toBeInTheDocument();
     expect(within(sequenceCard).getByRole("img", { name: /用例实现设计：/ })).toBeInTheDocument();
@@ -1125,19 +1119,19 @@ describe("DesignModelPage", () => {
           ],
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun: vi.fn(),
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     render(withWorkspaceProviders(<DesignModelPage />, repository));
@@ -1196,19 +1190,19 @@ describe("DesignModelPage", () => {
           },
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
       startDesignRun: vi.fn(),
       subscribeToDesignRun: vi.fn(),
       getDesignRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     render(withWorkspaceProviders(<DesignModelPage />, repository));

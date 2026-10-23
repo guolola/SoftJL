@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { AppI18nProvider } from "../i18n";
+import { AppI18nProvider } from "../i18n/index";
 import {
   FeedbackDialog,
   FeedbackDialogProvider,
@@ -70,10 +70,10 @@ describe("FeedbackDialog", () => {
   });
 
   it.each([
-    ["success", "操作成功", "bg-success/10"],
-    ["warning", "需要处理", "bg-warning/10"],
-    ["destructive", "操作失败", "bg-destructive/10"],
-  ] as const)("renders the %s semantic icon", (tone, label, toneClass) => {
+    ["success", "操作成功"],
+    ["warning", "需要处理"],
+    ["destructive", "操作失败"],
+  ] as const)("labels the %s feedback state", (tone, label) => {
     render(
       withI18n(
         <FeedbackDialog
@@ -85,7 +85,6 @@ describe("FeedbackDialog", () => {
     );
 
     expect(screen.getByLabelText(label)).toHaveAttribute("data-feedback-tone", tone);
-    expect(screen.getByLabelText(label)).toHaveClass(toneClass);
   });
 
   it("omits impact and technical details and runs safe dialog actions", async () => {

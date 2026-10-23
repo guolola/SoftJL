@@ -5,7 +5,6 @@ import { FileTextIcon } from "lucide-react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "../../i18n/i18n";
 import {
-  EmptyState,
   PageHeader,
   StatCard,
   TablePagination,
@@ -95,23 +94,6 @@ describe("TablePagination", () => {
 
     expect(screen.getByLabelText("1-3 / 3")).toBeInTheDocument();
     expect(screen.getByLabelText("下一页")).toBeDisabled();
-  });
-});
-
-describe("EmptyState", () => {
-  it("renders icon, copy and action", () => {
-    render(
-      <EmptyState
-        icon={FileTextIcon}
-        title="暂无文档"
-        description="上传或生成第一份说明书"
-        action={<button type="button">新建文档</button>}
-      />,
-    );
-
-    expect(screen.getByText("暂无文档")).toBeInTheDocument();
-    expect(screen.getByText("上传或生成第一份说明书")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "新建文档" })).toBeInTheDocument();
   });
 });
 

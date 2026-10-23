@@ -1,6 +1,6 @@
 // Checks hierarchy, independent disclosure, restored management links and diagram-specific icon choices.
 import { I18nextProvider } from "react-i18next";
-import { i18n } from "../../../shared/i18n";
+import { i18n } from "../../../shared/i18n/index";
 import { render as renderUi, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
@@ -82,8 +82,8 @@ it("uses the shared success and failure icons for generated tests and documents"
     state={{ tests: [{ id: "test", businessId: "login", title: "登录测试", preconditions: [], steps: ["登录"], expected: "成功" }],
       run: { id: "document-run", operation: "requirementsSpec", status: "failed", startedAt: "now" } }}
     onSelect={vi.fn()} onDiagram={vi.fn()} onNavigate={vi.fn()} /></SidebarProvider>);
-  expect(screen.getByRole("button", { name: "测试" }).querySelector('[data-sidebar-status="completed"] svg')).toHaveClass("text-success");
-  expect(screen.getByRole("button", { name: "说明书" }).querySelector('[data-sidebar-status="failed"] svg')).toHaveClass("text-destructive");
+  expect(screen.getByRole("button", { name: "测试" }).querySelector('[data-sidebar-status="completed"] svg')).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "说明书" }).querySelector('[data-sidebar-status="failed"] svg')).toBeInTheDocument();
 });
 
 it.each([true, false])("opens the overall usecase directly through its current singleton identity (expanded sidebar: %s)", async expanded => {

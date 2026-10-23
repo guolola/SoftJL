@@ -15,7 +15,6 @@ import {
   assertCurrentRunSnapshot,
 } from "@uml-platform/contracts";
 import type {
-
   DesignDiagramKind,
   DesignDiagramModelSpec,
   DesignPlantUmlArtifact,
@@ -219,20 +218,6 @@ function applySnapshotToWorkspaceState(
       designRecords.modelMap,
       successfulAffectedDesignDiagrams,
     );
-    const requirementDiagrams = snapshot.requirementModels.map(
-      (model) => model.diagramKind,
-    );
-    const canMergeRequirementContextFromSnapshot =
-      requirementDiagrams.length > 0 &&
-      snapshot.requirementText.trim().length > 0 &&
-      snapshot.rules.length > 0 &&
-      !currentHasRequirements;
-    const currentRequirementVersion = fingerprintMatches(
-      stringOrNull(next.requirementInputFingerprint),
-      workspaceRequirementFingerprint,
-    )
-      ? numberValue(next.rulesVersion)
-      : numberValue(next.rulesVersion) + 1;
     const currentDesignFingerprint = designInputFingerprint(
       snapshot.requirementModels,
       snapshot.requirementModelTraceability,
@@ -305,49 +290,7 @@ function applySnapshotToWorkspaceState(
       recordValue(state.designModels),
     );
     next.selectedDiagramTypes = [];
-    if (canMergeRequirementContextFromSnapshot) {
-      next.models = {
-        ...clearScopedRecords(recordValue(next.models), requirementDiagrams),
-        ...Object.fromEntries(
-          snapshot.requirementModels.map((model) => [
-            getRequirementModelId(model),
-            model,
-          ]),
-        ),
-      };
-      next.requirementModelTraceability = mergeRequirementTraceability(
-        arrayValue(
-          next.requirementModelTraceability,
-        ) as RequirementModelTraceabilityEntry[],
-        snapshot.requirementModelTraceability,
-        requirementDiagrams,
-      );
-      next.generatedDiagramTypes = uniqueStrings([
-        ...stringArrayValue(next.generatedDiagramTypes),
-        ...requirementDiagrams,
-      ]);
-      next.requirementInputFingerprint = workspaceRequirementFingerprint;
-      next.rulesVersion = currentRequirementVersion;
-      next.rulesBasedOnTextVersion = 0;
-      next.diagramInputFingerprints = {
-        ...recordValue(next.diagramInputFingerprints),
-        ...Object.fromEntries(
-          requirementDiagrams.map((diagram) => [
-            diagram,
-            snapshotRequirementFingerprint,
-          ]),
-        ),
-      };
-      next.diagramVersions = {
-        ...recordValue(next.diagramVersions),
-        ...Object.fromEntries(
-          requirementDiagrams.map((diagram) => [
-            diagram,
-            currentRequirementVersion,
-          ]),
-        ),
-      };
-    }
+    // Design dependencies are input context, never proof of requirement outputs or their source versions.
     return finalizeSnapshotWorkspaceState(next);
   }
 
@@ -366,8 +309,8 @@ function applySnapshotToWorkspaceState(
   ) as DiagramKind[];
   const artifactDiagrams = uniqueStrings(
     [
-      ...snapshot.plantUml.map((artifact) => artifact.diagramKind),
-      ...snapshot.svgArtifacts.map((artifact) => artifact.diagramKind),
+      ...snapshot.plantUml.filter(artifact => acceptedModelIds(snapshot).has(getRequirementArtifactId(artifact))).map((artifact) => artifact.diagramKind),
+      ...snapshot.svgArtifacts.filter(artifact => acceptedModelIds(snapshot).has(getRequirementArtifactId(artifact))).map((artifact) => artifact.diagramKind),
     ].filter(
       (diagram): diagram is DiagramKind => !erroredDiagrams.has(diagram),
     ),
@@ -375,18 +318,7 @@ function applySnapshotToWorkspaceState(
   const selectedModelDiagrams = modelDiagrams.filter((diagram) =>
     snapshot.selectedDiagrams.includes(diagram),
   );
-  const canFallbackToContextModels =
-    snapshot.selectedDiagrams.length === 0 &&
-    Object.keys(snapshot.diagramErrors).length === 0;
-  const successfulAffected = uniqueStrings(
-    artifactDiagrams.length > 0
-      ? artifactDiagrams
-      : selectedModelDiagrams.length > 0
-        ? selectedModelDiagrams
-        : canFallbackToContextModels
-          ? modelDiagrams
-          : [],
-  ) as DiagramKind[];
+  const successfulAffected = uniqueStrings([...artifactDiagrams, ...selectedModelDiagrams]) as DiagramKind[];
   const affectedForErrors = uniqueStrings([
     ...snapshot.selectedDiagrams,
     ...successfulAffected,
@@ -523,6 +455,7 @@ function successfulDesignDiagramsFromSnapshot(
   const artifactDesignDiagrams = uniqueStrings(
     snapshot.svgArtifacts
       .filter((artifact) => {
+        if (!acceptedModelIds(snapshot).has(getDesignArtifactId(artifact))) return false;
         if (!selectedDesignDiagrams.has(artifact.diagramKind)) return false;
         if (hasWholeDesignDiagramError(snapshot.diagramErrors, artifact.diagramKind)) {
           return false;
@@ -547,22 +480,28 @@ function successfulDesignDiagramsFromSnapshot(
   return snapshot.selectedDiagrams.filter((diagram) => successful.has(diagram));
 }
 
+// Saved context and previews cannot establish output provenance; only the run's explicit receipts can.
+function acceptedModelIds(snapshot: Pick<RunSnapshot, "outputManifest">) {
+  return new Set(snapshot.outputManifest.filter(output => output.kind === "model").map(output => output.id));
+}
+
 function mapRequirementSnapshotToRecords(snapshot: RunSnapshot) {
+  const accepted = acceptedModelIds(snapshot);
   return {
     modelMap: Object.fromEntries(
-      snapshot.models.map((model: DiagramModelSpec) => [
+      snapshot.models.filter(model => accepted.has(getRequirementModelId(model))).map((model: DiagramModelSpec) => [
         getRequirementModelId(model),
         model,
       ]),
     ),
     plantUmlMap: Object.fromEntries(
-      snapshot.plantUml.map((artifact: PlantUmlArtifact) => [
+      snapshot.plantUml.filter(artifact => accepted.has(getRequirementArtifactId(artifact))).map((artifact: PlantUmlArtifact) => [
         getRequirementArtifactId(artifact),
         artifact.source,
       ]),
     ),
     svgMap: Object.fromEntries(
-      snapshot.svgArtifacts.map((artifact: SvgArtifact) => [
+      snapshot.svgArtifacts.filter(artifact => accepted.has(getRequirementArtifactId(artifact))).map((artifact: SvgArtifact) => [
         getRequirementArtifactId(artifact),
         artifact,
       ]),
@@ -571,18 +510,19 @@ function mapRequirementSnapshotToRecords(snapshot: RunSnapshot) {
 }
 
 function mapDesignSnapshotToRecords(snapshot: DesignRunSnapshot) {
+  const accepted = acceptedModelIds(snapshot);
   return {
     modelMap: Object.fromEntries(
-      snapshot.models.map((model) => [getDesignModelId(model), model]),
+      snapshot.models.filter(model => accepted.has(getDesignModelId(model))).map((model) => [getDesignModelId(model), model]),
     ),
     plantUmlMap: Object.fromEntries(
-      snapshot.plantUml.map((artifact) => [
+      snapshot.plantUml.filter(artifact => accepted.has(getDesignArtifactId(artifact))).map((artifact) => [
         getDesignArtifactId(artifact),
         artifact.source,
       ]),
     ),
     svgMap: Object.fromEntries(
-      snapshot.svgArtifacts.map((artifact) => [
+      snapshot.svgArtifacts.filter(artifact => accepted.has(getDesignArtifactId(artifact))).map((artifact) => [
         getDesignArtifactId(artifact),
         artifact,
       ]),
@@ -804,7 +744,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function recordValue(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
-
 
 function arrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];

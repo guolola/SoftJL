@@ -1,6 +1,6 @@
 // Persists actual engineering provider usage once per call for durable run history fallback.
 import type { ModelCapacity, ModelTokenUsage, RunSnapshot } from "@uml-platform/contracts";
-import type { LlmTransport, StreamTokenUsage } from "../../llm.js";
+import type { LlmTransport, StreamTokenUsage } from "../../adapters/llm/llm-transport.js";
 import { standardContextBudget } from "../../adapters/llm/pi-provider.js";
 import type { RunRecord } from "./run-record-store.js";
 

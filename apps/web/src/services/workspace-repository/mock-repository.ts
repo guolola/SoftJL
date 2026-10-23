@@ -20,11 +20,11 @@ import {
 import type { WorkspaceRecord } from "../../entities/workspace/model";
 import type { RequirementRule } from "../../entities/requirement-rule/model";
 import {
-  clearRunHistoryItems,
+
   deleteRunHistoryItem,
   loadRunHistory,
   saveRunHistoryItem,
-} from "../../entities/run-history";
+} from "../../entities/run-history/index";
 import { documentFileName } from "./document-api";
 import type {
   StartDesignRunInput,
@@ -109,8 +109,7 @@ export function createMockWorkspaceRepository(
       ...seed.manualModelEditStatus,
     },
 
-
-  };
+};
   const snapshots = new Map<string, RunSnapshot>();
   const designSnapshots = new Map<string, DesignRunSnapshot>();
   const documentSnapshots = new Map<string, DocumentRunSnapshot>();
@@ -143,8 +142,7 @@ export function createMockWorkspaceRepository(
         designDiagramErrors: { ...workspace.designDiagramErrors },
         manualModelEditStatus: { ...workspace.manualModelEditStatus },
 
-
-        requirementInputFingerprint: workspace.requirementInputFingerprint,
+requirementInputFingerprint: workspace.requirementInputFingerprint,
         diagramInputFingerprints: { ...workspace.diagramInputFingerprints },
         designInputFingerprints: { ...workspace.designInputFingerprints },
         rulesVersion: workspace.rulesVersion,
@@ -153,14 +151,7 @@ export function createMockWorkspaceRepository(
       };
     },
 
-    async updateRequirementText(text: string) {
-      workspace = {
-        ...workspace,
-        requirementText: text,
-      };
-    },
-
-    async updateRequirementRules(
+async updateRequirementRules(
       rules: RequirementRule[],
       metadata?: RequirementRulesUpdateMetadata,
     ) {
@@ -232,8 +223,7 @@ export function createMockWorkspaceRepository(
       };
     },
 
-
-    async updateTestGenerationResult(result) {
+async updateTestGenerationResult(result) {
       workspace = {
         ...workspace,
         testGenerationResult: result ? structuredClone(result) : null,
@@ -356,8 +346,7 @@ export function createMockWorkspaceRepository(
       return { runId };
     },
 
-
-    async startDocumentRun(input: StartDocumentRunInput) {
+async startDocumentRun(input: StartDocumentRunInput) {
       const runId = `document-run-${Math.random().toString(36).slice(2, 10)}`;
       const fileName = documentFileName(input.documentKind);
       const documentId = `doc-${input.documentKind}-${Math.random().toString(36).slice(2, 10)}`;
@@ -436,8 +425,7 @@ export function createMockWorkspaceRepository(
       onEvent({ type: "completed", snapshot });
     },
 
-
-    async subscribeToDocumentRun(runId, onEvent) {
+async subscribeToDocumentRun(runId, onEvent) {
       const snapshot = documentSnapshots.get(runId);
       if (!snapshot) {
         throw new Error("Mock document run not found");
@@ -490,8 +478,7 @@ export function createMockWorkspaceRepository(
       return snapshot;
     },
 
-
-    async getDocumentRunSnapshot(runId) {
+async getDocumentRunSnapshot(runId) {
       const snapshot = documentSnapshots.get(runId);
       if (!snapshot) {
         throw new Error("Mock document run not found");
@@ -505,19 +492,7 @@ export function createMockWorkspaceRepository(
       );
     },
 
-    async downloadDocumentRun(runId, defaultFileName) {
-      const snapshot = documentSnapshots.get(runId);
-      const blob = documentBuffers.get(runId);
-      if (!snapshot || !blob) {
-        throw new Error("Mock document file not found");
-      }
-      return {
-        blob,
-        fileName: snapshot.fileName ?? defaultFileName ?? "说明书.docx",
-      };
-    },
-
-    async downloadDocument(documentId, defaultFileName) {
+async downloadDocument(documentId, defaultFileName) {
       const document = documents.get(documentId);
       const runId = document?.sourceRunId;
       const blob = runId ? documentBuffers.get(runId) : null;
@@ -527,18 +502,6 @@ export function createMockWorkspaceRepository(
       return {
         blob,
         fileName: document.fileName ?? defaultFileName ?? "说明书.docx",
-      };
-    },
-
-    async renderPlantUml(diagramKind, plantUmlSource) {
-      return {
-        svg: `<svg><text>${diagramKind}</text></svg>`,
-        renderMeta: {
-          engine: "plantuml",
-          generatedAt: new Date().toISOString(),
-          sourceLength: plantUmlSource.length,
-          durationMs: 1,
-        },
       };
     },
 
@@ -556,17 +519,7 @@ export function createMockWorkspaceRepository(
       };
     },
 
-    async confirmVisualReview(key, checkedAt) {
-      const review = workspace.visualReviews?.[key];
-      if (!review || review.status !== "pending_review" || review.checkedAt !== checkedAt) {
-        throw new Error("视觉检查结果已更新，请刷新后重试。");
-      }
-      const confirmed = { ...review, confirmedAt: review.confirmedAt ?? new Date().toISOString() };
-      workspace = { ...workspace, visualReviews: { ...workspace.visualReviews, [key]: confirmed } };
-      return confirmed;
-    },
-
-    async saveRequirementModelEdit(_diagramKind, model, status, traceability) {
+async saveRequirementModelEdit(_diagramKind, model, status, traceability) {
       const previous = workspace;
       const modelKey = getRequirementModelId(model);
       workspace = {
@@ -634,20 +587,7 @@ export function createMockWorkspaceRepository(
       };
     },
 
-    async testProviderSettings() {
-      return {
-        ok: true,
-        message: "Provider connection ok",
-        capability: {
-          structuredOutputMode: "strict_json",
-          supportsJsonSchema: true,
-          supportsJsonObject: true,
-          modeLabel: "严格 JSON",
-        },
-      };
-    },
-
-    async saveRunHistory(snapshot, meta) {
+async saveRunHistory(snapshot, meta) {
       return saveRunHistoryItem(snapshot, meta);
     },
 
@@ -655,16 +595,9 @@ export function createMockWorkspaceRepository(
       return loadRunHistory();
     },
 
-    async getRunHistoryItem(id) {
-      return loadRunHistory().find((item) => item.id === id) ?? null;
-    },
-
-    async deleteRunHistory(id) {
+async deleteRunHistory(id) {
       return deleteRunHistoryItem(id);
     },
 
-    async clearRunHistory() {
-      clearRunHistoryItems();
-    },
-  };
+};
 }

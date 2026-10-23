@@ -2,11 +2,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { captureWorkspaceGuard, type StandardAttachment } from "@uml-platform/contracts";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
-import { createRule as createLegacyRule, createRunSnapshot, createWorkspaceRecord, withWorkspaceProviders } from "../../../test/workspace-test-utils";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
+import { createRule, createRunSnapshot, createWorkspaceRecord, withWorkspaceProviders } from "../../../../tests/helpers/workspace-test-utils";
 import { useWorkspaceSession } from "../state";
-
-const createRule = (overrides: Parameters<typeof createLegacyRule>[0] = {}) => ([createLegacyRule(overrides)])[0]!;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -23,14 +21,14 @@ function createRepository(overrides: Partial<WorkspaceRepository> = {},
 ): WorkspaceRepository {
   return {
     loadWorkspace: vi.fn(async () => createWorkspaceRecord({ requirementText: "" })),
-    updateRequirementText: vi.fn(async () => {}),
+
     startRun: vi.fn(async () => ({ runId: snapshot.runId })),
     subscribeToRun: vi.fn(async (_runId, onEvent) => { onEvent({ type: "completed", snapshot }); }),
     getRunSnapshot: vi.fn(async () => snapshot),
     cancelRun: vi.fn(async () => {}),
-    renderPlantUml: vi.fn(), testProviderSettings: vi.fn(),
+
     saveRunHistory: vi.fn(async () => ({ id: snapshot.runId, createdAt: "2026-10-17T00:00:00.000Z", title: "需求", snapshot, providerModel: "model-1" })),
-    listRunHistory: vi.fn(async () => []), deleteRunHistory: vi.fn(async () => []), clearRunHistory: vi.fn(async () => {}),
+    listRunHistory: vi.fn(async () => []), deleteRunHistory: vi.fn(async () => []),
     ...overrides,
   };
 }

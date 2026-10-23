@@ -2,9 +2,9 @@
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "../../../shared/ui/drawer";
 import { Avatar, AvatarFallback } from "../../../shared/ui/avatar";
 import { useIsMobile } from "../../../shared/hooks/use-mobile";
-import Forbidden403 from '../../../shared/template/views/pages/misc/forbidden-403';
-import ServerError500 from '../../../shared/template/views/pages/misc/server-error-500';
-import NotFound404 from '../../../shared/template/views/pages/misc/error-page-404';
+import Forbidden403 from '../../../shared/template/views/pages/misc/forbidden-403/index';
+import ServerError500 from '../../../shared/template/views/pages/misc/server-error-500/index';
+import NotFound404 from '../../../shared/template/views/pages/misc/error-page-404/index';
 import {
   createContext,
   useCallback,
@@ -54,6 +54,8 @@ import {
 } from "./platform-loading-screen";
 import { AuthenticatedRouteSessionProvider } from "./authenticated-route-session";
 import { ManagedProviderSettingsSync } from "./managed-provider-settings-sync";
+import { PROJECT_RUNS_REUSE_MS } from "../../../services/workspace-repository/project-run-reads";
+import { RouteContentReadyProvider } from "../../../shared/lib/route-content-readiness";
 import { ProjectHistory } from "./project-history";
 import { ProjectMembers } from "./project-members";
 import { PageFrame, SectionCard } from "./project-page-layout";
@@ -112,7 +114,7 @@ export function useProjectOverview(projectId: string) {
     Promise.all([
       platformApi.getProject(projectId),
       platformApi.listProjectMembers(projectId),
-      platformApi.listProjectRuns(projectId),
+      platformApi.listProjectRuns(projectId, { maxAgeMs: PROJECT_RUNS_REUSE_MS }),
       platformApi.listProjectDocuments(projectId),
     ])
       .then(([projectResponse, memberResponse, runResponse, documentResponse]) => {
@@ -377,12 +379,14 @@ function AuthenticatedRouteContent({
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <AuthenticatedRouteSessionProvider value={authSession} onUserUpdate={updateSessionUser}>
         <ManagedProviderSettingsSync session={authSession} />
-        {/* Keep verified navigation mounted while blocking target content until its session check completes. */}
-        {renderLayout
-          ? renderLayout(effectiveChecking
-              ? <div data-testid="auth-check-placeholder" className="min-h-0 flex-1" aria-busy="true" />
-              : children)
-          : children}
+        {/* Guidance waits for the loader's last frame while the workspace prepares underneath it. */}
+        <RouteContentReadyProvider ready={!effectiveChecking && (!showLoadingScreen || (!overlayActive && !loadingTransition.visible))}>
+          {renderLayout
+            ? renderLayout(effectiveChecking
+                ? <div data-testid="auth-check-placeholder" className="min-h-0 flex-1" aria-busy="true" />
+                : children)
+            : children}
+        </RouteContentReadyProvider>
       </AuthenticatedRouteSessionProvider>
       {showLoadingScreen && loadingTransition.visible && loadingTransition.phase !== "hidden" && (
         <PlatformLoadingScreen
@@ -512,14 +516,12 @@ function ProjectDrawerShell({
   open,
   kind,
   projectName,
-  accessLabel: _accessLabel,
   onClose,
   children,
 }: {
   open: boolean;
   kind: ProjectDrawerKind;
   projectName: string;
-  accessLabel?: string | null;
   onClose: () => void;
   children: React.ReactNode;
 }) {
@@ -669,7 +671,6 @@ export function ProjectWorkspaceDrawer({
       open={Boolean(activeDrawer)}
       kind={drawerKind}
       projectName={projectName}
-      accessLabel={overview.membership?.role ?? null}
       onClose={onClose}
     >
       {content}
@@ -735,7 +736,9 @@ export function ProjectWorkspaceAccessBoundary({
   return (
     <div className="relative flex min-h-0 flex-1">
       <ProjectOverviewContext.Provider value={overviewContextValue}>
-        {children}
+        <RouteContentReadyProvider ready={coordinatedLoading || !loadingTransition.visible}>
+          {children}
+        </RouteContentReadyProvider>
       </ProjectOverviewContext.Provider>
       {!coordinatedLoading && loadingTransition.visible && loadingTransition.phase !== "hidden" && (
         <PlatformLoadingScreen

@@ -33,13 +33,13 @@ import type {
   ChatCompletionResponseFormat,
   LlmTransport,
   ResponseFormatFallbackEvent,
-} from "../../llm.js";
+} from "../../adapters/llm/llm-transport.js";
 import type { RenderClient } from "../../adapters/render/render-client.js";
 import {
   GENERATE_FEASIBILITY_CONTEXT_RESPONSE_FORMAT,
   GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT,
 } from "../../adapters/llm/response-formats/index.js";
-import { getModelCapability } from "../../model-capabilities.js";
+import { getModelCapability } from "../../adapters/llm/model-capabilities.js";
 import { normalizeContextDiagram } from "../../normalizers/feasibility/context-normalizer.js";
 import { normalizeFeasibilityBusinessFlow } from "../../normalizers/feasibility/business-flow-normalizer.js";
 import { GENERATE_FEASIBILITY_BUSINESS_FLOW_RESPONSE_FORMAT } from "../../adapters/llm/response-formats/feasibility-response-formats.js";
@@ -55,9 +55,6 @@ import { stageProgressValue } from "./shared/pipeline-events.js";
 import { createRunError, throwRunError } from "./shared/errors.js";
 
 import { DiagramReviewRenderError, reviewRenderedArtifact } from "./render/review-rendered-artifact.js";
-import { withConversationBranch } from "./shared/conversation-context.js";
-import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
-
 
 
 function traceabilityFromContext(model: ContextDiagramSpec) {
@@ -159,15 +156,6 @@ function responseFormatFor(
     : GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT;
 }
 
-
-
-
-
-
-
-// Repair responses may contain unrelated rewrites. Only invalid groups are
-// merged back, keeping every already-validated candidate section unchanged.
-
 async function generateFeasibilityJson<T>(input: {
   record: RunRecord;
   stage: RunStage;
@@ -237,14 +225,12 @@ export async function runFeasibilityStagePipeline(
   providerSettings: ProviderSettings,
   llmTransport: LlmTransport,
   renderClient: RenderClient,
-  pngRenderClient?: PngRenderClient,
 ) {
   const snapshot = record.snapshot as FeasibilityRunSnapshot;
   // Validate saved facts before the first provider call; replay never rewrites provenance.
   const requirementSource = buildAcceptedRequirementSnapshot(snapshot.rules, snapshot.requirementBaseline);
   snapshot.requirementSource = requirementSource.snapshot;
   llmTransport = withRunReasoning(llmTransport, snapshot.reasoning);
-  const validRequirementIds = new Set(snapshot.rules.map((rule) => rule.id));
   const capability = getModelCapability(providerSettings);
   const diagnostics = snapshot.generationDiagnostics ?? {
     requestedMode: capability.structuredOutputMode,
@@ -307,7 +293,7 @@ export async function runFeasibilityStagePipeline(
       diagnostics,
       onConversation: value => { conversation = value; },
       parse: (value) => ({
-        value: normalizeContextDiagram(value, validRequirementIds),
+        value: normalizeContextDiagram(value),
       }),
     });
     finishStage("generate_context");
@@ -315,11 +301,11 @@ export async function runFeasibilityStagePipeline(
     const checked = await reviewCandidate({ record, providerSettings, llmTransport, renderClient,
       model: contextModel, mutable: true,
       basis: { stage: "feasibility", baseline: snapshot.requirementBaseline, rules: candidateRulesForDiagram(snapshot.rules, "context"), traceability: traceabilityFromContext(contextModel) },
-      validateModel: (model) => { normalizeContextDiagram(model, validRequirementIds); },
+      validateModel: (model) => { normalizeContextDiagram(model); },
       generationRepair: {
         conversation,
         parse: raw => {
-          const model = normalizeContextDiagram(parseJson(raw), validRequirementIds);
+          const model = normalizeContextDiagram(parseJson(raw));
           return { model, traceability: traceabilityFromContext(model) };
         },
       },
@@ -363,17 +349,17 @@ export async function runFeasibilityStagePipeline(
       llmTransport,
       diagnostics,
       onConversation: value => { conversation = value; },
-      parse: (value) => ({ value: normalizeFeasibilityBusinessFlow(value, validRequirementIds) }),
+      parse: (value) => ({ value: normalizeFeasibilityBusinessFlow(value) }),
     });
     finishStage("generate_business_flow");
     updateStage("render_business_flow", "正在渲染业务流程图");
     const checked = await reviewCandidate({ record, providerSettings, llmTransport, renderClient,
       model: result.model, mutable: true,
       basis: { stage: "feasibility", baseline: snapshot.requirementBaseline, rules: snapshot.rules, traceability: result.traceability },
-      validateTraceability: (model, traceability) => { normalizeFeasibilityBusinessFlow({ model, traceability }, validRequirementIds); },
+      validateTraceability: (model, traceability) => { normalizeFeasibilityBusinessFlow({ model, traceability }); },
       generationRepair: {
         conversation,
-        parse: raw => normalizeFeasibilityBusinessFlow(parseJson(raw), validRequirementIds),
+        parse: raw => normalizeFeasibilityBusinessFlow(parseJson(raw)),
       },
     });
     throwIfRunCancelled(record);
@@ -395,10 +381,10 @@ export async function runFeasibilityStagePipeline(
   };
 
   // Settle both independent branches so one failure does not discard the other's accepted artifacts.
-  record.conversationContext?.forkBranches(["feasibility:context", "feasibility:business-flow"]);
+
   const sourceResults = await Promise.allSettled([
-    withConversationBranch("feasibility:context", generateContext),
-    withConversationBranch("feasibility:business-flow", generateBusinessFlow),
+    generateContext(),
+    generateBusinessFlow(),
   ]);
   const sourceFailure = sourceResults.find((result) => result.status === "rejected");
   if (sourceFailure?.status === "rejected") {
@@ -441,7 +427,6 @@ export async function runFeasibilityStagePipeline(
       parse: (value) => {
         const normalized = normalizeFeasibilityImplementationDetailed(
           value,
-          validRequirementIds,
           contextExternalSystems,
         );
         return {

@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { captureWorkspaceGuard, feasibilityRunSnapshotSchema } from "@uml-platform/contracts";
 import { createEmptyWorkspace } from "../../../services/workspace-repository/workspace-state";
-import { createRenderMeta } from "../../../test/contract-fixtures";
+import { createRenderMeta } from "../../../../tests/fixtures/contract-fixtures";
 import { completedFeasibilityArtifacts, mergeFeasibilityRunSnapshot } from "./feasibility-run-progress";
 
 describe("feasibility publication guards", () => {

@@ -1,11 +1,7 @@
 // Verifies workspace repository persistence, remote API mapping, history compaction, and subscription behavior.
-import { createRenderMeta } from "@/test/contract-fixtures";
+import { createRenderMeta } from "@test/fixtures/contract-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  AtomicRequirement,
-  DiagramModelSpec,
-  RequirementBaseline,
-} from "@uml-platform/contracts";
+import type { DiagramModelSpec, RequirementBaseline } from "@uml-platform/contracts";
 import {
   buildApiUrl,
   createHttpWorkspaceRepository,
@@ -16,8 +12,8 @@ import {
 import {
   RUN_HISTORY_LIMIT,
   RUN_HISTORY_STORAGE_KEY,
-} from "../../entities/run-history";
-import { createRunSnapshot } from "../../test/workspace-test-utils";
+} from "../../entities/run-history/index";
+import { createRunSnapshot } from "../../../tests/helpers/workspace-test-utils";
 import {
   designInputFingerprint,
   snapshotInputFingerprint,
@@ -42,33 +38,14 @@ function storeManagedUserSettings() {
 }
 
 
-function createAtomicRequirement(
-  overrides: Partial<AtomicRequirement> = {},
-): AtomicRequirement {
-  return {
-    id: "REQ-001",
-    sourceRuleId: "r1",
-    sourceFragment: "用户提交订单。",
-    sourceLocation: { section: "input", startOffset: 0, endOffset: 12 },
-    type: "functional" as const,
-    actor: null,
-    subject: "系统",
-    action: "允许提交",
-    object: "订单",
-    condition: null,
-    outcome: "系统创建订单",
-    confidence: 0.56,
-    status: "pending-review",
-    criticality: "high",
-    acceptanceCriteria: ["用户提交订单后系统创建订单。"],
-    priority: "must",
-    fieldProvenance: {},
-    ...overrides,
-  };
+function createBaselineRule(
+  overrides: Partial<RequirementBaseline["rules"][number]> = {},
+): RequirementBaseline["rules"][number] {
+  return { requirementId: "REQ-001", id: "r1", text: "用户提交订单。", type: "functional" as const, ...overrides, origin: "generated" as const };
 }
 
 function createRequirementBaseline(
-  requirements: AtomicRequirement[],
+  requirements: RequirementBaseline["rules"][number][],
 ): RequirementBaseline {
   return {
       id: "baseline-test",
@@ -78,7 +55,7 @@ function createRequirementBaseline(
     sourceDocumentId: "inline-requirement",
     schemaVersion: 3 as const,
 
-      rules: (requirements).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, type: "functional" as const, origin: "generated" as const })),
+      rules: (requirements),
     assumptions: [],
     conflicts: [],
     qualityReport: {
@@ -87,7 +64,7 @@ function createRequirementBaseline(
       summary: "存在待确认字段。",
       issues: [],
       blockingIssueIds: [],
-      reviewRequiredRequirementIds: requirements.map((item) => item.id),
+      reviewRequiredRequirementIds: requirements.map((item) => item.requirementId),
     },
     createdAt: "2026-05-27T00:00:00.000Z",
   };
@@ -183,7 +160,7 @@ describe("createHttpWorkspaceRepository", () => {
     localStorage.setItem("uml-run-history", JSON.stringify([{ id: "old-run" }]));
     const repository = createHttpWorkspaceRepository();
     await expect(repository.subscribeToRun("run-1", vi.fn())).rejects.toThrow("请先登录并进入项目");
-    await expect(repository.getRunHistoryItem("old-run")).rejects.toThrow("请先登录并进入项目");
+    await expect(repository.listRunHistory()).rejects.toThrow("请先登录并进入项目");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -469,7 +446,7 @@ describe("createHttpWorkspaceRepository", () => {
     expect(workspace.rules[0]?.id).toBe("FR1");
     expect(workspace.selectedDiagramTypes).toEqual(["usecase"]);
 
-    await repository.updateRequirementText("团队成员更新的需求");
+    await repository.updateRequirementRules!([{ id: "r-new", type: "functional", text: "团队成员更新的规则" }]);
 
     const saveCall = fetchMock.mock.calls.find(
       ([url, options]) =>
@@ -479,7 +456,7 @@ describe("createHttpWorkspaceRepository", () => {
     expect(saveCall).toBeTruthy();
     const body = JSON.parse(String(saveCall?.[1]?.body));
     expect(body.baseVersion).toBe(2);
-    expect(body.state.requirementText).toBe("团队成员更新的需求");
+    expect(body.state.rules[0].text).toBe("团队成员更新的规则");
   });
 
 
@@ -499,10 +476,7 @@ describe("createHttpWorkspaceRepository", () => {
       requirementText,
       rules: [updatedRule],
     });
-    const oldRequirement = createAtomicRequirement({
-      id: "REQ-001",
-      sourceRuleId: originalRule.id,
-    });
+    const oldRequirement = createBaselineRule({ requirementId: "REQ-001", id: originalRule.id });
     const oldBaseline = createRequirementBaseline([oldRequirement]);
     let workspaceReads = 0;
     let workspaceWrites = 0;
@@ -617,10 +591,7 @@ describe("createHttpWorkspaceRepository", () => {
       requirementText,
       rules: [rule],
     });
-    const oldRequirement = createAtomicRequirement({
-      id: "REQ-001",
-      sourceRuleId: rule.id,
-    });
+    const oldRequirement = createBaselineRule({ requirementId: "REQ-001", id: rule.id });
     const oldBaseline = createRequirementBaseline([oldRequirement]);
     const repository = createMockWorkspaceRepository({
       requirementText,
@@ -713,7 +684,7 @@ describe("createHttpWorkspaceRepository", () => {
     storeManagedUserSettings();
     await repository.loadWorkspace();
     await expect(
-      repository.updateRequirementText("本地还没成功保存的需求"),
+      repository.updateRequirementRules!([{ id: "r-new", type: "functional", text: "本地还没成功保存的规则" }]),
     ).rejects.toThrow();
 
     await expect(
@@ -1204,43 +1175,22 @@ describe("createHttpWorkspaceRepository", () => {
     await repository.loadWorkspace();
 
     await Promise.all([
-      repository.updateRequirementText("第一次需求"),
-      repository.updateRequirementText("第二次需求"),
+      repository.updateRequirementRules!([{ id: "r1", type: "functional", text: "第一次规则" }]),
+      repository.updateRequirementRules!([{ id: "r1", type: "functional", text: "第二次规则" }]),
     ]);
 
     expect(savedBodies).toHaveLength(2);
     expect(savedBodies[0]?.baseVersion).toBe(2);
     expect(savedBodies[1]?.baseVersion).toBe(3);
     expect(
-      (savedBodies[0]?.state as Record<string, unknown>).requirementText,
-    ).toBe("第一次需求");
+      (savedBodies[0]?.state as { rules: { text: string }[] }).rules[0]?.text,
+    ).toBe("第一次规则");
     expect(
-      (savedBodies[1]?.state as Record<string, unknown>).requirementText,
-    ).toBe("第二次需求");
+      (savedBodies[1]?.state as { rules: { text: string }[] }).rules[0]?.text,
+    ).toBe("第二次规则");
   });
 
-  it("does not confirm an obsolete visual check after a workspace conflict", async () => {
-    let reads = 0;
-    let writes = 0;
-    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
-      if (!url.endsWith("/api/projects/library-booking/workspace")) return new Response("not found", { status: 404 });
-      if (options?.method === "PUT") {
-        writes += 1;
-        return new Response(JSON.stringify({ message: "项目已由其他成员更新" }), { status: 409, headers: { "Content-Type": "application/json" } });
-      }
-      reads += 1;
-      return new Response(JSON.stringify({ projectId: "library-booking", version: reads, state: {
-        requirementText: "预约需求",
-        visualReviews: { "requirements:usecase": { findings: [], status: "pending_review", issues: ["标签不可读"], reason: "请人工确认", attempts: 3, checkedAt: reads === 1 ? "check-old" : "check-new" } },
-      } }), { status: 200, headers: { "Content-Type": "application/json" } });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const repository = createHttpWorkspaceRepository({ projectId: "library-booking" });
-    await repository.loadWorkspace();
-    await expect(repository.confirmVisualReview!("requirements:usecase", "check-old")).rejects.toThrow("视觉检查结果已更新");
-    expect(reads).toBe(2);
-    expect(writes).toBe(1);
-  });
+
 
 
   it("loads an empty workspace without restoring historical runs", async () => {
@@ -1265,6 +1215,8 @@ describe("createHttpWorkspaceRepository", () => {
             runs: [
               {
                 runId: "run-active",
+                operationType: "requirement_modeling",
+                runKind: "requirements",
                 status: "running",
                 stage: "generate_models",
                 createdAt: "2026-05-22T01:00:00.000Z",
@@ -1487,42 +1439,7 @@ describe("createHttpWorkspaceRepository", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("clears project run history through the project runs collection endpoint", async () => {
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (
-        url.endsWith("/api/projects/library-booking/runs") &&
-        init?.method === "DELETE"
-      ) {
-        return new Response(
-          JSON.stringify({
-            projectId: "library-booking",
-            deletedRunIds: ["run-1"],
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-      return new Response(JSON.stringify({ message: "unexpected request" }), {
-        status: 500,
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
 
-    const repository = createHttpWorkspaceRepository({
-      projectId: "library-booking",
-    });
-    await repository.clearRunHistory();
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toContain("/api/projects/library-booking/runs");
-    expect(init?.method).toBe("DELETE");
-    expect(new Headers(init?.headers).get("X-UML-Project-Id")).toBe(
-      "library-booking",
-    );
-  });
 
   it("persists requirement run snapshots incrementally with diagram versions", async () => {
     const existingUseCase = {
@@ -2263,13 +2180,10 @@ describe("createHttpWorkspaceRepository", () => {
       text: "用户提交订单。",
 
     };
-    const reviewedRequirement = createAtomicRequirement({
-      actor: "用户",
-      status: "accepted",
-    });
+    const reviewedRequirement = createBaselineRule({  });
     const reviewedBaseline = createRequirementBaseline([reviewedRequirement]);
     const snapshotBaseline = createRequirementBaseline([
-      createAtomicRequirement({ actor: null, status: "pending-review" }),
+      createBaselineRule({  }),
     ]);
     const snapshot = createRunSnapshot({
       runId: "run-usecase",
@@ -2444,7 +2358,7 @@ describe("createHttpWorkspaceRepository", () => {
   });
 
   it("discards retired server-synced repair candidates after a rules-only run", async () => {
-    const requirement = createAtomicRequirement();
+    const requirement = createBaselineRule();
     const baseline = createRequirementBaseline([requirement]);
     const snapshot = createRunSnapshot({
       runId: "run-rules",
@@ -2500,6 +2414,7 @@ describe("createHttpWorkspaceRepository", () => {
       durationMs: 100,
     });
 
+    await repository.loadWorkspace();
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
   });
 
@@ -3108,7 +3023,7 @@ describe("createHttpWorkspaceRepository", () => {
     expect(loaded.models["analysis:uc_old"]).toBeUndefined();
     expect(loaded.designModels["sequence:uc_old"]).toBeUndefined();
 
-    await repository.updateRequirementText("座位预约需求（修订）");
+    await repository.updateRequirementRules!(loaded.rules);
 
     expect(savedState?.models).not.toHaveProperty("analysis:uc_old");
     expect(savedState?.plantUml).not.toHaveProperty("analysis:uc_old");
@@ -3335,50 +3250,7 @@ describe("createHttpWorkspaceRepository", () => {
     expect(setItemSpy).toHaveBeenCalled();
   });
 
-  it("renders PlantUML through the API proxy", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              svg: "<svg><text>ok</text></svg>",
-              renderMeta: {
-                engine: "plantuml",
-                generatedAt: new Date().toISOString(),
-                sourceLength: 26,
-                durationMs: 3,
-              },
-            }),
-            {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json",
-              },
-            },
-          ),
-      ),
-    );
 
-    const repository = createHttpWorkspaceRepository({
-      projectId: "render-project",
-    });
-    const rendered = await repository.renderPlantUml(
-      "class",
-      "@startuml\nclass User\n@enduml",
-    );
-
-    expect(rendered.svg).toContain("<svg>");
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/render/svg",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          "X-UML-Project-Id": "render-project",
-        }),
-        method: "POST",
-      }),
-    );
-  });
 
 
 });

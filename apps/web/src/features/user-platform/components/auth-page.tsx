@@ -15,7 +15,7 @@ import { LanguagePreferenceMenu } from "../../../shared/i18n/components/language
 import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
 import { formatDateTime } from "../lib/project-workspace-presentation";
 import { getQueryParam, getSafeRedirectPath } from "../lib/auth-page-routing";
-import { clearLegacyRememberedLoginPassword, readRememberedLoginIdentifier, writeRememberedLoginIdentifier } from "../lib/remembered-login";
+import { readRememberedLoginIdentifier, writeRememberedLoginIdentifier } from "../lib/remembered-login";
 import { notifyAuthSessionChanged, platformApi, type PlatformMfaChallenge } from "../services/platform-api";
 
 function WorkbenchThemeImage({
@@ -86,7 +86,6 @@ export function AuthPage({ path, onNavigate }: {
   const redirect = getSafeRedirectPath();
   const reason = getQueryParam("reason");
 
-  useEffect(() => { clearLegacyRememberedLoginPassword(); }, []);
   useEffect(() => {
     setUsername(registering ? "" : readRememberedLoginIdentifier());
     setPassword(""); setShowPassword(false); setMfaChallenge(null); setMfaCode("");
@@ -110,8 +109,7 @@ export function AuthPage({ path, onNavigate }: {
         await platformApi.verifyMfa({ challengeId: mfaChallenge.challengeId, code: mfaCode });
       } else {
         const response = await platformApi.login({ identifier: username.trim().toLowerCase(), password });
-        const challenge = response.mfaChallenge ?? (response.mfa?.required && response.mfa.challengeId ? { challengeId: response.mfa.challengeId, expiresAt: response.mfa.expiresAt } : null);
-        if (challenge) { setMfaChallenge(challenge); return; }
+        if ("mfa" in response) { setMfaChallenge(response.mfa); return; }
       }
       if (!registering) writeRememberedLoginIdentifier(username, rememberLogin);
       notifyAuthSessionChanged();

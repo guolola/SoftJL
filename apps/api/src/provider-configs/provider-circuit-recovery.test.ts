@@ -1,7 +1,7 @@
 // Verifies open Provider circuits recover through one bounded probe after cooldown.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ProviderHttpError } from "../llm.js";
+import { ProviderHttpError } from "../adapters/llm/llm-transport.js";
 import { createProviderConfigStore } from "./provider-config-store.js";
 import { resolveProviderCircuitAccess } from "./provider-circuit-recovery.js";
 
@@ -24,6 +24,18 @@ function openProviderCircuit() {
   assert.equal(opened?.breakerState, "open");
   return { store, provider: opened! };
 }
+
+test("missing capability records fail before acquiring a recovery lease or contacting the provider", async () => {
+  const { store, provider } = openProviderCircuit();
+  let calls = 0;
+  const result = await resolveProviderCircuitAccess({ providerConfigs: store,
+    providerConfig: { ...provider, modelCapabilities: {} }, model: provider.defaultModel,
+    runHealthcheck: async () => { calls++; },
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "PROVIDER_MODEL_CAPABILITY_MISSING");
+  assert.equal(calls, 0);
+});
 
 test("open circuit returns retry metadata until cooldown elapses", async () => {
   const { store, provider } = openProviderCircuit();

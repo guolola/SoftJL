@@ -1,6 +1,6 @@
 // Calls cookie-authenticated connection management; personal tokens are returned once and never persisted here.
 import type { McpProjectAccess } from "@uml-platform/contracts";
-import { buildApiUrl } from "../../../services/api-client";
+import { buildApiUrl } from "../../../services/api-client/index";
 export type Connection = {
   id: string;
   name: string;

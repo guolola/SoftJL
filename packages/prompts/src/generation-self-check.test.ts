@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequirementBaselineSnapshot, getStageModelSchemas, getModelReviewProfile, type DesignDiagramKind, type DiagramKind } from "@uml-platform/contracts";
-import { modelFixture } from "../../contracts/src/testing/model-fixtures.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
 import { buildGenerateModelsPrompt, buildGenerateRequirementAnalysisPrompt, buildGenerateDesignModelsPrompt, buildGenerateDesignSequencePrompt } from "./model-prompts.js";
 import { buildGenerateFeasibilityContextPrompt, buildGenerateFeasibilityImplementationPrompt } from "./feasibility-prompts.js";
 import { buildGenerateFeasibilityBusinessFlowPrompt } from "./feasibility-business-flow-prompt.js";

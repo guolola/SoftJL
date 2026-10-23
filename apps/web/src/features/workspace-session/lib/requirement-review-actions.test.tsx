@@ -3,7 +3,7 @@ import { useState } from "react";
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createRequirementBaselineSnapshot, type RequirementBaseline, type RequirementRule } from "@uml-platform/contracts";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import { useRequirementsSlice } from "../slices/requirements-slice";
 import { useRequirementRuleActions } from "./requirement-review-actions";
 
@@ -18,7 +18,7 @@ describe("manual requirement baseline snapshots", () => {
       const slice = useRequirementsSlice(repository);
       const [baseline, setBaseline] = useState<RequirementBaseline | null>(initial);
       const actions = useRequirementRuleActions({
-        clearRequirementRulesBase: slice.clearRequirementRules,
+
         createRequirementRuleBase: slice.createRequirementRule,
         deleteRequirementRuleBase: slice.deleteRequirementRule,
         updateRequirementRuleBase: slice.updateRequirementRule,
@@ -26,7 +26,7 @@ describe("manual requirement baseline snapshots", () => {
         requirementText: slice.requirementText,
         rules: slice.rules,
         setRequirementBaseline: setBaseline,
-        setRequirementQualityReport: vi.fn(),
+
       });
       return { ...slice, ...actions, baseline };
     });
@@ -49,7 +49,7 @@ describe("manual requirement baseline snapshots", () => {
     act(() => result.current.deleteRequirementRule("r1"));
     expect(result.current.baseline?.version).toBe(4);
     expect(result.current.baseline?.rules).toEqual([added.rules![1]]);
-    act(() => result.current.clearRequirementRules());
+    act(() => { for (const rule of result.current.rules) result.current.deleteRequirementRule(rule.id); });
     expect(result.current.baseline?.rules).toEqual([]);
     expect(result.current.baseline?.version).toBe(5);
   });

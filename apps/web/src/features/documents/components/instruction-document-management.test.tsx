@@ -3,8 +3,8 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import type { DocumentLibraryItem } from "@uml-platform/contracts";
-import { createMockWorkspaceRepository, WorkspaceRepositoryProvider } from "../../../services/workspace-repository";
-import { withWorkspaceProviders } from "../../../test/workspace-test-utils";
+import { createMockWorkspaceRepository, WorkspaceRepositoryProvider } from "../../../services/workspace-repository/index";
+import { withWorkspaceProviders } from "../../../../tests/helpers/workspace-test-utils";
 import { platformApi } from "../../user-platform/services/platform-api";
 import { InstructionDocumentsPage } from "./instruction-documents-page";
 

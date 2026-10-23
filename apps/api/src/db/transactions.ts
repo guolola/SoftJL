@@ -37,21 +37,3 @@ export async function withTransaction<T>(
     client.release();
   }
 }
-
-export async function checkDatabaseHealth(db: Queryable) {
-  const checkedAt = new Date().toISOString();
-
-  try {
-    const result = await db.query<{ ok: number }>("select 1 as ok");
-    return {
-      ok: result.rows[0]?.ok === 1,
-      checkedAt,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      checkedAt,
-      errorMessage: error instanceof Error ? error.message : "Unknown database error",
-    };
-  }
-}

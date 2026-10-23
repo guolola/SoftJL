@@ -115,9 +115,7 @@ release-*/
 
 plantuml/**
 !plantuml/
-!plantuml/build/
-!plantuml/build/libs/
-!plantuml/build/libs/plantuml-1.2026.3beta8.jar
+!plantuml/plantuml-1.2026.3beta8.jar
 apps/render-service/.runtime/
 
 opencode/

@@ -11,7 +11,7 @@ import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type {
   RequirementRulesUpdateMetadata,
   WorkspaceRepository,
-} from "../../../services/workspace-repository";
+} from "../../../services/workspace-repository/index";
 import { requirementInputFingerprintFor } from "../lib/workspace-context";
 
 type RequirementRuleCommitMetadata = Pick<
@@ -179,11 +179,7 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
     [commitRequirementRules, rules],
   );
 
-  const clearRequirementRules = useCallback((metadata?: RequirementRuleCommitInput) => {
-    commitRequirementRules([], metadata);
-  }, [commitRequirementRules]);
-
-  const rulesForDiagram = useCallback(
+const rulesForDiagram = useCallback(
     (diagram: DiagramType) =>
       candidateRulesForDiagram(rules, diagram),
     [rules],
@@ -215,7 +211,7 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
     createRequirementRule,
     updateRequirementRule,
     deleteRequirementRule,
-    clearRequirementRules,
+
     rulesForDiagram,
   };
 }

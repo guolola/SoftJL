@@ -8,6 +8,7 @@ import {
 } from "@uml-platform/contracts";
 import { completeRenderMapping } from "./render-mapping.js";
 import { renderActivityGraph } from "./activity-renderer.js";
+import { NativeActivityStructureError, renderActivitySwimlanes } from "./activity-swimlane-renderer.js";
 import { umlAlias as alias, umlLabel as quote, umlText as text } from "./plantuml-text.js";
 
 const symbols = { public: "+", protected: "#", private: "-", package: "~" };
@@ -91,6 +92,19 @@ function render(model: AnyDiagramModel, stage: ModelingStage) {
       break;
     }
     case "activity": {
+      // Business control flows use native vertical lanes. The full requirements profile also
+      // supports explicit object/pin graphs, which PlantUML's activity DSL cannot express.
+      const objectGraph = model.relationships.some(edge => edge.type === "object_flow") || model.nodes.some(node => node.type === "object" || node.type === "activity" && ((node.inputPins?.length ?? 0) + (node.outputPins?.length ?? 0) > 0));
+      if (!objectGraph) {
+        try {
+          const native = renderActivitySwimlanes(model);
+          return { source: native.source, renderMapping: completeRenderMapping(model, native.source, native.renderMapping) };
+        } catch (error) {
+          // Current contracts allow unstructured control graphs too. Preserve their
+          // explicit edges rather than silently dropping a cross-lane return arrow.
+          if (!(error instanceof NativeActivityStructureError)) throw error;
+        }
+      }
       const source = renderActivityGraph(model);
       // Verify the explicit renderer emitted declarations and the actual edge statement, not just labels.
       for (const item of getModelGraphElements(model)) {

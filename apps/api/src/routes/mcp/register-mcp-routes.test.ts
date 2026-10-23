@@ -1,6 +1,5 @@
 // Exercises actual SDK HTTP exchanges, browser consent, and revocation using isolated platform accounts.
 import { requirementRuleFacts } from "@uml-platform/contracts";
-import { requirementRuleSchema } from "@uml-platform/contracts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
@@ -377,15 +376,7 @@ test("MCP exports saved inputs without review opinions and review-only edits kee
           runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
            assumptions: [], conflicts: [],
           qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
-          rules: ([{
-      id: "BORROW", sourceFragment: "借阅", type: "functional" as const, actor: "学生", subject: "系统",
-      action: "借阅", object: "图书", condition: null, outcome: "借阅成功", confidence: 1,
-      status: "rejected", criticality: "high", acceptanceCriteria: ["借阅成功后保存记录"],
-      fieldProvenance: { acceptanceCriteria: { source: "ai-suggested", status: "rejected", rationale: "private-review-opinion" } },
-    }]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id,
-            text: item.sourceFragment, sourceFragment: item.sourceFragment, origin: "generated",
-            type: "functional" as const,
-          })),
+          rules: [{ id: "BORROW", requirementId: ("BORROW"), text: ("借阅"), sourceFragment: ("借阅"), origin: "generated", type: "functional" as const }],
         },
     visualReviews: { "design:implementation": { status: "pending_review", issues: ["private-review-opinion"],
       reason: "private-review-opinion", attempts: 1, checkedAt: "2026-10-18T00:00:00.000Z",

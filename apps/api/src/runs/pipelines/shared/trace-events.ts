@@ -86,8 +86,7 @@ function isRequirementRunRecord(record: RunRecord): record is RunRecord & {
     "plantUml" in record.snapshot &&
     "svgArtifacts" in record.snapshot &&
     Array.isArray((record.snapshot as RunSnapshot).requirementTrace) &&
-    !("requirementModels" in record.snapshot) &&
-    !("files" in record.snapshot)
+    !("requirementModels" in record.snapshot)
   );
 }
 

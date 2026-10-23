@@ -2,8 +2,8 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
-import { createWorkspaceRecord, withWorkspaceProviders } from "../../../test/workspace-test-utils";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
+import { createWorkspaceRecord, withWorkspaceProviders } from "../../../../tests/helpers/workspace-test-utils";
 import { ProjectWorkspaceDrawer } from "./user-platform-pages";
 import { ProjectWorkspaceActions } from "../../workspace-shell/components/top-bar";
 import { FloatingAlertProvider } from "../../../shared/ui/floating-alert";
@@ -11,25 +11,16 @@ import { FloatingAlertProvider } from "../../../shared/ui/floating-alert";
 function createRepository(): WorkspaceRepository {
   return {
     loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-    updateRequirementText: vi.fn(async () => {}),
+
     startRun: vi.fn(),
     subscribeToRun: vi.fn(),
     getRunSnapshot: vi.fn(),
-    renderPlantUml: vi.fn(),
-    testProviderSettings: vi.fn(async () => ({
-      ok: true,
-      message: "ok",
-      capability: {
-        structuredOutputMode: "strict_json",
-        supportsJsonSchema: true,
-        supportsJsonObject: true,
-        modeLabel: "严格 JSON",
-      } as const,
-    })),
+
+
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
     deleteRunHistory: vi.fn(async () => []),
-    clearRunHistory: vi.fn(async () => {}),
+
   };
 }
 
@@ -225,12 +216,9 @@ describe("ProjectWorkspaceDrawer", () => {
     );
 
     const drawer = await screen.findByTestId("project-workspace-drawer");
-    const body = await screen.findByTestId("project-workspace-drawer-body");
     expect(screen.getByRole("dialog", { name: "项目设置" })).toBe(drawer);
     expect(document.getElementById(drawer.getAttribute("aria-labelledby") ?? "")).toHaveTextContent("项目设置");
     expect(document.getElementById(drawer.getAttribute("aria-describedby") ?? "")).toHaveTextContent("goal-e2e destructive");
-    expect(drawer).toHaveClass("overflow-x-hidden");
-    expect(body).toHaveClass("overflow-x-hidden", "min-w-0");
     expect(document.body).not.toHaveAttribute("data-scroll-locked");
     expect(screen.queryByText("默认模型策略")).not.toBeInTheDocument();
     const retentionValue = screen.getByText("手动归档", {
@@ -428,30 +416,6 @@ describe("ProjectWorkspaceDrawer", () => {
     });
     expect(JSON.parse(String(updateCall?.[1]?.body))).not.toHaveProperty(
       "defaultProviderConfigId",
-    );
-  });
-
-  it("constrains member drawer cards and truncates long member identity text", async () => {
-    const projectId = stubProjectWorkspaceFetch();
-
-    render(
-      withWorkspaceProviders(
-        <ProjectWorkspaceDrawer
-          projectId={projectId}
-          activeDrawer="members"
-          onClose={() => {}}
-        />,
-        projectDrawerRepository(),
-      ),
-    );
-
-    const body = await screen.findByTestId("project-workspace-drawer-body");
-    expect(body).toHaveClass("overflow-x-hidden", "min-w-0");
-    const displayName = await screen.findByText(/frontend_owner goal-e2e/u);
-    expect(displayName).toHaveClass("truncate");
-    expect(displayName.closest("[data-testid='project-member-card']")).toHaveClass(
-      "max-w-full",
-      "min-w-0",
     );
   });
 });

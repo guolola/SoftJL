@@ -3,7 +3,7 @@ import {
   requirementTypeAppliesToModel, type DiagramModelSpec, type DesignDiagramModelSpec,
   type ModelElementRef, type RequirementRule, type RequirementModelTraceabilityEntry, type DesignModelTraceabilityEntry,
 } from "@uml-platform/contracts";
-import { collectModelRefs } from "../../../normalizers/traceability/traceability-normalizer.js";
+import { collectModelRefs } from "@uml-platform/contracts";
 
 type Model = DiagramModelSpec | DesignDiagramModelSpec;
 const key = (ref: ModelElementRef) => JSON.stringify([ref.modelId ?? ref.diagramKind, ref.diagramKind, ref.elementId]);

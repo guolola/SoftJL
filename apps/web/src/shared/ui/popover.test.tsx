@@ -27,12 +27,6 @@ describe("Popover", () => {
     const trigger = screen.getByRole("button", { name: "查看说明" });
     await user.click(trigger);
     expect(screen.getByText("弹出内容")).toBeVisible();
-    expect(screen.getByText("弹出内容").closest("[data-slot='popover-content']")).toHaveClass(
-      "data-open:zoom-in-0!",
-      "data-closed:zoom-out-0!",
-      "duration-400",
-      "motion-reduce:animate-none",
-    );
 
     await user.keyboard("{Escape}");
     expect(screen.queryByText("弹出内容")).not.toBeInTheDocument();

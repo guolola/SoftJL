@@ -18,15 +18,20 @@ const provider: PlatformProviderConfig = {
   updatedAt: "2026-10-01T00:00:00.000Z", lastUsedAt: null, allowlisted: true, scopeType: "user", scopeId: "user-1",
 };
 
+const discoveredModel = (id: string) => ({ id, category: "text_chat" as const,
+  structuredOutputMode: "compatible" as const, supportsJsonSchema: false, supportsJsonObject: false,
+  strictJson: "unknown" as const, modeLabel: "兼容模式", probeStatus: "compatible" as const,
+  probedAt: "2026-10-01T00:00:00.000Z",
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   invalidateProviderConfigCache();
   vi.spyOn(platformApi, "listProviderConfigs").mockResolvedValue({ providerConfigs: [] });
   vi.spyOn(platformApi, "discoverProviderModelsStream").mockImplementation(async (_input, onEvent) => {
-    onEvent({ type: "completed", result: { models: [{ id: "chat-a" }, { id: "chat-b" }], fetchedAt: "2026-10-01T00:00:00.000Z", sourceBaseUrl: provider.baseUrl } });
+    onEvent({ type: "completed", result: { models: [discoveredModel("chat-a"), discoveredModel("chat-b")], fetchedAt: "2026-10-01T00:00:00.000Z", sourceBaseUrl: provider.baseUrl } });
   });
-  vi.spyOn(platformApi, "testTemporaryProviderConfig").mockResolvedValue({ ok: true });
   vi.spyOn(platformApi, "createProviderConfig").mockResolvedValue(provider);
 });
 afterEach(() => { vi.restoreAllMocks(); });
@@ -56,6 +61,19 @@ async function fillAndDiscover() {
 }
 
 describe("Provider creation block34", () => {
+  it("rejects incomplete discovery records without inventing capabilities or probe timestamps", async () => {
+    vi.mocked(platformApi.discoverProviderModelsStream).mockImplementation(async (_input, onEvent) => {
+      onEvent({ type: "completed", result: { models: [{ id: "unprobed" }], fetchedAt: provider.updatedAt, sourceBaseUrl: provider.baseUrl } });
+    });
+    const { user, dialog } = await openCreation();
+    await user.type(within(dialog).getByLabelText("名称"), "My provider");
+    await user.type(within(dialog).getByLabelText("Base URL"), provider.baseUrl);
+    await user.type(within(dialog).getByLabelText("API Key"), "test-only-key");
+    await user.click(within(dialog).getByRole("button", { name: "获取模型列表" }));
+    await waitFor(() => expect(floatingAlert.error).toHaveBeenCalled());
+    expect(within(dialog).getByRole("button", { name: "保存供应商" })).toBeDisabled();
+    expect(platformApi.createProviderConfig).not.toHaveBeenCalled();
+  });
   it("orders connection fields before models and offers discovery without a separate test action", async () => {
     const { dialog } = await openCreation();
     const controls = [
@@ -123,7 +141,6 @@ describe("Provider creation block34", () => {
     await user.click(within(dialog).getByRole("button", { name: "保存供应商" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "添加供应商" })).not.toBeInTheDocument());
     expect(platformApi.createProviderConfig).toHaveBeenCalledWith(expect.objectContaining({ name: "My provider", apiKey: "test-only-key", defaultModel: "chat-b", allowedModels: ["chat-a", "chat-b"] }));
-    expect(platformApi.testTemporaryProviderConfig).not.toHaveBeenCalled();
     expect(screen.getByRole("switch", { name: "启用 My provider" })).toBeChecked();
   });
 
@@ -133,7 +150,6 @@ describe("Provider creation block34", () => {
     await selectModel(user, dialog, "chat-b");
     expect(save).toBeEnabled();
     expect(platformApi.discoverProviderModelsStream).toHaveBeenCalledTimes(1);
-    expect(platformApi.testTemporaryProviderConfig).not.toHaveBeenCalled();
     await user.clear(within(dialog).getByLabelText("名称"));
     expect(save).toBeDisabled();
     await user.type(within(dialog).getByLabelText("名称"), "Renamed provider");
@@ -245,7 +261,6 @@ describe("Provider configuration table", () => {
     expect(within(dialog).getByRole("button", { name: "保存供应商" })).toBeEnabled();
     await selectModel(user, dialog, "chat-a");
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "保存供应商" })).toBeEnabled());
-    expect(platformApi.testTemporaryProviderConfig).not.toHaveBeenCalled();
     vi.mocked(platformApi.listProviderConfigs).mockResolvedValue({ providerConfigs: [system, updated, second] });
     await user.click(within(dialog).getByRole("button", { name: "保存供应商" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

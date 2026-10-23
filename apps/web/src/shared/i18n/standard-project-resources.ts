@@ -4,7 +4,7 @@ import { standardIntroEn, standardIntroZh } from "./standard-intro-resources";
 export const standardProjectZh = {
   intro: standardIntroZh,
   agentChat: "Agent 聊天",
-  inquiry: { models: "选择需要生成的模型", modelHint: "可多选，确认后开始生成。", recommended: "采用推荐组合", all: "选择全部", generate: "确认并生成", chooseModels: "请至少选择一种模型。", business: "补充业务需求", custom: "自定义答案（选填）", useAnswers: "填入推荐答案", submit: "提交答案", complete: "请完成全部问题后提交。", refreshScope: "这份模型选择已失效，请在对话中重新说明需要生成的图，以获取新的选择。" },
+  inquiry: { back: "返回", next: "下一步", confirm: "确认", flowCount: "{{index}} / {{total}}", flowProgress: "第 {{index}} 题，共 {{total}} 题", selectionCount: "已选 {{count}} / {{max}}", selected: "已选择：", nothingSelected: "未选择", invalidSelection: "请选择有效答案；不生成选项不能与其他模型同时选择。", submitFailed: "答案提交失败，已保留选择，请重试。", models: "选择需要生成的模型", generate: "确认并生成", business: "补充业务需求", submit: "提交答案", refreshScope: "这份模型选择已失效，请在对话中重新说明需要生成的图，以获取新的选择。" },
   welcomeBack: "欢迎回来，{{name}}。",
   chat: {
     noCommand: "没有匹配的指令", edit: "编辑消息", cancelEdit: "取消", update: "更新", regenerate: "重新生成回复", previousVersion: "上一版本", nextVersion: "下一版本",
@@ -29,13 +29,14 @@ export const standardProjectZh = {
   storeTitle: "在线商城", storePrompt: "设计在线商城。用户浏览商品、加入购物车、下单付款和申请退款，商家管理商品、库存和发货。需要订单状态流转和库存一致性。",
   attendanceTitle: "考勤管理系统", attendancePrompt: "设计考勤管理系统。员工签到签退、申请请假和补卡，主管审批，管理员维护班次与考勤规则。支持迟到、缺勤统计和跨日班次。",
   clinicTitle: "预约挂号系统", clinicPrompt: "设计预约挂号系统。患者查询科室、医生和号源并预约或取消，医生查看预约名单，管理员维护排班。需要防止重复预约和号源超售。",
+  erEditor: {
+    search: "搜索实体或关系", entity: "实体", relationships: "实体关系", addEntity: "添加实体", addRelationship: "添加关系",
+    entityName: "实体名称", relationshipName: "关系名称", attribute: "属性 {{index}}", identifying: "标识属性", addAttribute: "添加属性",
+    source: "源实体", target: "目标实体", sourceMultiplicity: "源基数", targetMultiplicity: "目标基数", multiplicityHint: "1、0..1、*、1..*",
+  },
   detail: {
-    addElement: "添加元素", editElement: "编辑元素", addRelation: "添加关系", editRelation: "编辑关系",
-    methods: "方法（每行一项）", swimlane: "所属泳道", from: "源元素", to: "目标元素", relationLabel: "关系名称", relationType: "关系类型",
-    fromCardinality: "源多重性", toCardinality: "目标多重性",
     invalidStructure: "模型结构不完整，请检查元素名称、关系端点、关系类型和必需的流程节点或基数。",
     deleteTitle: "删除 {{name}}", deleteDescription: "确认后会保存并更新此图。删除元素时，也会删除与它相连的关系。",
-    relationTypes: { association: "关联", include: "包含", extend: "扩展", inheritance: "泛化", composition: "组合", aggregation: "聚合", return: "返回" },
   },
   phases: { generating: "生成结构数据", checking: "检查图结构", repairing: "修复结构问题", rendering: "绘制图表" },
   clarificationAnswers: "已确认的需求回答",
@@ -120,8 +121,6 @@ export const standardProjectZh = {
   "editDiagram": "编辑图内容",
   "downloadSvg": "下载 SVG",
   "structureOnly": "保存时只检查本图结构，不会要求修改其他图。",
-  "elementName": "元素名称",
-  "fields": "属性或字段（每行一项）",
   "saveDiagram": "保存并更新此图",
   "generationBlocked": "当前不能生成，请等待任务结束或检查项目编辑权限。",
   "diagramsRequired": "请先在 UML 模型中生成图表。",
@@ -167,7 +166,7 @@ export const standardProjectZh = {
 export const standardProjectEn = {
   intro: standardIntroEn,
   agentChat: "Agent chat",
-  inquiry: { models: "Choose models to generate", modelHint: "Select one or more models, then confirm to generate.", recommended: "Use recommended set", all: "Select all", generate: "Confirm and generate", chooseModels: "Choose at least one model.", business: "Clarify business requirements", custom: "Custom answer (optional)", useAnswers: "Fill recommended answers", submit: "Submit answers", complete: "Answer every question before submitting.", refreshScope: "These model choices have expired. Send a new request for the diagrams you need to receive current choices." },
+  inquiry: { back: "Back", next: "Next", confirm: "Confirm", flowCount: "{{index}} of {{total}}", flowProgress: "Question {{index}} of {{total}}", selectionCount: "{{count}} of {{max}}", selected: "Selected:", nothingSelected: "Nothing selected", invalidSelection: "Choose valid answers. Declining generation cannot be combined with other models.", submitFailed: "Could not submit answers. Your choices are retained; please retry.", models: "Choose models to generate", generate: "Confirm and generate", business: "Clarify business requirements", submit: "Submit answers", refreshScope: "These model choices have expired. Send a new request for the diagrams you need to receive current choices." },
   welcomeBack: "Welcome back, {{name}}.",
   chat: {
     noCommand: "No matching command", edit: "Edit message", cancelEdit: "Cancel", update: "Update", regenerate: "Regenerate response", previousVersion: "Previous version", nextVersion: "Next version",
@@ -192,13 +191,14 @@ export const standardProjectEn = {
   storeTitle: "Online store", storePrompt: "Design an online store. Customers browse products, manage carts, pay for orders and request refunds. Merchants manage products, stock and shipping. Include order transitions and inventory consistency.",
   attendanceTitle: "Attendance management", attendancePrompt: "Design an attendance management system. Employees clock in and out and request leave or corrections, supervisors approve requests, and administrators manage shifts and rules. Handle late arrivals, absences and overnight shifts.",
   clinicTitle: "Clinic appointments", clinicPrompt: "Design a clinic appointment system. Patients browse departments, doctors and available slots to book or cancel appointments. Doctors view appointments and administrators manage schedules. Prevent duplicate bookings and oversold slots.",
+  erEditor: {
+    search: "Search entities or relationships", entity: "Entity", relationships: "Entity relationships", addEntity: "Add entity", addRelationship: "Add relationship",
+    entityName: "Entity name", relationshipName: "Relationship name", attribute: "Attribute {{index}}", identifying: "Identifying attribute", addAttribute: "Add attribute",
+    source: "Source entity", target: "Target entity", sourceMultiplicity: "Source cardinality", targetMultiplicity: "Target cardinality", multiplicityHint: "1, 0..1, *, 1..*",
+  },
   detail: {
-    addElement: "Add element", editElement: "Edit element", addRelation: "Add relationship", editRelation: "Edit relationship",
-    methods: "Methods (one per line)", swimlane: "Swimlane", from: "Source element", to: "Target element", relationLabel: "Relationship name", relationType: "Relationship type",
-    fromCardinality: "Source multiplicity", toCardinality: "Target multiplicity",
     invalidStructure: "The model structure is incomplete. Check names, relationship endpoints and types, required flow nodes, and multiplicities.",
     deleteTitle: "Delete {{name}}", deleteDescription: "Confirm to save and update this diagram. Deleting an element also removes its connected relationships.",
-    relationTypes: { association: "Association", include: "Include", extend: "Extend", inheritance: "Inheritance", composition: "Composition", aggregation: "Aggregation", return: "Return" },
   },
   phases: { generating: "Generating structure", checking: "Checking structure", repairing: "Repairing structure", rendering: "Rendering diagram" },
   clarificationAnswers: "Confirmed requirement answers",
@@ -283,8 +283,6 @@ export const standardProjectEn = {
   "editDiagram": "Edit diagram",
   "downloadSvg": "Download SVG",
   "structureOnly": "Saving checks this diagram’s structure only and does not require changes to other diagrams.",
-  "elementName": "Element name",
-  "fields": "Attributes or fields (one per line)",
   "saveDiagram": "Save and update diagram",
   "generationBlocked": "Generation is unavailable. Wait for the current task or check your editing permissions.",
   "diagramsRequired": "Generate diagrams in UML models first.",

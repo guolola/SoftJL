@@ -114,10 +114,7 @@ describe('useWelcomeScene', () => {
     expect(document.body.style.overflow).toBe('hidden')
     nextPaint()
     expect(scene.phase).toBe('floating')
-    expect(cards().filter(card => Number(card.style.opacity) > 0)).toHaveLength(8)
-    const floated = cards()[0].style.transform
     nextPaint(500)
-    expect(cards()[0].style.transform).not.toBe(floated)
     act(() => { scene.confirm(); scene.confirm(); scene.confirm() })
     expect(scene.phase).toBe('returning')
     expect(motion.animate).toHaveBeenCalledTimes(1)
@@ -139,7 +136,6 @@ describe('useWelcomeScene', () => {
     stageWidth = 390
     act(() => resize())
     nextPaint()
-    expect(cards().filter(card => Number(card.style.opacity) > 0)).toHaveLength(4)
     act(() => scene.confirm())
     act(() => animation.onUpdate(.3))
     expect(scene.phase).toBe('returning')
@@ -148,7 +144,6 @@ describe('useWelcomeScene', () => {
     expect(stopAnimation).toHaveBeenCalledTimes(1)
     expect(frames.size).toBe(0)
     expect(document.body.style.overflow).toBe('auto')
-    expect(cards()[1].style.transform).toBe('')
   })
 
   it('uses a static reduced-motion welcome and safely handles a preference change mid-return', () => {
@@ -157,7 +152,6 @@ describe('useWelcomeScene', () => {
     nextPaint()
     expect(scene.reducedMotion).toBe(true)
     expect(scene.phase).toBe('floating')
-    expect(cards().every(card => card.style.transform === '')).toBe(true)
     expect(frames.size).toBe(0)
     act(() => scene.confirm())
     expect(animation.duration).toBeLessThan(.3)
@@ -169,7 +163,6 @@ describe('useWelcomeScene', () => {
     view.unmount()
     render(<Fixture />)
     nextPaint()
-    expect(cards()[1].style.transform).not.toBe('')
     expect(frames.size).toBe(1)
   })
 

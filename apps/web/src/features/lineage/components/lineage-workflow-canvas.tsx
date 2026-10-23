@@ -255,9 +255,15 @@ function WorkflowBuilder({ graph, generation, onPrimaryAction, onViewArtifact }:
   // Positions alone are editable; canonical artifacts and their edges remain owned by the workspace.
   useEffect(() => {
     const positions = layoutLineageNodes(graph)
-    setNodes(current => graph.nodes.map(lineage => ({
-      id: lineage.id, type: 'workflowNode', position: current.find(node => node.id === lineage.id)?.position ?? positions[lineage.id], data: nodeData(lineage)
-    })))
+    setNodes(current => {
+      const existing = new Map(current.map(node => [node.id, node]))
+      return graph.nodes.map(lineage => {
+        const previous = existing.get(lineage.id)
+        // React Flow measures unchanged DOM nodes only once. Dropping measured sizes
+        // on a status refresh hides the cards until a later physical resize.
+        return { ...previous, id: lineage.id, type: 'workflowNode', position: previous?.position ?? positions[lineage.id], data: nodeData(lineage) }
+      })
+    })
     if (selectedId && !graph.nodes.some(node => node.id === selectedId)) {
       setSelectedId(null)
       setDetailsOpen(false)

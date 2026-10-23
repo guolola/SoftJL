@@ -145,7 +145,8 @@ function buildDiagramNode(
   t: TFunction,
 ): Node {
   const modelId = model ? getRequirementModelId(model) : diagram;
-  const canOpen = viewable && status !== "failed";
+  // A failed regeneration does not invalidate a retained preview.
+  const canOpen = viewable;
   const label =
     diagram === "analysis" && model
       ? ("sourceUseCaseName" in model ? model.sourceUseCaseName : undefined) ?? model.title
@@ -367,7 +368,8 @@ function buildDesignDiagramNode(
 ): Node {
   const modelId = model ? getDesignModelId(model) : diagram;
   const DiagramIcon = DESIGN_DIAGRAM_ICON[diagram];
-  const canOpen = viewable && status !== "failed";
+  // Keep the last saved diagram available while the latest attempt reports failure.
+  const canOpen = viewable;
   const label =
     diagram === "sequence" && model
       ? ("sourceUseCaseName" in model ? model.sourceUseCaseName : undefined) ?? model.title

@@ -1,4 +1,6 @@
 // Formats dynamically configured provider model ids without supplying candidates.
+import { providerStructuredOutputModeSchema } from "@uml-platform/contracts";
+
 export type ProviderModelGroup = {
   id: string;
   label: string;
@@ -73,30 +75,14 @@ export function inferProviderModelGroup(
   return { id: `provider-${normalizeGroupId(label)}`, label };
 }
 
-export function getProviderModelDisplayName(modelId: string, fallbackLabel = "") {
-  const shortLabel = getProviderModelLabel(modelId);
-  const vendor = inferProviderModelGroup(modelId, fallbackLabel);
-  return {
-    triggerLabel: modelId.trim() ? shortLabel : "未选择模型",
-    vendorLabel: vendor.label,
-    shortLabel,
-  };
-}
-
 export function normalizeProviderModelCapability(
   modelId: string,
   capability?: Partial<ModelCapability> | null,
-): ModelCapability {
-  const structuredOutputMode =
-    capability?.structuredOutputMode === "strict_json" ||
-    capability?.structuredOutputMode === "json_object" ||
-    capability?.structuredOutputMode === "compatible"
-      ? capability.structuredOutputMode
-      : capability?.supportsJsonSchema === true
-        ? "strict_json"
-        : capability?.supportsJsonObject === true
-          ? "json_object"
-          : "compatible";
+): ModelCapability | null {
+  const mode = providerStructuredOutputModeSchema.safeParse(capability?.structuredOutputMode);
+  // Missing mode metadata stays unknown; retired boolean flags cannot establish a capability.
+  if (!mode.success) return null;
+  const structuredOutputMode = mode.data;
   return {
     id: capability?.id ?? modelId,
     structuredOutputMode,

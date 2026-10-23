@@ -46,8 +46,8 @@ function initialValue(schema: FieldSchema, key = ""): unknown {
   return key === "name" || key === "label" ? "新元素" : "";
 }
 /** Changing a discriminant is explicit; incompatible fields are removed only after that user action. */
-export function ContractFields({ schema, value, onChange, model, path = "", options = {}, owner = "" }: {
-  schema: FieldSchema; value: unknown; onChange: (value: unknown) => void; model: RecordValue; path?: string; owner?: string;
+export function ContractFields({ schema, value, onChange, model, path = "", options = {}, owner = "", showSourceReferences = true }: {
+  schema: FieldSchema; value: unknown; onChange: (value: unknown) => void; model: RecordValue; path?: string; owner?: string; showSourceReferences?: boolean;
   options?: Record<string, Array<{ value: string; label: string }>>;
 }) {
   const field = selectedSchema(schema, value);
@@ -68,13 +68,13 @@ export function ContractFields({ schema, value, onChange, model, path = "", opti
       const base = initialValue(nextSchema) as RecordValue;
       for (const name of Object.keys(nextSchema.properties ?? {})) if (name in record) base[name] = record[name];
       onChange({ ...base, [discriminator]: next });
-    }} /> : null}{Object.entries(field.properties ?? {}).filter(([name, child]) => name !== discriminator && child.maxItems !== 0 && !["isPrimaryKey", "isForeignKey", "references", "sourceColumnId", "targetColumnId"].includes(name)).map(([name, child]) => <ContractFields key={name} owner={owner} schema={child} value={record[name]} model={model} path={path ? `${path}.${name}` : name} options={options} onChange={(next) => update(name, next === "" && !field.required?.includes(name) ? undefined : next)} />)}</div>;
+    }} /> : null}{Object.entries(field.properties ?? {}).filter(([name, child]) => (showSourceReferences || !/^source(Requirement|UseCase|Class|Element)/.test(name)) && name !== discriminator && child.maxItems !== 0 && !["isPrimaryKey", "isForeignKey", "references"].includes(name)).map(([name, child]) => <ContractFields showSourceReferences={showSourceReferences} key={name} owner={owner} schema={child} value={record[name]} model={model} path={path ? `${path}.${name}` : name} options={options} onChange={(next) => update(name, next === "" && !field.required?.includes(name) ? undefined : next)} />)}</div>;
   }
   if (field.type === "array") {
     const values = Array.isArray(value) ? value : [];
     if (key === "sourceRequirementIds" && options[key]) return <SourceRuleChecklist selectedIds={values as string[]} options={options[key].map((item) => ({ id: item.value, label: item.label }))} onChange={onChange} />;
     if (field.items?.type === "string") return <LabelTextarea label={label} value={values.join("\n")} onChange={(text) => onChange(text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))} />;
-    return <fieldset className="space-y-3 rounded-lg border p-3"><legend>{label}</legend>{values.map((entry, index) => <div key={index} className="space-y-2 rounded border p-3"><ContractFields schema={field.items ?? {}} owner={ordinalLabel(index, ({ attributes: "属性", columns: "字段", operations: "操作", parameters: "参数" } as Record<string, string>)[key] ?? rawLabel)} value={entry} model={model} path={`${path}.${index}`} options={options} onChange={(next) => onChange(values.map((item, i) => i === index ? next : item))} /><Button type="button" variant="outline" size="sm" onClick={() => onChange(values.filter((_, i) => i !== index))}>删除{label} {index + 1}</Button></div>)}<Button type="button" variant="outline" size="sm" onClick={() => onChange([...values, initialValue(field.items ?? {})])}>添加{label}</Button></fieldset>;
+    return <fieldset className="space-y-3 rounded-lg border p-3"><legend>{label}</legend>{values.map((entry, index) => <div key={index} className="space-y-2 rounded border p-3"><ContractFields showSourceReferences={showSourceReferences} schema={field.items ?? {}} owner={ordinalLabel(index, ({ attributes: "属性", columns: "字段", operations: "操作", parameters: "参数" } as Record<string, string>)[key] ?? rawLabel)} value={entry} model={model} path={`${path}.${index}`} options={options} onChange={(next) => onChange(values.map((item, i) => i === index ? next : item))} /><Button type="button" variant="outline" size="sm" onClick={() => onChange(values.filter((_, i) => i !== index))}>删除{label} {index + 1}</Button></div>)}<Button type="button" variant="outline" size="sm" onClick={() => onChange([...values, initialValue(field.items ?? {})])}>添加{label}</Button></fieldset>;
   }
   if (field.type === "boolean") return <LabelCheckbox label={label} checked={Boolean(value)} onChange={onChange} />;
   const references: Record<string, string> = { systemBoundaryId: "systemBoundaries", primaryActorId: "actors", actorOrLane: "swimlanes", packageId: "packages", parentFragmentId: "fragments", participantId: "participants", startMessageId: "messages", endMessageId: "messages", referenceTableId: "tables" };

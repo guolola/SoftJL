@@ -2,13 +2,7 @@
 "use client";
 import { useHomeLocale } from "../../integration/home-locale";
 
-
 import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
-
-function Collapsible({ ...props }: CollapsiblePrimitive.Root.Props) {
-  useHomeLocale();
-  return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />;
-}
 
 function CollapsibleTrigger({ ...props }: CollapsiblePrimitive.Trigger.Props) {
   useHomeLocale();
@@ -17,11 +11,4 @@ function CollapsibleTrigger({ ...props }: CollapsiblePrimitive.Trigger.Props) {
   );
 }
 
-function CollapsibleContent({ ...props }: CollapsiblePrimitive.Panel.Props) {
-  useHomeLocale();
-  return (
-    <CollapsiblePrimitive.Panel data-slot="collapsible-content" {...props} />
-  );
-}
-
-export { Collapsible, CollapsibleTrigger, CollapsibleContent };
+export { CollapsibleTrigger };

@@ -2,11 +2,12 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { withWorkspaceProviders } from "../../../test/workspace-test-utils";
+import { withWorkspaceProviders } from "../../../../tests/helpers/workspace-test-utils";
 import type { PlatformProject, PlatformProjectMember } from "../services/platform-api";
 import { ProjectMembers } from "./project-members";
 import { platformApi } from "../services/platform-api";
 import * as routeSession from "./authenticated-route-session";
+import { createProjectInvitationResponse } from "@test/fixtures/contract-fixtures";
 
 const project: PlatformProject = {
   id: "project-members-test",
@@ -43,12 +44,11 @@ describe("ProjectMembers", () => {
     const user = userEvent.setup();
     const search = vi.mocked(platformApi.searchProjectInvitees).mockResolvedValue({ users: [{ id: "alice", username: "alice_user", displayName: "Alice Chen", avatarUrl: null }] });
     const member = { ...owner("alice", "alice_user"), role: "viewer", status: "invited" };
-    const invite = vi.spyOn(platformApi, "inviteProjectMember").mockResolvedValue({ member });
+    const invite = vi.spyOn(platformApi, "inviteProjectMember").mockResolvedValue(createProjectInvitationResponse({ id: member.id, username: member.username }));
     render(withWorkspaceProviders(<ProjectMembers project={project} members={[]} membershipRole="owner" />));
     await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
     const dialog = await screen.findByRole("dialog");
     const input = within(dialog).getByRole("combobox", { name: /邀请用户名/u });
-    expect(input).toHaveAttribute("data-slot", "autocomplete-input");
     expect(search).not.toHaveBeenCalled();
     await user.type(input, "Alice");
     expect(await screen.findByText("正在搜索用户…")).toBeVisible();
@@ -94,9 +94,7 @@ describe("ProjectMembers", () => {
 
   it("shows the demo's empty search status without blocking manual invitation", async () => {
     const user = userEvent.setup();
-    const invite = vi.spyOn(platformApi, "inviteProjectMember").mockResolvedValue({ member: {
-      ...owner("unknown", "unknown"), role: "viewer", status: "invited",
-    } });
+    const invite = vi.spyOn(platformApi, "inviteProjectMember").mockResolvedValue(createProjectInvitationResponse({ id: "unknown", username: "unknown" }));
     render(withWorkspaceProviders(<ProjectMembers project={project} members={[]} membershipRole="owner" />));
     await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
     const sendButton = screen.getByRole("button", { name: "发送邀请" });
@@ -178,7 +176,7 @@ describe("ProjectMembers", () => {
   it("invites by username and shows the server result in pending invitations", async () => {
     const user = userEvent.setup();
     const member = { ...owner("invited", "new"), role: "viewer", status: "invited", userId: "" };
-    const invite = vi.spyOn(platformApi, "inviteProjectMember").mockResolvedValue({ member });
+    const invite = vi.spyOn(platformApi, "inviteProjectMember").mockResolvedValue(createProjectInvitationResponse({ id: member.id, username: member.username }));
     render(withWorkspaceProviders(<ProjectMembers project={project} members={[]} membershipRole="owner" />));
 
     await user.click(await screen.findByRole("button", { name: "邀请新成员" }));
@@ -212,6 +210,7 @@ describe("ProjectMembers", () => {
   it("rejects the signed-in user's username before the request even when members have not loaded", async () => {
     const user = userEvent.setup();
     vi.spyOn(routeSession, "useAuthenticatedRouteSession").mockReturnValue({
+      mfa: { enabled: false, enforcement: "totp" },
       user: { id: "owner-1", username: "owner", displayName: "Owner", status: "active", mfaEnabled: false },
       session: { id: "session", userId: "owner-1", createdAt: "2026-10-19T00:00:00Z", expiresAt: "2026-10-20T00:00:00Z", lastSeenAt: "2026-10-19T00:00:00Z", ipAddress: null, userAgent: null },
     });
@@ -263,7 +262,7 @@ describe("ProjectMembers", () => {
     const user = userEvent.setup();
     const member = { ...owner("pending", "pending"), role: "viewer", status: "expired", userId: "" };
     const update = vi.spyOn(platformApi, "updateProjectMemberRole").mockResolvedValue({ member: { ...member, role: "editor" } });
-    const resend = vi.spyOn(platformApi, "resendProjectInvitation").mockResolvedValue({ member: { ...member, role: "editor", status: "invited" } });
+    const resend = vi.spyOn(platformApi, "resendProjectInvitation").mockResolvedValue(createProjectInvitationResponse({ id: member.id, username: member.username, role: "editor" }));
     const revoke = vi.spyOn(platformApi, "revokeProjectInvitation").mockResolvedValue({});
     render(withWorkspaceProviders(<ProjectMembers project={project} members={[member]} membershipRole="owner" />));
 

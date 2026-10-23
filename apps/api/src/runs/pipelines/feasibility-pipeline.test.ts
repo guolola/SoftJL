@@ -1,5 +1,5 @@
 // Ensures replayed feasibility inputs cannot reintroduce obsolete baseline facts.
-import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildFeasibilityContextFingerprint, feasibilityInputsSchema, snapshotInputFingerprint, type RequirementRule } from "@uml-platform/contracts";
@@ -9,7 +9,7 @@ import { librarySeatFeasibilityContext, librarySeatFeasibilityFlow, librarySeatF
 import type { RunRecord } from "../records/run-record-store.js";
 import { readDiagramReviewCounters } from "../records/diagram-review-record.js";
 import { runFeasibilityStagePipeline } from "./feasibility-pipeline.js";
-import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
 
 test("replayed feasibility rejects mismatched facts before any provider call", async () => {
   const rule = { id: "r1", type: "functional" as const, text: "旧版：管理员可以删除订单",  };
@@ -80,7 +80,7 @@ for (const artifact of ["context", "business-flow", "implementation"] as const) 
       }
       const run: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false };
       let calls = 0;
-      let previousMessages: import("../../llm.js").ChatMessage[] = [];
+      let previousMessages: import("../../adapters/llm/llm-transport.js").ChatMessage[] = [];
       const response = artifact === "context" ? structuredClone(librarySeatFeasibilityContext) : artifact === "business-flow" ? structuredClone(librarySeatFeasibilityFlow) : structuredClone(librarySeatFeasibilityPlan);
       if (missingSource) {
         if ("people" in response) response.people[0]!.sourceRequirementIds = [];

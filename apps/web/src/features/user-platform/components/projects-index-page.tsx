@@ -18,7 +18,7 @@ import { Label } from "../../../shared/ui/label";
 import { SelectControl } from "../../../shared/ui/select";
 import { PageContainer, PageHeader, TablePagination } from "../../../shared/template/layout/page";
 import { cn } from "../../../shared/ui/utils";
-import { i18n as appI18n } from "../../../shared/i18n";
+import { i18n as appI18n } from "../../../shared/i18n/index";
 import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
 import {
   PROJECT_SCOPE_OPTIONS,

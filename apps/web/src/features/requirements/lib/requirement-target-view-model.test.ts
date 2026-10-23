@@ -1,12 +1,8 @@
 // Verifies action labels describe only selected work, including regeneration of current models.
 import { expect, it } from "vitest";
-import { MISSING_USECASE_BLOCK_REASON, requirementDiagramsButtonLabel, requirementTargetCardState } from "./requirement-target-view-model";
-import { createRule } from "../../../test/workspace-test-utils";
+import { MISSING_USECASE_BLOCK_REASON, requirementTargetCardState } from "./requirement-target-view-model";
+import { createRule } from "../../../../tests/helpers/workspace-test-utils";
 import type { DiagramType } from "../../../entities/diagram/model";
-
-it("asks for selection instead of describing untouched models", () => {
-  expect(requirementDiagramsButtonLabel({ generatedDiagrams: ["usecase"], selectedDiagrams: [], staleDiagrams: [] })).toBe("勾选要生成或更新的模型");
-});
 
 it.each([{ rules: [] }])("shows missing rules inline without offering automatic rule completion", ({ rules }) => {
   const state = requirementTargetCardState({ models: {}, diagram: "class", rules, generatedDiagrams: [], selectedDiagrams: [],
@@ -14,9 +10,6 @@ it.each([{ rules: [] }])("shows missing rules inline without offering automatic 
   expect(state.canSelectDiagram).toBe(false);
   expect(state.blockReason).toContain("请先添加或生成需求规则");
   expect(state.autoFillLabels).toEqual([]);
-});
-it("counts new models and all selected existing models", () => {
-  expect(requirementDiagramsButtonLabel({ generatedDiagrams: ["usecase", "class"], selectedDiagrams: ["usecase", "activity"], staleDiagrams: [] })).toBe("生成 1 个，更新 1 个");
 });
 
 it("uses the fixed mapped rule set", () => {

@@ -384,7 +384,7 @@ test("temporary provider model discovery stream emits progress without leaking s
   }
 });
 
-test("temporary provider tests run healthcheck without saving provider secrets", async () => {
+test("removed temporary provider endpoint cannot call providers or save secrets", async () => {
   const originalFetch = globalThis.fetch;
   const calls: string[] = [];
   globalThis.fetch = (async (url) => {
@@ -409,9 +409,8 @@ test("temporary provider tests run healthcheck without saving provider secrets",
       },
     });
 
-    assert.equal(response.statusCode, 200);
-    assert.equal(response.json().ok, true);
-    assert.equal(calls[0], "https://api.moonshot.cn/v1/chat/completions");
+    assert.equal(response.statusCode, 404);
+    assert.deepEqual(calls, []);
     assert.equal((await providerConfigs.list()).length, initialCount);
     assert.doesNotMatch(response.body, /sk-temporary-test-8888|apiKey/i);
   } finally {
@@ -455,7 +454,7 @@ test("temporary provider endpoints reject unsafe base urls before saving or leak
     });
 
     assert.equal(privateDiscovery.statusCode, 400);
-    assert.equal(unsafeTest.statusCode, 400);
+    assert.equal(unsafeTest.statusCode, 404);
     assert.equal(fetchCount, 0);
     assert.equal((await providerConfigs.list()).length, initialCount);
     assert.doesNotMatch(

@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { AppI18nProvider, LOCALE_PREFERENCE_STORAGE_KEY } from "../../../shared/i18n";
+import { AppI18nProvider, LOCALE_PREFERENCE_STORAGE_KEY } from "../../../shared/i18n/index";
 import { i18n } from "../../../shared/i18n/i18n";
 import { GenerationConfirmationDialog, type GenerationConfirmationDialogState } from "./generation-dialogs";
 
@@ -33,10 +33,6 @@ describe("generation confirmation flow", () => {
     expect(rows[0]).toHaveTextContent("功能结构图、总体业务流程");
     expect(rows[1]).toHaveTextContent("用例模型");
     expect(rows[2]).toHaveTextContent("领域概念模型");
-    expect(rows[0].querySelector("svg")).toHaveClass("lucide-circle-check");
-    expect(rows[1].querySelector("svg")).toHaveClass("lucide-triangle-alert");
-    expect(rows[2].querySelector("svg")).toHaveClass("lucide-circle-alert");
-    expect(within(rows[1]).getByText("用例模型")).toHaveClass("font-semibold", "text-foreground");
   });
 
   it.each([

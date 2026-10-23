@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { designInputFingerprint } from "./fingerprints.js";
-import { activeRequirementModels } from "./active-requirement-models.js";
+import { activeRequirementModels } from "./requirements/active-requirement-models.js";
 
 function activityModel() {
   return {

@@ -1,6 +1,5 @@
 // Owns document context shaping and section normalization before DOCX rendering.
 import {
-  requirementBaselineTraceEntries,
   completeFeasibilityImplementationPlanSchema,
   requirementModelSources,
   documentContentResultSchema,
@@ -341,24 +340,18 @@ function trustedTraceRefId(ref: {
 function requirementIdByRuleId(input: StartDocumentRunRequest) {
   const baseline = input.requirementBaseline;
   return new Map(
-    (baseline ? requirementBaselineTraceEntries(baseline) : []).flatMap((requirement) =>
-      requirement.sourceRuleId
-        ? [[requirement.sourceRuleId.toLowerCase(), requirement.id] as const]
-        : [],
-    ),
+    (baseline?.rules ?? []).map((rule) => [rule.id.toLowerCase(), rule.requirementId] as const),
   );
 }
 
-function acceptedRequirementBaselineRows(input: StartDocumentRunRequest) {
+function requirementSnapshotRows(input: StartDocumentRunRequest) {
   const baseline = input.requirementBaseline;
-  const rows = (baseline ? requirementBaselineTraceEntries(baseline) : [])
-    .filter((requirement) => requirement.status === "accepted" || requirement.status === "generated")
-    .map((requirement, index) => [
-      String(index + 1),
-      requirement.id,
-      requirement.sourceRuleId ?? "原文",
-      requirement.action,
-    ]);
+  const rows = (baseline?.rules ?? []).map((rule, index) => [
+    String(index + 1),
+    rule.requirementId,
+    rule.id,
+    rule.text,
+  ]);
   return rows.length > 0
     ? rows
     : [["1", "未提供/待确认", "未提供/待确认", "当前没有需求规则快照"]];
@@ -988,7 +981,7 @@ function unboundDocumentSections(input: StartDocumentRunRequest): DocumentSectio
         body: ["以下约束直接来自保存的需求规则快照，设计与实现不得弱化其数字、比较符、角色、状态和条件分支。"],
         table: {
           headers: ["编号", "需求标识", "来源规则", "已确认约束"],
-          rows: acceptedRequirementBaselineRows(input),
+          rows: requirementSnapshotRows(input),
         },
       },
       { level: 2, title: "定义与标识", body: ["设计模型按总体架构图、用例实现设计、设计类图、界面关系图、数据库设计、组件（构件）关系和部署设计组织；用例实现设计以 sequence:<useCaseId> 标识。"] },

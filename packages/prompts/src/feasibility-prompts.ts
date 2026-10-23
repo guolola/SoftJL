@@ -1,12 +1,5 @@
 // Builds strict JSON prompts for feasibility context and implementation stages.
-import type {
-  ContextDiagramSpec,
-  FeasibilityInputs,
-  FeasibilityBusinessFlow,
-  FeasibilityRepairSection,
-  RequirementBaseline,
-  RequirementRule,
-} from "@uml-platform/contracts";
+import type { ContextDiagramSpec, FeasibilityInputs, FeasibilityBusinessFlow, RequirementBaseline, RequirementRule } from "@uml-platform/contracts";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "./feasibility-example.js";
 import { getModelReviewProfile, requirementBaselinePromptContext, candidateRulesForDiagram } from "@uml-platform/contracts";
 import { compactPromptRules, compactPromptTraceability } from "./prompt-context.js";
@@ -71,60 +64,4 @@ absenceDeclarations 的每一项必须完整包含 scope、reason、provenance�
 ${JSON.stringify({ ...FEASIBILITY_IMPLEMENTATION_EXAMPLE, candidates: FEASIBILITY_IMPLEMENTATION_EXAMPLE.candidates.slice(0, 1) })}
 输入：
 ${JSON.stringify({ ...input, rules: compactPromptRules(input.rules), businessFlow: { ...input.businessFlow, traceability: compactPromptTraceability(input.businessFlow.traceability) }, requirementBaseline: input.requirementBaseline ? requirementBaselinePromptContext(input.requirementBaseline, input.rules.map(rule => rule.id)) : null })}`;
-}
-
-export function buildRepairFeasibilityJsonPrompt(input: {
-  stage: "context" | "business-flow" | "implementation";
-  previousOutput: string;
-  error: string;
-  originalPrompt: string;
-}) {
-  if (input.stage === "business-flow") {
-    return `${JSON_ONLY}\n仅修复业务流程图的结构、泳道归属、连通性和需求追踪错误，不得编造需求步骤。\n校验错误：${input.error}\n原始任务：${input.originalPrompt}\n待修复输出：${input.previousOutput}`;
-  }
-  return `${JSON_ONLY}
-上一份${input.stage === "context" ? "上下文" : "实现方案"} JSON 不符合契约。只修复校验错误涉及的字段或章节，其余内容必须原样保留。修复结构、引用、枚举值和缺失的必填分析；不得增加输入中不存在的用户事实，但必须补齐契约要求的 AI 估算和明确标注的方案假设。不得把结构对象压缩成字符串，且必须输出 recommendationRationale 与五个带 category 的 verdict 对象。
-校验错误：${input.error}
-原始任务：${input.originalPrompt}
-待修复输出：${input.previousOutput}`;
-}
-
-export function buildRepairFeasibilitySectionPrompt(input: {
-  candidateIndex: number;
-  section: Exclude<FeasibilityRepairSection, "context" | "business-flow" | "plan">;
-  currentPlan: unknown;
-  issues: string[];
-  originalPrompt: string;
-}) {
-  const fields = {
-    technical: "architecture、dataStrategy、integrations、integrationRationale、deploymentAndOperations、securityAndCompliance",
-    delivery: "milestones、risks",
-    economics: "analysisPeriodAssumption、costEstimates、benefitEstimates、absenceDeclarations",
-    verdict: "verdicts、decision、preconditions",
-  };
-  const sectionFields = fields[input.section];
-  const plan = input.currentPlan as Record<string, any> | null;
-  const candidate = Array.isArray(plan?.candidates) ? plan.candidates[input.candidateIndex] : undefined;
-  const dependencies = { technical: ["milestones"], delivery: ["architecture", "deploymentAndOperations"], economics: ["architecture", "milestones", "risks"], verdict: Object.values(fields).flatMap(value => value.split("、")) }[input.section];
-  const keys = new Set([...sectionFields.split("、"), ...dependencies]);
-  const current = candidate ? { candidateIndex: input.candidateIndex, candidate: { ...candidate, implementation: Object.fromEntries(Object.entries(candidate.implementation ?? {}).filter(([key]) => keys.has(key))) } } : input.currentPlan;
-  // Reuse complete source facts, not the generation example or another candidate's plan.
-  const marker = "\n输入：\n";
-  const start = input.originalPrompt.lastIndexOf(marker);
-  let source = input.originalPrompt;
-  if (start >= 0) {
-    try { source = JSON.stringify(JSON.parse(input.originalPrompt.slice(start + marker.length))); } catch { /* Malformed source must remain visible rather than silently disappearing. */ }
-  }
-  return `${JSON_ONLY}
-仅修复候选方案索引 ${input.candidateIndex} 的 ${input.section} 章节。返回：
-{"candidateIndex":${input.candidateIndex},"patch":{...}}
-patch 必须且只能完整包含这些字段：${sectionFields}。
-不得返回完整方案，不得修改其他候选或其他章节，不得增加输入中不存在的需求事实。
-校验错误：
-${input.issues.join("\n")}
-方案约束：两份候选分别完整；沿用来源规则与人工修改，事实不得编造；估算使用 ai-estimate；保留完整条件、阈值和异常路径。成本收益使用 CNY 区间并写明依据，缺省声明不得与已有条目冲突；五类结论 technical/operational/schedule/economic/legal 各一次。
-来源事实：
-${source}
-当前候选章节与必要关联字段：
-${JSON.stringify(current)}`;
 }

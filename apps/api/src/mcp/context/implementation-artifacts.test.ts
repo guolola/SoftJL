@@ -6,17 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import test, { type TestContext } from "node:test";
-import {
-  designInputFingerprint,
-  snapshotInputFingerprint,
-  mcpImplementationReportSchema,
-  mcpImplementationSnapshotSchema,
-  compactImplementationSnapshot,
-  compactImplementationReport,
-  type AtomicRequirement,
-  type McpImplementationReport,
-  type McpScope,
-} from "@uml-platform/contracts";
+import { designInputFingerprint, snapshotInputFingerprint, mcpImplementationReportSchema, mcpImplementationSnapshotSchema, compactImplementationSnapshot, compactImplementationReport, type McpImplementationReport, type McpScope } from "@uml-platform/contracts";
 import { buildContext } from "./implementation-context.js";
 import { withImplementationArtifacts } from "./implementation-artifacts.js";
 import { implementationVerifierSource } from "../verification/verifier-source.js";
@@ -37,14 +27,6 @@ type Verify = (input: { root: string; snapshot: unknown; report: unknown; runChe
 function savedState(limit = 5) {
   const requirementText = `每位读者最多同时借阅${limit}本书，归还后可继续借阅；拒绝借阅不能增加已借数量。`;
   const rule = { id: "BORROW-RULE", type: "business-rule" as const, text: requirementText, sourceFragment: requirementText };
-  const requirement: AtomicRequirement = {
-    id: "BORROW", sourceRuleId: rule.id, sourceFragment: requirementText, type: "business-rule" as const, actor: "读者", subject: "借阅服务",
-    action: "借阅", object: "图书", condition: `已借数量少于${limit}本`, outcome: "借阅成功后数量增加1", confidence: 1,
-    status: "accepted", criticality: "high", acceptanceCriteria: [
-      `第${limit}本可以借阅，第${limit + 1}本必须被拒绝。`,
-      "拒绝借阅后已借数量不变。", "归还一本后可以再次借阅。",
-    ], fieldProvenance: { acceptanceCriteria: { source: "source-text", status: "accepted" } },
-  };
   const qualityReport = { runId: "requirements-run", status: "passed", summary: "借阅约束已确认", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] };
   const analysis = {
     diagramKind: "class", modelId: "borrow-domain", title: "借阅领域", summary: "图书借阅概念", notes: [],
@@ -65,7 +47,7 @@ function savedState(limit = 5) {
       version: 1,
       sourceInputFingerprint: "test-source-input", runId: "requirements-run", sourceDocumentId: "requirements-document", schemaVersion: 3 as const,
 
-      rules: ([requirement]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, sourceFragment: item.sourceFragment, type: rule.type, origin: "generated" as const })), assumptions: [], conflicts: [], qualityReport, createdAt: "2026-01-01T00:00:00Z" },
+      rules: [{ ...rule, requirementId: "BORROW", origin: "generated" as const }], assumptions: [], conflicts: [], qualityReport, createdAt: "2026-01-01T00:00:00Z" },
     models: { "borrow-domain": analysis }, designModels: { "borrow-implementation": design },
     plantUml: { "borrow-domain": "@startuml\nclass Loan\n@enduml" },
     designPlantUml: { "borrow-implementation": `@startuml\nclass LoanService\nnote right of LoanService : 最多同时借阅${limit}本\n@enduml` },

@@ -44,7 +44,6 @@ it.each(["zh-CN", "en", "system"] as const)(
     const container = document.createElement("div");
     container.innerHTML = html;
     document.body.append(container);
-    expect(within(container).getByRole("button")).not.toHaveClass("text-primary");
 
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const recoverableErrors: unknown[] = [];

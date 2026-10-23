@@ -2,14 +2,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { useCaseParticipationGaps, type DiagramModelSpec, type RequirementModelTraceabilityEntry } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../../llm.js";
-import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import type { LlmTransport } from "../../../adapters/llm/llm-transport.js";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import { readDiagramReviewCounters } from "../../records/diagram-review-record.js";
 import type { RunRecord } from "../../records/run-record-store.js";
 import { createEmptySnapshot } from "../../records/snapshots.js";
 import { generateModelsWithRepair, runStagePipeline } from "../requirements-pipeline.js";
 import { createRunLlmChunkHandlers } from "../shared/llm-chunk-events.js";
-import { collectModelRefs } from "../../../normalizers/traceability/traceability-normalizer.js";
+import { collectModelRefs } from "@uml-platform/contracts";
 
 const rule = { id: "r1", type: "functional" as const, text: "用户可以配置系统并设置密码。" };
 const model: DiagramModelSpec = {
@@ -30,7 +30,7 @@ function record(): RunRecord {
 }
 
 test("post-generation participation repair continues the original conversation and saves complete sources", async () => {
-  const { modelFixture } = await import("../../../../../../packages/contracts/src/testing/model-fixtures.js");
+  const { modelFixture } = await import("@uml-platform/contracts/testing");
   const before = modelFixture("requirements", "usecase");
   if (before.diagramKind !== "usecase") throw new Error("fixture");
   before.useCases[0]!.primaryActorId = "actor";
@@ -39,7 +39,7 @@ test("post-generation participation repair continues the original conversation a
   const output = (model: typeof before) => JSON.stringify({ models: [model], requirementModelTraceability: collectModelRefs([model]).refs.map(target => ({ ruleId: rule.id, target })) });
   const run: RunRecord = { snapshot: createEmptySnapshot("post-generation", rule.text, ["usecase"], [rule]), events: [], listeners: new Set(), terminal: false };
   let calls = 0, renders = 0;
-  let firstMessages: import("../../../llm.js").ChatMessage[] = [];
+  let firstMessages: import("../../../adapters/llm/llm-transport.js").ChatMessage[] = [];
   await runStagePipeline(run, settings, { async *streamChatCompletion(input) {
     calls++;
     if (calls === 1) { firstMessages = structuredClone(input.messages); yield output(before); return; }
@@ -78,7 +78,7 @@ test("a multi-parent function tree can repair nodes, relationships and provenanc
   };
   const output = (current: typeof broken) => JSON.stringify({ models: [current], requirementModelTraceability: collectModelRefs([current]).refs.map(target => ({ ruleId: rule.id, target })) });
   const firstOutput = output(broken);
-  let firstMessages: import("../../../llm.js").ChatMessage[] = [];
+  let firstMessages: import("../../../adapters/llm/llm-transport.js").ChatMessage[] = [];
   let calls = 0;
   const result = await generateModelsWithRepair(run, settings, { async *streamChatCompletion(input) {
     calls++;
@@ -181,8 +181,8 @@ test("multiple models of one kind retain the same structural repair budget", asy
 
 
 test("structural corrections and missing sources retain the complete prior conversation", async () => {
-  const { modelFixture } = await import("../../../../../../packages/contracts/src/testing/model-fixtures.js");
-  const { collectModelRefs } = await import("../../../normalizers/traceability/traceability-normalizer.js");
+  const { modelFixture } = await import("@uml-platform/contracts/testing");
+  const { collectModelRefs } = await import("@uml-platform/contracts");
   const prototype = modelFixture("requirements", "prototype") as any;
   const malformed = structuredClone(prototype); malformed.relationships[0] = "expected object, received string";
   const declared = collectModelRefs([prototype]).refs.map(target => ({ ruleId: rule.id, target }));

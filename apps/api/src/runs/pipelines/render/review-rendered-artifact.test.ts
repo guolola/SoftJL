@@ -1,9 +1,9 @@
 // Verifies pre-render structure repairs and rendering without SVG mapping or PNG image review.
-import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getStageModelSchemas, validateModelInput, type ModelingStage, type DiagramModelSpec, type ProviderSettings } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../../llm.js";
+import type { LlmTransport } from "../../../adapters/llm/llm-transport.js";
 import type { RenderClient } from "../../../adapters/render/render-client.js";
 import { createEmptySnapshot } from "../../records/snapshots.js";
 import type { RunRecord } from "../../records/run-record-store.js";
@@ -11,7 +11,7 @@ import { renderArtifactWithRepair } from "./render-artifact-with-repair.js";
 import { reviewRenderedArtifact } from "./review-rendered-artifact.js";
 import { DiagramReviewRenderError } from "./review-rendered-artifact.js";
 import { deriveTableModel, type DesignDiagramModelSpec } from "@uml-platform/contracts";
-import { modelFixture } from "../../../../../../packages/contracts/src/testing/model-fixtures.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
 import { generateDesignPlantUmlArtifacts } from "../../../adapters/plantuml/model-renderer.js";
 import { RunCancelledError } from "../../records/run-cancellation.js";
 import { createCallActivity } from "../shared/call-activity.js";
@@ -19,7 +19,7 @@ import { ModelGenerationConversation } from "../shared/model-generation-conversa
 import { createMessages } from "../shared/llm-messages.js";
 import { parseDesignDiagramModelsResult } from "../../../normalizers/design/design-model-normalizer.js";
 import { assertDesignMappings } from "../shared/model-mapping-validation.js";
-import { collectModelRefs } from "../../../normalizers/traceability/traceability-normalizer.js";
+import { collectModelRefs } from "@uml-platform/contracts";
 import { designModelTraceabilityEntrySchema } from "@uml-platform/contracts";
 
 function repairTransport(candidate?: DesignDiagramModelSpec): LlmTransport {
@@ -258,8 +258,7 @@ test("structural review rejects the retired complete-model envelope instead of u
 });
 
 async function rendered(input: RunRecord) {
-  const unused: LlmTransport = { async *streamChatCompletion() { throw new Error("unexpected repair"); } };
-  const value = await renderArtifactWithRepair(input, settings, unused, renderClient, model, { diagramKind: "usecase", source: "@startuml\n@enduml" });
+  const value = await renderArtifactWithRepair(input, renderClient, model, { diagramKind: "usecase", source: "@startuml\n@enduml" });
   assert.equal(value.status, "success");
   if (value.status !== "success") throw new Error("render failed");
   return value;

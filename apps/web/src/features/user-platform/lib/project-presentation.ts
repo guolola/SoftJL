@@ -45,7 +45,7 @@ export const PROJECT_SCOPE_OPTIONS = [
 ] as const;
 
 function displayNameFromUser(user: PlatformUser | null | undefined) {
-  return user?.displayName?.trim() || user?.username?.split("@")[0] || user?.id || "";
+  return user?.displayName?.trim() || user?.username || user?.id || "";
 }
 
 function compactOwnerLabel(ownerUserId: string) {

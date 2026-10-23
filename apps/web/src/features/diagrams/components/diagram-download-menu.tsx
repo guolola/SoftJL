@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { UmlDiagramKind } from "@uml-platform/contracts";
-import { useWorkspaceRepository } from "../../../services/workspace-repository";
+import { useWorkspaceRepository } from "../../../services/workspace-repository/index";
 import { downloadBlobFile, downloadTextFile } from "../../../shared/lib/download";
 import { Button } from "../../../shared/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "../../../shared/ui/dropdown-menu";

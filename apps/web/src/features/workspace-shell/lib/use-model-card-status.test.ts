@@ -1,7 +1,7 @@
 // Covers artifact availability, stale state and retained-output failures in card/session integration.
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createWorkspaceRecord } from "../../../test/workspace-test-utils";
+import { createWorkspaceRecord } from "../../../../tests/helpers/workspace-test-utils";
 import type { GenerationTask } from "../../workspace-session/model/session-state";
 import { useModelCardStatus } from "./use-model-card-status";
 

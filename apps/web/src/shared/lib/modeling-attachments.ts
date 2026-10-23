@@ -1,7 +1,7 @@
 // Shares bounded text/image attachment conversion across both modeling workflows.
 import { SimpleImageAttachmentAdapter, SimpleTextAttachmentAdapter, type AttachmentAdapter, type CompleteAttachment } from "@assistant-ui/react";
 import { standardAttachmentSchema, type StandardAttachment } from "@uml-platform/contracts";
-import { i18n } from "../i18n";
+import { i18n } from "../i18n/index";
 
 const image = new SimpleImageAttachmentAdapter();
 const text = new SimpleTextAttachmentAdapter();

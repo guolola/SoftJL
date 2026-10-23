@@ -1,6 +1,6 @@
+// Derives the project generation lineage graph from the workspace session state.
 import { requirementModelSources, type RequirementRuleType } from "@uml-platform/contracts";
 import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
-// Derives the project generation lineage graph from the workspace session state.
 import {
   designDiagramKindFromRecordKey,
   type DesignDiagramKind,
@@ -17,7 +17,6 @@ import {
   type DesignDiagramType,
   type DiagramType,
 } from "../../../entities/diagram/model";
-import type { RequirementRule } from "../../../entities/requirement-rule/model";
 
 import type { PlatformRunSummary } from "../../user-platform/services/platform-api";
 import {
@@ -109,12 +108,6 @@ export type LineageGraph = {
   defaultSelectedNodeId: string | null;
 };
 
-export type LineageColumn = {
-  id: LineageStage;
-  label: string;
-  nodes: LineageNode[];
-};
-
 export type LineageGraphInput = Pick<
   WorkspaceSessionState,
   | "requirementText"
@@ -135,7 +128,7 @@ export type LineageGraphInput = Pick<
   | "staleDesignDiagrams"
   | "staleDesignModelIds"
   | "designStaleReasons"
-  | "designTraceabilityStale"
+
   | "designGenerationBlockedReason"
   |     "generationTasks"
   | "historyItems"
@@ -187,7 +180,6 @@ function requirementNodeId(diagram: DiagramType) {
 function designNodeId(diagram: DesignDiagramType) {
   return nodeId("design-model", diagram);
 }
-
 
 function documentNodeId(kind: DocumentKind) {
   return nodeId("document", kind);
@@ -294,7 +286,6 @@ function isRequirementHistorySnapshot(
 ): snapshot is RunSnapshot {
   return Boolean(
     snapshot &&
-      !("files" in snapshot) &&
       !("requirementModels" in snapshot) &&
       !("documentKind" in snapshot) &&
       "selectedDiagrams" in snapshot,
@@ -322,7 +313,6 @@ function interruptedRunSummary(
     ? `服务中断，可重试。${detail}`
     : "服务中断，请在生成任务中查看错误或重试。";
 }
-
 
 function failedRulesHistory(input: LineageGraphInput) {
   return input.historyItems.find((item) => {
@@ -352,7 +342,6 @@ function failedRulesSummary(item: LineageGraphInput["historyItems"][number] | un
     ? `需求规则抽取失败，旧规则仍可查看。${detail}`
     : "需求规则抽取失败，旧规则仍可查看，请在生成任务中查看错误或重试。";
 }
-
 
 function historyDocumentMissingArtifacts(
   item: LineageGraphInput["historyItems"][number],
@@ -628,7 +617,7 @@ function rulesStatus(input: LineageGraphInput): LineageNodeStatus {
   return "current";
 }
 
-function ruleReason(input: LineageGraphInput, _rule: RequirementRule) {
+function ruleReason(input: LineageGraphInput) {
   const failedRules = failedRulesHistory(input);
   if (failedRules) return failedRulesSummary(failedRules);
   if (input.rules.length === 0) return "尚未抽取需求规则。";
@@ -769,7 +758,6 @@ function designReason(
   if (status === "current") return `${label}为最新生成，可继续生成产物。`;
   return "尚未生成，生成后才能驱动代码或设计说明书。";
 }
-
 
 function documentStatus(input: LineageGraphInput, documentKind: DocumentKind): LineageNodeStatus {
   if (documentTaskActive(input, documentKind)) return "running";
@@ -929,7 +917,7 @@ function buildRuleNodes(input: LineageGraphInput): LineageNode[] {
       payload: { ruleId: rule.id, ruleKind: rule.type },
       description: rule.text,
       status,
-      reason: ruleReason(input, rule),
+      reason: ruleReason(input),
       actionLabel: statusActionLabel(status),
       hasViewableArtifact: true,
       upstreamIds: [],
@@ -1177,14 +1165,4 @@ export function collectLineagePath(
   visit(selectedNodeId, upstream);
   visit(selectedNodeId, downstream);
   return seen;
-}
-
-export function groupLineageColumns(
-  graph: Pick<LineageGraph, "nodes">,
-): LineageColumn[] {
-  return LINEAGE_STAGE_ORDER.map((stage) => ({
-    id: stage,
-    label: STAGE_LABELS[stage],
-    nodes: graph.nodes.filter((node) => node.stage === stage),
-  }));
 }

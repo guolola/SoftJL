@@ -1,7 +1,7 @@
 // Projects provenance only when the current artifact and its own timed generation events agree.
 import { runEventSchema, type RunEvent, type FeasibilityRunSnapshot } from '@uml-platform/contracts';
 import type { PlatformDocument, PlatformProjectMember, PlatformRunSummary } from '../../user-platform/services/platform-api';
-import type { RunHistorySnapshot } from '../../../entities/run-history';
+import type { RunHistorySnapshot } from '../../../entities/run-history/index';
 import type { WorkspaceSessionState } from '../../workspace-session/model/session-state';
 import type { LineageGraph, LineageNode } from './lineage-graph-model';
 

@@ -1,6 +1,6 @@
 // Defines personal invitation messages and recipient-only inbox actions.
 import { z } from "zod";
-import { usernameSchema } from "./auth-account.js";
+import { usernameSchema } from "./access/auth-account.js";
 
 export const inboxKindSchema = z.enum(["project", "admin"]);
 export const inboxMessageSchema = z.object({

@@ -1,7 +1,7 @@
 // Verifies provider health-check failures remain actionable without exposing upstream secrets.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ProviderHttpError } from "../llm.js";
+import { ProviderHttpError } from "../adapters/llm/llm-transport.js";
 import {
   classifyProviderTestFailure,
   providerTestError,

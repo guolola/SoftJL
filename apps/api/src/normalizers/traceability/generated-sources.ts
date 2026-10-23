@@ -1,6 +1,6 @@
 // Reads source declarations from complete model responses; omissions remain errors in the model conversation.
 import { designModelTraceabilityEntrySchema, requirementModelTraceabilityEntrySchema, type DiagramModelSpec, type DesignDiagramModelSpec } from "@uml-platform/contracts";
-import { collectModelRefs } from "./traceability-normalizer.js";
+import { collectModelRefs } from "@uml-platform/contracts";
 import { isPlainRecord } from "../json/parse-json.js";
 import { z } from "zod";
 

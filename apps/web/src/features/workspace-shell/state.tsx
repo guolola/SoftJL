@@ -109,8 +109,6 @@ export type WorkspaceSelection =
     }
   ;
 
-
-
 export interface WorkspaceTab {
   id: string;
   label: string;
@@ -121,13 +119,10 @@ interface WorkspaceShellState {
   selection: WorkspaceSelection;
   openTabs: WorkspaceTab[];
   activeTabId: string;
-  openWorkspaceTab: (selection: WorkspaceSelection) => void;
-  activateWorkspaceTab: (tabId: string) => void;
-  restoreWorkspaceTabs: (tabs: WorkspaceTab[], activeTabId: string) => void;
-  closeWorkspaceTab: (tabId: string) => void;
-  closeOtherWorkspaceTabs: (tabId: string) => void;
-  closeWorkspaceTabsByStage: (tabId: string) => void;
-  openSystemRequirements: () => void;
+
+restoreWorkspaceTabs: (tabs: WorkspaceTab[], activeTabId: string) => void;
+
+openSystemRequirements: () => void;
   openRequirementsText: () => void;
   openFeasibilityHome: (options?: {
     initialSelectedArtifacts?: FeasibilityArtifactKind[];
@@ -135,9 +130,8 @@ interface WorkspaceShellState {
   openFeasibilityBusinessFlow: () => void;
   openFeasibilityContext: () => void;
   openFeasibilityContextTrace: () => void;
-  openFeasibilityContextElements: () => void;
-  openFeasibilityContextRelations: () => void;
-  openFeasibilityContextElement: (
+
+openFeasibilityContextElement: (
     elementKind: string,
     elementId: string,
     label: string,
@@ -321,48 +315,6 @@ function createWorkspaceTab(selection: WorkspaceSelection): WorkspaceTab {
   };
 }
 
-export type WorkspaceStage = "system-requirements" | "feasibility" | "requirements" | "design" | "test" | "documents";
-
-export function stageForSelection(selection: WorkspaceSelection): WorkspaceStage {
-  switch (selection.kind) {
-    case "system-requirements":
-      return "system-requirements";
-    case "feasibility-home":
-    case "feasibility-business-flow":
-    case "feasibility-business-flow-trace":
-    case "feasibility-business-flow-elements":
-    case "feasibility-business-flow-relations":
-    case "feasibility-business-flow-element":
-    case "feasibility-business-flow-relationship":
-    case "feasibility-context":
-    case "feasibility-context-trace":
-    case "feasibility-context-elements":
-    case "feasibility-context-relations":
-    case "feasibility-context-element":
-    case "feasibility-context-relationship":
-    case "feasibility-implementation":
-      return "feasibility";
-    case "requirements-text":
-    case "requirement-trace-matrix":
-    case "diagram":
-    case "diagram-element":
-    case "diagram-relationship":
-      return "requirements";
-    case "design-home":
-    case "design-trace-matrix":
-    case "design-diagram":
-    case "design-diagram-element":
-    case "design-diagram-relationship":
-      return "design";
-    case "test-home":
-      return "test";
-    case "documents-home":
-    case "document-editor":
-      return "documents";
-    
-  }
-}
-
 export function WorkspaceShellProvider({ children }: { children: ReactNode }) {
   const defaultTab = useMemo(() => createWorkspaceTab(DEFAULT_SELECTION), []);
   const [openTabs, setOpenTabs] = useState<WorkspaceTab[]>([defaultTab]);
@@ -382,11 +334,7 @@ export function WorkspaceShellProvider({ children }: { children: ReactNode }) {
     setActiveTabId(tab.id);
   }, []);
 
-  const activateWorkspaceTab = useCallback((tabId: string) => {
-    setActiveTabId(tabId);
-  }, []);
-
-  // Guided tours may visit several stages; restore the exact prior tab set on exit.
+// Guided tours may visit several stages; restore the exact prior tab set on exit.
   const restoreWorkspaceTabs = useCallback((tabs: WorkspaceTab[], previousActiveTabId: string) => {
     const restored = tabs.length ? tabs : [defaultTab];
     setOpenTabs(restored);
@@ -395,58 +343,7 @@ export function WorkspaceShellProvider({ children }: { children: ReactNode }) {
       : restored[0].id);
   }, [defaultTab]);
 
-  const closeWorkspaceTab = useCallback(
-    (tabId: string) => {
-      setOpenTabs((current) => {
-        const closingIndex = current.findIndex((tab) => tab.id === tabId);
-        if (closingIndex < 0) return current;
-        if (current.length === 1) {
-          setActiveTabId(defaultTab.id);
-          return [defaultTab];
-        }
-
-        const next = current.filter((tab) => tab.id !== tabId);
-        if (activeTabId === tabId) {
-          const nextActive = next[Math.min(closingIndex, next.length - 1)];
-          setActiveTabId(nextActive?.id ?? defaultTab.id);
-        }
-        return next;
-      });
-    },
-    [activeTabId, defaultTab],
-  );
-
-  const closeOtherWorkspaceTabs = useCallback(
-    (tabId: string) => {
-      setOpenTabs((current) => {
-        const target = current.find((tab) => tab.id === tabId) ?? defaultTab;
-        setActiveTabId(target.id);
-        return [target];
-      });
-    },
-    [defaultTab],
-  );
-
-  const closeWorkspaceTabsByStage = useCallback(
-    (tabId: string) => {
-      setOpenTabs((current) => {
-        const target = current.find((tab) => tab.id === tabId);
-        if (!target) return current;
-        const targetStage = stageForSelection(target.selection);
-        const next = current.filter((tab) => {
-          if (tab.id === target.id) return true;
-          return stageForSelection(tab.selection) !== targetStage;
-        });
-        if (!next.some((tab) => tab.id === activeTabId)) {
-          setActiveTabId(target.id);
-        }
-        return next.length > 0 ? next : [defaultTab];
-      });
-    },
-    [activeTabId, defaultTab],
-  );
-
-  const openSystemRequirements = useCallback(() => {
+const openSystemRequirements = useCallback(() => {
     openWorkspaceTab({ kind: "system-requirements", label: "系统需求" });
   }, [openWorkspaceTab]);
 
@@ -466,9 +363,8 @@ export function WorkspaceShellProvider({ children }: { children: ReactNode }) {
   const openFeasibilityBusinessFlow = useCallback(() => openWorkspaceTab({ kind: "feasibility-business-flow", label: "业务流程图" }), [openWorkspaceTab]);
   const openFeasibilityContext = useCallback(() => openWorkspaceTab({ kind: "feasibility-context", label: "系统环境图" }), [openWorkspaceTab]);
   const openFeasibilityContextTrace = useCallback(() => openWorkspaceTab({ kind: "feasibility-context-trace", label: "上下文跟踪矩阵" }), [openWorkspaceTab]);
-  const openFeasibilityContextElements = useCallback(() => openWorkspaceTab({ kind: "feasibility-context-elements", label: "上下文元素" }), [openWorkspaceTab]);
-  const openFeasibilityContextRelations = useCallback(() => openWorkspaceTab({ kind: "feasibility-context-relations", label: "上下文关系" }), [openWorkspaceTab]);
-  const openFeasibilityContextElement = useCallback((elementKind: string, elementId: string, label: string) => {
+
+const openFeasibilityContextElement = useCallback((elementKind: string, elementId: string, label: string) => {
     openWorkspaceTab({ kind: "feasibility-context-element", elementKind, elementId, label });
   }, [openWorkspaceTab]);
   const openFeasibilityContextRelationship = useCallback((relationshipId: string, label: string) => {
@@ -630,29 +526,24 @@ export function WorkspaceShellProvider({ children }: { children: ReactNode }) {
     [openWorkspaceTab],
   );
 
-  
-
   const value = useMemo(
     () => ({
       selection,
       openTabs,
       activeTabId,
-      openWorkspaceTab,
-      activateWorkspaceTab,
-      restoreWorkspaceTabs,
-      closeWorkspaceTab,
-      closeOtherWorkspaceTabs,
-      closeWorkspaceTabsByStage,
-      openSystemRequirements,
+
+restoreWorkspaceTabs,
+
+openSystemRequirements,
       openRequirementsText,
       openFeasibilityHome,
       openFeasibilityBusinessFlow,
       openFeasibilityContext,
       openFeasibilityContextTrace,
       openFeasibilityBusinessFlowTrace,
-      openFeasibilityContextElements,
+
       openFeasibilityBusinessFlowElements,
-      openFeasibilityContextRelations,
+
       openFeasibilityBusinessFlowRelations,
       openFeasibilityContextElement,
       openFeasibilityBusinessFlowElement,
@@ -683,9 +574,9 @@ export function WorkspaceShellProvider({ children }: { children: ReactNode }) {
       openFeasibilityContext,
       openFeasibilityContextTrace,
       openFeasibilityBusinessFlowTrace,
-      openFeasibilityContextElements,
+
       openFeasibilityBusinessFlowElements,
-      openFeasibilityContextRelations,
+
       openFeasibilityBusinessFlowRelations,
       openFeasibilityContextElement,
       openFeasibilityBusinessFlowElement,
@@ -693,13 +584,10 @@ export function WorkspaceShellProvider({ children }: { children: ReactNode }) {
       openFeasibilityBusinessFlowRelationship,
       openFeasibilityImplementation,
       openRequirementTraceMatrix,
-      openWorkspaceTab,
-      activateWorkspaceTab,
-      restoreWorkspaceTabs,
-      closeWorkspaceTab,
-      closeOtherWorkspaceTabs,
-      closeWorkspaceTabsByStage,
-      openDiagram,
+
+restoreWorkspaceTabs,
+
+openDiagram,
       openDesignHome,
       openDesignTraceMatrix,
       openTestHome,
@@ -720,10 +608,6 @@ export function WorkspaceShellProvider({ children }: { children: ReactNode }) {
       {children}
     </WorkspaceShellContext.Provider>
   );
-}
-
-export function useOptionalWorkspaceShell() {
-  return useContext(WorkspaceShellContext);
 }
 
 export function useWorkspaceShell() {

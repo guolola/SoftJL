@@ -79,8 +79,6 @@ const RUN_STATUS_LABEL = {
 } as const;
 
 
-
-
 const topBarActionButtonClass =
   "size-9 shrink-0";
 
@@ -122,14 +120,11 @@ function shellRouteTranslationKey(route: string) {
   return route === "/projects" ? "projects" : (SHELL_ROUTE_TRANSLATION_KEYS[route] ?? "workspace");
 }
 
-
 function normalizeRunStatus(status: string): keyof typeof RUN_STATUS_LABEL {
   return status in RUN_STATUS_LABEL
     ? (status as keyof typeof RUN_STATUS_LABEL)
     : "idle";
 }
-
-
 
 function isActiveProjectRun(run: PlatformRunSummary) {
   return run.status === "queued" || run.status === "running";

@@ -18,5 +18,3 @@ void i18n.use(initReactI18next).init({
     useSuspense: false,
   },
 });
-
-export type TranslationKey = Parameters<typeof i18n.t>[0];

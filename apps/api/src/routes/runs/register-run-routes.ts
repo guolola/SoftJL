@@ -22,7 +22,7 @@ import {
   type StartDesignRunRequest,
   type StartDocumentRunRequest,
 } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../llm.js";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 import type { ModelCatalog } from "../../provider-configs/model-catalog.js";
 import { modelingInputError } from "../../runs/providers/modeling-input-validation.js";
 import { emptyRequirementTokenUsage } from "../../runs/records/requirement-token-usage.js";

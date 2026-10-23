@@ -3,12 +3,12 @@ import { createHttpErrorResponse } from "../../server/http-error-response.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { documentStyleSettingsSchema, standardAnswerSchema, standardModelSchema, standardAttachmentSchema, standardQuoteSchema, type StandardProjectState } from "@uml-platform/contracts";
+import { documentStyleSettingsSchema, standardAnswerSchema, standardAttachmentSchema, standardQuoteSchema, standardOperationSchema, type StandardProjectState } from "@uml-platform/contracts";
 import type { DocumentLibrary } from "../../documents/library/document-library.js";
 import { publishStandardDocument } from "../../documents/standard/publish-standard-document.js";
 import { requireProjectPermission, isProjectPermissionError } from "../../auth/guards.js";
 import type { AuthStore } from "../../auth/in-memory-auth-store.js";
-import type { LlmTransport } from "../../llm.js";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 import type { RenderClient } from "../../adapters/render/render-client.js";
 import { createScheduledLlmTransport, type LlmScheduler } from "../../adapters/llm/llm-scheduler.js";
 import type { ProviderConfigStore } from "../../provider-configs/provider-config-store.js";
@@ -21,6 +21,7 @@ import { readStandardState, updateStandardState, recoverInterruptedStandardRun }
 import { interruptStandardRunMessages } from "../../runs/records/standard-run-messages.js";
 import { runStandardProject, renderStandardDiagram } from "../../runs/pipelines/standard/standard-project-pipeline.js";
 import { runStandardAgent } from "../../runs/pipelines/standard/standard-agent-pipeline.js";
+import type { StandardAgentExtensionOptions } from "../../runs/pipelines/standard/standard-agent-resources.js";
 import { prepareStandardAgentTurn } from "../../runs/pipelines/standard/standard-agent-turn.js";
 import { resolveStandardScopeAnswers } from "../../runs/pipelines/standard/standard-generation-scope.js";
 import { createStandardPiStream } from "../../adapters/llm/pi-provider.js";
@@ -34,17 +35,16 @@ import { createRunRecordStore, type RunRecordStore } from "../../runs/records/ru
 import { startStandardRunRecord, syncStandardRunRecord } from "../../runs/records/standard-run-record.js";
 
 const commandSchema = z.object({
-  operation: z.enum(["chat", "edit", "regenerate", "prepare", "generate", "retry", "resume", "tests", "requirementsSpec", "softwareDesignSpec"]),
+  operation: standardOperationSchema,
   messageId: z.string().min(1).max(160).optional(), expectedHeadId: z.string().min(1).max(160).optional(), language: z.enum(["zh-CN", "en"]).optional(),
   requestId: z.string().uuid().optional(), resumeRunId: z.string().optional(),
   message: z.string().trim().min(1).max(60000).optional(),
   reasoning: z.boolean().optional(), attachments: z.array(standardAttachmentSchema).max(4).optional(), quote: standardQuoteSchema.optional(),
-  description: z.string().trim().min(1).max(60000).optional(),
   answers: z.array(standardAnswerSchema).max(3).optional(), useRecommendations: z.boolean().optional(),
   diagramId: z.string().max(160).optional(),
   documentStyle: documentStyleSettingsSchema.optional(),
   providerSettings: z.object({ providerConfigId: z.string().min(1), model: z.string().min(1) }),
-});
+}).strict();
 const publicState = ({ piSession: _privateSession, acceptedCommands: _receipts, ...state }: StandardProjectState) => state;
 const active = (state: StandardProjectState) => state.run?.status === "running";
 
@@ -56,6 +56,7 @@ export function registerStandardProjectRoutes(deps: {
   analyticsStore?: RunTelemetryStore;
   documentLibrary?: DocumentLibrary;
   modelCatalog?: ModelCatalog;
+  agentExtensions?: StandardAgentExtensionOptions;
 }) {
   const { app, authStore } = deps;
   const runs = deps.runs ?? createRunRecordStore();
@@ -156,9 +157,8 @@ export function registerStandardProjectRoutes(deps: {
     if (command.operation === "resume" && (!current.run || current.run.id !== command.resumeRunId || !["stopped", "failed"].includes(current.run.status))) return reply.code(409).send(createHttpErrorResponse(reply));
     if (["chat", "edit", "regenerate"].includes(command.operation) && !command.message && !command.attachments?.length && !command.useRecommendations && !command.answers?.length) return reply.code(400).send(createHttpErrorResponse(reply));
     if (command.operation === "edit" && !command.message && !command.attachments?.length) return reply.code(400).send(createHttpErrorResponse(reply));
-    if (command.operation === "prepare" && !(command.description || current.description).trim()) return reply.code(400).send(createHttpErrorResponse(reply));
     if (active(current)) return reply.code(409).send(createHttpErrorResponse(reply));
-    if (!["prepare", "chat", "edit", "regenerate", "resume"].includes(command.operation) && !current.outline) return reply.code(400).send(createHttpErrorResponse(reply));
+    if (!["chat", "edit", "regenerate", "resume"].includes(command.operation) && !current.outline) return reply.code(400).send(createHttpErrorResponse(reply));
     if (command.operation === "retry" && !current.diagrams[command.diagramId ?? ""]) return reply.code(400).send(createHttpErrorResponse(reply));
     const metadata = { projectId, userId: context.user.id, createdAt: new Date().toISOString() };
     const runAccessGuard = { resolveRunAccess: async () => ({ userId: context.user.id, username: context.user.username }) };
@@ -242,13 +242,13 @@ export function registerStandardProjectRoutes(deps: {
           publishDocument: deps.documentLibrary ? (state: StandardProjectState, kind: "requirementsSpec" | "softwareDesignSpec") => publishStandardDocument({ state, kind, projectId, userId: context.user.id, library: deps.documentLibrary!, render: deps.pngRenderClient, signal: controller.signal }) : undefined };
         const effectiveCommand = command.operation !== "resume" ? command
           : current.run!.work ? { operation: "resume" as const, targetIds: current.run!.work.ids, instruction: current.run!.work.instruction }
-          : ["tests", "requirementsSpec", "softwareDesignSpec", "prepare"].includes(current.run!.resumeOperation ?? current.run!.operation) ? { ...command, documentStyle: current.run!.documentStyle, operation: (current.run!.resumeOperation ?? current.run!.operation) as "tests" | "requirementsSpec" | "softwareDesignSpec" | "prepare" }
+          : ["tests", "requirementsSpec", "softwareDesignSpec"].includes(current.run!.resumeOperation ?? current.run!.operation) ? { ...command, documentStyle: current.run!.documentStyle, operation: (current.run!.resumeOperation ?? current.run!.operation) as "tests" | "requirementsSpec" | "softwareDesignSpec" }
           : { operation: "chat" as const, message: "继续上次停止的任务。先读取已保存状态，只处理尚未完成的内容，不重新生成已完成图表。" };
         if (["chat", "edit", "regenerate"].includes(effectiveCommand.operation)) {
           const stream = createStandardPiStream({ settings: resolution.providerSettings, scheduler: deps.llmScheduler,
             context: { runId, projectId, userId: context.user.id, providerConfigId, model: resolution.providerSettings.model, taskType },
             signal: controller.signal, beforeRequest, analyticsStore: deps.analyticsStore });
-          await runStandardAgent(projectId, effectiveCommand, initial, { ...pipeline, stream, signal: controller.signal, capacity });
+          await runStandardAgent(projectId, effectiveCommand, initial, { ...pipeline, ...deps.agentExtensions, stream, signal: controller.signal, capacity });
         } else await runStandardProject(effectiveCommand, initial, pipeline);
         await save(state => { state.run = { ...state.run!, status: "completed", finishedAt: new Date().toISOString() }; });
       } catch (error) {
@@ -277,7 +277,7 @@ export function registerStandardProjectRoutes(deps: {
     const diagram = current.diagrams[diagramId];
     if (!diagram) return reply.code(404).send(createHttpErrorResponse(reply));
     try {
-      const rendered = await renderStandardDiagram({ ...diagram, model: standardModelSchema.parse(request.body) }, deps.renderClient);
+      const rendered = await renderStandardDiagram({ ...diagram, model: request.body }, deps.renderClient);
       const state = await updateStandardState(authStore, projectId, context.user.id, state => {
         if (active(state) || JSON.stringify(state.diagrams[diagramId]) !== JSON.stringify(diagram)) throw new Error("当前图已变化，请刷新后再保存");
         state.diagrams[diagramId] = rendered;

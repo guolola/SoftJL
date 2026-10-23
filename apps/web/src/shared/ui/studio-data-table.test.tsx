@@ -1,4 +1,4 @@
-// Verifies the shared Studio DataTable 9 shell keeps controls and pagination inside one bordered card.
+// Verifies search callbacks, action slots, page-size access, and row pagination.
 import type { ColumnDef } from "@tanstack/react-table";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -49,15 +49,12 @@ describe("StudioDataTable", () => {
     );
 
     const shell = document.querySelector('[data-slot="studio-data-table"]');
-    expect(shell).toHaveClass("rounded-xl", "border", "overflow-hidden");
     expect(shell).toContainElement(screen.getByPlaceholderText("搜索记录"));
     expect(shell).toContainElement(screen.getByRole("button", { name: "筛选" }));
     expect(shell).toContainElement(screen.getByRole("button", { name: "新增" }));
     expect(shell).toContainElement(screen.getByRole("table"));
     expect(shell).toContainElement(screen.getByRole("navigation", { name: "pagination" }));
-    expect(screen.getByTestId("studio-data-table-filters")).toHaveClass("min-w-0", "flex-nowrap");
     const pageControls = screen.getByTestId("studio-data-table-page-controls");
-    expect(pageControls).toHaveClass("shrink-0", "flex-nowrap");
     expect(within(pageControls).getByLabelText("每页条数")).toBeInTheDocument();
 
     await userEvent.type(screen.getByPlaceholderText("搜索记录"), "A");

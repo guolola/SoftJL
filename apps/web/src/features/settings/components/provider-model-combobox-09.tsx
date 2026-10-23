@@ -87,7 +87,7 @@ export function ProviderModelCombobox09({ models, value, onValueChange, disabled
           anchorRef={anchorRef}
           placeholder={t(items.length ? 'providerSettings.selectAllowedModel' : 'providerSettings.fetchModelsFirst')}
           icon={selectedModel && <ProviderIcon providerId={inferProviderModelGroup(selectedModel, '').id} />}
-          modeBadge={selectedModel && <ModelOutputModeBadge mode={capabilities.get(selectedModel)!.structuredOutputMode} />}
+          modeBadge={selectedModel && capabilities.get(selectedModel) && <ModelOutputModeBadge mode={capabilities.get(selectedModel)!.structuredOutputMode} />}
           triggerLabel={t('providerSettings.toggleModels')}
           disabled={disabled || items.length === 0}
         />
@@ -106,7 +106,7 @@ export function ProviderModelCombobox09({ models, value, onValueChange, disabled
                 <span className='flex min-w-0 flex-1 flex-col'>
                   <span className='truncate font-medium'>{model}</span>
                 </span>
-                <ModelOutputModeBadge mode={capabilities.get(model)!.structuredOutputMode} />
+              {capabilities.get(model) && <ModelOutputModeBadge mode={capabilities.get(model)!.structuredOutputMode} />}
               </ComboboxItem>
             )}
           </ComboboxList>

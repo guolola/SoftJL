@@ -87,6 +87,17 @@ test("postgres provider repository creates managed configs without storing plain
   assert.match(client.calls[1]?.sql ?? "", /insert into provider_secrets/i);
   assert.match(client.calls[2]?.sql ?? "", /insert into audit_logs/i);
   assert.doesNotMatch(JSON.stringify(client.calls), /sk-live-secret-a91f/);
+
+  const ciphertext = String(client.calls[1]?.params[2]);
+  client.queueRows([{ secret_ciphertext: ciphertext }]);
+  assert.equal(await repository.getSecret(created.id), "sk-live-secret-a91f");
+
+  // Authentication must still reject a changed payload after sharing the storage implementation.
+  const [iv, tag, encrypted] = ciphertext.split(".");
+  const changed = Buffer.from(encrypted!, "base64");
+  changed[0] = changed[0]! ^ 1;
+  client.queueRows([{ secret_ciphertext: `${iv}.${tag}.${changed.toString("base64")}` }]);
+  await assert.rejects(repository.getSecret(created.id));
 });
 
 test("postgres provider repository infers provider labels for public custom HTTPS URLs", async () => {

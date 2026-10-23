@@ -31,7 +31,7 @@ const DEFAULT_LOCAL_CORS_ORIGINS = [
   "http://127.0.0.1:4003",
 ];
 const DEFAULT_JAR_PATH = fileURLToPath(
-  new URL("../../../plantuml/build/libs/plantuml-1.2026.3beta8.jar", import.meta.url),
+  new URL("../../../plantuml/plantuml-1.2026.3beta8.jar", import.meta.url),
 );
 const DEFAULT_JAVA_ARGS = ["-Xmx128m"];
 

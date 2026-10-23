@@ -1,4 +1,5 @@
 // Checks project-mode isolation, membership permissions and durable clarification through the real HTTP boundary.
+import { modelReviewFixtures, standardModelFixture } from "@uml-platform/contracts/testing";
 import assert from "node:assert/strict";
 import test from "node:test";
 import Fastify from "fastify";
@@ -11,11 +12,72 @@ import { createFileDocumentLibrary } from "../../documents/library/document-libr
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
-import { createStandardProjectState, type StandardProjectState } from "@uml-platform/contracts";
+import { createStandardProjectState, standardDiagramKinds, validateStandardModel, type StandardProjectState } from "@uml-platform/contracts";
 import { ModelCatalog } from "../../provider-configs/model-catalog.js";
 import { restoreStandardSession } from "../../runs/records/standard-agent-session.js";
 import { createRunRecordStore } from "../../runs/records/run-record-store.js";
 import { conversationTurnMarker } from "../../runs/records/standard-conversation-revision.js";
+
+test("HTTP model edits retain native sequence fragments and reject obsolete, unknown and mismatched payloads", async t => {
+  const app = Fastify(); const authStore = createInMemoryAuthStore();
+  const owner = authStore.createUser({ username: "nativemodel", displayName: "Owner", passwordHash: "test" })!;
+  const cookie = `uml_session=${authStore.createSession({ userId: owner.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
+  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Models", description: null, projectMode: "standard" });
+  const state = createStandardProjectState();
+  const model = validateStandardModel("sequence", modelReviewFixtures("design", "sequence")[1]!.model);
+  state.diagrams.sequence = { id: "sequence", kind: "sequence", title: "业务时序", status: "completed", model };
+  const workspace = authStore.getProjectWorkspace(project.id);
+  authStore.saveProjectWorkspace({ projectId: project.id, baseVersion: workspace.version, updatedByUserId: owner.id, state: { standardProject: state } });
+  let renders = 0;
+  registerStandardProjectRoutes({ app, authStore, providerConfigs: createProviderConfigStore({ secret: "test" }), llmScheduler: createInMemoryLlmScheduler(),
+    llmTransport: { async *streamChatCompletion() { throw new Error("Editing must not call a model"); } },
+    renderClient: async artifact => { renders++; assert.match(artifact.source, /\balt\b/); assert.match(artifact.source, /\bloop\b/);
+      return { svg: "<svg>native</svg>", renderMeta: { engine: "test", generatedAt: "now", sourceLength: artifact.source.length, durationMs: 1 } }; },
+    pngRenderClient: async () => { throw new Error("No document conversion"); } });
+  t.after(() => app.close());
+  const url = `/api/projects/${project.id}/standard/diagrams/sequence`;
+  const response = await app.inject({ method: "PUT", url, headers: { cookie }, payload: model });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.deepEqual(response.json().state.diagrams.sequence.model, model);
+  for (const payload of [{ nodes: [], edges: [] }, { ...model, unexpected: true }, standardModelFixture("class")]) {
+    const invalid = await app.inject({ method: "PUT", url, headers: { cookie }, payload });
+    assert.equal(invalid.statusCode, 400, invalid.body);
+  }
+  assert.equal(renders, 1, "invalid edits must fail before rendering or overwriting the saved model");
+  const saved = authStore.getProjectWorkspace(project.id).state as { standardProject: StandardProjectState };
+  assert.deepEqual(saved.standardProject.diagrams.sequence.model, model);
+});
+
+test("HTTP saves all eight current models and rejects old payloads before rendering or writing", async t => {
+  const app = Fastify(); const authStore = createInMemoryAuthStore();
+  const owner = authStore.createUser({ username: "eightmodels", displayName: "Owner", passwordHash: "test" })!;
+  const cookie = `uml_session=${authStore.createSession({ userId: owner.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
+  const { project } = authStore.createProject({ ownerUserId: owner.id, name: "Eight models", description: null, projectMode: "standard" });
+  const state = createStandardProjectState();
+  for (const kind of standardDiagramKinds) state.diagrams[kind] = { id: kind, kind, title: kind, status: "completed", model: standardModelFixture(kind) };
+  const workspace = authStore.getProjectWorkspace(project.id);
+  authStore.saveProjectWorkspace({ projectId: project.id, baseVersion: workspace.version, updatedByUserId: owner.id, state: { standardProject: state } });
+  const renders: string[] = [];
+  registerStandardProjectRoutes({ app, authStore, providerConfigs: createProviderConfigStore({ secret: "test" }), llmScheduler: createInMemoryLlmScheduler(),
+    llmTransport: { async *streamChatCompletion() { throw new Error("No LLM for structural edits"); } },
+    renderClient: async artifact => { renders.push(artifact.modelId); return { svg: "<svg>current</svg>", renderMeta: { engine: "test", generatedAt: "now", sourceLength: artifact.source.length, durationMs: 1 } }; },
+    pngRenderClient: async () => { throw new Error("No document conversion"); } });
+  t.after(() => app.close());
+  for (const kind of standardDiagramKinds) {
+    const url = `/api/projects/${project.id}/standard/diagrams/${kind}`;
+    const model = standardModelFixture(kind);
+    const saved = await app.inject({ method: "PUT", url, headers: { cookie }, payload: model });
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.deepEqual(saved.json().state.diagrams[kind].model, JSON.parse(JSON.stringify(model)));
+    for (const payload of [{ nodes: [], edges: [] }, { ...model, edges: [] }]) {
+      const rejected = await app.inject({ method: "PUT", url, headers: { cookie }, payload });
+      assert.equal(rejected.statusCode, 400, rejected.body);
+    }
+    const after = (await app.inject({ url: `/api/projects/${project.id}/standard`, headers: { cookie } })).json();
+    assert.deepEqual(after.state.diagrams[kind].model, JSON.parse(JSON.stringify(model)));
+  }
+  assert.deepEqual(renders, [...standardDiagramKinds]);
+});
 
 test("model context reads canonical catalog capacity without requiring output metadata or starting a paid call", async t => {
   const app = Fastify(); const authStore = createInMemoryAuthStore();
@@ -59,9 +121,11 @@ test("acknowledges chat with its durable user message before model execution and
   const config = providerConfigs.create({ name: "test", baseUrl: "https://example.test", apiKey: "test", defaultModel: "test", allowedModels: ["test"], createdBy: "test" });
   const scheduler = createInMemoryLlmScheduler();
   const runs = createRunRecordStore();
+  let extensionStarts = 0;
   // Stop at the scheduling boundary: this test must never contact an external provider.
   scheduler.run = async () => { throw new Error("test queue stopped"); };
   registerStandardProjectRoutes({ app, runs, authStore, providerConfigs, llmScheduler: scheduler,
+    agentExtensions: { extensionFactories: [pi => { pi.on("session_start", () => { extensionStarts++; }); }] },
     llmTransport: { async *streamChatCompletion() { throw new Error("unexpected model call"); } },
     renderClient: async () => { throw new Error("unexpected rendering"); }, pngRenderClient: async () => { throw new Error("unexpected rendering"); } });
   t.after(() => app.close());
@@ -89,6 +153,7 @@ test("acknowledges chat with its durable user message before model execution and
   // Failed model calls still occupy the same accepted-message task.
   for (let i = 0; i < 100 && !run.terminal; i++) await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(run.snapshot.status, "failed");
+  assert.equal(extensionStarts, 1, "HTTP commands use the extensions supplied by server composition");
   assert.ok(run.metadata?.completedAt);
   const second = await app.inject({ method: "POST", url, headers: { cookie }, payload: { ...payload, requestId: "22222222-2222-4222-8222-222222222222", message: "再来一条消息" } });
   assert.equal(second.statusCode, 202, second.body);
@@ -175,7 +240,7 @@ test("revision commands require current history, valid user content and stored a
   assert.deepEqual(persisted.conversation, state.conversation); assert.equal(persisted.run, undefined); assert.equal(calls, 0);
 });
 
-test("ordinary endpoints require membership and trusted ordinary mode, preserve questions, and prevent forged state", async t => {
+test("ordinary endpoints require membership and trusted mode, persist current tests, and prevent forged state", async t => {
   const app = Fastify(); const authStore = createInMemoryAuthStore();
   const owner = authStore.createUser({ username: "owner", displayName: "Owner", passwordHash: "test" })!;
   const other = authStore.createUser({ username: "other", displayName: "Other", passwordHash: "test" })!;
@@ -192,7 +257,7 @@ test("ordinary endpoints require membership and trusted ordinary mode, preserve 
   });
   registerProjectRoutes({ app, authStore });
   registerStandardProjectRoutes({ app, authStore, providerConfigs, documentLibrary, llmScheduler: createInMemoryLlmScheduler(),
-    llmTransport: { async *streamChatCompletion() { calls++; yield JSON.stringify({ kind: "questions", questions: [{ id: "q1", title: "谁可以借阅？", options: ["学生", "所有用户"], recommendation: "学生" }] }); } },
+    llmTransport: { async *streamChatCompletion() { calls++; yield JSON.stringify({ tests: [{ id: "borrow", businessId: "borrowing", title: "学生借阅", scenarioType: "normal", priority: "P2", preconditions: [], steps: ["提交借阅申请"], expected: "借阅成功" }] }); } },
     renderClient: async () => { throw new Error("No rendering during clarification"); },
     pngRenderClient: async () => { throw new Error("No PNG during clarification"); },
   });
@@ -200,7 +265,13 @@ test("ordinary endpoints require membership and trusted ordinary mode, preserve 
   const created = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie }, payload: { name: "普通版" } });
   assert.equal(created.statusCode, 201); assert.equal(created.json().project.projectMode, "standard");
   const projectId = created.json().project.id;
-  const { project: pro } = authStore.createProject({ ownerUserId: owner.id, name: "旧项目", description: null });
+  const initial = createStandardProjectState("图书系统");
+  initial.outline = { title: "图书系统", summary: "图书借阅", roles: [{ id: "student", name: "学生", description: "借阅图书" }],
+    businesses: [{ id: "borrowing", name: "借阅", roleIds: ["student"], description: "借阅图书", steps: ["提交申请"], exceptions: [] }],
+    entities: [{ id: "book", name: "图书", attributes: ["编号"] }], relationships: [], modules: ["图书借阅"], assumptions: [] };
+  initial.diagrams.usecase = { id: "usecase", kind: "usecase", title: "用例图", status: "completed", model: standardModelFixture("usecase"), svg: "<svg/>" };
+  authStore.saveProjectWorkspace({ projectId, baseVersion: 0, updatedByUserId: owner.id, state: { standardProject: initial } });
+  const { project: pro } = authStore.createProject({ ownerUserId: owner.id, name: "旧项目", description: null,  });
   const path = `/api/projects/${projectId}/standard`;
   const capacityUrl = `${path.replace(/\/standard$/, "")}/model-context?providerConfigId=${config.id}&model=test`;
   assert.equal((await app.inject({ url: capacityUrl })).statusCode, 401);
@@ -212,8 +283,13 @@ test("ordinary endpoints require membership and trusted ordinary mode, preserve 
   assert.equal((await app.inject({ url: `${path.replace(/\/standard$/, "")}/model-context?providerConfigId=${config.id}&model=unconfigured`, headers: { cookie } })).statusCode, 400);
   assert.equal((await app.inject({ method: "GET", url: path })).statusCode, 401);
   assert.equal((await app.inject({ method: "GET", url: path, headers: { cookie: outsider } })).statusCode, 403);
-  assert.equal((await app.inject({ method: "POST", url: `/api/projects/${pro.id}/standard`, headers: { cookie }, payload: { operation: "prepare", projectMode: "standard" } })).statusCode, 409);
-  const payload = JSON.stringify({ operation: "prepare", requestId: "11111111-1111-4111-8111-111111111111", description: "图书系统", providerSettings: { providerConfigId: config.id, model: "test" } });
+  assert.equal((await app.inject({ method: "POST", url: `/api/projects/${pro.id}/standard`, headers: { cookie }, payload: { operation: "tests", projectMode: "standard" } })).statusCode, 409);
+  const providerSettings = { providerConfigId: config.id, model: "test" };
+  const obsolete = await app.inject({ method: "POST", url: path, headers: { cookie }, payload: { operation: "prepare", description: "图书系统", providerSettings } });
+  assert.equal(obsolete.statusCode, 400);
+  assert.equal((await app.inject({ method: "POST", url: path, headers: { cookie }, payload: { operation: "chat", message: "你好", description: "旧独立需求", providerSettings } })).statusCode, 400);
+  assert.equal(calls, 0, "obsolete workflow commands must fail before calling the provider");
+  const payload = JSON.stringify({ operation: "tests", requestId: "11111111-1111-4111-8111-111111111111", providerSettings });
   // Browser fetch defaults string bodies to text/plain unless the API wrapper declares JSON.
   const invalid = await app.inject({ method: "POST", url: path, headers: { cookie, "content-type": "text/plain;charset=UTF-8" }, payload });
   assert.equal(invalid.statusCode, 400);
@@ -227,7 +303,7 @@ test("ordinary endpoints require membership and trusted ordinary mode, preserve 
     await new Promise(resolve => setTimeout(resolve, 5));
   }
   assert.equal(state.run.status, "completed", JSON.stringify(state));
-  assert.equal(state.rounds[0].questions[0].id, "q1"); assert.equal(calls, 1);
+  assert.equal(state.tests[0].id, "borrow"); assert.equal(calls, 1);
   const repeated = await app.inject({ method: "POST", url: path, headers: { cookie, "content-type": "application/json" }, payload });
   assert.equal(repeated.statusCode, 200); assert.equal(repeated.json().state.run.id, state.run.id);
   assert.equal(calls, 1, "replaying an accepted command must return the existing task");
@@ -259,7 +335,7 @@ test("ordinary endpoints require membership and trusted ordinary mode, preserve 
   } });
   const publish = `${path}/documents/requirementsSpec/publish`;
   assert.equal((await app.inject({ method: "POST", url: publish, headers: { cookie } })).statusCode, 404);
-  const documents = await documentLibrary.listDocuments(`project-${projectId}`);
+  const documents = await documentLibrary.listAllDocuments({ projectId });
   assert.equal(documents.length, 1);
   assert.equal(documents[0].sourceRunId, null);
   await documentLibrary.updateDocumentBuffer(`project-${projectId}`, document.id, Buffer.from("edited Word document"));
@@ -277,7 +353,6 @@ test("stop preserves completed artifacts and continuation resumes only the saved
   const providerConfigs = createProviderConfigStore({ secret: "test" });
   const config = providerConfigs.create({ name: "test", baseUrl: "https://ai.comfly.org", apiKey: "test", defaultModel: "test", allowedModels: ["test"], createdBy: "test" });
   const providerSettings = { providerConfigId: config.id, model: "test" };
-  const node = { id: "book", type: "class", label: "Book", fields: [], methods: [] };
   const state: StandardProjectState = { ...createStandardProjectState("system"), outline: { title: "System", summary: "Borrow", roles: [{ id: "user", name: "User", description: "Borrow" }], businesses: [{ id: "borrow", name: "Borrow", roleIds: ["user"], description: "Borrow", steps: ["Submit"], exceptions: [] }], entities: [{ id: "book", name: "Book", attributes: ["ID"] }], modules: ["Books"], relationships: [], assumptions: [] },
     diagrams: { function: { id: "function", kind: "function", title: "Keep", status: "completed", svg: "<svg>keep</svg>" }, class: { id: "class", kind: "class", title: "Class", status: "failed" } } };
   const workspace = authStore.getProjectWorkspace(project.id);
@@ -289,7 +364,7 @@ test("stop preserves completed artifacts and continuation resumes only the saved
       if (block) await new Promise<void>((_, reject) => {
         const abort = () => reject(new Error("stopped")); input.abortSignal?.addEventListener("abort", abort, { once: true }); if (input.abortSignal?.aborted) abort();
       });
-      yield JSON.stringify({ nodes: [node], edges: [] });
+      yield JSON.stringify(standardModelFixture("class"));
     } },
     renderClient: async () => ({ svg: "<svg>new</svg>", renderMeta: { engine: "test", generatedAt: "now", sourceLength: 1, durationMs: 1 } }),
     pngRenderClient: async () => { throw new Error("No documents"); },

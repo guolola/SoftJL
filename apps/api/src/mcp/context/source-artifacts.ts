@@ -4,7 +4,6 @@ import { z } from "zod";
 import {
   requirementRuleSchema,
   requirementBaselineSchema,
-  requirementBaselineTraceEntries,
   diagramModelSpecSchema,
   designDiagramModelSpecSchema,
   requirementModelTraceabilityEntrySchema,
@@ -127,22 +126,19 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
     });
   }
   const baseline = requirementBaselineSchema.nullable().parse(state.requirementBaseline ?? null);
-  const snapshotRequirements = baseline ? requirementBaselineTraceEntries(baseline) : [];
+  const snapshotRules = baseline?.rules ?? [];
   const rules = parsedItems(requirementRuleSchema, state.rules);
-  for (const requirement of snapshotRequirements) {
+  for (const requirement of snapshotRules) {
     add(
       {
-        id: `requirement:${requirement.id}`,
+        id: `requirement:${requirement.requirementId}`,
         stage: "requirements",
-        title: requirement.action,
-        requirementIds: [
-          requirement.id,
-          ...(requirement.sourceRuleId ? [requirement.sourceRuleId] : []),
-        ],
+        title: requirement.text,
+        requirementIds: [requirement.requirementId, requirement.id],
         dependencies: [],
         sourceConsistency: "unknown",
         issues: [],
-        payload: { requirement: { id: requirement.id, sourceRuleId: requirement.sourceRuleId, text: requirement.action,
+        payload: { requirement: { id: requirement.requirementId, sourceRuleId: requirement.id, text: requirement.text,
           ...(requirement.sourceFragment ? { sourceFragment: requirement.sourceFragment } : {}) } },
       },
       state.requirementInputFingerprint,
@@ -150,14 +146,14 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
     );
   }
   for (const rule of rules) {
-    const linked = snapshotRequirements.filter((req) => req.sourceRuleId === rule.id);
+    const linked = snapshotRules.filter((req) => req.id === rule.id);
     add(
       {
         id: `rule:${rule.id}`,
         stage: "requirements",
         title: rule.id,
-        requirementIds: [rule.id, ...linked.map((req) => req.id)],
-        dependencies: linked.map((req) => `requirement:${req.id}`),
+        requirementIds: [rule.id, ...linked.map((req) => req.requirementId)],
+        dependencies: linked.map((req) => `requirement:${req.requirementId}`),
         sourceConsistency: "unknown",
         issues: [],
         payload: { rule },
@@ -397,7 +393,7 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
         staleChanged = true;
       }
   }
-  if (!snapshotRequirements.length && !rules.length)
+  if (!snapshotRules.length && !rules.length)
     issues.push("尚无结构化需求与验收条件，可先根据原始需求实现明确的部分。");
   return {
     artifacts: artifacts.sort((a, b) => a.id.localeCompare(b.id)),

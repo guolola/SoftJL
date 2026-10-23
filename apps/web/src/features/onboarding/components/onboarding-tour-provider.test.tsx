@@ -1,18 +1,20 @@
 // Exercises account-triggered tours, workspace navigation, and exit restoration.
 import type { ReactNode } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import confetti from "canvas-confetti";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AppI18nProvider } from "../../../shared/i18n";
+import { AppI18nProvider } from "../../../shared/i18n/index";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
 import { SidebarProvider } from "../../../shared/ui/sidebar";
 import { WorkspaceShellProvider, useWorkspaceShell } from "../../workspace-shell/state";
 import { AuthenticatedRouteSessionProvider } from "../../user-platform/components/authenticated-route-session";
 import { ProjectsIndexPage } from "../../user-platform/components/projects-index-page";
+import { AuthenticatedRoute } from "../../user-platform/components/user-platform-pages";
 import { platformApi } from "../../user-platform/services/platform-api";
 import { useProjectOnboarding } from "../hooks/use-project-onboarding";
 import { OnboardingTourProvider } from "./onboarding-tour-provider";
+import { hasPendingProjectIntroduction, queueProjectIntroduction } from "../../../shared/lib/project-introduction";
 
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }));
 
@@ -70,7 +72,7 @@ const session = {
 
 function renderEmptyIndex() {
   return render(<AppI18nProvider><OnboardingTourProvider>
-    <AuthenticatedRouteSessionProvider value={{ user, session }}>
+    <AuthenticatedRouteSessionProvider value={{ user, session, mfa: { enabled: false, enforcement: "totp" } }}>
       <ProjectsIndexPage onNavigate={() => {}} />
     </AuthenticatedRouteSessionProvider>
   </OnboardingTourProvider></AppI18nProvider>);
@@ -103,6 +105,7 @@ function renderProject(projectId = "project-first") {
 
 describe("first-use onboarding", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.restoreAllMocks();
     vi.mocked(confetti).mockClear();
     window.innerWidth = 1440;
@@ -139,6 +142,49 @@ describe("first-use onboarding", () => {
     expect(screen.queryByRole("dialog", { name: "工作台引导" })).not.toBeInTheDocument();
     await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining("未能保存")));
     expect(confetti).not.toHaveBeenCalled();
+  });
+
+  it("starts the first engineering guide after the loader exits even when a quick project was created first", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.spyOn(platformApi, "me").mockResolvedValue({ user, session, mfa: { enabled: false, enforcement: "totp" } });
+    const getState = vi.spyOn(platformApi, "getOnboardingState").mockResolvedValue({
+      emptyWorkspace: null, firstProject: null, firstProjectId: "quick-project-first",
+    });
+    queueProjectIntroduction("project-first", "professional");
+    const advance = async (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+    try {
+      render(<AppI18nProvider><SidebarProvider><WorkspaceShellProvider><OnboardingTourProvider>
+        <AuthenticatedRoute routeKey="/projects/project-first" showLoadingScreen onNavigate={vi.fn()}>
+          <ProjectHarness projectId="project-first" />
+        </AuthenticatedRoute>
+      </OnboardingTourProvider></WorkspaceShellProvider></SidebarProvider></AppI18nProvider>);
+      await advance(0);
+      expect(screen.getByTestId("platform-loading-screen")).toHaveAttribute("data-loading-phase", "loading");
+      expect(getState).not.toHaveBeenCalled();
+      await advance(800);
+      expect(screen.getByTestId("platform-loading-screen")).toHaveAttribute("data-loading-phase", "completing");
+      expect(screen.queryByRole("dialog", { name: "工作台引导" })).not.toBeInTheDocument();
+      await advance(120);
+      expect(screen.getByTestId("platform-loading-screen")).toHaveAttribute("data-loading-phase", "exiting");
+      expect(getState).not.toHaveBeenCalled();
+      await advance(520);
+      expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: "工作台引导" })).toBeInTheDocument();
+      expect(screen.getByText("输入系统需求")).toBeInTheDocument();
+      expect(getState).toHaveBeenCalledTimes(1);
+      expect(hasPendingProjectIntroduction("project-first", "professional")).toBe(false);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(["skipped", "completed"] as const)("does not restart the engineering guide after the account outcome is %s", async outcome => {
+    const getState = vi.spyOn(platformApi, "getOnboardingState").mockResolvedValue({
+      emptyWorkspace: null, firstProject: outcome, firstProjectId: "quick-project-first",
+    });
+    queueProjectIntroduction("project-first", "professional");
+    renderProject();
+    await waitFor(() => expect(getState).toHaveBeenCalled());
+    expect(screen.queryByRole("dialog", { name: "工作台引导" })).not.toBeInTheDocument();
+    expect(hasPendingProjectIntroduction("project-first", "professional")).toBe(false);
   });
   it("restores desktop tabs after stage navigation and skip", async () => {
     vi.spyOn(platformApi, "getOnboardingState").mockResolvedValue({

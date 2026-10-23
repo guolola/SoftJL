@@ -62,7 +62,8 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "sonner": "^2.0.8",
-    "zustand": "^5.0.15"
+    "zustand": "^5.0.15",
+    "tw-shimmer": "^0.4.14"
   },
   "devDependencies": {
     "@eslint/js": "9.27.0",
@@ -83,6 +84,7 @@
     "typescript-eslint": "8.71.2",
     "vite": "6.4.4",
     "vitest": "4.1.11",
-    "@types/matter-js": "^0.20.2"
+    "@types/matter-js": "^0.20.2",
+    "@uml-platform/demo-fixtures": "0.0.1"
   }
 }

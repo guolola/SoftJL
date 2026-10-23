@@ -22,6 +22,11 @@ const errors = [];
 
 const kebabCase = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const fixedNames = new Set(["README.md", "AGENTS.md", "SKILL.md"]);
+// GitHub discovers these protocol files by their conventional paths and names.
+const githubProtocolFiles = new Set([
+  ".github/CONTRIBUTING.md", ".github/SECURITY.md",
+  ".github/CODE_OF_CONDUCT.md", ".github/pull_request_template.md",
+]);
 const processNamePattern = /(?:^|-)(?:plan|audit|final|followup|fixes)(?:-|$)|20\d{2}-\d{2}-\d{2}/;
 
 function report(file, message) {
@@ -44,6 +49,7 @@ function headingsOutsideFences(content) {
 }
 
 function validateNames(file) {
+  if (githubProtocolFiles.has(file)) return;
   const segments = file.split("/");
   const basename = segments.at(-1);
   const stem = basename.slice(0, -3);
@@ -117,7 +123,7 @@ for (const file of markdownFiles) {
   const h2s = validateHeadings(file, content);
   validateLinks(file, content);
 
-  if (!fixedNames.has(path.basename(file)) && !content.trimStart().startsWith("<!--")) {
+  if (!fixedNames.has(path.basename(file)) && !githubProtocolFiles.has(file) && !content.trimStart().startsWith("<!--")) {
     report(file, "非协议 Markdown 必须以简短职责注释开头");
   }
   if (file === "README.md") requireSections(file, h2s, englishReadmeSections);
@@ -128,7 +134,7 @@ for (const file of markdownFiles) {
       if (!content.includes(field)) report(file, `缺少元信息：${field}`);
     }
   }
-  if (componentReadmes.has(file)) requireSections(file, h2s, componentSections);
+  if (componentReadmes.has(file) || /^(?:apps|packages)\/[^/]+\/README\.md$/.test(file)) requireSections(file, h2s, componentSections);
 
   if (content.includes("软件工程实验平台")) report(file, "仍包含旧产品名“软件工程实验平台”");
   if (/[A-Za-z]:\\(?:Users|Documents|Downloads|Desktop)\\/i.test(content)) {

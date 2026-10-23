@@ -1,45 +1,11 @@
 // Defines the workspace repository contract shared by HTTP, mock, and React provider adapters.
-import type {
-  GenerationExecutionMode,
-  UmlDiagramKind,
-
-  DesignDiagramModelSpec,
-  DesignRunSnapshot,
-  DesignSvgArtifact,
-  DiagramVisualReview,
-  DiagramModelSpec,
-  DocumentLibraryItem,
-  DocumentRunSnapshot,
-  RenderStructuredModelResponse,
-  RenderSvgResponse,
-  RunEventInput,
-  RunSnapshot,
-  SvgArtifact,
-  FeasibilityRunSnapshot,
-  FeasibilityInputs,
-  FeasibilityImplementationPlan,
-  ContextDiagramSpec,
-  ContextTraceRow,
-} from "@uml-platform/contracts";
+import type { GenerationExecutionMode, UmlDiagramKind, DesignDiagramModelSpec, DesignRunSnapshot, DesignSvgArtifact, DiagramModelSpec, DocumentLibraryItem, DocumentRunSnapshot, RenderStructuredModelResponse, RunEventInput, RunSnapshot, SvgArtifact, FeasibilityRunSnapshot, FeasibilityInputs, FeasibilityImplementationPlan, ContextDiagramSpec, ContextTraceRow } from "@uml-platform/contracts";
 import type { DiagramType } from "../../entities/diagram/model";
-import type {
-  ManualModelEditStatus,
-  WorkspaceRecord,
-} from "../../entities/workspace/model";
+import type { ManualModelEditStatus, WorkspaceRecord } from "../../entities/workspace/model";
 import type { RequirementRule } from "../../entities/requirement-rule/model";
-import type {
-  RunHistoryItem,
-  RunHistorySnapshot,
-} from "../../entities/run-history";
-import type { ModelCapability } from "../../shared/lib/provider-model-display";
-import type {
-  ProviderSettingsInput,
+import type { RunHistoryItem, RunHistorySnapshot } from "../../entities/run-history/index";
 
-  StartDesignRunInput,
-  StartDocumentRunInput,
-  StartFeasibilityRunInput,
-  StartRunInput,
-} from "./start-inputs";
+import type { StartDesignRunInput, StartDocumentRunInput, StartFeasibilityRunInput, StartRunInput } from "./start-inputs";
 
 export interface RequirementRulesUpdateMetadata {
   sourceRunId?: string;
@@ -65,7 +31,7 @@ export interface WorkspaceRepository {
     capabilities: string[];
     generationExecutionMode?: GenerationExecutionMode;
   }>;
-  updateRequirementText(text: string): Promise<void>;
+
   updateFeasibility?(patch: Partial<{
     inputs: FeasibilityInputs;
     contextModel: ContextDiagramSpec | null;
@@ -94,9 +60,8 @@ export interface WorkspaceRepository {
   updateTestGenerationResult?(
     result: WorkspaceRecord["testGenerationResult"],
   ): Promise<void>;
-  confirmVisualReview?(key: string, checkedAt: string): Promise<DiagramVisualReview>;
-  confirmVisualReview?(key: string, checkedAt: string): Promise<DiagramVisualReview>;
-  startRun(input: StartRunInput): Promise<{ runId: string }>;
+
+startRun(input: StartRunInput): Promise<{ runId: string }>;
   cancelRun?(runId: string): Promise<void>;
   startDesignRun?(input: StartDesignRunInput): Promise<{ runId: string }>;
 
@@ -122,18 +87,11 @@ export interface WorkspaceRepository {
 
   getDocumentRunSnapshot?(runId: string): Promise<DocumentRunSnapshot>;
   listDocuments?(): Promise<DocumentLibraryItem[]>;
-  downloadDocumentRun?(
-    runId: string,
-    defaultFileName?: string,
-  ): Promise<{ blob: Blob; fileName: string }>;
+
   downloadDocument?(
     documentId: string,
     defaultFileName?: string,
   ): Promise<{ blob: Blob; fileName: string }>;
-  renderPlantUml(
-    diagramKind: DiagramType,
-    plantUmlSource: string,
-  ): Promise<RenderSvgResponse>;
   renderStructuredModel?(
     model: DiagramModelSpec | DesignDiagramModelSpec,
     stage: "feasibility" | "requirements" | "design",
@@ -161,17 +119,13 @@ export interface WorkspaceRepository {
       svgArtifact: SvgArtifact | DesignSvgArtifact;
     },
   ): Promise<void>;
-  testProviderSettings(providerSettings: ProviderSettingsInput): Promise<{
-    ok: boolean;
-    message: string;
-    capability: ModelCapability;
-  }>;
+
   saveRunHistory(
     snapshot: RunHistorySnapshot,
     meta: { providerModel: string; durationMs?: number },
   ): Promise<RunHistoryItem>;
-  listRunHistory(): Promise<RunHistoryItem[]>;
-  getRunHistoryItem?(id: string): Promise<RunHistoryItem | null>;
+  listRunHistory(options?: { maxAgeMs?: number }): Promise<RunHistoryItem[]>;
+
   deleteRunHistory(id: string): Promise<RunHistoryItem[]>;
-  clearRunHistory(): Promise<void>;
+
 }

@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { documentRunSnapshotSchema, type RunEventInput, type RunStage } from "@uml-platform/contracts";
-import { createRunSnapshot } from "../../../test/workspace-test-utils";
+import { createRunSnapshot } from "../../../../tests/helpers/workspace-test-utils";
 import { ProjectGenerationTasksDrawerContent } from "./project-generation-tasks";
 
 const mocks = vi.hoisted(() => ({
@@ -64,11 +64,9 @@ describe("shared generation task recovery", () => {
     ];
     const { container } = render(<ProjectGenerationTasksDrawerContent projectId="project-a" preferredRunId="source-run" projectRuns={[{ operationType: (kind === "design" ? "design_modeling" as const : "requirement_modeling" as const), runId: "source-run", runKind: kind, status: "failed" }]} />);
     const button = screen.getByRole("button", { name: "重试出错模型" });
-    expect(button).toHaveClass("bg-primary", "text-primary-foreground");
     expect(screen.getAllByRole("button", { name: /重试/ })).toHaveLength(1);
     const summary = screen.getByRole("region", { name: "输出总结" });
     expect(summary).toHaveTextContent(`${label}：绘图器故障，请重试。`);
-    expect(summary).toHaveClass("text-sm", "leading-6", "text-destructive");
     fireEvent.click(screen.getByRole("button", { name: "思考过程" }));
     expect(screen.getAllByRole("button", { name: /重试/ })).toHaveLength(1);
     expect(container).not.toHaveTextContent("cf04");

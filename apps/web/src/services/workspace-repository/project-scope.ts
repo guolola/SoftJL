@@ -24,7 +24,6 @@ export function requireProjectScope(projectId: string | null) {
 export function withProjectHeaders<
   T extends RequestInit & {
     errorKey?: string;
-    errorMessage?: string;
     defaultFileName?: string;
   },
 >(projectId: string | null, options: T): T {

@@ -52,7 +52,7 @@ export function createRunQueueConfigFromEnv(
 ): RunQueueConfig | null {
   const mode = env.UML_RUN_QUEUE_MODE?.trim().toLowerCase();
   const redisUrl = env.REDIS_URL?.trim();
-  if (mode !== "bullmq" && env.UML_ENABLE_RUN_QUEUE !== "true") {
+  if (mode !== "bullmq") {
     return null;
   }
   if (!redisUrl) {

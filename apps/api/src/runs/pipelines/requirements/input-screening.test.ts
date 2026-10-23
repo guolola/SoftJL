@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProviderSettings } from "@uml-platform/contracts";
-import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
-import type { LlmTransport } from "../../../llm.js";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
+import type { LlmTransport } from "../../../adapters/llm/llm-transport.js";
 import { screenRequirementInput, splitRequirementInput } from "./input-screening.js";
 
 const providerSettings: ProviderSettings = { apiBaseUrl: "https://example.test", apiKey: "test", model: "test-model",

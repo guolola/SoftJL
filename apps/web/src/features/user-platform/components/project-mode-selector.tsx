@@ -4,6 +4,7 @@ import ChatIllustrations09 from "./illustrations/chat-illustrations-09";
 import BeamIllustrations31 from "./illustrations/beam-illustrations-31";
 import { RadioGroup, RadioGroupItem } from "../../../shared/ui/radio-group";
 import { cn } from "../../../shared/ui/utils";
+import { ProjectModeBadge } from "./project-mode-badge";
 
 type ProjectMode = "standard" | "professional";
 
@@ -34,7 +35,7 @@ export function ProjectModeSelector({ value, onChange, disabled = false }: {
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
                   <span className="block text-xs font-medium text-muted-foreground">{t(`projects.createForm.mode.${mode}Style`)}</span>
-                  <span id={`project-mode-${mode}-title`} className="block text-base font-semibold">{t(`projects.createForm.mode.${mode}`)}</span>
+                  <ProjectModeBadge mode={mode} id={`project-mode-${mode}-title`} />
                 </div>
                 <RadioGroupItem value={mode} aria-labelledby={`project-mode-${mode}-title`} aria-describedby={`project-mode-${mode}-description`} className="mt-1" />
               </div>

@@ -1,9 +1,10 @@
+import { roundTripRunRecordStore } from "../../../tests/fixtures/runs/run-record-round-trip.js";
 // Validates timed demo events, parallel attribution, recovery and cancellation without provider calls.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runEventSchema, startRunRequestSchema, type RunActivityEvent } from "@uml-platform/contracts";
 import { createEmptySnapshot, createEmptyDocumentSnapshot } from "../records/snapshots.js";
-import { createRunRecordStore, emitEvent, serializeRunRecordStore, type RunRecord } from "../records/run-record-store.js";
+import { createRunRecordStore, emitEvent, type RunRecord } from "../records/run-record-store.js";
 import { emitOfflineDemoActivity } from "./offline-demo-activity.js";
 import { completeOfflineDemoDesignRun, completeOfflineDemoRequirementRun, createOfflineDemoDocumentInput } from "./offline-demo-runs.js";
 import { fallbackDocumentSections } from "../../documents/context/document-context.js";
@@ -37,7 +38,7 @@ test("demo generation preserves ordinary output and labels fixture reasoning for
     assert.equal(call.at(-1)?.phase, "completed");
   }
   const store = createRunRecordStore(); store.set(run.snapshot.runId, run);
-  assert.deepEqual(createRunRecordStore(serializeRunRecordStore(store)).get(run.snapshot.runId)?.events, run.events);
+  assert.deepEqual(roundTripRunRecordStore(store).get(run.snapshot.runId)?.events, JSON.parse(JSON.stringify(run.events)));
   if (!("visualReviews" in run.snapshot)) throw new Error("fixture");
   const review = run.snapshot.visualReviews.activity;
   assert.equal(review.attempts, 0); assert.equal(review.repairAttempts, 0);

@@ -7,7 +7,7 @@ import type {
   DiagramModelSpec,
 } from "@uml-platform/contracts";
 import { buildAcceptedRequirementSnapshot, buildFeasibilityContextFingerprint, buildFeasibilityImplementationFingerprint, snapshotInputFingerprint, feasibilityInputsSchema } from "@uml-platform/contracts";
-import { createBusinessFlowArtifact } from "../../test-fixtures/feasibility/business-flow.js";
+import { createBusinessFlowArtifact } from "../../../tests/fixtures/feasibility/business-flow.js";
 import { createInMemoryAuthStore } from "../../auth/in-memory-auth-store.js";
 import {  createEmptyDesignSnapshot, createEmptyDocumentSnapshot, createEmptyFeasibilitySnapshot, createEmptySnapshot } from "../../runs/records/snapshots.js";
 import { emitEvent, type RunRecord } from "../../runs/records/run-record-store.js";
@@ -164,6 +164,10 @@ test("an edited design target stays intact while another generated branch is pub
   await authStore.saveProjectWorkspace({ projectId: project.id, baseVersion: current.version, updatedByUserId: user.id, sourceRunId: null,
     state: { ...current.state, designModels: { [manual.modelId!]: manual } } });
   snapshot.models = [designClassModel, interfaceModel];
+  snapshot.outputManifest = [
+    { kind: "model", id: "class:design", diagramKind: "class" },
+    { kind: "model", id: "navigation:design-interface-relations", diagramKind: "navigation" },
+  ];
   snapshot.status = "completed";
   await syncProjectWorkspace(record);
   const saved = (await authStore.getProjectWorkspace(project.id)).state;
@@ -256,6 +260,7 @@ test("terminal requirement snapshots auto-sync into project workspace", async ()
   const snapshot = createEmptySnapshot("run-requirement-sync", rule.text, ["usecase"], [rule], {
     models: [useCaseModel],
   });
+  snapshot.outputManifest = [{ kind: "model", id: "usecase", diagramKind: "usecase" }];
   snapshot.status = "completed";
   const record: RunRecord = {
     snapshot,
@@ -340,6 +345,7 @@ test("older same-kind terminal snapshots do not overwrite newer project workspac
     },
   );
   newerSnapshot.status = "completed";
+  newerSnapshot.outputManifest = [{ kind: "model", id: "usecase", diagramKind: "usecase" }];
   const olderSnapshot = createEmptySnapshot(
     "run-requirement-older",
     rule.text,
@@ -350,6 +356,7 @@ test("older same-kind terminal snapshots do not overwrite newer project workspac
     },
   );
   olderSnapshot.status = "completed";
+  olderSnapshot.outputManifest = [{ kind: "model", id: "usecase", diagramKind: "usecase" }];
   const newerRecord: RunRecord = {
     snapshot: newerSnapshot,
     events: [],
@@ -425,6 +432,12 @@ test("terminal design snapshots auto-sync successful design models into project 
     componentModel,
     deploymentModel,
   ];
+  snapshot.outputManifest = [
+    { kind: "model", id: "class:design", diagramKind: "class" },
+    { kind: "model", id: "navigation:design-interface-relations", diagramKind: "navigation" },
+    { kind: "model", id: "component:design", diagramKind: "component" },
+    { kind: "model", id: "deployment:design", diagramKind: "deployment" },
+  ];
   snapshot.status = "completed";
   const record: RunRecord = {
     snapshot,
@@ -493,8 +506,9 @@ test("terminal design snapshots do not pollute requirement fingerprints during a
     requirementBaseline: baseline,
     requirementModels: [{ ...useCaseModel, title: "设计快照旧用例模型" }],
     requirementModelTraceability: [],
-    existingDesignModels: [designClassModel],
   });
+  snapshot.models = [designClassModel];
+  snapshot.outputManifest = [{ kind: "model", id: "class:design", diagramKind: "class" }];
   snapshot.status = "completed";
 
   attachAndComplete(

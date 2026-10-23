@@ -17,7 +17,7 @@ import type {
   ManualModelEditStatus,
   WorkspaceRecord,
 } from "../../../entities/workspace/model";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import {
   pruneTraceabilityForDesignModels,
   pruneTraceabilityForRequirementModels,

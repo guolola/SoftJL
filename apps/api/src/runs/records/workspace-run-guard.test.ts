@@ -8,7 +8,7 @@ import { documentInputFromSnapshot } from "../pipelines/run-record-pipeline-star
 import { createQueuedRunFromSource } from "./run-actions.js";
 import { startDocumentRunRequestSchema } from "@uml-platform/contracts";
 import { createProjectRunAction } from "../actions/project-run-actions.js";
-import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
 function record(snapshot: RunRecord["snapshot"]): RunRecord { return { snapshot, metadata: { projectId: "p" }, events: [], listeners: new Set(), terminal: true }; }
 
 test("empty persisted rule fields match the browser's initial array without accepting real edits", () => {

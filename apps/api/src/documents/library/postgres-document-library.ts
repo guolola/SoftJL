@@ -198,49 +198,28 @@ async function recordVersion(db: Queryable, item: DocumentLibraryItem) {
 async function listRows(
   db: Queryable,
   options: {
-    workspaceId?: string;
     projectId?: string | null;
     filterProject?: boolean;
     includeDeleted?: boolean;
   },
 ) {
-  const result = options.workspaceId
-    ? await db.query<DocumentRecordRow>(
-        `
-          /* document_records:list_by_workspace */
-          select id, workspace_id, project_id, created_by_user_id, document_kind,
-            title, file_name, mime_type, byte_length, version, status, run_id,
-            source_run_id, storage_key, metadata, created_at, updated_at
-          from document_records
-          where workspace_id = $1
-            and ($4::boolean = false or project_id is not distinct from $2)
-            and ($3::boolean = true or status <> 'deleted')
-          order by updated_at desc
-        `,
-        [
-          options.workspaceId,
-          options.projectId ?? null,
-          options.includeDeleted === true,
-          options.filterProject === true,
-        ],
-      )
-    : await db.query<DocumentRecordRow>(
-        `
-          /* document_records:list_all */
-          select id, workspace_id, project_id, created_by_user_id, document_kind,
-            title, file_name, mime_type, byte_length, version, status, run_id,
-            source_run_id, storage_key, metadata, created_at, updated_at
-          from document_records
-          where ($3::boolean = false or project_id is not distinct from $1)
-            and ($2::boolean = true or status <> 'deleted')
-          order by updated_at desc
-        `,
-        [
-          options.projectId ?? null,
-          options.includeDeleted === true,
-          options.filterProject === true,
-        ],
-      );
+  const result = await db.query<DocumentRecordRow>(
+    `
+      /* document_records:list_all */
+      select id, workspace_id, project_id, created_by_user_id, document_kind,
+        title, file_name, mime_type, byte_length, version, status, run_id,
+        source_run_id, storage_key, metadata, created_at, updated_at
+      from document_records
+      where ($3::boolean = false or project_id is not distinct from $1)
+        and ($2::boolean = true or status <> 'deleted')
+      order by updated_at desc
+    `,
+    [
+      options.projectId ?? null,
+      options.includeDeleted === true,
+      options.filterProject === true,
+    ],
+  );
 
   return result.rows
     .map(rowToDocumentItem)
@@ -252,19 +231,7 @@ export function createPostgresDocumentLibrary({
   blobStorage,
 }: PostgresDocumentLibraryOptions): DocumentLibrary {
 
-  async function listDocuments(
-    workspaceId: string,
-    options?: { projectId?: string | null; includeDeleted?: boolean },
-  ) {
-    return listRows(db, {
-      workspaceId,
-      projectId: options?.projectId ?? null,
-      filterProject: options?.projectId !== undefined,
-      includeDeleted: options?.includeDeleted,
-    });
-  }
-
-  async function listAllDocuments(options?: {
+async function listAllDocuments(options?: {
     projectId?: string | null;
     includeDeleted?: boolean;
   }) {
@@ -436,7 +403,7 @@ export function createPostgresDocumentLibrary({
   }
 
   return {
-    listDocuments,
+
     listAllDocuments,
     getDocument,
     getDocumentBuffer,

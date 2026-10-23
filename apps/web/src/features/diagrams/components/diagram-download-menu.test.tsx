@@ -2,9 +2,9 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { AppI18nProvider } from "../../../shared/i18n";
+import { AppI18nProvider } from "../../../shared/i18n/index";
 import { i18n } from "../../../shared/i18n/i18n";
-import { WorkspaceRepositoryProvider, type WorkspaceRepository } from "../../../services/workspace-repository";
+import { WorkspaceRepositoryProvider, type WorkspaceRepository } from "../../../services/workspace-repository/index";
 import { createMockWorkspaceRepository } from "../../../services/workspace-repository/mock-repository";
 import { DiagramDownloadMenu } from "./diagram-download-menu";
 

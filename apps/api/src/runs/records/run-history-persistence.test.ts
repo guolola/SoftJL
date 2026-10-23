@@ -1,5 +1,5 @@
 // Exercises lazy history reads, compact lists and event cursors against PostgreSQL-compatible SQL.
-import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
@@ -73,6 +73,23 @@ test("persisted history remains complete without a process-wide snapshot/log cac
     assert.equal(store.size, 0);
     assert.equal(queries.length, 0);
   });
+  await t.test("lists paginate database metadata, preserve summaries and do not cache history", async () => {
+    const records = await store.listRecords!(["visible"]);
+    assert.equal(records.length, 209);
+    assert.equal(records.some(record => record.snapshot.runId === "private"), false);
+    assert.equal(store.size, 0);
+    assert.ok(queries.filter(sql => sql.includes("order by id asc limit 100")).length >= 3);
+    const record = records.find(record => record.snapshot.runId === "large")!;
+    assert.equal(record.events.length, 1);
+    assert.equal(record.events[0]?.type, "artifact_ready");
+    assert.doesNotMatch(JSON.stringify(record.events), /private-matrix|coverageMatrix/);
+    assert.equal(summarizeRunRecord(record).eventCount, 2003);
+    assert.equal(record.persist, undefined);
+    assert.deepEqual(runOutputView(record.snapshot).references, runOutputView(snapshot as unknown as RunRecord["snapshot"]).references);
+    assert.ok(JSON.stringify(record.snapshot).length < 3000);
+    assert.doesNotMatch(JSON.stringify(records), /private-key|private-prompt|private-image|private-body/);
+    assert.deepEqual(await store.listRecords!([]), []);
+  });
   await t.test("snapshot-only and filtered replay preserve total counts and terminal cursors", async () => {
     const plain = (await store.refreshRun("large", { events: "none" }))!;
     assert.equal(plain.events.length, 0);
@@ -99,8 +116,7 @@ test("persisted history remains complete without a process-wide snapshot/log cac
     assert.deepEqual(summarizeRunRecord(summary).derivedRunIds, ["derived"]);
   });
   await t.test("live local pipelines retain identity and completed writes release execution memory", async () => {
-    const live: RunRecord = { snapshot: createEmptySnapshot("local", "需求", []), events: [], listeners: new Set(), terminal: false,
-      conversationContext: { forkBranches() {}, commitValidatedBranch() {} } };
+    const live: RunRecord = { snapshot: createEmptySnapshot("local", "需求", []), events: [], listeners: new Set(), terminal: false, executionActive: true };
     store.set("local", live);
     await store.flush();
     assert.equal(await store.refreshRun("local"), live);

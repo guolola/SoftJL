@@ -1,5 +1,5 @@
 // Verifies model-level generation keeps failures and retries scoped to the affected diagram.
-import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
 import { assertCurrentRunSnapshot, createRequirementBaselineSnapshot, validateModelInput } from "@uml-platform/contracts";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -13,7 +13,7 @@ import type {
   RequirementModelTraceabilityEntry,
   RunSnapshot,
 } from "@uml-platform/contracts";
-import type { LlmTransport, StreamChatCompletionInput } from "../../llm.js";
+import type { LlmTransport, StreamChatCompletionInput } from "../../adapters/llm/llm-transport.js";
 import type { RenderClient } from "../../adapters/render/render-client.js";
 import { createEmptyDesignSnapshot, createEmptySnapshot } from "../records/snapshots.js";
 import type { RunRecord } from "../records/run-record-store.js";
@@ -1836,11 +1836,7 @@ test("requirement pipeline rejects empty rule extraction before model generation
         yield JSON.stringify({  rules: [] });
         return;
       }
-      if (prompt.includes("补充元素级可追踪关系") || prompt.includes("修复需求模型元素级可追踪关系")) {
-        traceabilityPromptCount += 1;
-        yield JSON.stringify({ requirementModelTraceability: [] });
-        return;
-      }
+      if (prompt.includes("补充元素级可追踪关系") || prompt.includes("修复需求模型元素级可追踪关系")) { traceabilityPromptCount += 1; assert.fail("当前模型生成必须随完整模型返回来源声明，不能发起独立追踪调用"); }
       yield JSON.stringify({
         models: [emptyDeploymentModel],
         requirementModelTraceability: [],

@@ -1,6 +1,6 @@
 // Calls the authenticated personal inbox API and its recipient-only actions.
 import type { InboxMessage, InboxResponse } from "@uml-platform/contracts";
-import { requestJson } from "../../services/api-client";
+import { requestJson } from "../../services/api-client/index";
 
 export const inboxApi = {
   list() { return requestJson<InboxResponse>("/api/inbox"); },

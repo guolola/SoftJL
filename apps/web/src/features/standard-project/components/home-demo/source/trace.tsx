@@ -2,17 +2,10 @@
 "use client";
 import { homeText, useHomeLocale } from "../integration/home-locale";
 
-
-import type { ToolCallMessagePartProps } from "@assistant-ui/react";
 import type { ReactNode } from "react";
 import { ShimmerLabel } from "./elements/surfaces";
 import { CollapsibleTrigger } from "./ui/collapsible";
-import {
-  TraceLine,
-  TraceMarker,
-  formatDuration,
-  useToolDuration,
-} from "./trace-line";
+import { TraceMarker } from "./trace-line";
 
 export const disclosureContentClass =
   "border-foreground/10 ms-[5px] border-s ps-4";
@@ -47,38 +40,5 @@ export function DisclosureTrigger({
         )}
       </span>
     </CollapsibleTrigger>
-  );
-}
-
-export function ToolCall({
-  toolName,
-  args,
-  status,
-}: ToolCallMessagePartProps): ReactNode {
-  useHomeLocale();
-  const isRunning = status?.type === "running";
-  const duration = useToolDuration(isRunning);
-  const searchQuery =
-    toolName === "search_docs" && typeof args.query === "string"
-      ? args.query
-      : undefined;
-
-  return (
-    <TraceLine
-      live={isRunning}
-      label={
-        searchQuery !== undefined
-          ? isRunning
-            ? homeText("searching")
-            : homeText("searched")
-          : isRunning
-            ? homeText("running")
-            : homeText("ran")
-      }
-      detail={
-        searchQuery !== undefined ? `the docs for “${searchQuery}”` : toolName
-      }
-      {...(duration !== null ? { meta: formatDuration(duration) } : {})}
-    />
   );
 }

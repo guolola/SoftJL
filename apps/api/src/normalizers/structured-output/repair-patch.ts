@@ -4,20 +4,26 @@ import { parseJson } from "../json/parse-json.js";
 
 const unsafe = new Set(["__proto__", "prototype", "constructor"]);
 export function repairPathParts(path: string) {
-  const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".");
-  if (!parts.length || parts.some(part => !part || unsafe.has(part))) throw new Error("修复补丁路径不合法");
+  const parts = path.split(".");
+  if (!parts.length || parts.some(part => !part || /[\[\]]/.test(part) || unsafe.has(part))) throw new Error("修复补丁路径不合法，必须使用点分路径");
   return parts;
 }
 export function valueAtRepairPath(value: unknown, path: string): unknown {
   return repairPathParts(path).reduce<any>((current, key) => current && typeof current === "object" ? current[key] : undefined, value);
 }
 export function applyGenerationPatch(before: unknown, response: unknown, targetId: string, allowedPaths: string[]) {
+  // Reject alternate envelopes instead of silently accepting mixed patch protocols.
+  if (!response || typeof response !== "object" || Array.isArray(response) ||
+    Object.keys(response).some(key => !["targetId", "baseFingerprint", "changes"].includes(key))) {
+    throw new Error("修复补丁只能包含 targetId、baseFingerprint 和 changes");
+  }
   const patch = response as { targetId?: string; baseFingerprint?: string; changes?: { path: string; value: unknown }[] };
   if (patch.targetId !== targetId || patch.baseFingerprint !== snapshotInputFingerprint(before)) throw new Error("修复补丁的任务或基础版本不匹配");
   if (!Array.isArray(patch.changes) || !patch.changes.length || patch.changes.length > 100) throw new Error("修复必须返回 1 至 100 个字段补丁");
   const candidate = structuredClone(before);
   for (const change of patch.changes) {
-    if (!change || typeof change.path !== "string" || !Object.hasOwn(change, "value")) throw new Error("修复补丁缺少路径或值");
+    if (!change || typeof change !== "object" || Array.isArray(change) || typeof change.path !== "string" || !Object.hasOwn(change, "value") ||
+      Object.keys(change).some(key => key !== "path" && key !== "value")) throw new Error("修复补丁字段只能包含路径和值");
     const parts = repairPathParts(change.path), canonical = parts.join(".");
     if (!allowedPaths.some(path => canonical === path || canonical.startsWith(path + "."))) throw new Error(`修复越过允许范围：${canonical}`);
     const last = parts.pop()!;

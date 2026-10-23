@@ -1,7 +1,7 @@
 // Retains one model task's exact messages while validation feedback requests complete replacements.
 import { MAX_GENERATION_REPAIR_ATTEMPTS } from "@uml-platform/contracts";
 import { buildModelRepairPrompt } from "@uml-platform/prompts";
-import type { ChatMessage } from "../../../llm.js";
+import type { ChatMessage } from "../../../adapters/llm/llm-transport.js";
 import { parseJson } from "../../../normalizers/json/parse-json.js";
 import { repairDiagnostics } from "../../../normalizers/structured-output/repair-diagnostics.js";
 import { restoreJsonPunctuation } from "../../../normalizers/structured-output/repair-patch.js";

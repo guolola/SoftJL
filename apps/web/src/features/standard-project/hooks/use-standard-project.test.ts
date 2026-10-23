@@ -5,7 +5,7 @@ import { createStandardProjectState, type StandardProjectState } from '@uml-plat
 import { useStandardProject } from './use-standard-project';
 import { standardApi } from '../services/standard-api';
 import { floatingAlert } from '../../../shared/ui/floating-alert';
-import { ApiClientError } from '../../../services/api-client';
+import { ApiClientError } from '../../../services/api-client/index';
 import { retainCommand, pendingCommand } from '../services/command-recovery';
 import { saveConversationDraft } from './use-conversation-draft';
 import { playCompletionChime, primeCompletionChime } from '../../../shared/lib/completion-chime';
@@ -145,10 +145,17 @@ it('removes a rejected pending message and preserves the unsent draft', async ()
   expect(JSON.parse(sessionStorage.getItem('uml-standard-draft:p')!).text).toBe('你好');
 });
 
+it('rejects saved preparation commands without rewriting them into current chat commands', () => {
+  const raw = JSON.stringify({ requestId: 'old-command', operation: 'prepare', description: '旧需求' });
+  sessionStorage.setItem('uml-standard-pending:p', raw);
+  expect(pendingCommand('p')).toBeNull();
+  expect(sessionStorage.getItem('uml-standard-pending:p')).toBe(raw);
+});
+
 it('keeps pending attachments, quotes and conversation isolated from another project', async () => {
   const state = createStandardProjectState('原始需求');
   state.conversation = [{ id: 'user', role: 'user', text: '原始需求', status: 'completed', createdAt: 'now' }];
-  state.run = { id: 'old', operation: 'prepare', status: 'completed', startedAt: 'now' };
+  state.run = { id: 'previous', operation: 'chat', status: 'completed', startedAt: 'now' };
   vi.mocked(standardApi.read).mockImplementation(async id => ({ state: id === 'p' ? state : createStandardProjectState() }));
   let finish!: (response: { state: StandardProjectState }) => void;
   vi.mocked(standardApi.start).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));

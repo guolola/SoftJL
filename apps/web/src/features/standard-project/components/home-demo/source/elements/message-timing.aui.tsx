@@ -3,7 +3,7 @@
 import { homeText, useHomeLocale } from "../../integration/home-locale";
 
 
-import { useMessageTiming } from "../../integration/message-timing";
+import { useMessageTiming } from "@assistant-ui/react";
 import {
   Tooltip,
   TooltipContent,

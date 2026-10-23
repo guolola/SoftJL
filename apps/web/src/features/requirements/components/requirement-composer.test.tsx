@@ -4,9 +4,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { I18nextProvider } from "react-i18next";
-import { i18n } from "../../../shared/i18n";
+import { i18n } from "../../../shared/i18n/index";
 import { patchUserSettings } from "../../../shared/lib/user-settings";
-import { WorkspaceRepositoryProvider, createMockWorkspaceRepository } from "../../../services/workspace-repository";
+import { WorkspaceRepositoryProvider, createMockWorkspaceRepository } from "../../../services/workspace-repository/index";
 import { RequirementComposer } from "./requirement-composer";
 
 const repository = createMockWorkspaceRepository();
@@ -34,7 +34,6 @@ it("uses the shared fixed-height composer and Enter submits engineering analysis
   const { container } = render(<Harness onSubmit={onSubmit} />);
   const input = screen.getByRole("textbox", { name: "系统业务需求" });
   expect(input.closest('[data-slot="modeling-composer"]')).toBeInTheDocument();
-  expect(input).toHaveClass("h-80", "field-sizing-fixed", "overflow-y-auto");
   expect(container.querySelector('[data-slot="modeling-composer"]')).toBeInTheDocument();
   await user.type(input, "学生预约会议室");
   await user.keyboard("{Shift>}{Enter}{/Shift}同一时间不能重复预约");

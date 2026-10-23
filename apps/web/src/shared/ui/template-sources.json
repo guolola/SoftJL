@@ -310,5 +310,11 @@
     "source": "user-provided:shadcn-studio/ui/autocomplete.tsx",
     "target": "src/shared/ui/autocomplete.tsx",
     "sha256": "05411b498124588fb302d8b11facc52de03bdf46b0ac0e18825a95487d19af09"
+  },
+  {
+    "template": "flow",
+    "source": "src/components/ui/chart.tsx",
+    "target": "src/shared/ui/chart.tsx",
+    "sha256": "80925894bdbaaf59aeec0af73ce7560f938fb3817ee7471eb385650169d066f9"
   }
 ]

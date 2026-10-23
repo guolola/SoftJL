@@ -17,7 +17,7 @@ export type UserSettings = {
   providerLabel: string;
   providerDefaultModelSeededFor: string;
   defaultModel: string;
-  autoGenerate: boolean;
+
   showStaleBanner: boolean;
   /** Plays a short chime when a top-level generation task completes. */
   completionSound: boolean;
@@ -30,7 +30,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   providerLabel: "",
   providerDefaultModelSeededFor: "",
   defaultModel: "",
-  autoGenerate: false,
+
   showStaleBanner: true,
   completionSound: true,
 };
@@ -119,7 +119,7 @@ export function loadUserSettings(): UserSettings {
       providerLabel,
       providerDefaultModelSeededFor,
       defaultModel,
-      autoGenerate,
+
       showStaleBanner,
       completionSound,
     } = next;
@@ -130,7 +130,7 @@ export function loadUserSettings(): UserSettings {
       providerLabel,
       providerDefaultModelSeededFor,
       defaultModel,
-      autoGenerate,
+
       showStaleBanner,
       completionSound: typeof completionSound === "boolean" ? completionSound : DEFAULT_USER_SETTINGS.completionSound,
     };

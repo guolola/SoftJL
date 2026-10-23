@@ -45,7 +45,6 @@ const DEFAULT_WINDOW_SECONDS = 60 * 60 * 24;
 const GENERATION_TASK_TYPES = new Set<ProviderTaskType>([
   "requirements_to_uml",
   "design_modeling",
-  "code_generation",
   "document_generation",
 ]);
 const GENERATION_TASK_TYPE_LIST = Array.from(GENERATION_TASK_TYPES);

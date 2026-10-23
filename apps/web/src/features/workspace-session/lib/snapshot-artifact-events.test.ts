@@ -1,6 +1,6 @@
 // Verifies partial recovery marks only successfully rendered models in the current run scope.
 import { describe, expect, it } from "vitest";
-import { createRunSnapshot } from "../../../test/workspace-test-utils";
+import { createRunSnapshot } from "../../../../tests/helpers/workspace-test-utils";
 import { createGenerationTask } from "./generation-tasks";
 import { snapshotArtifactEvents, updateTaskFromSnapshotArtifacts } from "./snapshot-artifact-events";
 

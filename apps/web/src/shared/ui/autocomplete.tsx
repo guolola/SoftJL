@@ -27,10 +27,6 @@ const inputVariants = cva(
 
 const Autocomplete = AutocompletePrimitive.Root
 
-const AutocompleteValue = ({ ...props }: AutocompletePrimitive.Value.Props) => {
-  return <AutocompletePrimitive.Value data-slot='autocomplete-value' {...props} />
-}
-
 const AutocompleteInput = ({
   className,
   size = 'default',
@@ -109,20 +105,6 @@ const AutocompleteList = ({
   )
 }
 
-const AutocompleteCollection = ({ ...props }: React.ComponentProps<typeof AutocompletePrimitive.Collection>) => {
-  return <AutocompletePrimitive.Collection data-slot='autocomplete-collection' {...props} />
-}
-
-const AutocompleteRow = ({ className, ...props }: React.ComponentProps<typeof AutocompletePrimitive.Row>) => {
-  return (
-    <AutocompletePrimitive.Row
-      data-slot='autocomplete-row'
-      className={cn('flex items-center gap-2', className)}
-      {...props}
-    />
-  )
-}
-
 const AutocompleteItem = ({ className, ...props }: React.ComponentProps<typeof AutocompletePrimitive.Item>) => {
   return (
     <AutocompletePrimitive.Item
@@ -183,33 +165,6 @@ const AutocompleteContent = ({
   )
 }
 
-const AutocompleteGroup = ({ ...props }: React.ComponentProps<typeof AutocompletePrimitive.Group>) => {
-  return <AutocompletePrimitive.Group data-slot='autocomplete-group' {...props} />
-}
-
-const AutocompleteGroupLabel = ({
-  className,
-  ...props
-}: React.ComponentProps<typeof AutocompletePrimitive.GroupLabel>) => {
-  return (
-    <AutocompletePrimitive.GroupLabel
-      data-slot='autocomplete-group-label'
-      className={cn('text-muted-foreground px-1.5 py-1 text-xs font-medium', className)}
-      {...props}
-    />
-  )
-}
-
-const AutocompleteEmpty = ({ className, ...props }: React.ComponentProps<typeof AutocompletePrimitive.Empty>) => {
-  return (
-    <AutocompletePrimitive.Empty
-      data-slot='autocomplete-empty'
-      className={cn('text-muted-foreground px-2 py-1.5 text-center text-sm empty:m-0 empty:p-0', className)}
-      {...props}
-    />
-  )
-}
-
 const AutocompleteClear = ({ className, ...props }: React.ComponentProps<typeof AutocompletePrimitive.Clear>) => {
   return (
     <AutocompletePrimitive.Clear
@@ -240,41 +195,4 @@ const AutocompleteTrigger = ({ className, ...props }: React.ComponentProps<typeo
   )
 }
 
-const AutocompleteArrow = ({ ...props }: React.ComponentProps<typeof AutocompletePrimitive.Arrow>) => {
-  return <AutocompletePrimitive.Arrow data-slot='autocomplete-arrow' {...props} />
-}
-
-const AutocompleteSeparator = ({
-  className,
-  ...props
-}: React.ComponentProps<typeof AutocompletePrimitive.Separator>) => {
-  return (
-    <AutocompletePrimitive.Separator
-      data-slot='autocomplete-separator'
-      className={cn('bg-border my-1.5 h-px', className)}
-      {...props}
-    />
-  )
-}
-
-export {
-  Autocomplete,
-  AutocompleteValue,
-  AutocompleteTrigger,
-  AutocompleteInput,
-  AutocompleteStatus,
-  AutocompletePortal,
-  AutocompleteBackdrop,
-  AutocompletePositioner,
-  AutocompleteContent,
-  AutocompleteList,
-  AutocompleteCollection,
-  AutocompleteRow,
-  AutocompleteItem,
-  AutocompleteGroup,
-  AutocompleteGroupLabel,
-  AutocompleteEmpty,
-  AutocompleteClear,
-  AutocompleteArrow,
-  AutocompleteSeparator
-}
+export { Autocomplete, AutocompleteTrigger, AutocompleteInput, AutocompleteStatus, AutocompletePortal, AutocompleteBackdrop, AutocompletePositioner, AutocompleteContent, AutocompleteList, AutocompleteItem, AutocompleteClear };

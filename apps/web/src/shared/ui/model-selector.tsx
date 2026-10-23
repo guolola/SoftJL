@@ -35,12 +35,7 @@ import {
   type ModelOption,
 } from "./model-selection";
 
-export {
-  DEFAULT_EFFORT_OPTIONS,
-  resolveModelEffort,
-  useModelSelectorContext,
-  useModelSelectorEfforts,
-} from "./model-selection";
+export { DEFAULT_EFFORT_OPTIONS, useModelSelectorContext, useModelSelectorEfforts } from "./model-selection";
 export type {
   ModelOption,
   ModelSelectorEffortOption,

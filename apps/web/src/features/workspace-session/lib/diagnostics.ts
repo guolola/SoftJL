@@ -6,8 +6,6 @@ import type { DiagnosticEvent, RunDiagnostics } from "../model/session-state";
 import { isTerminalRunEvent } from "./run-events";
 import { appendTranscriptEvent } from "./run-transcript";
 
-export const MAX_DIAGNOSTIC_STREAM_CHARS = 30_000;
-
 export function createEmptyDiagnostics(): RunDiagnostics {
   return {
     runKind: null,
@@ -16,20 +14,10 @@ export function createEmptyDiagnostics(): RunDiagnostics {
     startedAt: null,
     finishedAt: null,
     activeStage: null,
-    streamText: "",
-    chunkCount: 0,
-    stageStartedAt: {},
-    stageMessages: {},
-    events: [],
-    
-    
-    
-    
-    
-    
-    
-    
-    requirementTrace: [],
+
+events: [],
+
+requirementTrace: [],
     designTrace: [],
     
   };
@@ -43,26 +31,8 @@ export function formatStageForDiagnostics(stage: RunStage | null) {
     generate_design_sequence: "生成用例实现设计",
     generate_design_models: "生成设计模型",
     generate_tests: "生成测试用例",
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    generate_document_text: "生成说明书正文",
+
+generate_document_text: "生成说明书正文",
     render_document_file: "写入说明书文件",
     generate_plantuml: "生成图源码",
     render_svg: "渲染图像",
@@ -83,56 +53,20 @@ export function sanitizeDiagnosticText(text: string) {
     ["generate_design_sequence", "生成用例实现设计"],
     ["generate_design_models", "生成设计模型"],
     ["generate_tests", "生成测试用例"],
-    [ "分析业务逻辑"],
-    [ "分析业务背景"],
-    [ "规划界面方案"],
-    [ "生成界面设计图"],
-    [ "解析界面设计图"],
-    [ "生成结构化 UI IR"],
-    [ "加载前端设计执行器"],
-    [ "选择前端设计执行器"],
-    [ "规划文件结构"],
-    [ "生成代码规格"],
-    [ "生成代码文件"],
-    [ "制定实现步骤"],
-    [ "写入原型文件"],
-    [ "检查原型质量"],
-    [ "检查设计图还原度"],
-    [ "验证渲染预览"],
-    [ "验证业务断言"],
-    [ "检查预览入口"],
-    [ "修复代码输出"],
-    ["generate_document_text", "生成说明书正文"],
+
+["generate_document_text", "生成说明书正文"],
     ["render_document_file", "写入说明书文件"],
     ["generate_plantuml", "生成图源码"],
     ["render_svg", "渲染图像"],
     ["verify_diagram_visual", "模型结构检查"],
     ["PlantUML", "图源码"],
     ["SVG", "图像"],
-    [ "代码文件"],
-    [ "代码规格"],
-    [ "界面设计图"],
-    ["uiReferenceSpec", "界面设计图解析"],
-    [ "业务逻辑"],
-    ["uiFidelityReport", "业务/界面覆盖检查"],
-    ["designTokens", "设计 Token"],
-    ["componentRegistry", "组件 Registry"],
-    ["uiIr", "结构化 UI IR"],
-    ["visualDiffReport", "预览验证报告"],
-    ["ui-ux-pro-max", "前端设计执行器"],
-  ];
+
+];
   return replacements.reduce(
     (current, [source, target]) => current.split(source).join(target),
     text,
   );
-}
-
-export function appendDiagnosticStream(current: string, chunk: string) {
-  const next = current + chunk;
-  if (next.length <= MAX_DIAGNOSTIC_STREAM_CHARS) {
-    return next;
-  }
-  return next.slice(next.length - MAX_DIAGNOSTIC_STREAM_CHARS);
 }
 
 export function isMeaningfulLlmChunkEvent(
@@ -185,14 +119,7 @@ export function summarizeEvent(event: RunEventInput): DiagnosticEvent {
       };
     
     case "completed":
-      if ("files" in event.snapshot) {
-        return {
-          id: `${suffix}:completed`,
-          at,
-          label: "任务完成",
-          detail: `完成，代码文件 ${Object.keys(event.snapshot.files).length} 个`,
-        };
-      }
+
       if ("documentKind" in event.snapshot) {
         return {
           id: `${suffix}:completed`,
@@ -258,21 +185,8 @@ export function getProgressFromEvent(event: RunEventInput) {
           return 45;
         case "generate_design_models":
           return 70;
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        case "generate_document_text":
+
+case "generate_document_text":
           return 55;
         case "render_document_file":
           return 90;
@@ -302,7 +216,7 @@ export function deriveRunDiagnosticsFromEvent(
   event: RunEventInput,
   diagnosticEvent: DiagnosticEvent,
 ) {
-  const meaningfulChunk = isMeaningfulLlmChunkEvent(event);
+
   return {
     ...current,
     transcript: appendTranscriptEvent(current.transcript ?? [], event),
@@ -310,22 +224,8 @@ export function deriveRunDiagnosticsFromEvent(
       ? diagnosticEvent.at
       : current.finishedAt,
     activeStage: "stage" in event ? event.stage : current.activeStage,
-    streamText: meaningfulChunk && event.type === "llm_chunk"
-      ? appendDiagnosticStream(current.streamText, event.chunk)
-      : current.streamText,
-    chunkCount: meaningfulChunk ? current.chunkCount + 1 : current.chunkCount,
-    stageStartedAt:
-      event.type === "stage_started"
-        ? {
-            ...current.stageStartedAt,
-            [event.stage]: diagnosticEvent.at,
-          }
-        : current.stageStartedAt,
-    stageMessages:
-      event.type === "stage_progress" && event.message
-        ? { ...current.stageMessages, [event.stage]: event.message }
-        : current.stageMessages,
-    designTrace:
+
+designTrace:
       event.type === "completed" && "designTrace" in event.snapshot
         ? (event.snapshot.designTrace ?? [])
         : current.designTrace,
@@ -338,8 +238,6 @@ export function deriveRunDiagnosticsFromEvent(
       : current.events,
   } satisfies RunDiagnostics;
 }
-
-
 
 export function addLocalFailureToRunDiagnostics(
   current: RunDiagnostics,

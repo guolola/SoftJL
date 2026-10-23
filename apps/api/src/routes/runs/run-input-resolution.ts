@@ -17,7 +17,6 @@ import {
   type ModelingStage,
   designTraceabilityTouchesDiagramKinds,
 
-
   startDesignRunCommandSchema,
   startDesignRunRequestSchema,
   startDocumentRunCommandSchema,
@@ -26,7 +25,6 @@ import {
   startRunRequestSchema,
   type DesignDiagramKind,
   type DiagramKind,
-
 
   type StartDesignRunCommand,
   type StartDesignRunRequest,
@@ -43,13 +41,11 @@ type RunInputMetadata = {
   projectId?: string;
 };
 
-type ProjectWorkspaceForRun = {
-  state?: unknown;
-};
+type ProjectWorkspaceForRun = { state: unknown };
 
 export type LoadProjectWorkspaceForRun = (
   projectId: string,
-) => Promise<ProjectWorkspaceForRun | Record<string, unknown> | null | undefined>;
+) => Promise<ProjectWorkspaceForRun | null | undefined>;
 
 type InputResolution<T> =
   | { ok: true; input: T; workspaceState?: Record<string, unknown> }
@@ -766,7 +762,7 @@ async function loadWorkspaceStateForCommand({
       category: "not_found",
     });
   }
-  const state = isPlainRecord(workspace.state) ? workspace.state : workspace;
+  const state = workspace.state;
   if (!isPlainRecord(state)) {
     return runInputResolutionError(400, "PROJECT_WORKSPACE_INVALID", {
       category: "validation",

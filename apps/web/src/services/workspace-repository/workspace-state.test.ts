@@ -1,16 +1,8 @@
 // Verifies workspace snapshot merge rules that are shared by repository implementations.
-import { createRunSnapshot, createDesignRunSnapshot } from "@/test/contract-fixtures";
+import { createRunSnapshot, createDesignRunSnapshot } from "@test/fixtures/contract-fixtures";
 import { describe, expect, it } from "vitest";
 import { captureWorkspaceGuard } from "@uml-platform/contracts";
-import type {
-  AtomicRequirement,
-
-  DesignDiagramModelSpec,
-  DesignRunSnapshot,
-  DiagramModelSpec,
-  RequirementBaseline,
-  RunSnapshot,
-} from "@uml-platform/contracts";
+import type { DesignDiagramModelSpec, DesignRunSnapshot, DiagramModelSpec, RequirementBaseline, RunSnapshot } from "@uml-platform/contracts";
 import type { RequirementRule } from "../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../entities/workspace/model";
 import { snapshotInputFingerprint } from "../../shared/lib/fingerprint";
@@ -80,33 +72,14 @@ function createRule(id: string, text = `${id} 需求规则。`): RequirementRule
   };
 }
 
-function createAtomicRequirement(
-  overrides: Partial<AtomicRequirement> = {},
-): AtomicRequirement {
-  return {
-    id: "REQ-001",
-    sourceRuleId: "r1",
-    sourceFragment: "用户通过邮箱注册账号。",
-    sourceLocation: { section: "input", startOffset: 0, endOffset: 10 },
-    type: "functional" as const,
-    actor: "用户",
-    subject: "用户",
-    action: "注册",
-    object: "账号",
-    condition: null,
-    outcome: "系统创建账号",
-    confidence: 0.86,
-    status: "accepted",
-    criticality: "high",
-    acceptanceCriteria: ["用户提交邮箱后系统创建账号。"],
-    priority: "must",
-    fieldProvenance: {},
-    ...overrides,
-  };
+function createBaselineRule(
+  overrides: Partial<RequirementBaseline["rules"][number]> = {},
+): RequirementBaseline["rules"][number] {
+  return { requirementId: "REQ-001", id: "r1", text: "用户通过邮箱注册账号。", type: "business-rule" as const, ...overrides, origin: "generated" as const };
 }
 
 function createBaseline(
-  requirements: AtomicRequirement[],
+  requirements: RequirementBaseline["rules"][number][],
   overrides: Partial<RequirementBaseline> = {},
 ): RequirementBaseline {
   return {
@@ -120,7 +93,7 @@ function createBaseline(
     conflicts: [],
     schemaVersion: 3 as const,
 
-      rules: (requirements).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id, text: item.sourceFragment, type: "business-rule" as const, origin: "generated" as const })),
+      rules: (requirements),
     qualityReport: {
       runId: "run-baseline",
       status: "passed",
@@ -135,7 +108,7 @@ function createBaseline(
 
 it("retains baseline metadata when an older model result has the same requirement content", () => {
   const rule = createRule("r1", "用户通过邮箱注册账号。");
-  const baseline = createBaseline([createAtomicRequirement()]);
+  const baseline = createBaseline([createBaselineRule()]);
   const workspace = { ...createEmptyWorkspace(), requirementText: rule.text, rules: [rule], requirementBaseline: baseline };
   const incoming = { ...baseline, runId: "model-task", createdAt: "2026-10-17T00:00:00Z", qualityReport: { ...baseline.qualityReport, runId: "model-task" } };
   const snapshot = createRunSnapshot({ runId: "model-task", requirementText: rule.text, rules: [rule], selectedDiagrams: ["usecase"], requirementBaseline: incoming });
@@ -374,14 +347,8 @@ describe("applySnapshotToWorkspace", () => {
       createRule("r1", "用户通过邮箱注册账号。"),
       createRule("r6", "联系方式在认领通过前隐藏。"),
     ];
-    const pendingRequirement = createAtomicRequirement({
-      id: "REQ-006",
-      sourceRuleId: "r6",
-      sourceFragment: "联系方式在认领通过前隐藏。",
-      actor: null,
-      status: "pending-review",
-    });
-    const pendingBaseline = createBaseline([createAtomicRequirement(), pendingRequirement], {
+    const pendingRequirement = createBaselineRule({ requirementId: "REQ-006", id: "r6", text: "联系方式在认领通过前隐藏。" });
+    const pendingBaseline = createBaseline([createBaselineRule(), pendingRequirement], {
       runId: "run-pending-baseline",
       qualityReport: {
         runId: "run-pending-baseline",
@@ -406,13 +373,8 @@ describe("applySnapshotToWorkspace", () => {
       requirementText,
       rules,
       requirementBaseline: createBaseline([
-        createAtomicRequirement(),
-        createAtomicRequirement({
-          id: "REQ-006",
-          sourceRuleId: "r6",
-          sourceFragment: "联系方式在认领通过前隐藏。",
-          status: "accepted",
-        }),
+        createBaselineRule(),
+        createBaselineRule({ requirementId: "REQ-006", id: "r6", text: "联系方式在认领通过前隐藏。" }),
       ]),
       requirementQualityReport: createBaseline([]).qualityReport,
 
@@ -442,14 +404,8 @@ describe("applySnapshotToWorkspace", () => {
       createRule("r1", "用户通过邮箱注册账号。"),
       createRule("r6", "联系方式在认领通过前隐藏。"),
     ];
-    const pendingRequirement = createAtomicRequirement({
-      id: "REQ-006",
-      sourceRuleId: "r6",
-      sourceFragment: "联系方式在认领通过前隐藏。",
-      actor: null,
-      status: "pending-review",
-    });
-    const pendingBaseline = createBaseline([createAtomicRequirement(), pendingRequirement], {
+    const pendingRequirement = createBaselineRule({ requirementId: "REQ-006", id: "r6", text: "联系方式在认领通过前隐藏。" });
+    const pendingBaseline = createBaseline([createBaselineRule(), pendingRequirement], {
       runId: "run-pending-baseline",
       qualityReport: {
         runId: "run-pending-baseline",
@@ -497,21 +453,14 @@ describe("applySnapshotToWorkspace", () => {
   it("replaces the pending baseline with a passed baseline", () => {
     const requirementText = "用户通过邮箱注册账号。";
     const rules = [createRule("r1", "用户通过邮箱注册账号。")];
-    const requirement = createAtomicRequirement({
-      id: "REQ-001",
-      sourceRuleId: "r1",
-      status: "accepted",
-    });
+    const requirement = createBaselineRule({ requirementId: "REQ-001", id: "r1" });
     const passedBaseline = createBaseline([requirement]);
     const workspace = {
       ...createEmptyWorkspace(),
       requirementText,
       rules,
       requirementBaseline: createBaseline([
-        {
-          ...requirement,
-          status: "pending-review",
-        },
+        { ...requirement },
       ]),
       requirementQualityReport: createBaseline([]).qualityReport,
 

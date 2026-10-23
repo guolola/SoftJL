@@ -17,7 +17,6 @@ import {
   relationEndpointKey,
   relationName,
   relationshipItems,
-  removeDanglingRelations,
   stringListValue,
   stringValue,
   updateDraftCollection,
@@ -84,14 +83,20 @@ export function ModelEditPanel({
   sourceRuleOptions = [],
   readOnly = false,
   stage = "requirements",
+  showSourceReferences = true,
+  retainEditorsOnFailure = false,
+  commitError,
 }: {
   draft: Record<string, unknown> | null;
   setDraft: Dispatch<SetStateAction<Record<string, unknown> | null>>;
-  onCommitDraft: (nextDraft: Record<string, unknown>) => Promise<void>;
+  onCommitDraft: (nextDraft: Record<string, unknown>) => Promise<void | boolean>;
   onSelectElement: (element: DiagramDetailItem) => void;
   selectedElement?: { kind: string; id: string } | null;
   saving: boolean;
   readOnly?: boolean;
+  showSourceReferences?: boolean;
+  retainEditorsOnFailure?: boolean;
+  commitError?: string;
   stage?: ModelingStage;
   visibleSection?: "all" | "elements" | "relationships";
   focusSection?: "elements" | "relationships" | null;
@@ -337,25 +342,25 @@ export function ModelEditPanel({
   const commitElementEdit = async () => {
     if (!elementEditor) return;
     const nextDraft = elementEditor.draft;
-    setElementDialogOpen(false);
-    await onCommitDraft(nextDraft);
+    // Quick modeling retains failed drafts; existing callers keep their immediate-close behavior.
+    if (!retainEditorsOnFailure) setElementDialogOpen(false);
+    if (await onCommitDraft(nextDraft) !== false && retainEditorsOnFailure) setElementDialogOpen(false);
   };
 
   const commitRelationEdit = async () => {
     if (!relationEditor) return;
     const nextDraft = relationEditor.draft;
-    setRelationDialogOpen(false);
-    await onCommitDraft(nextDraft);
+    if (!retainEditorsOnFailure) setRelationDialogOpen(false);
+    if (await onCommitDraft(nextDraft) !== false && retainEditorsOnFailure) setRelationDialogOpen(false);
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     let nextDraft: Record<string, unknown>;
     if (deleteTarget.kind === "element") {
-      nextDraft = removeDanglingRelations(
-        updateDraftCollection(draft, deleteTarget.collection, (currentItems) =>
-          currentItems.filter((currentItem) => stringValue(currentItem.id) !== deleteTarget.id),
-        ),
+      // References stay explicit; the current contract rejects dangling references at save time.
+      nextDraft = updateDraftCollection(draft, deleteTarget.collection, (currentItems) =>
+        currentItems.filter((currentItem) => stringValue(currentItem.id) !== deleteTarget.id),
       );
     } else {
       const nextRelationships = relationshipItems(draft).filter(
@@ -366,8 +371,8 @@ export function ModelEditPanel({
           ? { ...draft, messages: nextRelationships }
           : { ...draft, relationships: nextRelationships };
     }
-    setDeleteDialogOpen(false);
-    await onCommitDraft(nextDraft);
+    if (!retainEditorsOnFailure) setDeleteDialogOpen(false);
+    if (await onCommitDraft(nextDraft) !== false && retainEditorsOnFailure) setDeleteDialogOpen(false);
   };
 
   const createElement = (collection: EditableCollection) => {
@@ -488,6 +493,7 @@ export function ModelEditPanel({
   return (
     <>
       <div className="space-y-8">
+        {commitError && !elementDialogOpen && !relationDialogOpen && !deleteDialogOpen && <p role="alert" className="text-sm text-destructive">{commitError}</p>}
         {!readOnly && validateModelInput(draft, stage).length > 0 ? <div role="status" className="rounded border border-amber-500 p-3 text-sm"><p>草稿尚未通过校验，请补齐后保存。当前图保留上次有效结果。</p><ul>{validateModelInput(draft, stage).map((issue, index) => <li key={index}>{issue.elementId ?? issue.path}：{issue.message}</li>)}</ul></div> : null}
         {draft.diagramKind === "table" ? <p className="text-sm">表间关系由表的外键约束生成，请在表编辑中维护主键、唯一约束和复合外键。</p> : null}
         {visibleSection !== "relationships" ? <div ref={elementsSectionRef} tabIndex={-1} aria-label={t("diagramLists.elements.section")} className="scroll-mt-4 space-y-3 outline-none"><ModelElementListSection
@@ -496,7 +502,6 @@ export function ModelEditPanel({
           elementKindFilter={elementKindFilter}
           onElementKindFilterChange={(value) => { setElementKindFilter(value); setElementPage(1); }}
           detailGroups={detailModel.groups}
-          detailItemCount={detailModel.items.length}
           collections={collections}
           filteredElements={paginatedElements}
           editableItemsById={editableItemsById}
@@ -533,6 +538,8 @@ export function ModelEditPanel({
       </div>
 
       <ModelEditDialogs
+        readOnly={readOnly}
+        commitError={commitError}
         elementEditor={elementEditor}
         relationEditor={relationEditor}
         deleteTarget={deleteTarget}
@@ -566,6 +573,7 @@ export function ModelEditPanel({
               columnsForTable={columnsForTable}
               updateItem={updateItem}
               sourceRuleOptions={sourceRuleOptions}
+              showSourceReferences={showSourceReferences}
             />
           ) : null
         }
@@ -581,6 +589,7 @@ export function ModelEditPanel({
                 columnsForTable={columnsForTable}
                 updateRelation={updateRelation}
                 sourceRuleOptions={sourceRuleOptions}
+              showSourceReferences={showSourceReferences}
               />
             </div>
           ) : null

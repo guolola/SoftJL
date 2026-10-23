@@ -1,5 +1,5 @@
-import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
 // Builds black-box test cases and coverage links from requirement and design models.
+import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
 import { Card } from "../../../shared/ui/card";
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef, PaginationState } from "@tanstack/react-table";

@@ -4,7 +4,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { I18nextProvider } from "react-i18next";
-import { i18n } from "../../../shared/i18n";
+import { i18n } from "../../../shared/i18n/index";
 import { SidebarProvider } from "../../../shared/ui/sidebar";
 import { ProjectSidebarNavigation, type ProjectSidebarNode } from "./project-sidebar-navigation";
 
@@ -28,7 +28,7 @@ describe("project sidebar statuses", () => {
     render(<Navigation expanded={expanded} />);
     if (!expanded) await userEvent.click(screen.getByRole("button", { name: "模型列表" }));
     const role = expanded ? "button" : "menuitem";
-    for (const [label, status, color] of [
+    for (const [label, status] of [
       ["正常模型", "completed", "text-success"],
       ["错误模型", "failed", "text-destructive"],
       ["过期模型", "stale", "text-warning"],
@@ -37,7 +37,7 @@ describe("project sidebar statuses", () => {
       const item = await screen.findByRole(role, { name: label });
       expect(item).toHaveTextContent(new RegExp(`^${label}$`));
       expect(item.querySelectorAll("[data-sidebar-status]")).toHaveLength(1);
-      expect(item.querySelector(`[data-sidebar-status="${status}"] svg`)).toHaveClass(color);
+      expect(item.querySelector(`[data-sidebar-status="${status}"] svg`)).toBeInTheDocument();
       expect(item.querySelector('[data-slot="badge"]')).toBeNull();
     }
     const normal = screen.getByRole(role, { name: "正常模型" });

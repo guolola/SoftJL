@@ -1,6 +1,6 @@
 // Owns secure model provider configuration storage and no-readback API key views.
 import { randomUUID } from "node:crypto";
-import { createSecretKey, encryptSecret, decryptSecret, hashSecret } from "./provider-secret.js";
+import { createSecretKey, encryptSecret, decryptSecret, hashSecret } from "./provider-config-secrets.js";
 import {
   providerModelCapabilitySchema,
   type ProviderModelCapability,
@@ -19,13 +19,6 @@ export type ProviderConfigStatus = "active" | "disabled" | "revoked";
 export type ProviderRiskState = "low" | "medium" | "high" | "critical";
 export type ProviderBreakerState = "closed" | "open";
 export type ProviderConfigScopeType = "system" | "user" | "project";
-
-export interface ProviderBreakerView {
-  state: ProviderBreakerState;
-  failureCount: number;
-  openedAt: string | null;
-  lastFailureAt: string | null;
-}
 
 export type ProviderBreakerProbeStatus = "cooldown" | "in_progress";
 
@@ -146,8 +139,6 @@ export interface ProviderConfigStore {
   listAuditLogs(): ProviderAuditLog[];
 }
 
-export { ProviderConfigSecretError } from "./provider-secret.js";
-
 export function createUnverifiedModelCapability(
   modelId: string,
   probedAt = new Date().toISOString(),
@@ -191,10 +182,6 @@ export function normalizeProviderModelCapabilities(
   });
   return normalized;
 }
-
-
-
-
 
 export function maskApiKey(apiKey: string) {
   const trimmed = apiKey.trim();

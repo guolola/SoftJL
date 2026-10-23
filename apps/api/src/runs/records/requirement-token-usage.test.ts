@@ -1,12 +1,13 @@
+import { roundTripRunRecordStore } from "../../../tests/fixtures/runs/run-record-round-trip.js";
 // Covers real usage capture, unavailable reports, persisted reloads and per-run counter isolation.
-import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ModelCapacity, RunSnapshot } from "@uml-platform/contracts";
 import { createScheduledLlmTransport, createInMemoryLlmScheduler } from "../../adapters/llm/llm-scheduler.js";
 import { createEmptySnapshot } from "./snapshots.js";
 import { createQueuedRunFromSource } from "./run-actions.js";
-import { createRunRecordStore, serializeRunRecordStore, type RunRecord } from "./run-record-store.js";
+import { createRunRecordStore, type RunRecord } from "./run-record-store.js";
 import { emptyRequirementTokenUsage, withRequirementTokenUsage } from "./requirement-token-usage.js";
 
 const capacity: ModelCapacity = { context: 1000000, output: 8192, source: "modelpedia", matchedId: "model", updatedAt: null };
@@ -33,7 +34,7 @@ test("engineering usage persists the latest actual frame once per scheduled call
   assert.deepEqual(snapshot.tokenUsage?.lastCall, { input: 120, output: 20, cacheRead: 30, cacheWrite: null, total: 140 });
   assert.deepEqual(snapshot.tokenUsage?.cumulative, { total: 140, calls: 1, unreportedCalls: 0 });
   const store = createRunRecordStore(); store.set("usage", record);
-  const restored = createRunRecordStore(serializeRunRecordStore(store)).get("usage")!.snapshot as RunSnapshot;
+  const restored = roundTripRunRecordStore(store).get("usage")!.snapshot as RunSnapshot;
   assert.deepEqual(restored.tokenUsage, snapshot.tokenUsage);
   for await (const _ of transport.streamChatCompletion(input)) { /* Missing usage must clear the current call. */ }
   assert.equal(snapshot.tokenUsage?.contextTokens, null);

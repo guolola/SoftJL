@@ -2,10 +2,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { diagramKindSchema, runSnapshotSchema, startRunRequestSchema } from "@uml-platform/contracts";
-import { normalizeRequirementTraceabilityWithCoverage } from "../../normalizers/traceability/traceability-normalizer.js";
+import { requirementTraceabilityCoverage } from "@uml-platform/contracts/testing";
 import { createEmptySnapshot } from "../records/snapshots.js";
 import type { RunRecord } from "../records/run-record-store.js";
-import { librarySeatDemoFixture } from "./fixtures/library-seat-demo-fixture.js";
+import { librarySeatDemoFixture } from "@uml-platform/demo-fixtures";
 import { completeOfflineDemoRequirementRun } from "./offline-demo-runs.js";
 
 test("both demo stages retain the classified source baseline without obsolete fields", () => {
@@ -38,7 +38,7 @@ test("repeated offline model generation preserves the existing baseline identity
 test("demo references respect type mappings and keep unsupported deployment coverage explicit", () => {
   const snapshot = runSnapshotSchema.parse(librarySeatDemoFixture.requirementSnapshot);
   // Analysis sequences are traced through their source use case, outside the rule-to-model gate.
-  const coverage = normalizeRequirementTraceabilityWithCoverage(
+  const coverage = requirementTraceabilityCoverage(
     snapshot.requirementModelTraceability,
     snapshot.rules,
     snapshot.models.filter((model) => model.diagramKind !== "analysis"),
@@ -74,7 +74,7 @@ test("demo generation keeps prototype entry mappings in full and prototype-only 
     const snapshot = runSnapshotSchema.parse(record.snapshot);
     assert.equal(snapshot.status, "completed");
     assert.ok(snapshot.requirementModelTraceability.every((entry) => selectedDiagrams.includes(entry.target.diagramKind)));
-    const coverage = normalizeRequirementTraceabilityWithCoverage(
+    const coverage = requirementTraceabilityCoverage(
       snapshot.requirementModelTraceability,
       snapshot.rules,
       snapshot.models.filter((model) => model.diagramKind !== "analysis"),

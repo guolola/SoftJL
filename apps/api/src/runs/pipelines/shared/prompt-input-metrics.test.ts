@@ -14,7 +14,7 @@ test("section counts partition text inputs and exclude image data", () => {
 });
 
 test("repair metrics expose bounded repair scope without retaining source facts", () => {
-  const repair = { targetId: "class", mode: "field-patch", baseFingerprint: "fp:v3:abc", paths: ["models.0.relationships.1"], round: 2 };
+  const repair = { targetId: "implementation", mode: "field-patch", baseFingerprint: "fp:v3:abc", paths: ["candidates.0.implementation.architecture"], round: 2 };
   const metrics = promptInputMetrics([{ role: "user", content: `修复上下文：${JSON.stringify(repair)}\n必要来源事实：PRIVATE_BUSINESS_VALUE` }]);
   assert.deepEqual(metrics.repair, repair);
   assert.ok(!JSON.stringify(metrics).includes("PRIVATE_BUSINESS_VALUE"));

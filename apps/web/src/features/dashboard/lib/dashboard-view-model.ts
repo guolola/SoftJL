@@ -1,7 +1,14 @@
 // Translates summary fields into the imported block's presentation props; statistics stay server-side.
 import type { DashboardSummary } from '@uml-platform/contracts'
-import { initialsFromName } from '@/features/user-platform/hooks/use-platform-workbench'
 import type { PerformanceProps } from '@/shared/template/blocks/dashboard/chart-performance'
+
+export function initialsFromName(name?: string | null): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "?";
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 export function formatDashboardDuration(value: number | null) {
@@ -47,4 +54,3 @@ export function buildDashboardViewModel(data: DashboardSummary, t: Translate, lo
       stats: { users: project.members, runs: project.runs, documents: project.documents } })),
   }
 }
-export type DashboardViewModel = ReturnType<typeof buildDashboardViewModel>

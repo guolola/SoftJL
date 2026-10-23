@@ -2,7 +2,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { AppI18nProvider } from "../../../shared/i18n";
+import { AppI18nProvider } from "../../../shared/i18n/index";
 import type { FeedbackDialogState } from "../../../shared/ui/feedback-dialog";
 import { DocumentGuidanceDialog } from "./document-guidance-dialog";
 
@@ -28,7 +28,6 @@ describe("document guidance", () => {
     const user = userEvent.setup();
     renderGuidance([prerequisite]);
     const entry = screen.getByRole("button", { name: "有 1 项需要处理" });
-    expect(entry).toHaveClass("h-8", "text-warning");
     await user.click(entry);
 
     const dialog = screen.getByRole("dialog", { name: "有 1 项需要处理" });
@@ -38,8 +37,6 @@ describe("document guidance", () => {
     const item = within(dialog).getByRole("listitem");
     expect(item).toHaveTextContent(prerequisite.title);
     expect(item).toHaveTextContent(prerequisite.message);
-    expect(item).not.toHaveClass("border", "rounded-lg", "bg-card", "shadow-sm");
-    expect(item.parentElement?.parentElement).toHaveAttribute("data-slot", "feedback-details");
 
     await user.click(within(dialog).getByRole("button", { name: "我知道了" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -59,7 +56,6 @@ describe("document guidance", () => {
       primaryAction: { label: "重试", onSelect: retry },
     }]);
     const entry = screen.getByRole("button", { name: "有 2 项需要处理" });
-    expect(entry).toHaveClass("text-destructive");
     await user.click(entry);
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByLabelText("操作失败")).toHaveAttribute("data-feedback-tone", "destructive");

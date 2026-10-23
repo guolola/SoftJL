@@ -1,7 +1,7 @@
 // Assembles the Fastify API server, infrastructure adapters, and local startup compatibility.
 import { designDiagramKindSchema } from "@uml-platform/contracts";
 import { registerMcpModule } from "./mcp/server/register-mcp-module.js";
-import type { LlmTransport } from "./llm.js";
+import type { LlmTransport } from "./adapters/llm/llm-transport.js";
 import type { LlmScheduler } from "./adapters/llm/llm-scheduler.js";
 import { DEFAULT_HOST, DEFAULT_PORT, RELEASE_STARTED_AT, } from "./server/defaults.js";
 import { createConfiguredFastifyApp } from "./server/fastify-app.js";

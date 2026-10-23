@@ -3,8 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
-import { i18n } from '../../../shared/i18n';
-import { installReactFlowTestLayout } from '../../../test/react-flow-test-layout';
+import { i18n } from '../../../shared/i18n/index';
+import { installReactFlowTestLayout } from '../../../../tests/helpers/react-flow-test-layout';
 import { LineageGraphPage } from './lineage-graph-page';
 import { platformApi } from '../../user-platform/services/platform-api';
 installReactFlowTestLayout();
@@ -31,6 +31,22 @@ async function setup() {
   return { user, card, onViewArtifact };
 }
 describe('lineage node toolbar', () => {
+  it('keeps measured cards visible when workspace status changes and after returning to the page', async () => {
+    const view = () => <I18nextProvider i18n={i18n}><LineageGraphPage projectRuns={[]} /></I18nextProvider>;
+    const first = render(view());
+    const card = await screen.findByTestId('lineage-node-requirement-model:function');
+    const wrapper = card.closest('.react-flow__node')!;
+    await waitFor(() => expect(wrapper).toHaveStyle({ visibility: 'visible' }));
+    // The DOM size stays unchanged, so ResizeObserver will not measure this card again.
+    graph.nodes[0].status = 'stale';
+    first.rerender(view());
+    await waitFor(() => expect(card).toHaveAttribute('data-lineage-status', 'stale'));
+    expect(wrapper).toHaveStyle({ visibility: 'visible' });
+    first.unmount();
+    render(view());
+    const restored = await screen.findByTestId('lineage-node-requirement-model:function');
+    await waitFor(() => expect(restored.closest('.react-flow__node')).toHaveStyle({ visibility: 'visible' }));
+  });
   it('renders the canvas while metadata is loading and cancels the read on departure', async () => {
     let signal: AbortSignal | undefined;
     const request = vi.spyOn(platformApi, 'getProjectRun').mockImplementation((_project, _run, options) => { signal = options?.signal; return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true })); });

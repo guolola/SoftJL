@@ -6,12 +6,11 @@ import {
   type SetStateAction,
 } from "react";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
-import type { RunHistoryItem } from "../../../entities/run-history";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
-import type { createEmptyRunUiState } from "./run-ui-state";
-import { localizeCaughtFailure } from "../../../shared/i18n/api-errors";
+import type { RunHistoryItem } from "../../../entities/run-history/index";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
+import { PROJECT_RUNS_REUSE_MS } from "../../../services/workspace-repository/project-run-reads";
 
-type RunUiState = ReturnType<typeof createEmptyRunUiState>;
+const RESUME_REFRESH_INTERVAL_MS = 30_000;
 
 interface WorkspaceInitializationInput {
   applyWorkspaceRecord: (
@@ -21,7 +20,6 @@ interface WorkspaceInitializationInput {
   getHasActiveGenerationTask?: () => boolean;
   repository: WorkspaceRepository;
   setHistoryItems: Dispatch<SetStateAction<RunHistoryItem[]>>;
-  setRunUiState: Dispatch<SetStateAction<RunUiState>>;
 }
 
 export function useWorkspaceInitialization({
@@ -29,52 +27,63 @@ export function useWorkspaceInitialization({
   getHasActiveGenerationTask,
   repository,
   setHistoryItems,
-  setRunUiState,
 }: WorkspaceInitializationInput) {
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     let active = true;
+    let pending: Promise<void> | undefined;
+    let lastRefreshedAt: number | undefined;
+    setInitialized(false);
 
-    const refreshHistory = async () => {
+    const refreshHistory = async (resumed: boolean) => {
       try {
-        const items = await repository.listRunHistory();
-        if (!active) return;
+        const items = await repository.listRunHistory({ maxAgeMs: resumed ? 0 : PROJECT_RUNS_REUSE_MS });
+        if (!active) return false;
         setHistoryItems(items);
-      } catch (error) {
-        if (!active) return;
-        setRunUiState((current) => ({
-          ...current,
-          errorMessage: localizeCaughtFailure(error, "读取运行历史失败，请稍后重试。"),
-        }));
+        return true;
+      } catch {
+        // Retain the last history list; reconnect and visibility changes retry the read.
+        return false;
       }
     };
 
     const refreshWorkspaceAndHistory = async (applyWorkspace: boolean, resumed = false) => {
-      if (applyWorkspace) {
-        try {
-          const workspace = await repository.loadWorkspace();
-          if (!active) return;
-          applyWorkspaceRecord(workspace, { preserveRequirementDraft: resumed });
-        } catch (error) {
-          if (!active) return;
-          setRunUiState((current) => ({
-            ...current,
-            errorMessage: localizeCaughtFailure(error, "加载工作台失败，请稍后重试。"),
-          }));
-          return;
-        }
-      }
-      await refreshHistory();
+      if (pending) return pending;
+      // Both reads are independent; overview and history can share the same run-list request.
+      pending = Promise.all([
+        (async () => {
+          if (!applyWorkspace) return true;
+          try {
+            const workspace = await repository.loadWorkspace();
+            if (!active) return false;
+            // A task may have started while the background read was in flight.
+            if (!resumed || !getHasActiveGenerationTask?.()) {
+              applyWorkspaceRecord(workspace, { preserveRequirementDraft: resumed });
+            }
+            return true;
+          } catch {
+            // Keep published state untouched until a later refresh succeeds.
+            return false;
+          }
+        })(),
+        refreshHistory(resumed),
+      ]).then(results => {
+        if (results.every(Boolean)) lastRefreshedAt = Date.now();
+      }).finally(() => { pending = undefined; });
+      return pending;
     };
 
-    const refreshAfterResume = () => {
+    const refreshAfterResume = (event: Event) => {
       if (
         typeof document !== "undefined" &&
         document.visibilityState === "hidden"
       ) {
         return;
       }
+      // Brief tab switches reuse the session. Reconnecting still retries immediately.
+      if (event.type !== "online" && lastRefreshedAt !== undefined &&
+        Date.now() - lastRefreshedAt < RESUME_REFRESH_INTERVAL_MS) return;
       const hasActiveGenerationTask = getHasActiveGenerationTask?.() ?? false;
       void refreshWorkspaceAndHistory(!hasActiveGenerationTask, true);
     };
@@ -104,7 +113,6 @@ export function useWorkspaceInitialization({
     getHasActiveGenerationTask,
     repository,
     setHistoryItems,
-    setRunUiState,
   ]);
 
   return initialized;

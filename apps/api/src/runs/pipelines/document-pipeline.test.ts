@@ -1,5 +1,5 @@
 // Verifies document pipelines enforce requirement baseline gates before rendering artifacts.
-import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
 import { completeFeasibilityImplementationPlanSchema } from "@uml-platform/contracts";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "@uml-platform/prompts";
 import assert from "node:assert/strict";
@@ -8,7 +8,7 @@ import type {
   ProviderSettings,
   StartDocumentRunRequest,
 } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../llm.js";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 import type { DocumentLibrary } from "../../documents/library/document-library.js";
 import type { PngRenderClient } from "../../adapters/render/png-render-client.js";
 import { createEmptyDocumentSnapshot } from "../records/snapshots.js";

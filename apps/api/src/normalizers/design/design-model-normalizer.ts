@@ -39,7 +39,3 @@ function parseDesignDiagramModelsOnlyFromParsed(parsed: unknown) {
   for (const model of result.models) assertValidModel(model, "design");
   return { ...result, models: result.models.map((model) => model.diagramKind === "table" ? deriveTableModel(model) : model) };
 }
-
-export function parseDesignDiagramModelsOnly(value: string) {
-  return parseDesignDiagramModelsOnlyFromParsed(parseJson<unknown>(value));
-}

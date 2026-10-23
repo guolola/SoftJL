@@ -41,7 +41,6 @@ function snapshotIsFeasibility(snapshot: AnySnapshot): snapshot is FeasibilityRu
 
 function isRulesOnlyRequirementSnapshot(snapshot: AnySnapshot): snapshot is RunSnapshot {
   return snapshotIsRestorable(snapshot) &&
-    !("files" in snapshot) &&
     !("designModelTraceability" in snapshot) &&
     snapshot.selectedDiagrams.length === 0;
 }

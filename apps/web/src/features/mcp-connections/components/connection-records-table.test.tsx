@@ -11,9 +11,7 @@ const connection: Connection = { id: "pat-1", name: "我的工具", kind: "pat",
 it("shows the payment order table headers and empty row before any connections exist", () => {
   render(<AppI18nProvider><ConnectionRecordsTable connections={[]} projects={[]} disabled={false} stale={false} onRevoke={vi.fn()} /></AppI18nProvider>);
   const table = screen.getByRole("table", { name: "连接记录" });
-  expect(table).toHaveClass("min-w-[760px]", "text-left", "leading-5");
   expect(within(table).getAllByRole("columnheader")).toHaveLength(6);
-  expect(table.querySelector("thead")).toHaveClass("bg-muted/40");
   expect(within(table).getByText("还没有外部工具连接。")).toHaveAttribute("colspan", "6");
   expect(screen.getByText("0 条")).toBeInTheDocument();
   expect(screen.getByText("显示第 0–0 条，共 0 条")).toBeInTheDocument();

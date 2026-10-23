@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
-import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
 import { registerRenderRoutes } from "./register-render-routes.js";
 
 test("manual render reports model, field and element diagnostics before any external render call", async () => {

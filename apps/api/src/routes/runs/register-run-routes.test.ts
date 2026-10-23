@@ -24,7 +24,7 @@ import {
   runTokenConsumptionSchema,
   feasibilityInputsSchema,
 } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../llm.js";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 import {
   createInMemoryLlmScheduler,
   type LlmScheduler,
@@ -242,45 +242,6 @@ const workspaceRequirementBaseline = buildRequirementBaseline({
   requirementText: "用户可以查看公开活动日历。",
   rules: workspaceRequirementRules,
 });
-
-function createBlockedRequirementBaseline() {
-  const baseline = buildRequirementBaseline({
-    runId: "workspace-blocked-baseline",
-    requirementText: "用户可以查看公开活动日历。用户不得查看公开活动日历。",
-    rules: [
-      {
-        id: "REQ-001",
-        type: "functional" as const,
-        text: "用户可以查看公开活动日历。",
-
-      },
-      {
-        id: "REQ-002",
-        type: "business-rule" as const,
-        text: "用户不得查看公开活动日历。",
-
-      },
-    ],
-  });
-  baseline.qualityReport = {
-    ...baseline.qualityReport,
-    status: "blocked",
-    summary: "需求基线存在阻断型质量问题。",
-    issues: [
-      {
-        id: "ISS-001",
-        requirementId: "REQ-001",
-        severity: "critical",
-        code: "conflict",
-        message: "公开活动日历查看规则互相冲突。",
-        blocksDownstream: true,
-      },
-    ],
-    blockingIssueIds: ["ISS-001"],
-    reviewRequiredRequirementIds: ["REQ-001"],
-  };
-  return baseline;
-}
 
 const workspaceRequirementTraceability: RequirementModelTraceabilityEntry[] = [
   {
@@ -2463,102 +2424,6 @@ test("project design start command rejects custom-ID stale sources using the leg
   assert.equal(response.json().error.code, "REQUIREMENT_MODELS_STALE");
   assert.deepEqual(response.json().error.details.diagramKinds, ["usecase"]);
   assert.equal(runs.size, 0);
-
-  await app.close();
-});
-
-test("project start commands do not wait for requirement review candidates", async () => {
-  // Historical review candidates remain readable beside new rule snapshots.
-  const requirement = {
-    id: "REQ-001", sourceRuleId: "r1", sourceFragment: "用户可以查询活动。",
-    type: "functional" as const, actor: null, subject: null, action: "查询活动", object: "活动",
-    condition: null, outcome: null, confidence: 0.8, status: "accepted",
-    criticality: "medium", acceptanceCriteria: [], fieldProvenance: {},
-  };
-  const pendingReviewWorkspaceState = {
-    ...createProjectWorkspaceState(),
-    requirementReviewCandidates: {
-      "REQ-001": {
-        ruleId: "REQ-001",
-        beforeRequirement: requirement,
-        afterRequirement: {
-          ...requirement,
-          actor: "游客",
-          status: "pending-review",
-          fieldProvenance: {
-            ...requirement.fieldProvenance,
-            actor: {
-              source: "ai-suggested",
-              status: "pending-review",
-              value: "游客",
-              originalValue: requirement.actor,
-              rationale: "智能修复建议补充参与者。",
-            },
-          },
-        },
-        repairRationale: "补充缺失的参与者。",
-        blockingReasons: ["缺少参与者"],
-        status: "pending",
-        errorMessage: null,
-        createdAt: "2026-06-21T00:00:00.000Z",
-      },
-    },
-  };
-  const { app, runs } = await createRunRouteTestContext({
-    completeRuns: false,
-    runAccessGuard: createTestRunAccessGuard({
-      "reviewer-a": {
-        start_runs: ["project-a"],
-        manage_documents: ["project-a"],
-      },
-    }),
-    loadProjectWorkspace: async () => ({ state: pendingReviewWorkspaceState }),
-  });
-
-  const requests = [
-    {
-      url: "/api/runs",
-      payload: {
-        projectId: "project-a",
-        selectedDiagrams: ["usecase"],
-      },
-    },
-    {
-      url: "/api/design-runs",
-      payload: {
-        projectId: "project-a",
-        selectedDiagrams: ["sequence"],
-      },
-    },
-
-    {
-      url: "/api/document-runs",
-      payload: {
-        projectId: "project-a",
-        documentKind: "requirementsSpec",
-        useAiText: false,
-      },
-    },
-    {
-      url: "/api/document-runs",
-      payload: {
-        projectId: "project-a",
-        documentKind: "softwareDesignSpec",
-        useAiText: false,
-      },
-    },
-  ];
-
-  for (const request of requests) {
-    const response = await app.inject({
-      method: "POST",
-      url: request.url,
-      headers: { "x-test-user-id": "reviewer-a" },
-      payload: request.payload,
-    });
-    // Open repair candidates are informational now and never reject a start command.
-    assert.notEqual(response.json().error?.code, "REQUIREMENT_REVIEWS_PENDING", response.body);
-  }
 
   await app.close();
 });

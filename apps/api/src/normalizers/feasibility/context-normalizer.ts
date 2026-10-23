@@ -6,7 +6,6 @@ import {
 
 export function normalizeContextDiagram(
   value: unknown,
-  _validRequirementIds: ReadonlySet<string>,
 ): ContextDiagramSpec {
   const diagnostics = validateModelInput(value, "feasibility");
   if (diagnostics.length) throw new ModelSemanticError(diagnostics);

@@ -555,18 +555,11 @@ export function hasDesignSources(
   models: Array<DesignDiagramModelSpec | undefined>,
   traceability: DesignModelTraceabilityEntry[],
   manualModelEditStatus: WorkspaceRecord["manualModelEditStatus"] = {},
-  _requirementModels: Array<DiagramModelSpec | undefined> = [],
 ) {
   const available = models.filter(Boolean);
   return available.length > 0 && (traceability.length > 0 || available.every(model => manualModelEditStatus[getDesignModelId(model!)]?.status === "rerendered"));
 }
 
-export function describeMissingDesignSources(input: {
-  models: Array<DesignDiagramModelSpec | undefined>;
-  traceability: DesignModelTraceabilityEntry[];
-  manualModelEditStatus?: WorkspaceRecord["manualModelEditStatus"];
-  requirementModels?: Array<DiagramModelSpec | undefined>;
-  limit?: number;
-}) {
-  return input.traceability.length ? "" : "缺少首次生成的来源声明";
+export function describeMissingDesignSources(traceability: DesignModelTraceabilityEntry[]) {
+  return traceability.length ? "" : "缺少首次生成的来源声明";
 }

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../../shared/i18n/i18n-provider";
 import { TooltipProvider } from "../../../shared/ui/tooltip";
-import { createRule } from "../../../test/workspace-test-utils";
+import { createRule } from "../../../../tests/helpers/workspace-test-utils";
 import { RequirementModelCardPopovers } from "./requirement-model-card-popovers";
 
 function renderActions(

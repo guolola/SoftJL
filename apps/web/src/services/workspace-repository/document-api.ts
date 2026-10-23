@@ -3,7 +3,7 @@ import type {
   DocumentKind,
   DocumentLibraryListResponse,
 } from "@uml-platform/contracts";
-import { downloadBlob, requestJson } from "../api-client";
+import { downloadBlob, requestJson } from "../api-client/index";
 import { requireProjectScope, withProjectHeaders } from "./project-scope";
 
 function documentTimestamp(date = new Date()) {
@@ -25,21 +25,6 @@ export function documentFileName(documentKind: DocumentKind, date = new Date()) 
     : documentKind === "softwareDesignSpec"
       ? `软件设计说明书-${timestamp}.docx`
       : `可行性研究报告-${timestamp}.docx`;
-}
-
-export async function downloadDocumentRunFile(
-  runId: string,
-  defaultFileName?: string,
-  projectId: string | null = null,
-) {
-  const scopedProjectId = requireProjectScope(projectId);
-  return downloadBlob(
-    `/api/document-runs/${runId}/download`,
-    withProjectHeaders(scopedProjectId, {
-      errorKey: "documentsPage.errors.downloadFailed",
-      defaultFileName: defaultFileName ?? "说明书.docx",
-    }),
-  );
 }
 
 export async function listDocumentLibraryItems(projectId: string | null = null) {

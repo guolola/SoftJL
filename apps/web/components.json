@@ -26,6 +26,7 @@
         "email": "${EMAIL}",
         "license_key": "${LICENSE_KEY}"
       }
-    }
+    },
+    "@assistant-ui": "https://r.assistant-ui.com/{name}.json"
   }
 }

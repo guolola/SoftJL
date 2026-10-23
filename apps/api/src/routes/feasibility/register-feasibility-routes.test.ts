@@ -1,14 +1,14 @@
 // Verifies formal feasibility run persistence, provider generation, dependency gates, and partial sync.
 import assert from "node:assert/strict";
-import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
 import test from "node:test";
 import Fastify from "fastify";
 import { snapshotInputFingerprint } from "@uml-platform/contracts";
 import { buildAcceptedRequirementSnapshot, buildFeasibilityContextFingerprint, createRequirementBaselineSnapshot } from "@uml-platform/contracts";
-import { createBusinessFlowArtifact } from "../../test-fixtures/feasibility/business-flow.js";
+import { createBusinessFlowArtifact } from "../../../tests/fixtures/feasibility/business-flow.js";
 import { createRunRecordStore } from "../../runs/records/run-record-store.js";
 import { registerFeasibilityRoutes } from "./register-feasibility-routes.js";
-import { librarySeatDemoFixture } from "../../runs/demo/fixtures/library-seat-demo-fixture.js";
+import { librarySeatDemoFixture } from "@uml-platform/demo-fixtures";
 import { ModelCatalog } from "../../provider-configs/model-catalog.js";
 import { normalizeFeasibilityImplementationDetailed } from "../../normalizers/feasibility/implementation-normalizer.js";
 
@@ -463,16 +463,17 @@ test("economics patches use one candidate's chapter and preserve the other compl
   valid.candidates[1].name = "OTHER_CANDIDATE_UNCHANGED";
   const invalid = structuredClone(valid);
   invalid.candidates[0].implementation.costEstimates[0].range.minimum = "invalid amount";
-  const fields = ["analysisPeriodAssumption", "costEstimates", "benefitEstimates", "absenceDeclarations"];
-  const patch = Object.fromEntries(fields.map(key => [key, valid.candidates[0].implementation[key]]));
-  const fixture = registerTestRoutes({ app, outputs: [contextOutput, businessFlowOutput, JSON.stringify(invalid), JSON.stringify({ candidateIndex: 0, patch })] });
+  const patch = { targetId: "implementation", baseFingerprint: snapshotInputFingerprint(invalid), changes: [{
+    path: "candidates.0.implementation.costEstimates.0.range.minimum", value: 10_000,
+  }] };
+  const fixture = registerTestRoutes({ app, outputs: [contextOutput, businessFlowOutput, JSON.stringify(invalid), JSON.stringify(patch)] });
   const start = await app.inject({ method: "POST", url: "/api/feasibility-runs", headers: { authorization: "Bearer test" }, payload: {
     projectId: "project-1", selectedArtifacts: ["context", "business-flow", "implementation"], providerSettings: { providerConfigId: "provider-1", model: "test-model" },
   } });
   const snapshot = await waitForTerminal(app, start.json().runId);
   assert.equal(snapshot.status, "completed", JSON.stringify(snapshot.error));
   assert.equal(snapshot.implementationPlan.candidates[0].implementation.costEstimates[0].range.minimum, 10_000);
-  const expected = normalizeFeasibilityImplementationDetailed(valid, new Set(["R9"]), []).plan;
+  const expected = normalizeFeasibilityImplementationDetailed(valid, []).plan;
   assert.deepEqual(snapshot.implementationPlan.candidates[1].implementation, expected.candidates[1].implementation);
   const repair = fixture.prompts.find(prompt => prompt.includes("仅修复候选方案索引"));
   assert.ok(repair);

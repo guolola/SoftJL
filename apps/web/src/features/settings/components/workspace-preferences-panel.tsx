@@ -13,12 +13,12 @@ import { SettingRow } from "./block37-preferences";
 import type { GlobalSettingsActions } from "./global-settings-panel";
 
 const preferences = [
-  { key: "autoGenerate", label: "autoRules" },
+
   { key: "showStaleBanner", label: "staleBanner" },
   { key: "completionSound", label: "completionSound" },
 ] as const;
 const selectPreferences = (settings: UserSettings) => ({
-  autoGenerate: settings.autoGenerate,
+
   showStaleBanner: settings.showStaleBanner,
   completionSound: settings.completionSound,
 });

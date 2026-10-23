@@ -3,16 +3,19 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   providerConfigDtoSchema,
+  providerConfigSelfServiceRotateRequestSchema,
+  providerConfigSelfServiceCreateRequestSchema,
+  providerConfigSelfServiceUpdateRequestSchema,
   providerConfigListResponseSchema,
   providerConfigTestRequestSchema,
   providerConfigTestResponseSchema,
-  providerModelCapabilityMapSchema,
   providerModelDiscoveryRequestSchema,
   providerModelDiscoveryProgressEventSchema,
   providerModelDiscoveryResponseSchema,
   type ProviderModelDiscoveryProgressEvent,
+  type ProviderModelCapability,
 } from "@uml-platform/contracts";
-import { getModelCapability } from "../../model-capabilities.js";
+import { getModelCapability } from "../../adapters/llm/model-capabilities.js";
 import { getHealthcheckResponseFormat } from "../../adapters/llm/response-formats/index.js";
 import {
   isAuthError,
@@ -32,7 +35,7 @@ import {
 } from "../../provider-configs/provider-url-policy.js";
 import {
   runOpenAiCompatibleChatCompletionHealthcheck,
-} from "../../llm.js";
+} from "../../adapters/llm/llm-transport.js";
 import { discoverOpenAiCompatibleModelCapabilities } from "../../provider-configs/provider-model-discovery.js";
 import {
   classifyProviderTestFailure,
@@ -106,47 +109,6 @@ function providerVisibilityPriority(
   return 3;
 }
 
-const providerConfigSelfServiceRotateRequestSchema = z
-  .object({
-    apiKey: z.string().trim().min(1),
-    model: z.string().trim().min(1).optional(),
-  })
-  .strict();
-
-const providerConfigSelfServiceCreateRequestSchema = z
-  .object({
-    name: z.string().trim().min(1),
-    provider: z.string().trim().min(1).optional(),
-    baseUrl: z.string().trim().min(1),
-    apiKey: z.string().trim().min(1),
-    defaultModel: z.string().trim().min(1),
-    allowedModels: z.array(z.string().trim().min(1)).min(1),
-    modelCapabilities: providerModelCapabilityMapSchema.optional(),
-    keyPurpose: z.string().trim().min(1).optional(),
-  })
-  .strict();
-
-const providerConfigSelfServiceUpdateRequestSchema = z
-  .object({
-    name: z.string().trim().min(1).optional(),
-    provider: z.string().trim().min(1).optional(),
-    baseUrl: z.string().trim().min(1).optional(),
-    apiKey: z.string().trim().min(1).optional(),
-    defaultModel: z.string().trim().min(1).optional(),
-    allowedModels: z.array(z.string().trim().min(1)).min(1).optional(),
-    modelCapabilities: providerModelCapabilityMapSchema.optional(),
-    keyPurpose: z.string().trim().min(1).optional(),
-  })
-  .strict();
-
-const providerConfigTemporaryTestRequestSchema = z
-  .object({
-    baseUrl: z.string().trim().min(1),
-    apiKey: z.string().trim().min(1),
-    model: z.string().trim().min(1),
-  })
-  .strict();
-
 function sortVisibleProviders(
   providers: ProviderConfigView[],
   userId: string,
@@ -182,15 +144,6 @@ function parseProviderTestInput(body: unknown, reply: FastifyReply) {
 
 function parseProviderModelDiscoveryInput(body: unknown, reply: FastifyReply) {
   const parsed = providerModelDiscoveryRequestSchema.safeParse(body ?? {});
-  if (!parsed.success) {
-    reply.code(400);
-    return providerValidationFailure(parsed.error.issues);
-  }
-  return parsed.data;
-}
-
-function parseTemporaryProviderTestInput(body: unknown, reply: FastifyReply) {
-  const parsed = providerConfigTemporaryTestRequestSchema.safeParse(body ?? {});
   if (!parsed.success) {
     reply.code(400);
     return providerValidationFailure(parsed.error.issues);
@@ -307,15 +260,17 @@ async function recordSelfServiceProviderRiskEvent({
   });
 }
 
-async function verifyTemporaryProviderConnection({
+async function verifyProviderSecret({
   baseUrl,
   apiKey,
   model,
+  modelCapability,
   resolveHostname,
 }: {
   baseUrl: string;
   apiKey: string;
   model: string;
+  modelCapability: ProviderModelCapability;
   resolveHostname?: ProviderHostnameResolver;
 }) {
   const normalizedBaseUrl = await assertManagedProviderBaseUrlResolvesPublicly(
@@ -326,7 +281,7 @@ async function verifyTemporaryProviderConnection({
     apiBaseUrl: normalizedBaseUrl,
     apiKey,
     model,
-    responseFormat: getHealthcheckResponseFormat(model),
+    responseFormat: getHealthcheckResponseFormat(modelCapability),
     resolveHostname,
   });
   return normalizedBaseUrl;
@@ -565,13 +520,17 @@ async function testProviderConfig({
   }
 
   const modelCapability = providerConfig.modelCapabilities[testModel];
-  const capability = getModelCapability(modelCapability ?? testModel);
+  if (!modelCapability) {
+    reply.code(400);
+    return providerTestError({ code: "PROVIDER_MODEL_CAPABILITY_MISSING", category: "validation" });
+  }
+  const capability = getModelCapability(modelCapability);
   try {
     await runOpenAiCompatibleChatCompletionHealthcheck({
       apiBaseUrl: providerConfig.baseUrl,
       apiKey,
       model: testModel,
-      responseFormat: getHealthcheckResponseFormat(modelCapability ?? testModel),
+      responseFormat: getHealthcheckResponseFormat(modelCapability),
       resolveHostname,
     });
   } catch (error) {
@@ -733,40 +692,6 @@ export function registerProviderConfigRoutes({
       request,
       resolveHostname: resolveProviderHostname,
     });
-  });
-
-  app.post("/api/provider-configs/test-temporary", async (request, reply) => {
-    const auth = await requireAuth(request, reply, authStore);
-    if (isAuthError(auth)) return auth;
-
-    const input = parseTemporaryProviderTestInput(request.body, reply);
-    if ("error" in input) return input;
-
-    try {
-      await verifyTemporaryProviderConnection({
-        baseUrl: input.baseUrl,
-        apiKey: input.apiKey,
-        model: input.model,
-        resolveHostname: resolveProviderHostname,
-      });
-      return providerConfigTestResponseSchema.parse({
-        ok: true,
-        message: "Provider connection ok",
-        capability: getModelCapability(input.model),
-      });
-    } catch (error) {
-      const failure = structuredProviderEndpointFailure(error);
-      request.log.warn(
-        {
-          failureKind: failure.failureKind,
-          providerHost: safeProviderHost(input.baseUrl),
-          upstreamStatus: failure.upstreamStatus,
-        },
-        "Temporary provider connection test failed",
-      );
-      reply.code(failure.statusCode);
-      return failure.body;
-    }
   });
 
   app.post("/api/provider-configs", async (request, reply) => {
@@ -945,11 +870,18 @@ export function registerProviderConfigRoutes({
       return providerTestError({ code: "PROVIDER_MODEL_NOT_ALLOWED", category: "validation" });
     }
 
+    const modelCapability = providerConfig.modelCapabilities[testModel];
+    if (!modelCapability) {
+      reply.code(400);
+      return providerTestError({ code: "PROVIDER_MODEL_CAPABILITY_MISSING", category: "validation" });
+    }
+
     try {
-      await verifyTemporaryProviderConnection({
+      await verifyProviderSecret({
         baseUrl: providerConfig.baseUrl,
         apiKey: input.apiKey,
         model: testModel,
+        modelCapability,
         resolveHostname: resolveProviderHostname,
       });
     } catch (error) {

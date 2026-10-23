@@ -1,9 +1,11 @@
+import { standardModelFixture } from "@uml-platform/contracts/testing";
+import { roundTripRunRecordStore } from "../../../tests/fixtures/runs/run-record-round-trip.js";
 // Verifies quick task ownership, output preservation and compact PostgreSQL history parity.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { assertCurrentRunSnapshot, createStandardProjectState, type StandardProjectState } from "@uml-platform/contracts";
-import { createRunRecordStore, serializeRunRecordStore } from "./run-record-store.js";
+import { createRunRecordStore } from "./run-record-store.js";
 import { startStandardRunRecord, syncStandardRunRecord } from "./standard-run-record.js";
 import { createPostgresRunRecordStore } from "./postgres-run-record-store.js";
 import type { Queryable } from "../../db/transactions.js";
@@ -11,7 +13,7 @@ import { RUN_SUMMARY_SNAPSHOT_SQL } from "./run-summary-projection.js";
 
 function diagram(id: string) {
   return { id, title: id, kind: "class" as const, status: "completed" as const,
-    model: { nodes: [{ id: "order", label: "订单", type: "class" as const, fields: [], methods: [] }], edges: [] },
+    model: standardModelFixture("class"),
     source: "@startuml\nclass Order\n@enduml", svg: '<svg xmlns="http://www.w3.org/2000/svg"><text>Order</text></svg>' };
 }
 test("one quick turn owns only its outputs, retains partial results on failure and survives a history reload", async t => {
@@ -31,7 +33,7 @@ test("one quick turn owns only its outputs, retains partial results on failure a
   const record = runs.get("turn-one")!;
   assert.equal(record.snapshot.status, "failed"); assert.ok(record.terminal);
   assertCurrentRunSnapshot(record.snapshot);
-  const restored = createRunRecordStore(serializeRunRecordStore(runs)).get("turn-one")!;
+  const restored = roundTripRunRecordStore(runs).get("turn-one")!;
   const items = restored.snapshot.standardRun!.artifacts.map(({ svg: _svg, ...item }) => item);
   assert.deepEqual(items.map(item => item.type), ["毕设图表", "测试用例", "DOCX"]);
   assert.equal(items[0].modelId, "new");

@@ -1,12 +1,12 @@
-// Provides run history list, delete, clear, and save actions for the session provider.
+// Provides run history list, individual deletion, and save actions for the session provider.
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
 import type {
   RunHistoryItem,
   RunHistorySnapshot,
-} from "../../../entities/run-history";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+} from "../../../entities/run-history/index";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 
 interface RunHistoryActionsInput {
   repository: WorkspaceRepository;
@@ -29,12 +29,7 @@ export function useRunHistoryActions({
     [repository, setHistoryItems],
   );
 
-  const clearRunHistory = useCallback(async () => {
-    await repository.clearRunHistory();
-    setHistoryItems([]);
-  }, [repository, setHistoryItems]);
-
-  const saveHistorySnapshot = useCallback(
+const saveHistorySnapshot = useCallback(
     async (
       snapshot: RunHistorySnapshot,
       meta: { providerModel: string; durationMs?: number },
@@ -56,7 +51,7 @@ export function useRunHistoryActions({
   );
 
   return {
-    clearRunHistory,
+
     deleteRunHistory,
     refreshHistory,
     saveHistorySnapshot,

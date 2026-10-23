@@ -1,7 +1,7 @@
 // Maps persisted run intent and snapshot artifacts to current history operations.
 import type { TFunction } from "i18next";
 import { getModelTaskLabel } from "../../../entities/diagram/model";
-import type { RunHistorySnapshot } from "../../../entities/run-history";
+import type { RunHistorySnapshot } from "../../../entities/run-history/index";
 import type { FeasibilityRunSnapshot } from "@uml-platform/contracts";
 import type { PlatformRunSummary } from "../services/platform-api";
 

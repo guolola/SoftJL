@@ -1,4 +1,6 @@
 // Normalizes model choices against server-managed provider config policy.
+import { normalizeProviderModelCapability } from "./provider-model-display";
+
 export type ProviderModelPolicy = {
   defaultModel?: string | null;
   allowedModels?: string[] | null;
@@ -52,37 +54,8 @@ export function getProviderModelCapabilities(
     Object.entries(config?.modelCapabilities ?? {}).flatMap(([model, capability]) => {
       const normalizedModel = model.trim();
       if (!normalizedModel || !allowedModels.has(normalizedModel)) return [];
-      const structuredOutputMode =
-        capability.structuredOutputMode === "strict_json" ||
-        capability.structuredOutputMode === "json_object" ||
-        capability.structuredOutputMode === "compatible"
-          ? capability.structuredOutputMode
-          : capability.supportsJsonSchema === true
-            ? "strict_json"
-            : capability.supportsJsonObject === true
-              ? "json_object"
-              : "compatible";
-      return [
-        [
-          normalizedModel,
-          {
-            ...capability,
-            id: capability.id ?? normalizedModel,
-            structuredOutputMode,
-            supportsJsonSchema: structuredOutputMode === "strict_json",
-            supportsJsonObject:
-              structuredOutputMode === "strict_json" ||
-              structuredOutputMode === "json_object",
-            modeLabel:
-              capability.modeLabel ??
-              (structuredOutputMode === "strict_json"
-                ? "严格 JSON"
-                : structuredOutputMode === "json_object"
-                  ? "JSON 模式"
-                  : "兼容模式"),
-          },
-        ],
-      ];
+      const normalized = normalizeProviderModelCapability(normalizedModel, capability);
+      return normalized ? [[normalizedModel, { ...capability, ...normalized }]] : [];
     }),
   );
 }
@@ -111,16 +84,6 @@ export function getProviderLabel(config: ProviderModelPolicy | null | undefined)
       .join(" ");
   }
   return config?.name?.trim() || "托管 Provider";
-}
-
-export function providerScopeLabel(
-  config: ProviderScopePolicy,
-  labels = { user: "个人配置", system: "系统配置", project: "项目配置", managed: "托管配置" },
-) {
-  if (config.scopeType === "user") return labels.user;
-  if (config.scopeType === "system") return labels.system;
-  if (config.scopeType === "project") return labels.project;
-  return labels.managed;
 }
 
 function providerScopePriority(config: ProviderScopePolicy) {

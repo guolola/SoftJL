@@ -1,6 +1,6 @@
 // Measures prompt sections without persisting source text, credentials, image bytes, or guessed provider tokens.
 import type { RunInputMetrics } from "@uml-platform/contracts";
-import type { ChatMessage, ChatCompletionResponseFormat } from "../../../llm.js";
+import type { ChatMessage, ChatCompletionResponseFormat } from "../../../adapters/llm/llm-transport.js";
 
 export function promptInputMetrics(messages: ChatMessage[], responseFormat?: ChatCompletionResponseFormat | null): RunInputMetrics {
   const sections: Record<string, number> = {};

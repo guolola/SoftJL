@@ -1,7 +1,7 @@
 // Verifies engineering reasoning switches reach the actual provider request using native family options.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createRealLlmTransport, type OpenAiCompatibleClientFactory } from "../../llm.js";
+import { createRealLlmTransport, type OpenAiCompatibleClientFactory } from "./llm-transport.js";
 
 test("real transport sends enabled and disabled reasoning using the same families as quick modeling", async () => {
   let body: Record<string, unknown> = {};

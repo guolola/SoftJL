@@ -44,7 +44,7 @@
     "source": "packages/ui/src/components/react/ui/base/dialog.tsx",
     "sha256": "662c25e6d4873ba41c12db62a378a1cb873d6c3846e855fc85039793823cd903",
     "bodySha256": "8f829a988c8d1a4a26e435ee32afc793dff253bb739d534070bfd4fe5b7943e4",
-    "adaptedBodySha256": "9b9b1daf4fc2a9be3786f2a5ded951992a0de54c5de984f68da3a3716d6d7855",
+    "adaptedBodySha256": "7a502467854874a40913a45e1aee70edf9bbfe91958325e49cdea30ae35a7227",
     "structureSha256": "2d7e9ea4734879a5d1e36c711b3ad4c43e9424fe19797b4af05a5ce6381ab066"
   },
   {
@@ -52,7 +52,7 @@
     "source": "packages/ui/src/components/react/ui/base/avatar.tsx",
     "sha256": "56acc1c16834672164b7d1d920ef939bc4d5330640059bf0ec0f81cbdc7c168e",
     "bodySha256": "c7f6ac422c53a7ce7189150e86231c99acf529e5a4dd89c61b92be829b6e2d8d",
-    "adaptedBodySha256": "e34384cb4961fdfbc817af63e606ad101fc845b7c6ad60bda497c485c1a910e8",
+    "adaptedBodySha256": "dd4139ea1a8c10fc46819e192a73613b531a7240e4408a9c2dcbae25cf795793",
     "structureSha256": "c3fbb886aa66dee67b8ba27251b08410d08a773b39e31bada84a56fc231ea1af"
   },
   {
@@ -76,7 +76,7 @@
     "source": "packages/ui/src/components/react/assistant-ui/elements/attachment.aui.tsx",
     "sha256": "a2ed2525844b0f2f1a07416ac2a2f63de1c7ee23066a06d4af333d391ed5a897",
     "bodySha256": "3806212c95b786e75aaaba6b17853880a80d62cd7f0f77a7093742f5ee7ebbed",
-    "adaptedBodySha256": "777768de2d639d128f0125ef15cb58caaf9b4090e903f1afea1219344a6607be",
+    "adaptedBodySha256": "202808adb95d4c52e81284efc6543d7c21fbd46ab41be1971c7bb4767557f23d",
     "structureSha256": "937dfe5738516aa1526cdd39a4df1525d6a2f92b9a6f8fe792aa6e5daeaf0f9b"
   },
   {
@@ -88,19 +88,11 @@
     "structureSha256": "f556f4da8bdc02db2adc67ed9ce88f6eacbac58117dd48f3af8f7ca7ae28b7a1"
   },
   {
-    "file": "source/utils/tokens.ts",
-    "source": "packages/ui/src/components/react/assistant-ui/utils/tokens.ts",
-    "sha256": "009b617a40b7bdc6df50b249274d777d09385eb8581a0e72b90fdd96610a14cb",
-    "bodySha256": "1c861449703b80ae23fbfd16c1e0d203bb218f9e78bc25d9404bbb90120e7e58",
-    "adaptedBodySha256": "b6289ec3935a141f6ffb4a3f5965ac6fc41f6924caecfbc26d7a797c69a8951b",
-    "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-  },
-  {
     "file": "source/elements/context-display.tsx",
     "source": "packages/ui/src/components/react/assistant-ui/elements/context-display.tsx",
     "sha256": "343d1ae2760ff69c4d59138929a59067b82a8cd7e0cefd9957b88a6dac26f9a1",
     "bodySha256": "4b833622ee2d542d704bededed2f89d19fb391cf40bfbb20ae3d6e877f58cdc4",
-    "adaptedBodySha256": "2f4ded2fe8f508ebd69b32592c871d9d74cbc8592e99279bd63c327b1d09e95b",
+    "adaptedBodySha256": "21cf932bda24fc5bd26c1984e1f9e3ca247be04f2ba42e8b3a72e176ab2d262f",
     "structureSha256": "32762f9fb70d58c2f257aaa85906356a465783243d916b169b1855ad6752389d",
     "adaptedStructureSha256": "6046b80b699a97eefcbf581c965bab4e4290768a3d3e5c1ed1ea0f8e592c6311"
   },
@@ -125,7 +117,7 @@
     "source": "packages/ui/src/components/react/assistant-ui/elements/model-selector.aui.tsx",
     "sha256": "fa58d6cb2392e7d57d58d7d560008953f95025b1bd0a58b7539a61f7283557c1",
     "bodySha256": "73eecdcd08a5b2c1b1d323beaf159447022e33255786bd02688de95ffaacbd63",
-    "adaptedBodySha256": "2aa9cde1241cc367cc1822d43354cf539bee3c590a22ddcc54086ef646125448",
+    "adaptedBodySha256": "4649f6638b53ce4c1abc3065ba8fbf2af6557fde7a1936504c2345ae50e11a20",
     "structureSha256": "0854fdea5e4abd6ee31a726e92a9aa576126f53fb1eb34e6ccfb121aad5c769f"
   },
   {
@@ -149,7 +141,7 @@
     "source": "apps/docs/components/pages/home/demo/composer.tsx",
     "sha256": "fec4be2c599eb4c826f3dc60c47f075986d292c95cd849b2cf7b7a569f4b9757",
     "bodySha256": "efae28f4134bba0e89785a072c47a4d189524a181d7af432433b201f6e217c06",
-    "adaptedBodySha256": "ec9bc45e101f05f165bec0c1f41ac645f2e0d123b3a17e431a7d161c817b499c",
+    "adaptedBodySha256": "abd9669838d328715e58ccc7a129290964be7b9fa7a5eadc43775518bb3043cf",
     "structureSha256": "5c192849736ae6846c11676cba4a6151372e969a14799636461b010fa9a2a0c0"
   },
   {
@@ -165,7 +157,7 @@
     "source": "apps/docs/components/shared/type.ts",
     "sha256": "449268725e71fc1557dea752466e46ef635341a0a35574267370694d813ae572",
     "bodySha256": "78d2d92ce4e6b9801c3cf68dc45e67a845d99ec1bb3ebfbb69c1e719df98eb4e",
-    "adaptedBodySha256": "78d2d92ce4e6b9801c3cf68dc45e67a845d99ec1bb3ebfbb69c1e719df98eb4e",
+    "adaptedBodySha256": "54be91f0ae3118aba7794f5b4f88de7e8314d0ca5be9b00dd52bb7ada6ed13e2",
     "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   {
@@ -197,7 +189,7 @@
     "source": "packages/ui/src/components/react/assistant-ui/elements/directive-text.aui.tsx",
     "sha256": "3a8a0b8f0de9fd546c6e214c5ff8d833324fda0c3a730a2dcdb506e8d66cfffe",
     "bodySha256": "2b8e2e46197552f99eec06b9c9a65929c5a0a566fcd5789d4373dfaece02a9f9",
-    "adaptedBodySha256": "2b8e2e46197552f99eec06b9c9a65929c5a0a566fcd5789d4373dfaece02a9f9",
+    "adaptedBodySha256": "e11b940cb6511e5258d59e1ef7546e74d7a5a45b1b6b313bc8589bcc6ef6d391",
     "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   {
@@ -213,7 +205,7 @@
     "source": "packages/ui/src/components/react/assistant-ui/elements/surfaces.tsx",
     "sha256": "5d81fbb669e67ae20026cd30ed57efc51a5e3ee0f4f5d265e1723de75359b8fa",
     "bodySha256": "be96dad15bb4b976ec5fde613a02f2f6e5418ae0f2bc56ee5bc9f9fff6dcc98c",
-    "adaptedBodySha256": "614e821b47a3b3024f8460544d001614bab9e12fe4b409417c3f87cd055f37f5",
+    "adaptedBodySha256": "d58d11d2238e61c7d78701a16e0952f40e9ba197edde127e234df502d9d945a4",
     "structureSha256": "555372801ca73806c21b5b8bc53ba3bf3448d794886528b277dacb64c08da0dd"
   },
   {
@@ -333,15 +325,16 @@
     "source": "packages/ui/src/components/react/assistant-ui/elements/reasoning.aui.tsx",
     "sha256": "3ae8bcf0d84fcb9ac37a40c2046abbf46d7b8f3967b482eec84f0a743aefce65",
     "bodySha256": "138a0a280a35101acf6ebd864974b346d391340e0df8ad00a94895d1d81bf387",
-    "adaptedBodySha256": "12ddf994621222746e5efb0b63b7f5b3edc54cd46c055af6c351417fc81970fa",
-    "structureSha256": "1a7bbd609f880b103ce1b745b3be5e0d184fcfdc97d01646ad39980e88c0572d"
+    "adaptedBodySha256": "2e618a846b56dad3748b4a397b37a13098942216d03f3cd32a4f5257eccfcf83",
+    "structureSha256": "1a7bbd609f880b103ce1b745b3be5e0d184fcfdc97d01646ad39980e88c0572d",
+    "adaptedStructureSha256": "f28c1cdd3accb53950cb8e350054cff92b20e26da18dfd831406747aa9f60db3"
   },
   {
     "file": "source/trace-line.tsx",
     "source": "apps/docs/components/shared/trace-line.tsx",
     "sha256": "d68c5946d4f29c6fb22f54c5a1f7d6fa39460925339cc59432acee4813d0c264",
     "bodySha256": "8e4b254b1ed6dfd050efff8954e98c2665bbba09ab58c149181534a3a3e25257",
-    "adaptedBodySha256": "55e5699b4a759ae93428cb21227390d944a4247f9ca593023d9541bab5e6ba40",
+    "adaptedBodySha256": "dc8c9bc2424565249c9e1a98eec958bc48c0a518673efaa3cf648a4a868739ff",
     "structureSha256": "f865087abdf8ed1ec653230e40781ab06f2714a33647287e97712638b5baaffc"
   },
   {
@@ -365,7 +358,7 @@
     "source": "apps/docs/lib/assistant-metrics.ts",
     "sha256": "e785fcc6db2adaf3ccd356bce94f7728f9a574106bcef46ffbbb873fda2af844",
     "bodySha256": "919c534444a0d40383c9710962391a513b17168847d9691c3bd570733172d21d",
-    "adaptedBodySha256": "919c534444a0d40383c9710962391a513b17168847d9691c3bd570733172d21d",
+    "adaptedBodySha256": "b44091741173b84c6e9e170bda91129838028a0c53646f9c72b904e09d8779b2",
     "structureSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   {
@@ -381,7 +374,7 @@
     "source": "apps/docs/components/pages/docs/assistant/assistant-action-bar.tsx",
     "sha256": "2c5e829acb3dfbd97621ae063046ef9bf72785e9be7d7d739eee0763c5d2265d",
     "bodySha256": "b8d1d04e025a60cce6a033fe81810019d187aed835db5e7e4045feadc28265f6",
-    "adaptedBodySha256": "32540e43fc1abbe102a703ac74dc05e8898cf61594d29ddd962153a6217bc3f5",
+    "adaptedBodySha256": "44a5ecd9c58a69c4504e9ca1be4271b3e1c18802a49eff3bf6a60f841aae80c1",
     "structureSha256": "c4ab054697445ae1c5dac4687d8d7631cb4ec2b9c8d7c26b172146dcc9101cce"
   },
   {
@@ -413,7 +406,7 @@
     "source": "packages/ui/src/components/react/ui/base/collapsible.tsx",
     "sha256": "cf6333da05adc3d96abf7ce0928c0c9a3fe3c6df46f7771551220a9205c41975",
     "bodySha256": "4756e5f3f765fcf3bec4b6e80424bb72881515a78d926437e4757ebea7d4c71d",
-    "adaptedBodySha256": "fbf6218518ceafa941780d8155b534f0c99d30c1f8a7a34c3cec874b49b87410",
+    "adaptedBodySha256": "0fa13a502614a8afc07f867c186b3e112cc8de82eedbe48c622ad0a4c327c3ee",
     "structureSha256": "93f5171e40a52171563b796928938fd28cbd4019182f28eb5e92ea7654ef6987"
   },
   {
@@ -421,7 +414,7 @@
     "source": "apps/docs/components/pages/home/demo/trace.tsx",
     "sha256": "229edd9c4ecd8a791601c8447b775580f3c71a71224dc13c834e52575e40095a",
     "bodySha256": "e75edf0193fe89a29f72e10a4001c39094a887d0ed264df3ccdcc7adbb19166b",
-    "adaptedBodySha256": "cbf2c4272abde3f19fec68b4fd4c25b80f76a9460787f799a8f957df96b0b94a",
+    "adaptedBodySha256": "bddf450b8c8c394c2e17fecb35cb783b10b675a7f6b1ab95428a35cae6975cac",
     "structureSha256": "d0239dfd13cfb03a16945a4c3761d7a224990ff18a114f364bfcaa7daeeca2c6"
   },
   {
@@ -429,7 +422,7 @@
     "source": "apps/docs/components/pages/home/demo/messages.tsx",
     "sha256": "9dcb67616f362336fd7e15b8e4e19f6d237fcccd097894bc3254dd084bdbcd39",
     "bodySha256": "36f55b597a1902068f87394c98b428a2da451f54a1623a7c7e17df05e6d24ea2",
-    "adaptedBodySha256": "e31f3d4c8d7c1cd8878b771ceea709028888fbee1cea54afa972b7c9e769dedb",
+    "adaptedBodySha256": "4d5b3b80aad444d3748ccf9debf06fcc42ef1944aef92da89d77255caf61085c",
     "structureSha256": "6ef77e015bfad899d58aafd4d5e3ddd81bbc29f41b3e6f327677f3280a2795b0",
     "adaptedStructureSha256": "71a7a18f15ca3189c6607a444f2ec245fcac4bb9a6c49579754f54dd904a58ea"
   },
@@ -438,7 +431,7 @@
     "source": "apps/docs/components/pages/home/demo/suggestions.tsx",
     "sha256": "576c18ba5fc2a9c7e6a6e9d3e0194af6a66e1e33dcaecea1141a04709a539398",
     "bodySha256": "d8e188cbca24c1ea0a8e7f414a54b9c0717b71ef66916e0b32a14ebdeac50841",
-    "adaptedBodySha256": "b088eddc0ebae7c29c28dcf4af75cb128d10130d8268d67c9824c05513496b2e",
+    "adaptedBodySha256": "95012813c3994ef6169e9c7e92f9264124d1f7d17218f288955bccabbfb30ff2",
     "structureSha256": "7ad449a4de819dce00053f04bd138e6339baed76ac7435b220a525c0b0479d41"
   },
   {
@@ -446,7 +439,7 @@
     "source": "apps/docs/components/pages/home/demo/thread.tsx",
     "sha256": "bdd66dafe62eacc6319e4ae92deaf10dcdaa570c93a2faded5d3189537209def",
     "bodySha256": "d51148b500a607b6f0a88a8189ca37b671ec1ec0e52f5e25226c83d6abdf550b",
-    "adaptedBodySha256": "6fcf3eb743e00c915892345cd1bc2c2d07169f5da47f261adc90c007dd64a1b2",
+    "adaptedBodySha256": "37f440a6b7dad63ffd56ee1d2889b06be116f0d63a98d46c2e8f758dd026367d",
     "structureSha256": "025fecdb3a4ef5bc7b0cfe64c41f2e6ef12666d45bb64887ccbcc16853409deb",
     "adaptedStructureSha256": "f9f2dbcf718f5d704932e356ec0b4fc444bce4068349dee309ca05757dc339b7"
   },

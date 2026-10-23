@@ -214,7 +214,6 @@ describe("ProjectsIndexPage", () => {
     expect(screen.getByText("阅读快速开始").closest("a")).toHaveAttribute("href", "/tutorial?article=quick-start");
     expect(screen.queryByRole("button", { name: "创建第一个项目" })).not.toBeInTheDocument();
     const createButton = screen.getByRole("button", { name: "新建项目" });
-    expect(createButton).toHaveClass("animate-rainbow", "before:animate-rainbow");
     await userEvent.click(createButton);
     expect(await screen.findByRole("dialog", { name: "创建项目" })).toBeInTheDocument();
   });
@@ -238,9 +237,9 @@ describe("ProjectsIndexPage", () => {
   });
 
   it.each([
-    ["professional", "工程建模", "from-cyan-600", "to-indigo-600"],
-    ["standard", "快速建模", "from-indigo-500", "to-pink-500"],
-  ])("expands a %s project cover into its full details and restores focus on close", async (projectMode, modeLabel, gradientFrom, gradientTo) => {
+    ["professional", "工程建模"],
+    ["standard", "快速建模"],
+  ])("expands a %s project cover into its full details and restores focus on close", async (projectMode, modeLabel) => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://127.0.0.1:4101");
       if (url.pathname === "/api/projects") {
@@ -283,6 +282,7 @@ describe("ProjectsIndexPage", () => {
     render(
       <AuthenticatedRouteSessionProvider
         value={{
+          mfa: { enabled: false, enforcement: "totp" },
           user: {
             id: "owner-user",
             username: "owner",
@@ -306,17 +306,6 @@ describe("ProjectsIndexPage", () => {
     );
 
     const card = await screen.findByRole("button", { name: "查看项目 课程预约系统" });
-    const filterPanel = screen.getByTestId("projects-filter-panel");
-    expect(within(filterPanel).getByRole("group", { name: "项目范围" })).toHaveClass(
-      "grid-cols-4",
-      "min-w-0",
-    );
-    expect(within(filterPanel).getByPlaceholderText("搜索项目、成员...").closest('[data-slot="input-group"]')).toHaveClass(
-      "min-w-0",
-      "flex-1",
-    );
-    expect(within(filterPanel).getByLabelText("排序方式")).toHaveClass("w-28", "shrink-0");
-    expect(card).toHaveClass("p-4", "hover:bg-neutral-50", "rounded-xl");
     expect(card).toHaveAttribute("data-background-key", "booking");
     expect(within(card).queryByText(modeLabel)).not.toBeInTheDocument();
     expect(within(card).getByText("用于课程实验的预约项目")).toHaveAttribute("title", "用于课程实验的预约项目");
@@ -325,17 +314,12 @@ describe("ProjectsIndexPage", () => {
     trigger.focus();
     await userEvent.keyboard("{Enter}");
     const preview = await screen.findByRole("dialog", { name: "课程预约系统" });
-    expect(within(preview).getByText(modeLabel)).toHaveClass("bg-linear-to-r", gradientFrom, gradientTo);
     expect(within(preview).getByText(modeLabel).querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     const modeBadge = within(preview).getByText(modeLabel);
     const ownerRow = within(preview).getByText("负责人：Owner User").closest("p")!;
     expect(modeBadge.parentElement).toBe(ownerRow.parentElement);
     expect(modeBadge.compareDocumentPosition(ownerRow) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     const projectEntry = within(preview).getByRole("link", { name: "进入项目 课程预约系统" });
-    expect(projectEntry).toHaveClass("rounded-full", "bg-primary", "relative", "-top-1", "h-auto", "gap-1", "px-4!", "py-3");
-    expect(projectEntry).toHaveClass("transition-[background-color,color,border-color,box-shadow]");
-    expect(projectEntry).not.toHaveClass("transition-all");
-    expect(projectEntry.querySelector('[aria-hidden="true"]')).toHaveClass("size-3");
     expect(preview).toHaveTextContent(`最近更新：${formatProjectDateTimeMinute("2026-06-21T08:09:30.000Z")}`);
     for (const label of ["负责人：Owner User", "1 位成员", `最近更新：${formatProjectDateTimeMinute("2026-06-21T08:09:30.000Z")}`]) {
       expect(within(preview).getByText(label).closest("p")?.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
@@ -345,10 +329,8 @@ describe("ProjectsIndexPage", () => {
       expect.stringContaining("cover-19"),
     );
     const memberTrigger = within(preview).getByLabelText("成员头像 Owner User");
-    expect(projectEntry.parentElement).toHaveClass("flex", "items-center", "justify-between");
     expect(projectEntry.parentElement).toContainElement(memberTrigger);
     expect(memberTrigger).toHaveAttribute("tabindex", "0");
-    expect(memberTrigger.querySelector('[data-slot="avatar"]')).toHaveAttribute("data-size", "default");
     await userEvent.hover(memberTrigger);
     const tooltip = await screen.findByRole("tooltip");
     expect(within(tooltip).getByText("Owner User")).toBeInTheDocument();

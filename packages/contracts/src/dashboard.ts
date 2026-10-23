@@ -1,7 +1,7 @@
 // Defines the authenticated dashboard's data contract, independent of presentation blocks.
 import { z } from "zod";
-import { runStatusSchema } from "./runs.js";
-import { diagramKindSchema, designDiagramKindSchema } from "./requirements.js";
+import { runStatusSchema } from "./runs/runs.js";
+import { diagramKindSchema, designDiagramKindSchema } from "./requirements/requirements.js";
 import { documentKindSchema } from "./documents.js";
 
 // Keep zero-sample categories visible and synchronized with supported production artifacts.

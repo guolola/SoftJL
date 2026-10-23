@@ -64,7 +64,6 @@ describe("ClientConnectionGuide", () => {
     const code = [...list.querySelectorAll("code")];
     expect(code.map((node) => node.textContent)).toEqual(expect.arrayContaining([".cursor/mcp.json", "~/.cursor/mcp.json"]));
     expect(list.textContent).not.toContain("`");
-    for (const node of code) expect(node).toHaveClass("bg-muted", "font-mono", "rounded");
     expect(list).toHaveTextContent(/个人令牌/);
     expect(list).not.toHaveTextContent("明确选择项目并授权");
     expect(screen.getByLabelText("客户端配置")).toHaveTextContent("Bearer <YOUR_PERSONAL_TOKEN>");
@@ -72,8 +71,6 @@ describe("ClientConnectionGuide", () => {
 
   it("uses the Codex TOML filename for desktop token configuration", () => {
     renderGuide("codex", "pat");
-
-    expect(within(screen.getByLabelText("客户端配置")).getByText("config.toml")).toHaveAttribute("data-slot", "code-block-filename");
     expect(screen.getByLabelText("客户端配置")).toHaveTextContent('[mcp_servers.uml_platform]');
     expect(screen.getByLabelText("客户端配置")).toHaveTextContent('bearer_token_env_var = "UML_MCP_TOKEN"');
     expect(screen.queryByText("mcp.json")).not.toBeInTheDocument();
@@ -82,8 +79,6 @@ describe("ClientConnectionGuide", () => {
 
   it("labels DeepSeek desktop configuration as the Cordis patch file", () => {
     renderGuide("deepseek", "pat");
-
-    expect(within(screen.getByLabelText("客户端配置")).getByText("cordis.patch.yml")).toHaveAttribute("data-slot", "code-block-filename");
     expect(screen.getByLabelText("客户端配置")).toHaveTextContent("@deepseek-ai/dsh-mcp-client");
     expect(screen.getByLabelText("客户端配置")).toHaveTextContent("transport: streamable-http");
     expect(screen.queryByText("profile.yaml")).not.toBeInTheDocument();

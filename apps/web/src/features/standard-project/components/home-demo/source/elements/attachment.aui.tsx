@@ -2,39 +2,11 @@
 "use client";
 import { homeText, useHomeLocale } from "../../integration/home-locale";
 
-
-import {
-  type PropsWithChildren,
-  useState,
-  type FC,
-  isValidElement,
-} from "react";
-import {
-  XIcon,
-  PlusIcon,
-  FileText,
-  Loader2Icon,
-  AlertCircleIcon,
-} from "lucide-react";
-import {
-  AttachmentPrimitive,
-  ComposerPrimitive,
-  MessagePrimitive,
-  useAuiState,
-  useAui,
-} from "@assistant-ui/react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogTrigger,
-} from "../ui/dialog";
+import { type PropsWithChildren, useState, type FC, isValidElement } from "react";
+import { XIcon, FileText, Loader2Icon, AlertCircleIcon } from "lucide-react";
+import { AttachmentPrimitive, MessagePrimitive, useAuiState, useAui } from "@assistant-ui/react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { Dialog, DialogTitle, DialogContent, DialogTrigger } from "../ui/dialog";
 import { Avatar, AvatarImage, AvatarFallback } from "../ui/avatar";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import { useAttachmentSrc } from "../hooks/use-attachment-src";
@@ -254,36 +226,5 @@ export const UserMessageAttachments: FC = () => {
         {() => <AttachmentUI />}
       </MessagePrimitive.Attachments>
     </div>
-  );
-};
-
-export const ComposerAttachments: FC = () => {
-  useHomeLocale();
-  return (
-    <div className="aui-composer-attachments flex w-full flex-row items-center gap-2 overflow-x-auto empty:hidden">
-      <ComposerPrimitive.Attachments>
-        {() => <AttachmentUI />}
-      </ComposerPrimitive.Attachments>
-    </div>
-  );
-};
-
-export const ComposerAddAttachment: FC = () => {
-  useHomeLocale();
-  return (
-    <ComposerPrimitive.AddAttachment
-      render={
-        <TooltipIconButton
-          tooltip={homeText("Add Attachment")}
-          side="bottom"
-          variant="ghost"
-          size="icon"
-          className="aui-composer-add-attachment text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 dark:border-muted-foreground/15 dark:hover:bg-muted-foreground/30 size-7 rounded-full active:scale-[0.96] motion-reduce:transition-none"
-          aria-label={homeText("Add Attachment")}
-        />
-      }
-    >
-      <PlusIcon className="aui-attachment-add-icon size-4" />
-    </ComposerPrimitive.AddAttachment>
   );
 };

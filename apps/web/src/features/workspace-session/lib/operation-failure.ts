@@ -1,6 +1,6 @@
 // Converts structured API and run errors into safe, actionable generation feedback.
 import type { ApiError, RunError } from "@uml-platform/contracts";
-import { ApiClientError } from "../../../services/api-client";
+import { ApiClientError } from "../../../services/api-client/index";
 import { i18n } from "../../../shared/i18n/i18n";
 import { localizeRunFailure } from "../../../shared/i18n/api-errors";
 

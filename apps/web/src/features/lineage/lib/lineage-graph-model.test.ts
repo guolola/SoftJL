@@ -1,4 +1,5 @@
-import { createRunSnapshot } from "@/test/contract-fixtures";
+// Verifies lineage graph dependencies, freshness and path selection for workspace models and runs.
+import { createRunSnapshot } from "@test/fixtures/contract-fixtures";
 import { describe, expect, it } from "vitest";
 import type {
   DiagramError,
@@ -8,12 +9,7 @@ import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
 import type { DesignDiagramType } from "../../../entities/diagram/model";
 import type { GenerationTask } from "../../workspace-session/model/session-state";
-import {
-  buildLineageGraph,
-  collectLineagePath,
-  groupLineageColumns,
-  type LineageGraphInput,
-} from "./lineage-graph-model";
+import { buildLineageGraph, collectLineagePath, type LineageGraphInput } from "./lineage-graph-model";
 
 const baseRule: RequirementRule = {
   id: "REQ-001",
@@ -54,8 +50,8 @@ function task(overrides: Partial<GenerationTask>): GenerationTask {
     progress: 30,
     message: null,
     errorMessage: null,
-    phaseSummary: null,
-    technicalDetailsCollapsed: true,
+
+
     diagnostics: {
       runKind: "requirements",
       runId: null,
@@ -63,10 +59,10 @@ function task(overrides: Partial<GenerationTask>): GenerationTask {
       startedAt: null,
       finishedAt: null,
       activeStage: null,
-      streamText: "",
-      chunkCount: 0,
-      stageStartedAt: {},
-      stageMessages: {},
+
+
+
+
       events: [],
 
 
@@ -102,7 +98,7 @@ function input(overrides: Partial<LineageGraphInput> = {}): LineageGraphInput {
     staleDesignDiagrams: [],
     staleDesignModelIds: [],
     designStaleReasons: {},
-    designTraceabilityStale: false,
+
     designGenerationBlockedReason: null,
 
 
@@ -124,48 +120,6 @@ describe("buildLineageGraph", () => {
       graph.nodes.find((node) => node.id === "document:requirementsSpec")?.status,
     ).toBe("not-generated");
     expect(graph.edges.some((edge) => edge.source === "rule:empty")).toBe(true);
-  });
-
-  it("groups nodes into fixed left-to-right columns with stable node order", () => {
-    const graph = buildLineageGraph(
-      input({
-        rules: [baseRule],
-        requirementModelTraceability: [{ ruleId: baseRule.id, mappingSource: "llm", target: { diagramKind: "class", elementId: "resource", elementKind: "class", label: "资源" } }],
-        models: {
-          usecase: model("usecase"),
-          class: model("class"),
-        },
-        generatedDiagrams: ["class", "usecase"],
-        designModels: {
-          class: designModel("class"),
-          sequence: designModel("sequence"),
-        },
-        generatedDesignDiagrams: ["class", "sequence"],
-
-      }),
-    );
-
-    const columns = groupLineageColumns(graph);
-
-    expect(columns.map((column) => column.label)).toEqual([
-      "需求规则",
-      "需求模型",
-      "设计模型",
-      "产物",
-    ]);
-    expect(columns[0].nodes.map((node) => node.id)).toEqual(["rule:REQ-001"]);
-    expect(columns[1].nodes.map((node) => node.id)).toEqual([
-      "requirement-model:usecase",
-      "requirement-model:class",
-    ]);
-    expect(columns[2].nodes.map((node) => node.id)).toEqual([
-      "design-model:sequence",
-      "design-model:class",
-    ]);
-    expect(columns[3].nodes.map((node) => node.id)).toEqual([
-      "document:requirementsSpec",
-      "document:softwareDesignSpec",
-    ]);
   });
 
   it("marks a completed core chain as current", () => {
@@ -383,7 +337,7 @@ describe("buildLineageGraph", () => {
         designSvgArtifacts: {
           class: { diagramKind: "class", svg: "<svg>class</svg>" } as never,
         },
-        designTraceabilityStale: true,
+
         staleDesignDiagrams: ["sequence"],
         staleDesignModelIds: ["sequence"],
         designStaleReasons: {

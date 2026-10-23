@@ -2,6 +2,7 @@
 @source '../../**/*.{js,ts,jsx,tsx}';
 
 @import 'tw-animate-css';
+@import "tw-shimmer";
 
 /* Shadcn Studio Code Block uses Shiki's paired theme tokens for dark mode. */
 .dark .shiki,

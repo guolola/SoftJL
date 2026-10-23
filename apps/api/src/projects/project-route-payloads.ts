@@ -58,14 +58,6 @@ export function isWorkspaceSourceRunConstraintError(error: unknown) {
   );
 }
 
-export function devTokenPayload(
-  token: string,
-  expiresAt: string,
-  nodeEnv: string | null,
-) {
-  return nodeEnv === "production" ? { expiresAt } : { devToken: token, expiresAt };
-}
-
 export function projectWorkspacePayload(
   workspace: Awaited<ReturnType<AuthStore["getProjectWorkspace"]>>,
 ) {
@@ -122,7 +114,7 @@ export function projectPayload(input: {
 }
 
 function displayNameFromMember(member: ProjectMemberRecord) {
-  return member.displayName?.trim() || member.username.split("@")[0] || member.userId || null;
+  return member.displayName?.trim() || member.username || member.userId || null;
 }
 
 function activeMemberPreviewSort(project: ProjectRecord) {

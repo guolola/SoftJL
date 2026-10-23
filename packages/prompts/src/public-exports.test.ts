@@ -10,16 +10,12 @@ const REQUIRED_RUNTIME_EXPORTS = [
   "buildGenerateModelsPrompt",
   "buildModelRepairPrompt",
   "buildGenerateRequirementAnalysisPrompt",
-  "buildRepairModelsPrompt",
-  "buildGenerateRequirementTraceabilityPrompt",
-  "buildRepairRequirementTraceabilityPrompt",
+
   "buildGenerateDesignSequencePrompt",
   "buildGenerateDesignModelsPrompt",
-  "buildRepairDesignModelsPrompt",
-  "buildGenerateDesignTraceabilityPrompt",
-  "buildRepairDesignTraceabilityPrompt",
+
   "buildGenerateDocumentContentPrompt",
-  "buildRepairDocumentContentPrompt",
+
 ] as const satisfies readonly (keyof typeof prompts)[];
 
 test("prompts keep required runtime public exports available", () => {

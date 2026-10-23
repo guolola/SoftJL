@@ -8,6 +8,7 @@ This repository is a TypeScript monorepo for the UML experimental platform. Keep
 - Keep edits scoped to the requested task; do not perform opportunistic rewrites or unrelated cleanup.
 - Never revert user changes unless the user explicitly asks for that exact rollback.
 - Prefer existing project patterns, components, helpers, and test utilities over new abstractions.
+- Support current contracts; reject obsolete persisted formats rather than silently migrating them or fabricating provenance. Keep current protocol integrations, retries, and failure recovery.
 - Treat generated assets, vendor runtimes, large binaries, and caches as special-case artifacts; do not add them to source control unless the task explicitly requires it.
 
 ## Comments and Generated Files
@@ -48,6 +49,7 @@ This repository is a TypeScript monorepo for the UML experimental platform. Keep
 
 ## Verification
 
+- Keep module tests beside their source. Put application integration tests and fixtures under each application's `tests/`; use public workspace exports for shared fixtures, including `@uml-platform/contracts/testing` and `@uml-platform/demo-fixtures`.
 - Add or update tests for user-visible behavior changes.
 - Prefer targeted tests first, then broader workspace scripts such as `npm run test:web` and `npm run typecheck:web`.
 - If verification cannot be run, state the reason clearly in the final response.

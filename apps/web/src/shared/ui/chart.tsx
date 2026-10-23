@@ -1,6 +1,4 @@
-// AdminCN/shadcn-studio chart wrapper (recharts v3) promoted to the shared UI boundary.
-// Standalone copy of the Flow template's chart primitive; kept separate because shared/ui must not
-// import from the marketing template layer.
+// Shares the recharts v3 template primitive across the dashboard and marketing pages.
 'use client'
 
 import * as React from 'react'
@@ -236,55 +234,6 @@ function ChartTooltipContent({
   )
 }
 
-const ChartLegend = RechartsPrimitive.Legend
-
-function ChartLegendContent({
-  className,
-  hideIcon = false,
-  payload,
-  verticalAlign = 'bottom',
-  nameKey
-}: React.ComponentProps<'div'> & {
-  hideIcon?: boolean
-  nameKey?: string
-} & RechartsPrimitive.DefaultLegendContentProps) {
-  const { config } = useChart()
-
-  if (!payload?.length) {
-    return null
-  }
-
-  return (
-    <div className={cn('flex items-center justify-center gap-4', verticalAlign === 'top' ? 'pb-3' : 'pt-3', className)}>
-      {payload
-        .filter(item => item.type !== 'none')
-        .map((item, index) => {
-          const key = `${nameKey ?? item.dataKey ?? 'value'}`
-          const itemConfig = getPayloadConfigFromPayload(config, item, key)
-
-          return (
-            <div
-              key={index}
-              className={cn('[&>svg]:text-muted-foreground flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3')}
-            >
-              {itemConfig?.icon && !hideIcon ? (
-                <itemConfig.icon />
-              ) : (
-                <div
-                  className='h-2 w-2 shrink-0 rounded-[2px]'
-                  style={{
-                    backgroundColor: item.color
-                  }}
-                />
-              )}
-              {itemConfig?.label}
-            </div>
-          )
-        })}
-    </div>
-  )
-}
-
 function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key: string) {
   if (typeof payload !== 'object' || payload === null) {
     return undefined
@@ -310,4 +259,4 @@ function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key:
   return configLabelKey in config ? config[configLabelKey] : config[key]
 }
 
-export { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent, ChartStyle }
+export { ChartContainer, ChartTooltip, ChartTooltipContent, ChartStyle };

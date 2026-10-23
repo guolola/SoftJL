@@ -1,50 +1,11 @@
 // Defines JSON schema response formats for requirement model generation.
 import type { DiagramKind } from "@uml-platform/contracts";
 
-import { type JsonSchemaResponseFormat } from "../../../llm.js";
-import {
-  getModelCapability,
-  getStructuredResponseFormat,
-  type ModelCapabilitySource,
-} from "../../../model-capabilities.js";
-import { toOpenAiStrictJsonSchema } from "./openai-strict-schema.js";
+import { type JsonSchemaResponseFormat } from "../llm-transport.js";
+import { getModelCapability, getStructuredResponseFormat, type ModelCapabilitySource } from "../model-capabilities.js";
 
-import {
-  GENERATE_MODELS_RESPONSE_FORMAT,
-  requirementTraceabilityEntryResponseSchema,
-} from "./requirement-model-response-format.js";
-export {
-  GENERATE_MODELS_RESPONSE_FORMAT,
-  modelElementRefResponseSchema,
-  requirementTraceabilityEntryResponseSchema,
-} from "./requirement-model-response-format.js";
-
-export const requirementModelOneOf = (
-  (
-    GENERATE_MODELS_RESPONSE_FORMAT.json_schema.schema.properties as {
-      models: { items: { anyOf: Record<string, unknown>[] } };
-    }
-  ).models.items.anyOf
-);
-
-export const GENERATE_REQUIREMENT_TRACEABILITY_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
-  type: "json_schema",
-  json_schema: {
-    name: "requirement_model_traceability_result",
-    strict: true,
-    schema: toOpenAiStrictJsonSchema({
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        requirementModelTraceability: {
-          type: "array",
-          items: requirementTraceabilityEntryResponseSchema,
-        },
-      },
-      required: ["requirementModelTraceability"],
-    }),
-  },
-};
+import { GENERATE_MODELS_RESPONSE_FORMAT } from "./requirement-model-response-format.js";
+export { GENERATE_MODELS_RESPONSE_FORMAT } from "./requirement-model-response-format.js";
 
 function cloneJsonSchemaResponseFormat(
   format: JsonSchemaResponseFormat,
@@ -88,13 +49,4 @@ export function getGenerateModelsResponseFormat(
     next.json_schema.name = `diagram_models_result_${Array.from(selected).join("_")}`;
   }
   return next;
-}
-
-export function getGenerateRequirementTraceabilityResponseFormat(
-  model: ModelCapabilitySource,
-) {
-  return getStructuredResponseFormat(
-    model,
-    GENERATE_REQUIREMENT_TRACEABILITY_RESPONSE_FORMAT,
-  );
 }

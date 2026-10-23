@@ -4,7 +4,7 @@ import {
   operationFailureForCode,
   operationFailurePresentation,
 } from "./operation-failure";
-import { ApiClientError } from "../../../services/api-client";
+import { ApiClientError } from "../../../services/api-client/index";
 
 describe("operationFailurePresentation", () => {
   it("keeps safe localized technical terms such as PlantUML", () => {

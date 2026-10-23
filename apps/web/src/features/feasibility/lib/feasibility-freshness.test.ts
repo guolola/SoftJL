@@ -12,7 +12,7 @@ import {
   createBusinessFlowArtifact,
   createRule,
   createWorkspaceRecord,
-} from "../../../test/workspace-test-utils";
+} from "../../../../tests/helpers/workspace-test-utils";
 import { feasibilityArtifactState, includeFeasibilityDependencies } from "./feasibility-freshness";
 
 function readyWorkspace() {

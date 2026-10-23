@@ -1,6 +1,6 @@
 // Owns pure diagram model draft helpers used by the diagram detail editor UI.
 import { getStageModelSchema, contractResponseSchema, type ModelingStage } from "@uml-platform/contracts";
-import type { DiagramType } from "../../../entities/diagram/model";
+
 import type { DiagramDetailItem } from "../../../entities/diagram/lib/model-details";
 
 export type EditableCollection = {
@@ -239,40 +239,6 @@ export function draftFingerprint(model: Record<string, unknown> | null) {
   return model ? JSON.stringify(model) : "";
 }
 
-export function requirementSourceLabel(
-  diagram: DiagramType,
-  model: Record<string, unknown> | null,
-  rules: Array<{ id?: string }>,
-) {
-  if (diagram === "analysis") {
-    const useCaseName = stringValue(model?.sourceUseCaseName).trim();
-    if (useCaseName) {
-      return `来源：用例模型事件流（用例：${useCaseName}）`;
-    }
-    const useCaseId = stringValue(model?.sourceUseCaseId).trim();
-    if (useCaseId) {
-      return `来源：用例模型事件流（用例ID：${useCaseId}）`;
-    }
-    return "来源：用例模型事件流（具体用例未标明）";
-  }
-  if (rules.length === 0) {
-    return "来源：需求规则（未标明）";
-  }
-  const visibleRuleIds = rules
-    .slice(0, 5)
-    .map((rule) => rule.id.trim().toUpperCase())
-    .filter(Boolean);
-  if (visibleRuleIds.length === 0) {
-    return "来源：需求规则（未标明）";
-  }
-  const suffix = rules.length > visibleRuleIds.length ? ` +${rules.length - visibleRuleIds.length}` : "";
-  return `来源：需求规则（${visibleRuleIds.join("、")}${suffix}）`;
-}
-
-export function booleanValue(value: unknown, fallback = false) {
-  return typeof value === "boolean" ? value : fallback;
-}
-
 export function stringListValue(value: unknown) {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
@@ -297,18 +263,6 @@ export function diagramHighlightAliases(element: DiagramDetailItem | undefined) 
     idTail,
     labelTail,
   ]).filter((alias) => alias !== element.label);
-}
-
-export function setOptionalStringValue(
-  record: Record<string, unknown>,
-  key: string,
-  value: string,
-) {
-  if (value.trim()) {
-    record[key] = value;
-  } else {
-    delete record[key];
-  }
 }
 
 export function editableCollectionsFor(model: unknown, stage: ModelingStage = "requirements") {
@@ -383,9 +337,6 @@ export function updateDraftItem(
     items.map((item) => (String(item.id ?? "") === itemId ? updater(item) : item)),
   );
 }
-
-// Deleting a node keeps dependent references visible for explicit repair; no silent cascading rewrite.
-export function removeDanglingRelations(draft: Record<string, unknown>) { return draft; }
 
 export function createRelationshipDraft(draft: Record<string, unknown>, stage: ModelingStage = "requirements") {
   const endpointIds = draftGraphElements(draft)

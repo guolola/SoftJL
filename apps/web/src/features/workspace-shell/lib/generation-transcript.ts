@@ -54,7 +54,6 @@ const order: RunStage[] = [
   "extract_rules", "generate_models", "generate_design_sequence", "generate_design_models",
   "generate_plantuml", "render_svg", "verify_diagram_visual",
 
-
   "generate_document_text", "render_document_file", "generate_context", "render_context", "generate_business_flow", "render_business_flow", "generate_implementation", "generate_tests",
 ];
 const diagrams: Record<string, string> = {
@@ -99,35 +98,6 @@ function modelProgressMessage(status: TranscriptStatus, skipped = false) {
   if (status === "failed") return "模型结构检查未完成，可重试。";
   if (status === "completed" || status === "pending_review") return "模型结构检查已结束";
   return "正在检查模型结构";
-}
-
-// Surface a real natural-language summary while JSON is arriving, without displaying its wire structure.
-export function readableOutput(call: TranscriptCall) {
-  if (!call.technical) return call.output;
-  if (call.stage === "generate_document_text") {
-    const paragraphs: string[] = [];
-    // Document body arrays contain prose. Decode only those strings, including the
-    // current incomplete string, so JSON scaffolding never enters the conversation.
-    for (const match of call.output.matchAll(/"body"\s*:\s*\[/g)) {
-      let cursor = match.index! + match[0].length;
-      while (cursor < call.output.length) {
-        while (/[\s,]/.test(call.output[cursor] ?? "") && cursor < call.output.length) cursor++;
-        if (call.output[cursor] !== '"') break;
-        const start = ++cursor;
-        while (cursor < call.output.length && call.output[cursor] !== '"') {
-          cursor += call.output[cursor] === "\\" ? 2 : 1;
-        }
-        try { paragraphs.push(JSON.parse(`"${call.output.slice(start, Math.min(cursor, call.output.length))}"`)); }
-        catch { /* A split escape sequence is rendered when its next chunk arrives. */ }
-        cursor++;
-      }
-    }
-    return paragraphs.join("\n\n");
-  }
-  const match = /"summary"\s*:\s*"((?:\\.|[^"\\])*)/.exec(call.output);
-  if (!match) return "";
-  try { return readableTaskText(JSON.parse(`"${match[1]}"`) as string); }
-  catch { return ""; }
 }
 
 export function projectGenerationTranscript(events: RunEventInput[], fallbackStatus = "running", subtasks: GenerationSubtask[] = [], currentVisualReviews: Record<string, DiagramVisualReview> = {}, options: { includeContent?: boolean } = {}) {

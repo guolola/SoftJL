@@ -9,7 +9,7 @@ export { runtimeFingerprint } from './runtime-fingerprint.mjs';
 export const BUILD_PATHS = [
   'apps/api/dist', 'apps/render-service/dist',
   'apps/web/.next/standalone', 'apps/web/.next/static',
-  'packages/contracts/dist', 'packages/prompts/dist',
+  'packages/contracts/dist', 'packages/prompts/dist', 'packages/demo-fixtures/dist',
 ];
 const manifestPath = '.deploy/build-manifest.json';
 const digest = (value) => createHash('sha256').update(value).digest('hex');

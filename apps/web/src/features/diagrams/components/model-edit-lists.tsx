@@ -40,7 +40,6 @@ export function ModelElementListSection({
   elementKindFilter,
   onElementKindFilterChange,
   detailGroups,
-  detailItemCount: _detailItemCount,
   collections,
   filteredElements,
   editableItemsById,
@@ -56,7 +55,6 @@ export function ModelElementListSection({
   elementKindFilter: "all" | SemanticElementKind;
   onElementKindFilterChange: (value: "all" | SemanticElementKind) => void;
   detailGroups: Array<{ kind: SemanticElementKind; items: DiagramDetailItem[] }>;
-  detailItemCount: number;
   collections: EditableCollection[];
   filteredElements: DiagramDetailItem[];
   editableItemsById: Map<string, EditableItemReference>;

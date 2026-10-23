@@ -15,14 +15,14 @@ const validModel = {
 };
 
 test("normalizes a valid traced context model", () => {
-  assert.equal(normalizeContextDiagram(validModel, new Set(["R1"])).relationships.length, 1);
+  assert.equal(normalizeContextDiagram(validModel).relationships.length, 1);
 });
 
 test("rejects an invalid relationship endpoint", () => {
-  assert.throws(() => normalizeContextDiagram({ ...validModel, relationships: [{ ...validModel.relationships[0], targetId: "missing" }] }, new Set(["R1"])), /missing-endpoint/u);
+  assert.throws(() => normalizeContextDiagram({ ...validModel, relationships: [{ ...validModel.relationships[0], targetId: "missing" }] }), /missing-endpoint/u);
 });
 
 test("rejects duplicate elements and unknown rule references", () => {
-  assert.throws(() => normalizeContextDiagram({ ...validModel, externalSystems: [{ id: "customer", name: "重复", sourceRequirementIds: ["R1"] }] }, new Set(["R1"])), /duplicate-id/u);
-  assert.equal(normalizeContextDiagram({ ...validModel, people: [{ ...validModel.people[0], sourceRequirementIds: ["R404"] }] }, new Set(["R1"])).people[0]!.sourceRequirementIds[0], "R404");
+  assert.throws(() => normalizeContextDiagram({ ...validModel, externalSystems: [{ id: "customer", name: "重复", sourceRequirementIds: ["R1"] }] }), /duplicate-id/u);
+  assert.equal(normalizeContextDiagram({ ...validModel, people: [{ ...validModel.people[0], sourceRequirementIds: ["R404"] }] }).people[0]!.sourceRequirementIds[0], "R404");
 });

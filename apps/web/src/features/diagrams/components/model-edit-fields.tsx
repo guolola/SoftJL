@@ -165,10 +165,6 @@ export function SourceRuleChecklist({
   );
 }
 
-export function enumOptions(options: string[]) {
-  return options.map((option) => ({ value: option, label: option }));
-}
-
 export function ordinalLabel(index: number, unit: string) {
   const unitKey = ({ "属性": "attribute", "字段": "column", "参数": "parameter", "操作": "operation" } as Record<string, string>)[unit] ?? (["attribute", "column", "parameter", "operation"].includes(unit) ? unit : undefined);
   return unitKey

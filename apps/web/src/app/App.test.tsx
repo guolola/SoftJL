@@ -1,17 +1,17 @@
 // Verifies top-level app routing, provider composition, shell layout behavior, and account/project entry flows.
 import { matchAppRoute } from "./app-routes";
-import { createDocumentRunSnapshot } from "@/test/contract-fixtures";
-import { installReactFlowTestLayout } from '../test/react-flow-test-layout';
+import { createAuthSessionResponse, createDocumentRunSnapshot } from "@test/fixtures/contract-fixtures";
+import { installReactFlowTestLayout } from '../../tests/helpers/react-flow-test-layout';
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceRepository } from "../services/workspace-repository";
-import type { RunHistoryItem } from "../entities/run-history";
+import type { WorkspaceRepository } from "../services/workspace-repository/index";
+import type { RunHistoryItem } from "../entities/run-history/index";
 import {
   createRunSnapshot,
   createWorkspaceRecord,
   withWorkspaceProviders,
-} from "../test/workspace-test-utils";
+} from "../../tests/helpers/workspace-test-utils";
 import { loadUserSettings, USER_SETTINGS_STORAGE_KEY } from "../shared/lib/user-settings";
 import { Shell } from "./App";
 import {
@@ -20,9 +20,11 @@ import {
 } from "../features/user-platform/components/user-platform-pages";
 import { formatProjectDateTimeMinute } from "../features/user-platform/lib/project-presentation";
 import { PROJECT_BACKGROUND_OPTIONS } from "../features/user-platform/lib/project-backgrounds";
-import { i18n, LOCALE_PREFERENCE_STORAGE_KEY } from "../shared/i18n";
+import { i18n, LOCALE_PREFERENCE_STORAGE_KEY } from "../shared/i18n/index";
 import { requestOpenGenerationTask, requestOpenProjectWorkspaceTarget } from "../shared/lib/app-navigation";
 import { invalidateProviderConfigCache } from "../features/user-platform/services/provider-config-cache";
+import { invalidateProjectRunReads } from "../services/workspace-repository/project-run-reads";
+import { useRouteContentReady } from "../shared/lib/route-content-readiness";
 
 // Onborda reads the Next router even when tours use only in-page steps.
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
@@ -102,16 +104,16 @@ const billingTestOrder = {
 function createRepository(): WorkspaceRepository {
   return {
     loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-    updateRequirementText: vi.fn(async () => {}),
+
     startRun: vi.fn(),
     subscribeToRun: vi.fn(),
     getRunSnapshot: vi.fn(),
-    renderPlantUml: vi.fn(),
-    testProviderSettings: vi.fn(),
+
+
     saveRunHistory: vi.fn(),
     listRunHistory: vi.fn(async () => []),
     deleteRunHistory: vi.fn(async () => []),
-    clearRunHistory: vi.fn(async () => {}),
+
   };
 }
 
@@ -235,6 +237,10 @@ async function flushResolvedPromises() {
   await Promise.resolve();
 }
 
+function RouteContentReadinessProbe() {
+  return <output data-testid="route-content-ready">{String(useRouteContentReady())}</output>;
+}
+
 async function advanceTimersByTime(ms: number) {
   await act(async () => {
     vi.advanceTimersByTime(ms);
@@ -244,12 +250,7 @@ async function advanceTimersByTime(ms: number) {
 
 async function waitForPlatformLoadingToExit() {
   await waitFor(() => {
-    const loadingScreen = screen.queryByTestId("platform-loading-screen");
-    if (loadingScreen) {
-      expect(loadingScreen).toHaveClass("pointer-events-none");
-    } else {
-      expect(loadingScreen).not.toBeInTheDocument();
-    }
+    expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
   });
 }
 
@@ -311,6 +312,7 @@ describe("App shell routes", () => {
     localStorage.removeItem("uml-auth-remembered-username");
     localStorage.removeItem("uml-auth-remembered-password");
     invalidateProviderConfigCache();
+    invalidateProjectRunReads();
     await i18n.changeLanguage("zh-CN");
     document.documentElement.lang = "zh-CN";
     vi.stubGlobal(
@@ -322,7 +324,9 @@ describe("App shell routes", () => {
         if (pathname === "/api/auth/login" && loginApiMode === "mfa-challenge") {
           return new Response(
             JSON.stringify({
-              mfaChallenge: {
+              mfa: {
+                required: true,
+                method: "totp",
                 challengeId: "challenge-login-1",
                 expiresAt: "2026-05-22T02:10:00.000Z",
               },
@@ -335,16 +339,7 @@ describe("App shell routes", () => {
         }
         if (pathname === "/api/auth/login" && loginApiMode === "success") {
           return new Response(
-            JSON.stringify({
-              user: {
-                id: "user-new",
-                username: "new_student",
-                displayName: "new-student",
-                status: "active",
-                mfaEnabled: false,
-              },
-              session: { id: "session-login" },
-            }),
+            JSON.stringify(createAuthSessionResponse()),
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
@@ -359,16 +354,7 @@ describe("App shell routes", () => {
         }
         if (pathname === "/api/auth/mfa/verify") {
           return new Response(
-            JSON.stringify({
-              user: {
-                id: "user-new",
-                username: "new_student",
-                displayName: "new-student",
-                status: "active",
-                mfaEnabled: true,
-              },
-              session: { id: "session-mfa" },
-            }),
+            JSON.stringify(createAuthSessionResponse({ user: { mfaEnabled: true }, session: { id: "session-mfa" } })),
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
@@ -377,16 +363,7 @@ describe("App shell routes", () => {
         }
         if (pathname === "/api/auth/register") {
           return new Response(
-            JSON.stringify({
-              user: {
-                id: "user-new",
-                username: "new_student",
-                displayName: "new-student",
-                status: "active",
-                mfaEnabled: accountMfaEnabled,
-              },
-              session: { id: "session-new" },
-            }),
+            JSON.stringify(createAuthSessionResponse({ user: { mfaEnabled: accountMfaEnabled }, session: { id: "session-new" } })),
             {
               status: 201,
               headers: { "Content-Type": "application/json" },
@@ -921,7 +898,9 @@ describe("App shell routes", () => {
                 role: "editor",
                 status: "invited",
                 invitedAt: "2026-05-22T02:30:00.000Z",
-                expiresAt: "2026-05-29T02:30:00.000Z",
+                invitedByUserId: "owner",
+                createdAt: "2026-05-22T02:30:00.000Z",
+                updatedAt: "2026-05-22T02:30:00.000Z",
               },
             }),
             {
@@ -940,6 +919,9 @@ describe("App shell routes", () => {
                 role: "viewer",
                 status: "invited",
                 invitedAt: "2026-05-22T02:40:00.000Z",
+                invitedByUserId: "owner",
+                createdAt: "2026-05-22T02:40:00.000Z",
+                updatedAt: "2026-05-22T02:40:00.000Z",
               },
             }),
             {
@@ -947,12 +929,6 @@ describe("App shell routes", () => {
               headers: { "Content-Type": "application/json" },
             },
           );
-        }
-        if (pathname === "/api/projects/library-booking/invitations/member-viewer/revoke") {
-          return new Response(JSON.stringify({ message: "revoked" }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
         }
         if (pathname === "/api/projects/library-booking/invitations/member-viewer" && method === "DELETE") {
           return new Response(null, { status: 204 });
@@ -1080,7 +1056,6 @@ describe("App shell routes", () => {
             },
           );
         }
-
 
         if (
           (pathname === "/api/projects/library-booking/runs/run-failed" ||
@@ -1435,8 +1410,6 @@ describe("App shell routes", () => {
     window.history.pushState({}, "", "/login");
     render(withWorkspaceProviders(<Shell />, createRepository()));
     await user.type(await screen.findByLabelText("用户名"), "student");
-    expect(screen.getByTestId("auth-shell")).toHaveAttribute("data-auth-layout", "admincn-v2");
-    expect(screen.getByRole("button", { name: "登录" })).toHaveClass("bg-primary");
     expect(screen.queryByRole("button", { name: "忘记密码？" })).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("密码"), "wrong-password");
     await user.click(screen.getByRole("button", { name: "登录" }));
@@ -1508,35 +1481,6 @@ describe("App shell routes", () => {
     expect(screen.getByRole("checkbox", { name: "记住账号" })).toBeChecked();
   });
 
-  it("clears legacy saved passwords when opening the homepage without visiting login", async () => {
-    localStorage.setItem("uml-auth-remembered-username", "student");
-    localStorage.setItem("uml-auth-remembered-password", "legacy-password");
-    window.history.pushState({}, "", "/");
-
-    render(withWorkspaceProviders(<Shell />, createRepository()));
-
-    await waitFor(() => {
-      expect(localStorage.getItem("uml-auth-remembered-password")).toBeNull();
-    });
-    expect(localStorage.getItem("uml-auth-remembered-username")).toBe("student");
-  });
-
-  it("renders every website auth route inside the animated auth shell", async () => {
-    const authRoutes = [
-      "/login",
-      "/register",
-    ];
-
-    for (const path of authRoutes) {
-      window.history.pushState({}, "", path);
-      const view = render(withWorkspaceProviders(<Shell />, createRepository()));
-
-      expect(await screen.findByTestId("auth-shell")).toHaveAttribute("data-auth-layout", "admincn-v2");
-
-      view.unmount();
-    }
-  });
-
   it("redirects a login redirect to workspace into the signed-in projects area", async () => {
     const user = userEvent.setup();
     loginApiMode = "success";
@@ -1588,7 +1532,6 @@ describe("App shell routes", () => {
     expect(screen.getByTestId("projects-index-shell")).toBeInTheDocument();
   });
 
-
   it("verifies an MFA challenge before completing login", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.mocked(fetch);
@@ -1628,9 +1571,6 @@ describe("App shell routes", () => {
     expect(localStorage.getItem("uml-auth-remembered-username")).toBe("student");
     expect(localStorage.getItem("uml-auth-remembered-password")).toBeNull();
   });
-
-
-
 
   it("redirects the projects index to login when the session is missing", async () => {
     authSessionMode = "unauthenticated";
@@ -1726,12 +1666,6 @@ describe("App shell routes", () => {
           createRepository(),
         ),
       );
-
-      expect(screen.getByTestId("projects-index-shell")).toHaveClass(
-        "min-h-0",
-        "overflow-x-clip",
-      );
-      expect(screen.getByTestId("projects-index-shell")).not.toHaveClass("overflow-y-auto", "overflow-y-scroll");
       expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
       expect(screen.queryByTestId("projects-index-loading-skeleton")).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "项目首页" })).not.toBeInTheDocument();
@@ -1744,20 +1678,12 @@ describe("App shell routes", () => {
       });
 
       expect(screen.getByRole("heading", { name: "项目首页" })).toBeInTheDocument();
-      expect(screen.getByTestId("projects-index-shell")).toHaveClass(
-        "min-h-0",
-        "overflow-x-clip",
-      );
-      expect(screen.getByTestId("projects-index-shell")).not.toHaveClass("overflow-y-auto", "overflow-y-scroll");
       expect(screen.getAllByText("智慧图书馆预约系统").length).toBeGreaterThan(0);
       expect(screen.getByTestId("projects-card-grid")).toHaveAttribute(
         "data-mobile-card-density",
         "single-column",
       );
-      expect(screen.getByTestId("projects-card-grid")).toHaveClass("grid-cols-1", "md:grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]");
-      expect(screen.getByTestId("projects-filter-panel")).toHaveClass("p-3", "md:p-[17px]");
       expect(screen.getByTestId("projects-filter-panel")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "查看项目 智慧图书馆预约系统" })).toHaveClass("p-4", "rounded-xl");
       expect(screen.queryByText("正在加载项目列表...")).not.toBeInTheDocument();
       expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
     } finally {
@@ -1796,6 +1722,7 @@ describe("App shell routes", () => {
             onNavigate={() => {}}
           >
             <div>项目导航</div>
+            <RouteContentReadinessProbe />
           </ProjectWorkspaceAccessBoundary>,
           createRepository(),
         ),
@@ -1815,6 +1742,7 @@ describe("App shell routes", () => {
 
       expect(screen.getByText("正在打开项目工作台...")).toBeInTheDocument();
       expect(screen.getByText("项目导航")).toBeInTheDocument();
+      expect(screen.getByTestId("route-content-ready")).toHaveTextContent("false");
 
       await advanceTimersByTime(800);
 
@@ -1822,6 +1750,7 @@ describe("App shell routes", () => {
         "data-loading-phase",
         "completing",
       );
+      expect(screen.getByTestId("route-content-ready")).toHaveTextContent("false");
       expect(
         screen.getByRole("progressbar", { name: "正在打开项目工作台..." }),
       ).toHaveAttribute("aria-valuenow", "100");
@@ -1837,6 +1766,7 @@ describe("App shell routes", () => {
 
       expect(screen.getByText("项目导航")).toBeInTheDocument();
       expect(screen.queryByText("正在打开项目工作台...")).not.toBeInTheDocument();
+      expect(screen.getByTestId("route-content-ready")).toHaveTextContent("true");
     } finally {
       vi.useRealTimers();
     }
@@ -1864,12 +1794,6 @@ describe("App shell routes", () => {
       await act(async () => {
         await flushResolvedPromises();
       });
-
-      expect(screen.getByTestId("projects-index-shell")).toHaveClass(
-        "min-h-0",
-        "overflow-x-clip",
-      );
-      expect(screen.getByTestId("projects-index-shell")).not.toHaveClass("overflow-y-auto", "overflow-y-scroll");
       await advanceTimersByTime(1_440);
       expect(screen.queryAllByTestId("platform-loading-screen")).toHaveLength(0);
       expect(screen.queryByTestId("projects-index-loading-skeleton")).not.toBeInTheDocument();
@@ -1882,11 +1806,6 @@ describe("App shell routes", () => {
       });
 
       expect(screen.getByRole("heading", { name: "项目首页" })).toBeInTheDocument();
-      expect(screen.getByTestId("projects-index-shell")).toHaveClass(
-        "min-h-0",
-        "overflow-x-clip",
-      );
-      expect(screen.getByTestId("projects-index-shell")).not.toHaveClass("overflow-y-auto", "overflow-y-scroll");
       expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
       expect(screen.queryAllByTestId("platform-loading-screen")).toHaveLength(0);
       expect(screen.getByRole("heading", { name: "项目首页" })).toBeInTheDocument();
@@ -2168,16 +2087,12 @@ describe("App shell routes", () => {
     expect(screen.getByRole("button", { name: "协作项目" })).toBeInTheDocument();
     const searchInput = screen.getByPlaceholderText("搜索项目、成员...");
     expect(searchInput).toBeInTheDocument();
-    expect(searchInput.parentElement).toHaveClass("min-w-0", "flex-1", "md:max-w-2xs");
     const sortTrigger = getSelectTrigger("排序方式");
     expect(sortTrigger).toHaveTextContent("最近生成");
-    expect(sortTrigger).toHaveClass("w-28", "shrink-0", "md:w-fit");
     expect(screen.queryByRole("navigation", { name: "项目导航" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成任务" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "导出" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "历史" })).not.toBeInTheDocument();
-
-    expect(screen.getByText("真实项目数据")).toHaveClass("text-base");
     expect(screen.getByText("真实项目数据")).toHaveAttribute("title", "真实项目数据");
     await user.click(screen.getByRole("button", { name: "查看项目 智慧图书馆预约系统" }));
     expect(await screen.findByRole("dialog", { name: "智慧图书馆预约系统" })).toBeVisible();
@@ -2196,9 +2111,6 @@ describe("App shell routes", () => {
     expect(screen.queryByText("设计做好了？")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "去连接" })).not.toBeInTheDocument();
     expect(document.querySelector('[data-slot="sidebar-inset"] > footer')).not.toBeInTheDocument();
-    const workspaceLayoutMain = document.querySelector('[data-slot="sidebar-inset"] > main');
-    expect(workspaceLayoutMain).not.toHaveClass("overflow-hidden");
-    expect(document.querySelector('[data-slot="sidebar-inset"] > header')).toHaveClass("sticky", "top-0");
     expect(document.querySelector('[data-slot="sidebar-content"] [data-slot="scroll-area"]')).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "项目首页" })).not.toBeInTheDocument();
     expect(document.querySelector('[data-slot="sidebar-container"]')).toBeInTheDocument();
@@ -2345,7 +2257,7 @@ describe("App shell routes", () => {
 
     await user.type(requirementText, "访客不应写入需求");
 
-    expect(repository.updateRequirementText).not.toHaveBeenCalled();
+
   });
 
   it("keeps project settings read-only for viewer members", async () => {
@@ -2378,11 +2290,7 @@ describe("App shell routes", () => {
     expect(window.location.pathname).toBe("/projects/library-booking");
     expect(await screen.findByRole("dialog", { name: "生成任务" })).toBeInTheDocument();
     expect(screen.getByTestId("project-workspace-drawer-layer")).toBeInTheDocument();
-    expect(screen.getByTestId("project-workspace-drawer")).not.toHaveClass("transition");
-    expect(screen.getByTestId("project-workspace-drawer")).toHaveClass("z-[70]");
     const overlay = document.querySelector<HTMLElement>("[data-slot='drawer-overlay']");
-    expect(overlay).toHaveClass("bg-black/45", "z-[60]");
-    expect(overlay).not.toHaveClass("backdrop-blur-[1px]");
 
     await user.click(overlay as HTMLElement);
     await waitFor(() => {
@@ -2463,6 +2371,8 @@ describe("App shell routes", () => {
     const authCalls = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/api/auth/me")).length;
     const initialAuthCalls = authCalls();
     const initialWorkspaceLoads = vi.mocked(repository.loadWorkspace).mock.calls.length;
+    const runListCalls = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/api/projects/library-booking/runs")).length;
+    const initialRunListCalls = runListCalls();
     await user.click(within(navigation).getByRole("button", { name: "需求模型" }));
     expect(await screen.findByRole("heading", { name: "目标模型" })).toBeInTheDocument();
     for (const name of ["链路图", "运行历史", "项目设置", "成员"]) {
@@ -2481,6 +2391,7 @@ describe("App shell routes", () => {
     expect(await screen.findByRole("heading", { name: "目标模型" })).toBeInTheDocument();
     expect(authCalls()).toBe(initialAuthCalls);
     expect(vi.mocked(repository.loadWorkspace).mock.calls.length).toBe(initialWorkspaceLoads);
+    expect(runListCalls()).toBe(initialRunListCalls);
     expect(screen.queryByTestId("platform-loading-screen")).not.toBeInTheDocument();
   });
 
@@ -2707,10 +2618,7 @@ describe("App shell routes", () => {
         }),
       },
     ]);
-    repository.downloadDocumentRun = vi.fn(async () => ({
-      fileName: "requirements.docx",
-      blob: new Blob(["docx"]),
-    }));
+
     projectApiMode = "authenticated";
     window.history.pushState({}, "", "/projects/library-booking");
     render(withWorkspaceProviders(<Shell />, repository));

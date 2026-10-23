@@ -10,7 +10,7 @@
 
 ## 概述
 
-新建项目默认普通版，已保存项目必须提供明确模式；历史格式会被拒绝。模式创建后不可切换，与收费无关。专业版继续使用原有阶段、依赖、覆盖和检查机制。普通版直接从需求描述生成课程设计图表，一个项目保存一段持续会话，后续消息可以修改指定图表。
+新建项目默认普通版，项目必须显式保存当前项目模式，缺失或无效的模式会被拒绝。模式创建后不可切换，与收费无关。专业版使用阶段、依赖、覆盖和检查机制。普通版通过 Agent 会话处理需求和询问，再调用工具保存方案并生成用户确认范围内的图表；旧 `prepare` 独立问答与自动生成流程已移除。一个项目保存一段持续会话，后续消息可以修改指定图表。
 
 普通版内容区使用 assistant-ui 官网首页演示及其依赖源码，包括 Thread、Composer、消息、引用、附件、模型选择、完整反馈弹窗、耗时、后续建议、用量提示和基础 UI。保留源码的示例、Public Sans 与 JetBrains Mono 字体、布局、主题及动画；文案随平台中英文设置切换，用户消息、附件名和引用资料不翻译。平台侧栏和顶栏继续使用平台组件。Agent 发起的交互式询问由 integration 边界接入原消息正文，不修改导入组件；内容区不添加自制状态栏、继续卡片、产物卡片或设置提示。
 
@@ -42,15 +42,56 @@ source-manifest.json 记录导入组件、工具文件及样式源文件的来�
 
 后端实际使用 Pi SDK 的 `createAgentSession`、工具循环、SessionManager 和自动压缩。社区版锁定已修复安全公告的 `@earendil-works/pi-coding-agent`、`pi-agent-core`、`pi-ai` 版本 `1.3.0`，要求 Node.js 22.19.0 或更高版本。升级需同时核验 SessionEntry 格式、扩展事件和会话恢复契约；当前服务仍仅加载受管项目工具，不加载主机扩展或个人凭证。
 
-Agent 通过受管供应商的 OpenAI 兼容接口调用原生工具。工具仅支持读取当前项目、追问、保存共享方案、生成或保存图表、按需生成测试及说明书、保存项目约定。API 服务主机的文件、终端、扩展目录、技能和个人凭证不加载到会话中。
+Agent 通过受管供应商的 OpenAI 兼容接口调用原生工具。业务工具支持读取当前项目、追问、保存共享方案、生成或保存图表、按需生成测试及说明书、保存项目约定；另提供受限的原生 read 工具读取平台维护的技能和参考。API 服务主机的任意文件、终端、个人扩展、技能和凭证不加载到会话中。
 
 每轮先持久化用户消息，再启动工具循环。Pi 原始消息和工具记录保存在项目工作区的服务端字段，客户端不能覆盖。界面使用独立的用户可见对话；MCP 提供已保存的需求、约定、方案、模型与测试预期，不暴露内部工具历史。社区版不提供运营管理端。
+
+### Pi 原生扩展入口
+
+快速建模通过 Pi 的 `DefaultResourceLoader` 加载扩展，不手工构造 `Extension`、事件处理表或扩展运行时。`standard-agent-extensions.ts` 提供建模与受管摘要两个原生 `ExtensionFactory`：工具用 `pi.registerTool()` 注册，执行前持久化与等待回答限制通过 `pi.on("tool_call")` 接入；动态上下文通过 `before_agent_start` 注入；受管摘要通过 `session_before_compact` 接入，压缩触发、边界和记录仍由 Pi 负责。流水线不覆盖 Pi 的 `beforeToolCall`、`afterToolCall`，询问工具使用 Pi 原生结果的 `terminate` 标识暂停普通追问轮次。
+
+`standard-agent-resources.ts` 只负责配置和检查原生加载器。服务端组装 `registerStandardProjectRoutes()` 时可传入 `agentExtensions`，字段直接复用 Pi 的 `extensionFactories` 和 `additionalExtensionPaths`；同名字段传入 `runStandardAgent()`。前者适用于静态导入的本地或 npm 扩展工厂，后者适用于显式指定的扩展文件或本地 Pi Package 目录。Pi Package 沿用原生 `package.json` 的 `pi.extensions` 声明，不增加平台插件清单或加载协议。加载失败、路径缺失或扩展之间的工具名称冲突时，该轮在请求模型前失败，避免工具能力静默缺失。
+
+原生加载器继续关闭宿主机扩展、技能、提示词模板、主题及上下文文件的默认发现；使用内存设置与显式系统提示词，不读取服务器个人 Pi 配置。通用文件工具与终端仍关闭；原生 read 的文件操作被限定到维护的建模资源目录，仅允许 Markdown，检查请求路径和真实物理路径以阻止目录穿越及链接逃逸。额外扩展仅由服务端代码装配，不能通过聊天消息或 HTTP 请求指定路径或安装包。扩展是服务端可执行代码；新增能力需遵守项目权限、模型范围、受管供应商、取消及持久化边界。CLI 的终端界面、命令菜单和交互 API 不会自动映射到网页，网页询问继续使用现有工具与组件契约。
+
+### 运行时规则与建模技能
+
+| 资源 | 默认配置 | 职责 |
+| --- | --- | --- |
+| AGENTS.md | 显式加载一份专用运行时文件 | 始终生效的职责、范围、真实性和工具使用原则，不加载仓库开发指导 |
+| uml-graduation-modeling | 原生技能发现、按需 read | 需求梳理、局部修改及八类支持视图的语义指导，按图种读取参考 |
+| graduation-deliverables | 原生技能发现、按需 read | 测试用例、需求规格说明书与软件设计说明书的方法及事实边界 |
+| Extension | 建模、受管摘要两份 | 可执行工具、原生事件与平台请求边界 |
+| Prompt Template | 默认零份 | 当前未开放模板快捷命令，保持模板展开关闭，不把系统提示词文件冒充用户命令 |
+
+资源位于 [快速建模运行时资源](../../apps/api/src/runs/pipelines/standard/resources/AGENTS.md)，通过原生 `additionalSkillPaths` 与 `agentsFilesOverride` 显式加载。固定行为规则不再混在动态字符串中；`standard-agent-context.ts` 只提供当前语言、范围、推荐选择、重新生成状态和项目事实。项目记忆仍由工作区存储维护，不改写 AGENTS.md 或技能文件。
+
+[UML 建模技能](../../apps/api/src/runs/pipelines/standard/resources/skills/uml-graduation-modeling/SKILL.md) 依据 [OMG UML 2.5.1](https://www.omg.org/spec/UML/2.5.1) 独立编写，PlantUML 官方文档作为记法参考，开源技能仅作方案与组织方式参考，来源和授权定位见 [来源与适配边界](../../apps/api/src/runs/pipelines/standard/resources/skills/uml-graduation-modeling/references/sources.md)。功能结构、E-R、数据库表关系不是 UML 图种；平台支持当前契约定义的 UML 子集，不声称完整 OMG 合规。快速建模保持八类入口和持续对话流程，七类共用工程建模的契约、纯结构校验、渲染器与编辑器，E-R 独立使用实体、标识属性及二元关系结构，不引入工程审核、依赖追踪或过期联动。
+
+| 类型 | 当前复用能力 |
+| --- | --- |
+| 功能结构 | 功能节点与 decomposition 分解关系 |
+| 用例 | 显式系统边界、角色、用例、扩展点与事件流 |
+| 活动 | 判断、合并、并发分叉与汇合、对象流和引脚、责任泳道 |
+| 总体架构 | 包、组件、包含、依赖与通信 |
+| 概念 E-R | 独立 Chen 实体、标识属性、命名关系与两端基数 |
+| 设计类 | 类、接口、枚举、抽象及静态成员、实现、依赖与可导航性 |
+| 时序 | 同步、异步、返回、创建、销毁，alt/opt/loop/par、嵌套分支与激活区间 |
+| 数据库表关系 | 结构化列、复合主键、唯一、外键及检查约束；展示连线从约束派生 |
+
+当前数据通过 diagramKind 区分模型结构，生成、直接保存和持久化读取拒绝旧通用 nodes/edges 格式及未知字段，不静默丢弃复杂记法或推造来源。编辑器隐藏来源引用字段，表模型从 relationalConstraints 统一派生键标记和连线。独立生成及修复调用使用同一份 Skill 参考；会话只保留当轮所需资料。
+
+八类模型只有一份契约注册表。按图种生成的 Schema、Pi 工具、HTTP 保存、持久化读写、MCP 内容投影和前端响应均执行同一套结构语义校验；更新后的状态在写入前再次校验。无效已存模型直接报错，不转换为空项目或迁移为新格式。渲染入口统一返回校验后的模型与对应绘图源，七类复用共用渲染器，E-R 使用独立概念模型渲染。表的派生展示字段按当前约束重算，不从旧字段推造约束。
+
+模型生成在省略供应商协议的空值之前检查未知字段，旧字段即便值为 null 也不能被悄悄删去。说明书附图从保存的当前模型快照生成绘图源，不把历史绘图源当作缺失模型的替代输入；快照的选择与后续模型修改保持独立。
+
+`standard-modeling-knowledge.ts` 从同一份 Skill 和相关参考读取指导，注入需求分析、每类图生成、结构修复、重试、继续生成及测试和说明书的实际模型请求。独立生成调用不会自动继承主 Agent 的技能，因此必须显式传入相应资料；不重复维护另一份语义规则。Schema、权限、范围、取消和结构校验继续由代码执行，不依赖 Markdown 代替守卫，也不新增内容审核流水线。
 
 ### 生成与修改
 
 仅粘贴需求不代表授权生成全部模型。首次未指定产物时，服务保存需求并将 generationScope 标记为等待选择；LLM 根据用户需求解释可选模型，并通过 ask_questions 发起 purpose=generation_scope 的多选询问。系统支持功能结构、用例、业务流程、总体架构、概念 E-R、设计类、时序、数据库表关系八类模型，通常推荐从功能结构、用例和业务流程开始。询问内容由 LLM 决定，组件只显示问题和收集答案；不能用固定文字代替工具询问。生成入口和工具均拒绝尚未确认的范围。用户首条消息已明确要生成的模型时直接采用，不重复确认。
 
-范围确认后，总 Agent 统一识别角色、全部业务、实体和约束；缺少关键业务信息时先追问，充分时保存共享方案。图表任务并发上限为三，仅创建所选类型的任务；业务流程和时序各按每项业务生成。后续扩展范围不会删除已有模型。
+范围确认后，总 Agent 统一识别角色、全部业务、实体和约束；缺少关键业务信息时先追问，充分时保存共享方案。图表任务与工程建模共用 `UML_LLM_RUN_CONCURRENCY` 单次任务并发配置，未设置或配置无效时采用统一默认值 2；实际 LLM 请求仍经过全局调度器，受全局、供应商、项目、用户和单次任务的并发限制。仅创建所选类型的任务；业务流程和时序各按每项业务生成。后续扩展范围不会删除已有模型。
 
 后续修改优先读取并保存指定图；需要重生成时必须提供具体图表 ID。写入工具同时校验本轮模型类型范围，其他已保存图保持原值。同类存在多张业务图而用户未指定业务时，Agent 应先询问具体目标。
 
@@ -92,7 +133,7 @@ Pi 根据上下文预算自动选择压缩边界，保留工具调用与结果�
 
 编辑和重新生成均使用原版控件，重新生成重用所属用户轮次的文字、附件和引用。服务端在受理任务的工作区并发更新中校验目标与最新消息 ID，移除所选轮次及其后续可见消息，并将 Pi 上下文移到该用户轮次前的私有检查点。检查点同时保留当时的追问状态；已压缩的后续摘要不会混入新回复。缺少当前检查点时拒绝编辑或重新生成，并提示发起新一轮对话。原始会话树保留，当前界面不提供版本切换；已执行的图表、测试、说明书和项目记忆不会因编辑对话自动回滚。
 
-耗时组件优先读取新消息保存的 timing，兼容历史 durationMs。首内容时间从开始等待该条模型回复到首个非空文本、推理或工具参数块；内容块数统计这些实际增量事件，速度使用供应商报告的输出 Token 除以首块至结束的时长。未报告用量、未出现增量块或历史缺失字段时不推测速度和首内容耗时。
+耗时组件只读取消息保存的 `timing`，不接受旧 `durationMs` 字段。首内容时间从开始等待该条模型回复到首个非空文本、推理或工具参数块；内容块数统计这些实际增量事件，速度使用供应商报告的输出 Token 除以首块至结束的时长。未报告用量或未出现增量块时不推测速度和首内容耗时。
 
 后续建议沿用官网的一行一条协议与原版 FollowUps，通过平台受管模型按最近六条消息生成，最多三条，并随最后一条成功回复保存。提示最多 24,000 字符，输出最多 1,024 Token，等待上限 15 秒，语言跟随提交时的界面语言。未回答追问、正在运行或只读时不提供建议；建议失败不影响已完成回复，也不补固定建议。请求共用当前任务的调度、取消和本地用量遥测入口，不访问官网演示建议接口。
 
@@ -110,6 +151,29 @@ Context Display 使用源码的数字提示和悬浮明细，遵循原版 AI SDK
 
 ## 操作与维护
 
+增加工具或执行规则时，优先在 `standard-agent-extensions.ts` 的原生工厂中注册工具或订阅事件；工具的业务实现仍放在对应 pipeline 或 adapter。独立扩展可以使用 Pi 原生工厂：
+
+```typescript
+import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+
+export const modelingExtension: ExtensionFactory = pi => {
+  pi.registerTool({
+    name: "describe_modeling_support",
+    label: "读取扩展说明",
+    description: "读取此建模扩展支持的能力。",
+    parameters: Type.Object({}),
+    async execute() {
+      return { content: [{ type: "text", text: "支持读取扩展说明。" }], details: {} };
+    },
+  });
+};
+```
+
+将该工厂通过 `agentExtensions: { extensionFactories: [modelingExtension] }` 加到服务端路由组装即可。复用 npm 扩展时，在 API 工作区安装并锁定依赖版本，导入其工厂后走同一入口；复用本地 Pi Package 时，将部署代码解析得到的绝对路径传给 `additionalExtensionPaths`。不在每次用户请求中安装或更新包，也不依赖服务器上的 `pi install` 全局设置。默认不配置额外扩展；新增工具自动加入该项目的 Pi 会话，并沿用工具状态与原始会话记录的持久化。额外包若提供技能正文，仍需显式审查并接入相应读取边界，不能只注册目录就宣称可用。
+
+维护语义规则时直接修改对应 Skill 或参考文件，独立生成请求随之使用同一内容。新增图种还必须先修改契约、渲染和工具守卫，不能只写一份技能开放能力。运行 `npm run build:api` 会将资源复制到 dist 的对应模块目录，构建产物无需回读 src；部署时使用包含资源的完整 API dist。技能与模板当前没有网页安装或编辑入口。
+
 模型目录默认保存在运行数据目录的 model-catalog 下，可用 UML_MODEL_CATALOG_DIR 指定持久目录；部署时保留此目录。当前存储由单个 API 实例管理，不能让多个独立实例同时写同一缓存文件；多实例部署应改用共享数据库存储及统一同步任务。服务按周期自动更新；离线不会删除已有成功快照。
 
 开发供应商初始化需要显式设置 `UML_DEMO_PROVIDER_SEED=true`；普通 `npm run dev` 不会自动创建供应商。根目录开发入口读取未入库的 `.env`，直接启动 API 或演示服务时读取 `.env.local`。已有系统供应商仅需配置 `UML_DEMO_PROVIDER_NAME`；默认供应商只需填写 `UML_DEMO_PROVIDER_API_KEY`；自定义新供应商还需名称和 `UML_DEMO_PROVIDER_BASE_URL`。默认模型为 `deepseek-v4.1-flash`，可通过 `UML_DEMO_PROVIDER_MODEL` 覆盖。实际供应商必须提供该模型及原生工具调用支持。
@@ -123,6 +187,8 @@ Coding Agent 由用户主动连接 MCP，读取普通项目成果后生成代码
 ## 验证
 
 - Pi 测试覆盖隔轮读取历史、仅修改指定图、追问暂停、推荐继续、真实流式统计、建议失败隔离，以及实际自动压缩后的编辑、重新生成和会话恢复。
+- 扩展测试覆盖原生工厂工具与事件、工具意图落库顺序、同批追问后的写入拦截、会话间扩展隔离、本地 Pi Package 加载及原生 reload、加载错误与名称冲突，以及宿主机资源默认隔离；路由测试验证服务端配置进入实际会话。
+- 技能测试覆盖原生目录发现、正文与参考按需读取、专用 AGENTS 加载、目录穿越与真实链接逃逸拦截，以及实际生成、修复、重试和交付物请求收到相同的维护资料；模拟请求只证明接入和守卫，不证明远端模型必然遵守全部语义规则。
 - 路由测试覆盖权限、模式隔离、工作区防覆盖、编辑目标与历史头校验、重新生成附件能力校验，以及服务端会话记录不外泄。
 - 生成测试覆盖全部业务、并发上限、结构修复次数和单图失败隔离。
 - 启动测试覆盖供应商复用、密钥保留、缺失配置和生产隔离。
@@ -137,5 +203,7 @@ Coding Agent 由用户主动连接 MCP，读取普通项目成果后生成代码
 - [供应商接入](../integrations/openai-compatible-provider.md)
 - [Coding Agent MCP](../integrations/coding-agent-mcp.md)
 - [Pi SDK](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md)
+- [Pi 扩展](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md)
+- [Pi Package](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md)
 - [Pi 会话格式](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/session-format.md)
 - [Pi 上下文压缩](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/compaction.md)

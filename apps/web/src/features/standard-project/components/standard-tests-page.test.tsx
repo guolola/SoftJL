@@ -2,8 +2,8 @@
 import { render, screen } from "@testing-library/react";
 import { expect, it } from "vitest";
 import { createStandardProjectState } from "@uml-platform/contracts";
-import { withWorkspaceProviders } from "../../../test/workspace-test-utils";
-import { createMockWorkspaceRepository } from "../../../services/workspace-repository";
+import { withWorkspaceProviders } from "../../../../tests/helpers/workspace-test-utils";
+import { createMockWorkspaceRepository } from "../../../services/workspace-repository/index";
 import { StandardTestsPage } from "./standard-tests-page";
 
 it("shows saved classifications and cases without a generation action", async () => {

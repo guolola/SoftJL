@@ -1,22 +1,11 @@
-// Wraps run start, render, and provider-test endpoints for workspace repositories.
-import type {
-  DesignDiagramModelSpec,
-  DiagramModelSpec,
-  RenderStructuredModelResponse,
-  RenderSvgResponse,
-} from "@uml-platform/contracts";
-import type { DiagramType } from "../../entities/diagram/model";
-import type { ModelCapability } from "../../shared/lib/provider-model-display";
-import { postJson } from "../api-client";
+// Wraps current run start, cancellation, and structured model rendering endpoints.
+import type { DesignDiagramModelSpec, DiagramModelSpec, RenderStructuredModelResponse } from "@uml-platform/contracts";
+
+
+import { postJson } from "../api-client/index";
 import { renderPngResponseSchema, renderPdfResponseSchema, type UmlDiagramKind } from "@uml-platform/contracts";
 import { projectHeaders, requireProjectScope, withProjectHeaders } from "./project-scope";
-import type {
-  ProviderSettingsInput,
-
-  StartDesignRunInput,
-  StartDocumentRunInput,
-  StartRunInput,
-} from "./start-inputs";
+import type { StartDesignRunInput, StartDocumentRunInput, StartRunInput } from "./start-inputs";
 
 export async function exportDiagramRequest(input: { diagramKind: UmlDiagramKind; plantUmlSource: string; format: "png" | "pdf" }, projectId: string | null, signal?: AbortSignal): Promise<Blob> {
   const scopedProjectId = requireProjectScope(projectId);
@@ -89,7 +78,6 @@ export async function startDesignRunRequest(
   );
 }
 
-
 export async function startDocumentRunRequest(
   input: StartDocumentRunInput,
   projectId: string | null,
@@ -111,25 +99,6 @@ export async function startDocumentRunRequest(
   );
 }
 
-export async function renderPlantUmlRequest(
-  diagramKind: DiagramType,
-  plantUmlSource: string,
-  projectId: string | null,
-) {
-  const scopedProjectId = requireProjectScope(projectId);
-  return postJson<RenderSvgResponse>(
-    "/api/render/svg",
-    {
-      diagramKind,
-      plantUmlSource,
-    },
-    {
-      errorKey: "errors.operations.renderDiagram",
-      headers: projectHeaders(scopedProjectId),
-    },
-  );
-}
-
 export async function renderStructuredModelRequest(
   model: DiagramModelSpec | DesignDiagramModelSpec,
   projectId: string | null,
@@ -144,24 +113,4 @@ export async function renderStructuredModelRequest(
       headers: projectHeaders(scopedProjectId),
     },
   );
-}
-
-export async function testProviderSettingsRequest(
-  providerSettings: ProviderSettingsInput,
-) {
-  const payload = await postJson<{
-    ok?: boolean;
-    message?: string;
-    capability?: ModelCapability;
-  }>("/api/provider/test", providerSettings, {
-    errorKey: "errors.operations.providerTest",
-  });
-  if (!payload.ok || !payload.capability) {
-    throw new Error(payload.message ?? "杩炴帴娴嬭瘯澶辫触");
-  }
-  return {
-    ok: true,
-    message: payload.message ?? "Provider connection ok",
-    capability: payload.capability,
-  };
 }

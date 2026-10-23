@@ -3,18 +3,9 @@
 
 import { useEffect, useMemo } from "react";
 import { useAui } from "@assistant-ui/react";
-import {
-  ModelSelectorRoot,
-  ModelSelectorTrigger,
-  ModelSelectorContent,
-  useModelSelectorContext,
-  type ModelOption,
-  type ModelSelectorProps,
-} from "./model-selector";
+import { ModelSelectorRoot, ModelSelectorTrigger, ModelSelectorContent, useModelSelectorContext, type ModelSelectorProps } from "./model-selector";
 import { Switch } from "./switch";
 import { cn } from "./utils";
-
-export type ModelingModelOption = ModelOption;
 export type ModelingModelSelectorProps = Omit<ModelSelectorProps, "effort" | "defaultEffort" | "onEffortChange"> & {
   reasoning?: boolean;
   reasoningSupported?: boolean;

@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RunEventInput } from "@uml-platform/contracts";
 import {
-  appendDiagnosticStream,
+
   createEmptyDiagnostics,
   deriveRunDiagnosticsFromEvent,
   getProgressFromEvent,
@@ -15,17 +15,13 @@ describe("workspace-session diagnostics helpers", () => {
     expect(createEmptyDiagnostics()).toMatchObject({
       runKind: null,
       runId: null,
-      streamText: "",
-      chunkCount: 0,
+
+
       events: [],
     });
   });
 
-  it("keeps only the newest diagnostic stream content", () => {
-    const next = appendDiagnosticStream("x".repeat(29_999), "TAIL");
-    expect(next).toHaveLength(30_000);
-    expect(next.endsWith("TAIL")).toBe(true);
-  });
+
 
   it("summarizes terminal and progress events with stable labels", () => {
     vi.spyOn(Math, "random").mockReturnValue(0.123456);
@@ -96,8 +92,9 @@ describe("workspace-session diagnostics helpers", () => {
       summarizeEvent(progressEvent),
     );
 
-    expect(afterChunk.streamText).toBe("正在分析需求文本");
-    expect(afterChunk.chunkCount).toBe(1);
+
+
+    expect(afterChunk.transcript).toEqual([chunkEvent]);
     expect(afterChunk.events).toEqual([]);
     expect(afterProgress.events.at(-1)?.label).toBe("阶段进度");
   });

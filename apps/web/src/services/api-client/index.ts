@@ -94,9 +94,9 @@ function parseApiErrorFromPayload(payload: unknown) {
 
 export async function requestJson<T>(
   path: string,
-  options: RequestInit & { errorKey?: string; errorMessage?: string } = {},
+  options: RequestInit & { errorKey?: string } = {},
 ): Promise<T> {
-  const { errorKey, errorMessage, ...requestOptions } = options;
+  const { errorKey, ...requestOptions } = options;
   const response = await fetchApiResponse(buildApiUrl(path), {
     credentials: "include",
     ...requestOptions,
@@ -107,7 +107,7 @@ export async function requestJson<T>(
       localizeApiFailure(
         payload,
         response.status,
-        errorKey ? i18n.t(errorKey) : errorMessage,
+        errorKey ? i18n.t(errorKey) : undefined,
       ),
       response.status,
       payload,
@@ -120,7 +120,7 @@ export async function requestJson<T>(
 export function postJson<T>(
   path: string,
   body: unknown,
-  options: RequestInit & { errorKey?: string; errorMessage?: string } = {},
+  options: RequestInit & { errorKey?: string } = {},
 ) {
   return requestJson<T>(path, {
     ...options,
@@ -137,13 +137,11 @@ export async function downloadBlob(
   path: string,
   options: RequestInit & {
     errorKey?: string;
-    errorMessage?: string;
     defaultFileName?: string;
   } = {},
 ) {
   const {
     errorKey,
-    errorMessage,
     defaultFileName = "download",
     ...requestOptions
   } = options;
@@ -157,7 +155,7 @@ export async function downloadBlob(
       localizeApiFailure(
         payload,
         response.status,
-        errorKey ? i18n.t(errorKey) : errorMessage,
+        errorKey ? i18n.t(errorKey) : undefined,
       ),
       response.status,
       payload,

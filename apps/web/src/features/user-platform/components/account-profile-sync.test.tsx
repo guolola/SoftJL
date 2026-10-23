@@ -2,7 +2,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { withWorkspaceProviders } from "../../../test/workspace-test-utils";
+import { withWorkspaceProviders } from "../../../../tests/helpers/workspace-test-utils";
 import { DefaultSidebar } from "../../../shared/template/layout/default-sidebar";
 import { TopBar } from "../../workspace-shell/components/top-bar";
 import { SidebarUserDropdown } from "../../workspace-shell/components/sidebar-user-dropdown";
@@ -11,6 +11,7 @@ import { invalidateProviderConfigCache } from "../services/provider-config-cache
 import { AuthenticatedRoute } from "./user-platform-pages";
 
 const profile: PlatformAccountProfileResponse = {
+  mfa: { enabled: false, enforcement: "totp" },
   user: { id: "profile-user", username: "profile_user", displayName: "Original Name", avatarUrl: "/avatars/original.png", status: "active", mfaEnabled: false },
   session: { id: "session-profile", userId: "profile-user", createdAt: "", expiresAt: "", lastSeenAt: "", ipAddress: null, userAgent: null },
 };

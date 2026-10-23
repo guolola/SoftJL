@@ -176,7 +176,7 @@ export function AccountDialog({
         setAvatarUrl(profile.user.avatarUrl ?? "");
         setAvatarFile(null);
         setAvatarError("");
-        setMfaEnabled(Boolean(profile.mfa?.enabled ?? profile.user.mfaEnabled));
+        setMfaEnabled(profile.mfa.enabled);
         setCurrentSessionId(profile.session?.id ?? null);
         setSessions(sessionResponse.sessions);
       })

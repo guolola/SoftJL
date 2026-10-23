@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequirementBaselineSnapshot, deriveTableModel, type RequirementBaseline, type DiagramReviewFinding } from "@uml-platform/contracts";
-import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
-import { acceptRepairCandidate, acceptStructuralRepairCandidate, deriveAuthorizedRepairs, verifyReviewClaims, type DiagramReviewBasis, type ReviewModel } from "./diagram-review.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
+import { acceptRepairCandidate, acceptStructuralRepairCandidate, deriveAuthorizedRepairs, type DiagramReviewBasis, type ReviewModel } from "./diagram-review.js";
 
 function comparatorFixture() {
   const model = modelFixture("requirements", "activity");
@@ -124,15 +124,4 @@ test("explicit package ownership authorizes the contains endpoint but preserves 
   const repair = deriveAuthorizedRepairs(model, { stage: "design" });
   assert.equal(repair.changes.length, 1);
   assert.equal((repair.expectedModel as typeof model).relationships[0]!.sourceId, "p");
-});
-test("missing, extra, unknown, endpoint/type/direction/ownership guesses cannot authorize model mutation", () => {
-  const model = modelFixture("requirements", "usecase") as ReviewModel;
-  for (const code of ["missing-node", "extra-node", "unknown-shape", "wrong-endpoint", "wrong-type", "wrong-direction", "wrong-owner", "swimlane", "legend"]) {
-    const claim: DiagramReviewFinding = { id: code, modelId: "usecase", layer: "image", code, observation: "观察到标签 X", expected: "guessed", actual: "seen", verification: "verified", repairable: true, evidence: [{ source: "image", reference: "X", detail: "图左侧" }] };
-    const checked = verifyReviewClaims([claim], model, { stage: "requirements" })[0]!;
-    assert.equal(checked.repairable, false); assert.notEqual(checked.verification, "verified");
-    assert.match(checked.evidence[0]!.source, /provider-observation/);
-  }
-  const checked = verifyReviewClaims([{ id: "layout", modelId: "usecase", layer: "image", code: "layout", observation: "标签遮挡，无法辨认", verification: "verified", repairable: true, evidence: [] }], model, undefined)[0]!;
-  assert.equal(checked.verification, "inconclusive"); assert.equal(checked.repairable, false);
 });

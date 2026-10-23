@@ -8,6 +8,7 @@ import { ToolTimeline } from "./elements/tool-timeline";
 import { useHomeDemo } from "./environment";
 
 const labels: Record<string, [string, string]> = {
+  read: ["读取建模规范", "Read modeling guidance"],
   read_project: ["读取项目", "Read project"], read_diagram: ["读取图表", "Read diagrams"],
   ask_questions: ["补充需求", "Clarify requirements"], save_outline: ["保存方案", "Save outline"],
   generate_diagrams: ["生成图表", "Generate diagrams"], save_diagram: ["保存图表", "Save diagram"],

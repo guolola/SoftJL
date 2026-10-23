@@ -1,6 +1,5 @@
 // Renders deterministic model source; compiler failures never authorize LLM graph rewrites.
-import { renderSvgResponseSchema, type ModelingStage, type DesignDiagramModelSpec, type DiagramModelSpec, type DesignSvgArtifact, type SvgArtifact, type ProviderSettings } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../../llm.js";
+import { renderSvgResponseSchema, type ModelingStage, type DesignDiagramModelSpec, type DiagramModelSpec, type DesignSvgArtifact, type SvgArtifact } from "@uml-platform/contracts";
 import type { AnyPlantUmlArtifact, RenderClient } from "../../../adapters/render/render-client.js";
 import type { RunRecord } from "../../records/run-record-store.js";
 import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "../../../adapters/plantuml/model-renderer.js";
@@ -8,7 +7,7 @@ import { appendDesignTrace, appendRequirementTrace, designDiagramKindFromArtifac
 import { isRunCancelledError, throwIfRunCancelled } from "../../records/run-cancellation.js";
 
 export async function renderArtifactWithRepair(
-  record: RunRecord, _providerSettings: ProviderSettings, _llmTransport: LlmTransport,
+  record: RunRecord,
   renderClient: RenderClient, model: DiagramModelSpec | DesignDiagramModelSpec, artifact: AnyPlantUmlArtifact, stage?: ModelingStage, abortSignal?: AbortSignal,
 ): Promise<{ status: "success"; artifact: AnyPlantUmlArtifact; svgArtifact: SvgArtifact | DesignSvgArtifact } | { status: "failed"; artifact: AnyPlantUmlArtifact; errorMessage: string }> {
   try {

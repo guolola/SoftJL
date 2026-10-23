@@ -1,6 +1,5 @@
 // Verifies design-led coding sources, upstream privacy, scopes and source-only change detection.
 import { requirementRuleFacts } from "@uml-platform/contracts";
-import { requirementRuleSchema } from "@uml-platform/contracts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -99,17 +98,7 @@ test("acceptance projection retains test evidence and IDs without review state o
           runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
            assumptions: [], conflicts: [],
           qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
-          rules: ([{
-    id: "BORROW-ATOMIC", sourceRuleId: "BORROW", sourceFragment: "private-original-fragment", type: "functional" as const,
-    actor: "private-actor", subject: "系统", action: "private-action", object: "书", condition: "private-condition",
-    outcome: "private-outcome", confidence: 1, status: "accepted", criticality: "high",
-    acceptanceCriteria: ["第5本可借，第6本拒绝"], fieldProvenance: {
-      acceptanceCriteria: { source: "source-text", status: "accepted", originalValue: "private-provenance", rationale: "private-rationale" },
-    },
-  }]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id,
-            text: item.acceptanceCriteria.join("；"), sourceFragment: item.sourceFragment, origin: "generated",
-            type: "functional" as const,
-          })),
+          rules: [{ id: "BORROW", requirementId: ("BORROW-ATOMIC"), text: (["第5本可借，第6本拒绝"]).join("；"), sourceFragment: ("private-original-fragment"), origin: "generated", type: "functional" as const }],
         } };
   state.rules = state.requirementBaseline.rules.map(rule => requirementRuleFacts(rule));
   const context = buildContext(state, whole);
@@ -171,15 +160,7 @@ test("repaired and unresolved review records cannot alter MCP payloads, tasks or
           runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
            assumptions: [], conflicts: [],
           qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
-          rules: ([{
-    id: "BORROW-ATOMIC", sourceRuleId: "BORROW", sourceFragment: "借阅", type: "functional" as const,
-    actor: "学生", subject: "系统", action: "借阅", object: "书", condition: null,
-    outcome: "保存记录", confidence: 1, status: "accepted", criticality: "high",
-    acceptanceCriteria: ["第5本可借，第6本拒绝"], fieldProvenance: {},
-  }]).map(item => ({ id: item.sourceRuleId ?? item.id, requirementId: item.id,
-            text: item.acceptanceCriteria.join("；"), sourceFragment: item.sourceFragment, origin: "generated",
-            type: "functional" as const,
-          })),
+          rules: [{ id: "BORROW", requirementId: ("BORROW-ATOMIC"), text: (["第5本可借，第6本拒绝"]).join("；"), sourceFragment: ("借阅"), origin: "generated", type: "functional" as const }],
         } };
   state.rules = state.requirementBaseline.rules.map(rule => requirementRuleFacts(rule));
   const initial = withImplementationArtifacts(buildContext(state, whole), "project");
@@ -189,7 +170,6 @@ test("repaired and unresolved review records cannot alter MCP payloads, tasks or
       visualReviews: { "design:loan": { status: "pending_review", issues: ["private-review-opinion"],
         findings: [{ observation: "private-finding" }], repairAttempts: status === "confirmed" ? 1 : 0,
         repairHistory: [{ status, reason: "private-repair-reason" }], confirmedAt: "private-confirmation" } },
-      requirementReviewCandidates: { BORROW: { status, repairRationale: "private-candidate" } },
       requirementQualityReport: { summary: "private-quality-opinion" },
       designModelTraceability: state.designModelTraceability.map((trace) => ({ ...trace,
         mappingSource: "llm", rationale: "private-trace-opinion",

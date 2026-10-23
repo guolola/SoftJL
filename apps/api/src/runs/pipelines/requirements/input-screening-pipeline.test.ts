@@ -1,9 +1,9 @@
 // Exercises screening decisions at the requirement extraction pipeline boundary.
-import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProviderSettings, RunSnapshot } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../../llm.js";
+import type { LlmTransport } from "../../../adapters/llm/llm-transport.js";
 import type { RenderClient } from "../../../adapters/render/render-client.js";
 import { createEmptySnapshot } from "../../records/snapshots.js";
 import { buildRequirementBaseline } from "../../baselines/requirement-baseline.js";
@@ -122,8 +122,7 @@ test("screened extraction repairs a units response with explicit source and draf
       }
     },
   });
-  record.conversationContext = conversation;
-  await runStagePipeline(record, providerSettings, conversation.transport, renderClient);
+  await runStagePipeline(record, providerSettings, conversation, renderClient);
   const snapshot = record.snapshot as RunSnapshot;
   assert.equal(extractionCalls, 2);
   assert.equal(snapshot.status, "completed");

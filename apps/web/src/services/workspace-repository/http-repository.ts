@@ -1,85 +1,20 @@
 // Implements the browser HTTP workspace repository and project-scoped persistence adapter.
 import { generationExecutionModeSchema } from "@uml-platform/contracts";
-import type {
-  GenerationExecutionMode,
-  DesignSvgArtifact,
-  RequirementBaseline,
-  RunEventInput,
-  RunSnapshot,
-  DesignRunSnapshot,
-  DocumentRunSnapshot,
-  SvgArtifact,
-  FeasibilityRunSnapshot,
-} from "@uml-platform/contracts";
-import {
-  getRequirementModelId,
-} from "../../entities/diagram/model";
+import type { GenerationExecutionMode, DesignSvgArtifact, RequirementBaseline, RunEventInput, RunSnapshot, DesignRunSnapshot, DocumentRunSnapshot, SvgArtifact, FeasibilityRunSnapshot } from "@uml-platform/contracts";
+import { getRequirementModelId } from "../../entities/diagram/model";
 import type { WorkspaceRecord } from "../../entities/workspace/model";
 import type { RequirementRule } from "../../entities/requirement-rule/model";
-import { ApiClientError, requestJson } from "../api-client";
-import {
-  createRunHistoryTitle,
-  runHistorySnapshotRequirementText,
-  type RunHistorySnapshot,
-} from "../../entities/run-history";
-import type {
-
-  StartDesignRunInput,
-  StartDocumentRunInput,
-  StartFeasibilityRunInput,
-  StartRunInput,
-} from "./start-inputs";
-import {
-  PROJECT_REQUIRED_MESSAGE,
-  normalizeProjectId,
-  requireProjectScope,
-  withProjectHeaders,
-} from "./project-scope";
-import {
-  normalizeProjectHistoryResponse,
-  projectRunSummaryToHistoryItem,
-  type ProjectRunDetailResponse,
-  type ProjectRunsResponse,
-} from "./project-history";
-import {
-
-  readDesignRunSnapshot,
-  readDocumentRunSnapshot,
-  readRunSnapshot,
-
-  subscribeToDesignRunEvents,
-  subscribeToDocumentRunEvents,
-  subscribeToFeasibilityRunEvents,
-  subscribeToRequirementRunEvents,
-} from "./run-subscriptions";
-import {
-  downloadDocumentFile,
-  downloadDocumentRunFile,
-  listDocumentLibraryItems,
-} from "./document-api";
-import {
-  applySnapshotToWorkspace,
-  cloneWorkspace,
-  createEmptyWorkspace,
-  mergeWorkspaceState,
-  stableWorkspaceState,
-} from "./workspace-state";
-import {
-  renderPlantUmlRequest,
-  exportDiagramRequest,
-  renderStructuredModelRequest,
-
-  startDesignRunRequest,
-  startDocumentRunRequest,
-  startRequirementRunRequest,
-  cancelRequirementRunRequest,
-  testProviderSettingsRequest,
-} from "./run-actions-api";
-import type {
-  RequirementRulesUpdateMetadata,
-  WorkspaceRepository,
-  RunSubscriptionOptions,
-} from "./types";
+import { ApiClientError, requestJson } from "../api-client/index";
+import { createRunHistoryTitle, runHistorySnapshotRequirementText, type RunHistorySnapshot } from "../../entities/run-history/index";
+import type { StartDesignRunInput, StartDocumentRunInput, StartFeasibilityRunInput, StartRunInput } from "./start-inputs";
+import { PROJECT_REQUIRED_MESSAGE, normalizeProjectId, requireProjectScope, withProjectHeaders } from "./project-scope";
+import { normalizeProjectHistoryResponse } from "./project-history";
+import { readProjectRuns as readSharedProjectRuns, invalidateProjectRunReads } from "./project-run-reads";
+import { readDesignRunSnapshot, readDocumentRunSnapshot, readRunSnapshot, subscribeToDesignRunEvents, subscribeToDocumentRunEvents, subscribeToFeasibilityRunEvents, subscribeToRequirementRunEvents } from "./run-subscriptions";
+import { downloadDocumentFile, listDocumentLibraryItems } from "./document-api";
+import { applySnapshotToWorkspace, cloneWorkspace, createEmptyWorkspace, mergeWorkspaceState, stableWorkspaceState } from "./workspace-state";
+import { exportDiagramRequest, renderStructuredModelRequest, startDesignRunRequest, startDocumentRunRequest, startRequirementRunRequest, cancelRequirementRunRequest } from "./run-actions-api";
+import type { RequirementRulesUpdateMetadata, WorkspaceRepository, RunSubscriptionOptions } from "./types";
 
 interface WorkspaceRepositoryOptions {
   projectId?: string | null;
@@ -103,7 +38,7 @@ export function createHttpWorkspaceRepository(
   options: WorkspaceRepositoryOptions = {},
 ): WorkspaceRepository {
   const projectId = normalizeProjectId(options.projectId);
-  let localRequirementText = "";
+  const localRequirementText = "";
   let localRequirementRules: RequirementRule[] = [];
   let localRequirementBaseline: RequirementBaseline | null = null;
   let localRequirementModelTraceability: WorkspaceRecord["requirementModelTraceability"] =
@@ -222,29 +157,9 @@ export function createHttpWorkspaceRepository(
     }
   }
 
-  async function readProjectRunDetail(runId: string) {
+async function readProjectRuns(options?: { maxAgeMs?: number }) {
     const scopedProjectId = requireProjectScope(projectId);
-    return requestJson<ProjectRunDetailResponse>(
-      `/api/projects/${encodeURIComponent(scopedProjectId)}/runs/${encodeURIComponent(runId)}`,
-      withProjectHeaders(scopedProjectId, {
-        errorKey: "errors.operations.loadRun",
-      }),
-    );
-  }
-
-  async function readProjectRunHistoryItem(runId: string) {
-    const detail = await readProjectRunDetail(runId);
-    return projectRunSummaryToHistoryItem(detail.run, detail.snapshot ?? null);
-  }
-
-  async function readProjectRuns() {
-    const scopedProjectId = requireProjectScope(projectId);
-    return requestJson<ProjectRunsResponse>(
-      `/api/projects/${encodeURIComponent(scopedProjectId)}/runs`,
-      withProjectHeaders(scopedProjectId, {
-        errorKey: "errors.operations.loadHistory",
-      }),
-    );
+    return readSharedProjectRuns(scopedProjectId, options);
   }
 
   async function persistSnapshotAsProjectWorkspace(
@@ -306,17 +221,7 @@ export function createHttpWorkspaceRepository(
       return workspace;
     },
 
-    async updateRequirementText(text: string) {
-      if (projectId) {
-        await updateProjectWorkspace((workspace) => {
-          workspace.requirementText = text;
-        });
-        return;
-      }
-      localRequirementText = text;
-    },
-
-    async updateRequirementRules(
+async updateRequirementRules(
       rules: RequirementRule[],
       metadata?: RequirementRulesUpdateMetadata,
     ) {
@@ -399,12 +304,14 @@ export function createHttpWorkspaceRepository(
     async startFeasibilityRun(input: StartFeasibilityRunInput) {
       await waitForProjectWorkspaceSaves();
       const scopedProjectId = requireProjectScope(projectId);
-      return requestJson<{ runId: string }>("/api/feasibility-runs", withProjectHeaders(scopedProjectId, {
+      const response = await requestJson<{ runId: string }>("/api/feasibility-runs", withProjectHeaders(scopedProjectId, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: scopedProjectId, ...input }),
         errorKey: "errors.operations.startFeasibility",
       }));
+      invalidateProjectRunReads(scopedProjectId);
+      return response;
     },
 
     async getFeasibilityRunSnapshot(runId) {
@@ -435,8 +342,7 @@ export function createHttpWorkspaceRepository(
       ) as WorkspaceRecord["autoGeneratedUpstreamReviews"];
     },
 
-
-    async updateTestGenerationResult(result) {
+async updateTestGenerationResult(result) {
       if (projectId) {
         await updateProjectWorkspace((workspace) => {
           workspace.testGenerationResult = result
@@ -453,22 +359,28 @@ export function createHttpWorkspaceRepository(
 
     async startRun(input: StartRunInput) {
       await waitForProjectWorkspaceSaves();
-      return startRequirementRunRequest(input, projectId);
+      const response = await startRequirementRunRequest(input, projectId);
+      invalidateProjectRunReads(requireProjectScope(projectId));
+      return response;
     },
 
     async cancelRun(runId: string) {
       await cancelRequirementRunRequest(runId, projectId);
+      invalidateProjectRunReads(requireProjectScope(projectId));
     },
 
     async startDesignRun(input: StartDesignRunInput) {
       await waitForProjectWorkspaceSaves();
-      return startDesignRunRequest(input, projectId);
+      const response = await startDesignRunRequest(input, projectId);
+      invalidateProjectRunReads(requireProjectScope(projectId));
+      return response;
     },
 
-
-    async startDocumentRun(input: StartDocumentRunInput) {
+async startDocumentRun(input: StartDocumentRunInput) {
       await waitForProjectWorkspaceSaves();
-      return startDocumentRunRequest(input, projectId);
+      const response = await startDocumentRunRequest(input, projectId);
+      invalidateProjectRunReads(requireProjectScope(projectId));
+      return response;
     },
 
     async subscribeToRun(runId: string, onEvent: (event: RunEventInput) => void, options?: RunSubscriptionOptions<RunSnapshot>) {
@@ -488,8 +400,7 @@ export function createHttpWorkspaceRepository(
       await subscribeToDesignRunEvents({ runId, projectId, onEvent, ...options });
     },
 
-
-    async subscribeToDocumentRun(
+async subscribeToDocumentRun(
       runId: string,
       onEvent: (event: RunEventInput) => void,
       options?: RunSubscriptionOptions<DocumentRunSnapshot>,
@@ -505,8 +416,7 @@ export function createHttpWorkspaceRepository(
       return readDesignRunSnapshot(runId, requireProjectScope(projectId));
     },
 
-
-    async getDocumentRunSnapshot(runId: string) {
+async getDocumentRunSnapshot(runId: string) {
       return readDocumentRunSnapshot(runId, requireProjectScope(projectId));
     },
 
@@ -514,16 +424,8 @@ export function createHttpWorkspaceRepository(
       return listDocumentLibraryItems(projectId);
     },
 
-    async downloadDocumentRun(runId: string, defaultFileName?: string) {
-      return downloadDocumentRunFile(runId, defaultFileName, projectId);
-    },
-
-    async downloadDocument(documentId: string, defaultFileName?: string) {
+async downloadDocument(documentId: string, defaultFileName?: string) {
       return downloadDocumentFile(documentId, defaultFileName, projectId);
-    },
-
-    async renderPlantUml(diagramKind, plantUmlSource) {
-      return renderPlantUmlRequest(diagramKind, plantUmlSource, projectId);
     },
 
     exportDiagram(input, signal) {
@@ -534,21 +436,7 @@ export function createHttpWorkspaceRepository(
       return renderStructuredModelRequest(model, projectId, stage);
     },
 
-    async confirmVisualReview(key, checkedAt) {
-      const saved = await updateProjectWorkspace((workspace) => {
-        const review = workspace.visualReviews?.[key];
-        if (!review || review.status !== "pending_review" || review.checkedAt !== checkedAt) {
-          throw new Error("视觉检查结果已更新，请刷新后重试。");
-        }
-        workspace.visualReviews = {
-          ...workspace.visualReviews,
-          [key]: { ...review, confirmedAt: review.confirmedAt ?? new Date().toISOString() },
-        };
-      });
-      return saved.visualReviews![key];
-    },
-
-    async saveRequirementModelEdit(_diagramKind, model, status, traceability) {
+async saveRequirementModelEdit(_diagramKind, model, status, traceability) {
       const modelKey = getRequirementModelId(model);
       await updateProjectWorkspace((workspace) => {
         workspace.models = { ...workspace.models, [modelKey]: model };
@@ -607,14 +495,9 @@ export function createHttpWorkspaceRepository(
       });
     },
 
-    async testProviderSettings(providerSettings) {
-      return testProviderSettingsRequest(providerSettings);
-    },
-
-    async saveRunHistory(snapshot, meta) {
+async saveRunHistory(snapshot, meta) {
       if (projectId) {
         const rulesOnly = "selectedDiagrams" in snapshot &&
-          !('files' in snapshot) &&
           !('designModelTraceability' in snapshot) &&
           snapshot.selectedDiagrams.length === 0 &&
           ('models' in snapshot && snapshot.models.length === 0);
@@ -637,22 +520,15 @@ export function createHttpWorkspaceRepository(
       throw new Error(PROJECT_REQUIRED_MESSAGE);
     },
 
-    async listRunHistory() {
+    async listRunHistory(options) {
       if (projectId) {
-        const payload = await readProjectRuns();
+        const payload = await readProjectRuns(options);
         return normalizeProjectHistoryResponse(payload);
       }
       throw new Error(PROJECT_REQUIRED_MESSAGE);
     },
 
-    async getRunHistoryItem(id) {
-      if (projectId) {
-        return readProjectRunHistoryItem(id);
-      }
-      throw new Error(PROJECT_REQUIRED_MESSAGE);
-    },
-
-    async deleteRunHistory(id) {
+async deleteRunHistory(id) {
       if (projectId) {
         await requestJson(
           `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(id)}`,
@@ -661,24 +537,12 @@ export function createHttpWorkspaceRepository(
             errorKey: "errors.operations.deleteHistory",
           }),
         );
+        invalidateProjectRunReads(projectId);
         const history = await readProjectRuns();
         return normalizeProjectHistoryResponse(history);
       }
       throw new Error(PROJECT_REQUIRED_MESSAGE);
     },
 
-    async clearRunHistory() {
-      if (projectId) {
-        await requestJson(
-          `/api/projects/${encodeURIComponent(projectId)}/runs`,
-          withProjectHeaders(projectId, {
-            method: "DELETE",
-            errorKey: "errors.operations.clearHistory",
-          }),
-        );
-        return;
-      }
-      throw new Error(PROJECT_REQUIRED_MESSAGE);
-    },
-  };
+};
 }

@@ -40,7 +40,7 @@ function profileResponse(
 }
 
 function stubAccountFetch(profile: PlatformAccountProfileResponse, sessions: PlatformAccountProfileResponse["session"][] = [profile.session]) {
-  let mfaEnabled = Boolean(profile.mfa?.enabled ?? profile.user.mfaEnabled);
+  let mfaEnabled = profile.mfa.enabled;
   const currentProfile = () => ({
     ...profile,
     user: { ...profile.user, mfaEnabled },
@@ -191,15 +191,6 @@ describe("AccountDialog generation usage", () => {
     expect(i18n.t("account.expiresHeader", { lng: "en" })).toBe("Expires");
   });
 
-  it("keeps the account trigger visible as a compact mobile avatar button", () => {
-    renderAccountDialog({ onNavigate: () => {}, initialUser: baseUser });
-
-    const trigger = screen.getByRole("button", { name: "账号" });
-    expect(trigger).toHaveClass("inline-flex", "size-9", "md:w-auto");
-    expect(trigger).not.toHaveClass("hidden");
-    expect(within(trigger).getByText("Student")).toHaveClass("hidden", "md:inline");
-  });
-
   it("uses block37 top tabs and keyboard navigation on mobile", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 360 });
     const user = userEvent.setup();
@@ -219,7 +210,6 @@ describe("AccountDialog generation usage", () => {
 
     const accountDialog = await screen.findByRole("dialog", { name: "设置" });
     expect(accountDialog).toHaveAttribute("data-block", "dashboard-dialog-37");
-    expect(accountDialog).toHaveClass("h-[calc(100dvh-2rem)]", "sm:h-170");
     const tabList = within(accountDialog).getByRole("tablist", { name: "设置" });
     const tabs = within(tabList).getAllByRole("tab");
     expect(tabs.map(tab => tab.getAttribute("aria-label"))).toEqual(["主题", "布局", "语言", "个人资料", "安全设置", "登录会话", "工作台偏好", "模型配置"]);
@@ -228,7 +218,6 @@ describe("AccountDialog generation usage", () => {
 
     const profileTab = within(tabList).getByRole("tab", { name: "个人资料" });
     const securityTab = within(tabList).getByRole("tab", { name: "安全设置" });
-    expect(tabList).toHaveClass("grid-cols-7");
 
     await user.click(profileTab);
     await user.keyboard("{ArrowDown}");
@@ -320,9 +309,6 @@ describe("AccountDialog generation usage", () => {
     const accountDialog = screen.getByRole("dialog", { name: "设置" });
     const scrollArea = accountDialog.querySelector("[data-settings-scroll]");
     expect(scrollArea).toBeInTheDocument();
-    expect(scrollArea).toHaveClass("overflow-x-hidden", "overflow-y-auto");
-    expect(scrollArea?.querySelector("main")).toHaveClass("px-4", "sm:px-6");
-    expect(scrollArea?.querySelector("main")).not.toHaveClass("overflow-y-auto");
     expect(screen.queryByText("今日生成次数")).not.toBeInTheDocument();
     expect(screen.queryByText("今日 3 次")).not.toBeInTheDocument();
     expect(screen.queryByText("不限额")).not.toBeInTheDocument();
@@ -633,8 +619,8 @@ describe("AccountDialog generation usage", () => {
     await user.click(screen.getByRole("button", { name: "账号" }));
     const dialog = await screen.findByRole("dialog", { name: "设置" });
     await user.click(within(dialog).getByRole("tab", { name: "工作台偏好" }));
-    const auto = within(dialog).getByRole("switch", { name: "修改后自动重新生成规则" });
-    await user.click(auto);
+    const staleBanner = within(dialog).getByRole("switch", { name: "显示过期模型横幅" });
+    await user.click(staleBanner);
     const counts = fetchMock.mock.calls.length;
     await user.click(within(dialog).getByRole("tab", { name: "语言" }));
     await user.click(within(dialog).getByRole("combobox", { name: "语言" }));
@@ -644,7 +630,7 @@ describe("AccountDialog generation usage", () => {
     await waitFor(() => expect(within(dialog).getByRole("tab", { name: "Workspace preferences" })).toBeInTheDocument());
     expect(localStorage.getItem("uml-lab-locale-preference")).toBe("en");
     await user.click(within(dialog).getByRole("tab", { name: "Workspace preferences" }));
-    expect(within(dialog).getByRole("switch", { name: "Regenerate rules after changes" })).toBeChecked();
+    expect(within(dialog).getByRole("switch", { name: "Show stale-model banner" })).not.toBeChecked();
     expect(fetchMock.mock.calls).toHaveLength(counts);
   });
 

@@ -4,7 +4,7 @@ import {
   type ApiErrorCategory,
   type ApiErrorResponse,
 } from "@uml-platform/contracts";
-import { ProviderHttpError } from "../llm.js";
+import { ProviderHttpError } from "../adapters/llm/llm-transport.js";
 
 export type ProviderTestFailureKind =
   | "authentication"

@@ -33,6 +33,5 @@ function withHomeContext(Preset: FC<PresetProps>): FC<PresetProps> {
 const ContextDisplayRing = withHomeContext(SharedRing);
 const ContextDisplayBar = withHomeContext(SharedBar);
 const ContextDisplayText = withHomeContext(SharedText);
-const ContextDisplay = { Root: ContextDisplayRoot, Trigger: ContextDisplayTrigger, Content: ContextDisplayContent, Ring: ContextDisplayRing, Bar: ContextDisplayBar, Text: ContextDisplayText };
 
-export { ContextDisplay, ContextDisplayRoot, ContextDisplayTrigger, ContextDisplayContent, ContextDisplayRing, ContextDisplayBar, ContextDisplayText };
+export { ContextDisplayRoot, ContextDisplayTrigger, ContextDisplayContent, ContextDisplayRing, ContextDisplayBar, ContextDisplayText };

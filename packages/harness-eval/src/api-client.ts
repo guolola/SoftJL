@@ -1,5 +1,5 @@
 // Evaluates runs through the same authenticated project and managed-provider boundary as the application.
-import type { RunSnapshot } from "@uml-platform/contracts";
+import { runSnapshotSchema, type RunSnapshot } from "@uml-platform/contracts";
 
 type EvaluationInput = { requirementText: string; selectedDiagrams: RunSnapshot["selectedDiagrams"] };
 
@@ -44,19 +44,31 @@ export async function createEvaluationApiClient(env: NodeJS.ProcessEnv, send: ty
   return {
     async run(input: EvaluationInput): Promise<RunSnapshot> {
       const signal = AbortSignal.timeout(timeoutMs);
-      const response = await request("/api/runs", { method: "POST", signal, body: JSON.stringify({
-        // The project header authorizes this full fixture input. A body projectId selects saved workspace inputs instead.
-        ...input, providerSettings: { providerConfigId: env.UML_EVAL_PROVIDER_CONFIG_ID, model: env.UML_EVAL_MODEL },
-      }) });
-      const { runId } = await response.json() as { runId: string };
-      if (typeof runId !== "string" || !runId) throw new Error("评测启动响应缺少运行编号");
+      const pause = () => new Promise(resolve => setTimeout(resolve, Math.min(pollMs, 1000)));
+      const start = async (command: Record<string, unknown>) => {
+        const response = await request("/api/runs", { method: "POST", signal, body: JSON.stringify({
+          projectId, ...command, providerSettings: { providerConfigId: env.UML_EVAL_PROVIDER_CONFIG_ID, model: env.UML_EVAL_MODEL },
+        }) });
+        const { runId } = await response.json() as { runId: string };
+        if (typeof runId !== "string" || !runId) throw new Error("评测启动响应缺少运行编号");
+        while (!signal.aborted) {
+          const result = await request(`/api/runs/${encodeURIComponent(runId)}`, { signal });
+          const snapshot = runSnapshotSchema.parse(await result.json());
+          if (["completed", "failed", "cancelled"].includes(snapshot.status)) return snapshot;
+          await pause();
+        }
+        throw new Error(`评测运行超时：${runId}`);
+      };
+      // Model the published extraction baseline in the explicitly configured project, as the workspace does.
+      const extracted = await start({ requirementText: input.requirementText, selectedDiagrams: [] });
+      if (extracted.status !== "completed" || !input.selectedDiagrams.length) return extracted;
       while (!signal.aborted) {
-        const result = await request(`/api/runs/${encodeURIComponent(runId)}`, { signal });
-        const snapshot = await result.json() as RunSnapshot;
-        if (["completed", "failed", "cancelled"].includes(snapshot.status)) return snapshot;
-        await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, 1000)));
+        const response = await request(`/api/projects/${encodeURIComponent(projectId)}/workspace`, { signal });
+        const workspace = await response.json() as { sourceRunId?: string };
+        if (workspace.sourceRunId === extracted.runId) return start({ selectedDiagrams: input.selectedDiagrams });
+        await pause();
       }
-      throw new Error(`评测运行超时：${runId}`);
+      throw new Error(`等待评测需求基线发布超时：${extracted.runId}`);
     },
     async close() {
       // Revoke only sessions created here; caller-supplied browser sessions remain owned by the caller.

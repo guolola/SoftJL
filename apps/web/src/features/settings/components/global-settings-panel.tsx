@@ -8,6 +8,7 @@ import type {
   ProviderModelCapabilityMap,
   ProviderModelDiscoveryProgressEvent,
 } from "@uml-platform/contracts";
+import { providerModelCapabilitySchema } from "@uml-platform/contracts";
 import { Button } from "../../../shared/ui/button";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
 import { Dialog } from "../../../shared/ui/dialog";
@@ -65,7 +66,6 @@ const EMPTY_PROVIDER_CREATION_FORM: ProviderCreationForm = {
 
 function discoveredModelsToCapabilities(
   models: ProviderDiscoveredModel[],
-  compatibleMode: string,
 ): ProviderModelCapabilityMap {
   return Object.fromEntries(
     models.flatMap((model) => {
@@ -74,19 +74,19 @@ function discoveredModelsToCapabilities(
       return [
         [
           id,
-          {
+          providerModelCapabilitySchema.parse({
             id,
-            category: model.category ?? "text_chat",
-            structuredOutputMode: model.structuredOutputMode ?? "compatible",
-            supportsJsonSchema: model.supportsJsonSchema ?? false,
-            supportsJsonObject: model.supportsJsonObject ?? false,
-            strictJson: model.strictJson ?? "unknown",
-            modeLabel: model.modeLabel ?? compatibleMode,
+            category: model.category,
+            structuredOutputMode: model.structuredOutputMode,
+            supportsJsonSchema: model.supportsJsonSchema,
+            supportsJsonObject: model.supportsJsonObject,
+            strictJson: model.strictJson,
+            modeLabel: model.modeLabel,
             warning: model.warning,
-            probeStatus: model.probeStatus ?? "unknown",
+            probeStatus: model.probeStatus,
             probeReason: model.probeReason,
-            probedAt: model.probedAt ?? new Date().toISOString(),
-          },
+            probedAt: model.probedAt,
+          }),
         ],
       ];
     }),
@@ -414,6 +414,8 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
       }
       // A disconnected stream cannot establish a successfully fetched catalog.
       if (!streamState.completed) throw new Error("Provider discovery stream ended without a result");
+      // A completed response must contain actual capability records before it can enable saving.
+      discoveredModelsToCapabilities(models);
       setDiscoveredModels(models);
       setModelCatalogSource("discovered");
       setProviderForm((current) => {
@@ -469,10 +471,7 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
         baseUrl: providerForm.baseUrl.trim(),
         defaultModel: providerForm.defaultModel.trim(),
         allowedModels: discoveredModelIds,
-        modelCapabilities: discoveredModelsToCapabilities(
-          discoveredModels,
-          t("providerSettings.compatibleMode"),
-        ),
+        modelCapabilities: discoveredModelsToCapabilities(discoveredModels),
       };
       const saved =
         providerDialogMode === "edit" && editingProvider

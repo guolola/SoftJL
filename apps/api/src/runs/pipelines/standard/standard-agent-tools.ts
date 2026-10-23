@@ -88,7 +88,7 @@ export function createStandardAgentTools(deps: StandardPipelineDependencies, cur
         if (current().generationScope?.status === "awaiting_selection") throw new Error("请先让用户选择需要修改的模型");
         const kinds = selectedStandardTasks(current());
         if (kinds && !kinds.includes(original.kind)) throw new Error("目标图超出用户本轮确认的修改范围");
-        const diagram = await renderStandardDiagram({ ...original, model: standardModelSchema.parse(input.model) }, deps.render);
+        const diagram = await renderStandardDiagram({ ...original, model: input.model }, deps.render);
         await deps.save(state => {
           state.diagrams[input.id] = diagram;
           if (state.run) state.run.work = { ids: [...new Set([...(state.run.work?.ids ?? []), input.id])] };

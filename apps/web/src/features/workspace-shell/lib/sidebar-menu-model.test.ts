@@ -3,10 +3,21 @@ import { describe, expect, it } from "vitest";
 import type { RunEventInput } from "@uml-platform/contracts";
 import { createGenerationTask, updateTaskFromEvent } from "../../workspace-session/lib/generation-tasks";
 import { designGenerationSubtasks, requirementGenerationSubtasks } from "../../workspace-session/lib/generation-planning";
-import { createRenderMeta } from "../../../test/contract-fixtures";
+import { createRenderMeta } from "../../../../tests/fixtures/contract-fixtures";
 import { deriveSidebarDiagramState } from "./sidebar-menu-model";
+import { activeDesignProjectDiagramStatuses, activeRequirementProjectDiagramStatuses } from "./project-run-projections";
 
 describe("sidebar model generation status", () => {
+  it("does not guess diagram targets when an active run has no recorded selection", () => {
+    const requirement = { operationType: "requirement_modeling" as const, runId: "requirements", runKind: "requirements" as const, status: "running" as const,
+      stage: "generate_models", selectedDiagrams: [] };
+    const design = { operationType: "design_modeling" as const, runId: "design", runKind: "design" as const, status: "queued" as const,
+      selectedDiagrams: [], requestedDiagrams: [] };
+    expect([...activeRequirementProjectDiagramStatuses([requirement])]).toEqual([]);
+    expect([...activeDesignProjectDiagramStatuses([design])]).toEqual([]);
+    expect([...activeRequirementProjectDiagramStatuses([{ ...requirement, selectedDiagrams: ["activity"] }])]).toEqual([["activity", "running"]]);
+    expect([...activeDesignProjectDiagramStatuses([{ ...design, selectedDiagrams: ["class"], requestedDiagrams: ["table"] }])]).toEqual([["table", "queued"]]);
+  });
   it.each(["requirements", "design"] as const)("checks off a completed %s branch while another branch is still running", (kind) => {
     let task = createGenerationTask({ clientTaskId: "batch", kind, title: "生成模型", providerModel: null,
       startedAt: "now", message: "生成中", subtasks: kind === "requirements"

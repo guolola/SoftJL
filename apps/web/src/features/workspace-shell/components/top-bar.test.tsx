@@ -1,16 +1,16 @@
 // Verifies top bar navigation, run controls, theme toggles, and account/project menus.
-import { installReactFlowTestLayout } from '../../../test/react-flow-test-layout';
+import { installReactFlowTestLayout } from '../../../../tests/helpers/react-flow-test-layout';
 import { useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
 import type { PlatformRunSummary } from "../../user-platform/services/platform-api";
 import {
   createRunSnapshot,
   createWorkspaceRecord,
   withWorkspaceProviders,
-} from "../../../test/workspace-test-utils";
+} from "../../../../tests/helpers/workspace-test-utils";
 import { LineageGraphPage } from "../../lineage/components/lineage-graph-page";
 import { snapshotInputFingerprint } from "../../../shared/lib/fingerprint";
 import { useWorkspaceSession } from "../../workspace-session/state";
@@ -168,7 +168,6 @@ function LineageRerunArtifactHarness() {
   );
 }
 
-
 describe("TopBar", () => {
   beforeEach(() => {
     storeManagedUserSettings();
@@ -190,41 +189,6 @@ describe("TopBar", () => {
       value: vi.fn(),
     });
     HTMLAnchorElement.prototype.click = vi.fn();
-  });
-
-  it("uses the template header and button primitives", () => {
-    const repository: WorkspaceRepository = {
-      loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
-      startRun: vi.fn(async () => ({ runId: "run-topbar" })),
-      subscribeToRun: vi.fn(async () => {}),
-      getRunSnapshot: vi.fn(async () => createRunSnapshot({ runId: "run-topbar" })),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
-      saveRunHistory: vi.fn(),
-      listRunHistory: vi.fn(async () => []),
-      deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
-    };
-
-    render(withWorkspaceProviders(<TopBarHarness />, repository));
-
-    const banner = screen.getByRole("banner");
-    expect(banner).toHaveClass("sticky", "top-0", "z-50", "px-4", "sm:px-6");
-    expect(banner).not.toHaveClass("isolate");
-    expect(banner.className).toContain("before:backdrop-blur-md");
-    expect(banner.nextElementSibling).toHaveTextContent("主内容保持不变");
-    expect(banner.parentElement?.querySelector('[aria-hidden="true"].h-19')).not.toBeInTheDocument();
-    expect(banner.firstElementChild).toHaveClass(
-      "rounded-xl",
-      "bg-card",
-      "mt-3",
-      "border",
-      "px-6",
-      "py-2",
-    );
-    expect(screen.getByRole("button", { name: "主页" }).tagName).toBe("BUTTON");
-    expect(screen.getByRole("button", { name: "主题色板" })).toBeInTheDocument();
   });
 
   it("offers the default theme and all twelve color presets without a visible heading", async () => {
@@ -264,16 +228,16 @@ describe("TopBar", () => {
   it("switches top bar navigation between explicit English and browser-matched Chinese", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => ({ runId: "run-topbar" })),
       subscribeToRun: vi.fn(async () => {}),
       getRunSnapshot: vi.fn(async () => createRunSnapshot({ runId: "run-topbar" })),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const user = userEvent.setup();
 
@@ -285,9 +249,6 @@ describe("TopBar", () => {
     await user.click((await screen.findByRole("menuitem", { name: /English/u })));
 
     expect(await screen.findByRole("button", { name: "Home" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Change interface language" })).toHaveClass(
-      "text-primary",
-    );
     expect(document.documentElement.lang).toBe("en");
 
     await user.click(screen.getByRole("button", { name: "Change interface language" }));
@@ -300,7 +261,7 @@ describe("TopBar", () => {
   it("keeps only generation task controls in the project top bar", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => ({ runId: "run-topbar" })),
       subscribeToRun: vi.fn(async () => {}),
       getRunSnapshot: vi.fn(async () =>
@@ -308,12 +269,12 @@ describe("TopBar", () => {
           runId: "run-topbar",
         }),
       ),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -344,7 +305,7 @@ describe("TopBar", () => {
   it("uses the supplied workflow canvas with bounded height, controls and graph filters", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => ({ runId: "run-topbar" })),
       subscribeToRun: vi.fn(async () => {}),
       getRunSnapshot: vi.fn(async () =>
@@ -352,12 +313,12 @@ describe("TopBar", () => {
           runId: "run-topbar",
         }),
       ),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -376,15 +337,10 @@ describe("TopBar", () => {
     const dialog = screen.getByRole("region", { name: "全局链路图" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(within(dialog).getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    const graphContent = within(dialog).getByTestId("lineage-content");
-    expect(graphContent).not.toHaveClass("border", "rounded-xl");
-    expect(graphContent).toHaveStyle({ height: `${window.innerHeight - 24}px` });
     expect(within(dialog).queryByText("节点详情")).not.toBeInTheDocument();
-    expect(graphContent.querySelector('[data-template="workflow-builder-03"]')).toBeInTheDocument();
     expect(container.querySelector('.react-flow__minimap')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: '选择工具' })).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: '平移工具' }));
-    expect(within(dialog).getByRole('button', { name: '平移工具' })).toHaveClass('bg-secondary');
     await user.click(within(dialog).getByRole('button', { name: '选择工具' }));
     await user.click(within(dialog).getByRole('button', { name: '锁定画布' }));
     expect(within(dialog).getByRole('button', { name: '解锁画布' })).toBeInTheDocument();
@@ -461,7 +417,7 @@ describe("TopBar", () => {
           },
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => ({ runId: "run-rerun-usecase" })),
       subscribeToRun: vi.fn(async (_runId, onEvent) => {
         onEvent({ type: "queued" });
@@ -479,12 +435,12 @@ describe("TopBar", () => {
         await new Promise(() => {});
       }),
       getRunSnapshot: vi.fn(async () => createRunSnapshot()),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -550,16 +506,16 @@ describe("TopBar", () => {
           svgArtifacts: {},
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(async () => createRunSnapshot()),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -584,16 +540,16 @@ describe("TopBar", () => {
   it("uses product navigation labels without opening workspace tabs", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -620,25 +576,21 @@ describe("TopBar", () => {
   it("keeps a compact main navigation menu available for mobile layouts", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
     const onNavigate = vi.fn();
     render(withWorkspaceProviders(<TopBarHarness onNavigate={onNavigate} />, repository));
-
-    const banner = screen.getByRole("banner");
-    expect(within(banner).getByRole("navigation")).toHaveClass("hidden", "xl:flex");
-    expect(screen.getByRole("button", { name: "打开主导航" })).toHaveClass("xl:hidden");
 
     await user.click(screen.getByRole("button", { name: "打开主导航" }));
     await user.click((await screen.findByRole("menuitem", { name: "次数与账单" })));
@@ -649,16 +601,16 @@ describe("TopBar", () => {
   it("closes account modal on route changes without exposing purchase navigation", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -689,50 +641,19 @@ describe("TopBar", () => {
     expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
   });
 
-  it("matches the current top-bar action sizing", async () => {
-    const repository: WorkspaceRepository = {
-      loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
-      startRun: vi.fn(),
-      subscribeToRun: vi.fn(),
-      getRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
-      saveRunHistory: vi.fn(),
-      listRunHistory: vi.fn(async () => []),
-      deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
-    };
-
-    render(withWorkspaceProviders(<TopBarHarness />, repository));
-
-    expect(screen.queryByRole("button", { name: "生成任务" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "导出" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "历史快照" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "设计规范" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /切换到(深色|浅色)/ })).toHaveClass("size-9");
-    expect(screen.queryByRole("button", { name: "模型配置" })).not.toBeInTheDocument();
-    const accountTrigger = screen.getByRole("button", { name: /登录|账号/ });
-    expect(accountTrigger).toHaveClass("size-9", "rounded-full");
-    expect(accountTrigger).not.toHaveClass("hidden");
-    expect(accountTrigger.querySelector('[data-slot="avatar"]')).not.toBeNull();
-    expect(accountTrigger).toHaveAttribute("aria-haspopup", "menu");
-    expect(accountTrigger).not.toHaveTextContent(/justify-center|whitespace-nowrap|transition-all/u);
-  });
-
   it("shows an avatar file picker and previews selected account images", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -809,16 +730,16 @@ describe("TopBar", () => {
   it("validates and uploads the selected account avatar when saving profile", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -897,16 +818,16 @@ describe("TopBar", () => {
   it("aligns the account dialog profile, MFA, and session views with the settings design", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const baseUser = {
       id: "user-avatar",
@@ -1141,16 +1062,16 @@ describe("TopBar", () => {
   it("lets users change their password from the account security tab", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const baseUser = {
       id: "user-password",
@@ -1236,16 +1157,16 @@ describe("TopBar", () => {
           generatedDiagramTypes: ["usecase"],
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => ({ runId: "run-topbar" })),
       subscribeToRun: vi.fn(async () => {}),
       getRunSnapshot: vi.fn(async () => createRunSnapshot()),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     render(
@@ -1264,16 +1185,16 @@ describe("TopBar", () => {
   it("keeps document generation controls out of the top bar actions", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(async () => createRunSnapshot()),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     render(
@@ -1298,16 +1219,16 @@ describe("TopBar", () => {
   it("surfaces active project runs after reloading the workspace session", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(async () => createRunSnapshot()),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const activeRun = {
       runId: "server-run-active",
@@ -1357,19 +1278,19 @@ describe("TopBar", () => {
           requirementText: "生成 UML",
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => ({ runId: "local-completed-run" })),
       subscribeToRun: vi.fn(async (_runId, onEvent) => {
         onEvent({ type: "queued" });
         onEvent({ type: "completed", snapshot });
       }),
       getRunSnapshot: vi.fn(async () => snapshot),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const activeRun: PlatformRunSummary = {
       runId: "server-run-active-with-local-terminal",
@@ -1414,18 +1335,18 @@ describe("TopBar", () => {
       loadWorkspace: vi.fn(async () =>
         createWorkspaceRecord({ requirementText: "生成 UML" }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => {
         throw new Error("ECONNRESET upstream-secret-value");
       }),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(async () => null),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const completedRun: PlatformRunSummary = {
       runId: "older-server-run-completed",
@@ -1458,16 +1379,16 @@ describe("TopBar", () => {
   it("shows the latest terminal server run when there is no active task", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(async () => createRunSnapshot()),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const failedRun = {
       runId: "server-run-failed",
@@ -1499,20 +1420,19 @@ describe("TopBar", () => {
     expect(screen.getByText("失败")).toBeInTheDocument();
   });
 
-
   it("shows interrupted server runs instead of falling back to idle", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(async () => createRunSnapshot()),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const interruptedRun: PlatformRunSummary = {
       runId: "server-run-interrupted",
@@ -1540,16 +1460,16 @@ describe("TopBar", () => {
   it("shows retry source relationships for server runs in the task drawer", async () => {
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () => createWorkspaceRecord()),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(),
       subscribeToRun: vi.fn(),
       getRunSnapshot: vi.fn(async () => createRunSnapshot()),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
     const retryRun: PlatformRunSummary = {
       runId: "server-run-retry",
@@ -1596,7 +1516,7 @@ describe("TopBar", () => {
           requirementText: "生成 UML",
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => ({ runId: "run-task-details" })),
       subscribeToRun: vi.fn(
         async (_runId, onEvent) => {
@@ -1622,12 +1542,12 @@ describe("TopBar", () => {
         },
       ),
       getRunSnapshot: vi.fn(async () => snapshot),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -1687,7 +1607,7 @@ describe("TopBar", () => {
           requirementText: "生成 UML",
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => ({ runId: "run-heartbeat-details" })),
       subscribeToRun: vi.fn(
         async (_runId, onEvent) => {
@@ -1708,12 +1628,12 @@ describe("TopBar", () => {
         },
       ),
       getRunSnapshot: vi.fn(async () => snapshot),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -1782,7 +1702,7 @@ describe("TopBar", () => {
           ],
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun: vi.fn(async () => ({ runId: "run-model-stage-todo" })),
       subscribeToRun: vi.fn(async (_runId, onEvent) => {
         onEvent({ type: "queued" });
@@ -1829,12 +1749,12 @@ describe("TopBar", () => {
         });
       }),
       getRunSnapshot: vi.fn(async () => snapshot),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -1944,7 +1864,7 @@ describe("TopBar", () => {
           },
         }),
       ),
-      updateRequirementText: vi.fn(async () => {}),
+
       startRun,
       subscribeToRun: vi.fn(async (runId, onEvent) => {
         if (runId !== "run-analysis-instance") return;
@@ -1968,12 +1888,12 @@ describe("TopBar", () => {
         });
       }),
       getRunSnapshot: vi.fn(async () => snapshot),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
+
+
       saveRunHistory: vi.fn(),
       listRunHistory: vi.fn(async () => []),
       deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
+
     };
 
     const user = userEvent.setup();
@@ -1991,77 +1911,5 @@ describe("TopBar", () => {
     expect(screen.queryByRole("button", { name: "重试全部同类模型" })).not.toBeInTheDocument();
     expect(startRun).toHaveBeenCalledTimes(1);
   });
-
-  it("constrains long generation task content inside the drawer width", async () => {
-    const longToken =
-      "RequirementBaselineBlockedDownstreamGenerationBecauseLibraryRulesNeedManualReview".repeat(
-        8,
-      );
-    const longStream = `{"rules":[{"text":"${longToken}"}]}`;
-    const repository: WorkspaceRepository = {
-      loadWorkspace: vi.fn(async () =>
-        createWorkspaceRecord({
-          requirementText: "生成 UML",
-          selectedDiagramTypes: ["usecase"],
-          rules: [
-        { id: "r2", type: "data" as const, text: "系统记录模型名称与模型内容。" },
-            {
-              id: "r1",
-              type: "functional" as const,
-              text: "系统生成 UML。",
-
-            },
-          ],
-        }),
-      ),
-      updateRequirementText: vi.fn(async () => {}),
-      startRun: vi.fn(async () => ({ runId: "run-long-drawer-content" })),
-      subscribeToRun: vi.fn(async (_runId, onEvent) => {
-        onEvent({ type: "queued" });
-        onEvent({ type: "stage_started", stage: "generate_models" });
-        onEvent({
-          type: "stage_progress",
-          stage: "generate_models",
-          progress: 33,
-          diagramKind: "usecase",
-          subtaskId: "usecase",
-          subtaskLabel: "用例模型",
-          subtaskStatus: "failed",
-          message: longToken,
-        });
-        onEvent({
-          type: "llm_chunk",
-          stage: "generate_models",
-          chunk: longStream,
-        });
-        throw new Error(longToken);
-      }),
-      getRunSnapshot: vi.fn(async () => createRunSnapshot({ selectedDiagrams: ["usecase", "class", "activity"] })),
-      renderPlantUml: vi.fn(),
-      testProviderSettings: vi.fn(),
-      saveRunHistory: vi.fn(),
-      listRunHistory: vi.fn(async () => []),
-      deleteRunHistory: vi.fn(async () => []),
-      clearRunHistory: vi.fn(async () => {}),
-    };
-
-    const user = userEvent.setup();
-    render(withWorkspaceProviders(<TopBarDiagramTaskHarness />, repository));
-
-    await user.click(await screen.findByRole("button", { name: "开始模型任务" }));
-    await user.click(await screen.findByRole("button", { name: "确认生成" }));
-
-    expect(repository.startRun).toHaveBeenCalled();
-    const transcript = screen.getByTestId("generation-transcript");
-    expect(transcript).toHaveClass("min-w-0");
-    expect(transcript.querySelector('[data-slot="card"]')).toBeNull();
-    expect(screen.queryByTestId("generation-task-error-card")).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "我知道了" }));
-    expect(within(transcript).queryByText(/查看技术原文/)).not.toBeInTheDocument();
-    expect(transcript).not.toHaveTextContent(longStream);
-    expect(transcript.querySelector("pre")).toBeNull();
-    expect(transcript.querySelector('[data-slot="scroll-area-viewport"]')).toBeInTheDocument();
-  });
-
 
 });

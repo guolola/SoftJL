@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildAcceptedRequirementSnapshot, buildFeasibilityImplementationFingerprint, feasibilityInputsSchema, type FeasibilityRunSnapshot } from "@uml-platform/contracts";
-import { librarySeatDemoFixture } from "./fixtures/library-seat-demo-fixture.js";
+import { librarySeatDemoFixture } from "@uml-platform/demo-fixtures";
 import { librarySeatFeasibilityFlow } from "./fixtures/library-seat-feasibility-fixture.js";
 import { offlineFeasibilityAdapters } from "./offline-feasibility.js";
 import { offlineDemoProviderSettings } from "./offline-demo-config.js";
@@ -29,8 +29,7 @@ function demoRecord(): RunRecord {
 
 async function runDemo(record: RunRecord) {
   const adapters = offlineFeasibilityAdapters(record)!;
-  await runFeasibilityStagePipeline(record, offlineDemoProviderSettings, adapters.llmTransport, adapters.renderClient,
-    async () => { throw new Error("unexpected PNG render during feasibility generation"); });
+  await runFeasibilityStagePipeline(record, offlineDemoProviderSettings, adapters.llmTransport, adapters.renderClient);
   return record.snapshot as FeasibilityRunSnapshot;
 }
 
@@ -52,7 +51,7 @@ test("fixed demo yields current environment, business flow and two complete impl
   assert.ok(record.events.every((event) => event.type !== "run_activity" || !event.inputImages?.length));
   assert.ok(snapshot.contextSvg!.svg.includes("图书馆管理员"));
   assert.ok(snapshot.businessFlow!.svg.svg.includes("未通过"));
-  assert.deepEqual(normalizeFeasibilityBusinessFlow(librarySeatFeasibilityFlow, new Set(snapshot.rules.map((rule) => rule.id))), librarySeatFeasibilityFlow);
+  assert.deepEqual(normalizeFeasibilityBusinessFlow(librarySeatFeasibilityFlow), librarySeatFeasibilityFlow);
   assert.equal(snapshot.implementationFingerprint, buildFeasibilityImplementationFingerprint({
     rules: snapshot.rules, requirementBaseline: snapshot.requirementBaseline, contextModel: snapshot.contextModel, businessFlow: snapshot.businessFlow, inputs: snapshot.inputs,
   }));

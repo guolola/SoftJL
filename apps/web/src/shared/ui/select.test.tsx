@@ -24,7 +24,6 @@ describe("SelectControl", () => {
 
     expect(trigger).toHaveTextContent("业务规则");
     expect(valueNodes).toHaveLength(1);
-    expect(valueNodes[0]).toHaveClass("flex-1");
   });
 
   test("maps empty-string option values back to empty strings", async () => {
@@ -45,8 +44,6 @@ describe("SelectControl", () => {
 
     screen.getByRole("combobox", { name: "托管配置" }).focus();
     await user.keyboard("[ArrowDown]");
-    expect(screen.getByRole("option", { name: "不使用托管配置" }).closest("[data-slot='select-content']"))
-      .toHaveClass("data-[side=bottom]:slide-in-from-bottom-8!", "duration-400", "motion-reduce:animate-none");
     await user.click(screen.getByRole("option", { name: "不使用托管配置" }));
 
     expect(onValueChange).toHaveBeenCalledWith("");

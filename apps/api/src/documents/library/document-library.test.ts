@@ -22,12 +22,12 @@ test("file document library persists generated documents and versions", async ()
     assert.equal(saved.title, "需求规格说明书");
     assert.equal(saved.workspaceId, "workspace-a");
     assert.equal(saved.version, 1);
-    assert.equal((await library.listDocuments("workspace-a")).length, 1);
+    assert.equal((await library.listAllDocuments()).length, 1);
     assert.equal(
       (await library.getDocumentBuffer("workspace-a", saved.id))?.toString(),
       "docx",
     );
-    assert.equal((await library.listDocuments("workspace-b")).length, 0);
+    assert.equal(await library.getDocument("workspace-b", saved.id), null);
 
     const second = await library.saveGeneratedDocument({
       workspaceId: "workspace-a",
@@ -39,7 +39,7 @@ test("file document library persists generated documents and versions", async ()
     assert.notEqual(second.id, saved.id);
     assert.equal(second.fileName, "需求规格说明书-2.docx");
     assert.equal(second.version, 1);
-    assert.equal((await library.listDocuments("workspace-a")).length, 2);
+    assert.equal((await library.listAllDocuments()).length, 2);
 
     const updated = await library.updateDocumentBuffer(
       "workspace-a",
@@ -97,10 +97,10 @@ test("file document library soft deletes and restores project documents", async 
     });
 
     assert.equal(await library.deleteDocument("workspace-project", saved.id), true);
-    assert.deepEqual(await library.listDocuments("workspace-project"), []);
+    assert.deepEqual(await library.listAllDocuments(), []);
     const restored = await library.restoreDocument("workspace-project", saved.id);
     assert.equal(restored?.id, saved.id);
-    assert.equal((await library.listDocuments("workspace-project")).length, 1);
+    assert.equal((await library.listAllDocuments()).length, 1);
     assert.equal(
       (await library.getDocumentBuffer("workspace-project", saved.id))?.toString(),
       "restorable docx",

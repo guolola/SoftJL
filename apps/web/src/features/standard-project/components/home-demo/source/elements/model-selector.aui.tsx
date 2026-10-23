@@ -25,7 +25,6 @@ import {
 export {
   DEFAULT_EFFORT_OPTIONS,
   modelSelectorTriggerVariants,
-  resolveModelEffort,
   useModelSelectorEfforts,
   ModelSelectorRoot,
   ModelSelectorTrigger,

@@ -1,6 +1,8 @@
 // Starts the first-project tour and restores the user's prior workspace on exit.
 import { useCallback, useEffect, useRef } from "react";
 import { useSidebar } from "../../../shared/ui/sidebar";
+import { useRouteContentReady } from "../../../shared/lib/route-content-readiness";
+import { consumeProjectIntroduction, hasPendingProjectIntroduction } from "../../../shared/lib/project-introduction";
 import { useWorkspaceShell } from "../../workspace-shell/state";
 import { platformApi } from "../../user-platform/services/platform-api";
 import { useOnboardingTours } from "../components/onboarding-tour-provider";
@@ -34,6 +36,8 @@ function waitForStage(stage: TourStage, currentKind: () => string, timeoutMs = 4
 
 export function useProjectOnboarding(projectId: string, enabled = true) {
   const tours = useOnboardingTours();
+  const toursAvailable = Boolean(tours);
+  const routeReady = useRouteContentReady();
   const workspace = useWorkspaceShell();
   const { isMobile, state, openMobile, setOpen, setOpenMobile } = useSidebar();
   const selectionRef = useRef(workspace.selection);
@@ -42,7 +46,7 @@ export function useProjectOnboarding(projectId: string, enabled = true) {
   selectionRef.current = workspace.selection;
 
   const startProjectTour = useCallback(async () => {
-    if (!tours) return;
+    if (!tours || !routeReady) return;
     autoAttemptedRef.current = true;
     const tour = isMobile ? "first-project-mobile" : "first-project-desktop";
     const previousTabs = workspace.openTabs;
@@ -53,7 +57,7 @@ export function useProjectOnboarding(projectId: string, enabled = true) {
     if (isMobile) setOpenMobile(false);
     else setOpen(true);
 
-    await tours.startTour(tour, {
+    const started = await tours.startTour(tour, {
       prepareStep: async (index) => {
         const stage = tourItem(tour, index)?.stage;
         if (!stage) return;
@@ -74,22 +78,28 @@ export function useProjectOnboarding(projectId: string, enabled = true) {
         else setOpen(sidebarWasExpanded);
       },
     });
-  }, [isMobile, openMobile, setOpen, setOpenMobile, state, tours, workspace]);
+    if (started) consumeProjectIntroduction(projectId, "professional");
+  }, [isMobile, openMobile, projectId, routeReady, setOpen, setOpenMobile, state, tours, workspace]);
 
   startRef.current = startProjectTour;
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !routeReady || !toursAvailable) return;
     let active = true;
     // A failed state fetch suppresses automatic guidance, while the replay button remains usable.
     void platformApi.getOnboardingState().then((onboarding) => {
       if (!active || autoAttemptedRef.current) return;
-      if (onboarding.firstProject !== null || onboarding.firstProjectId !== projectId) return;
+      if (onboarding.firstProject !== null) {
+        consumeProjectIntroduction(projectId, "professional");
+        return;
+      }
+      // A quick-modeling project may own firstProjectId; a newly created engineering project still deserves its first guide.
+      if (onboarding.firstProjectId !== projectId && !hasPendingProjectIntroduction(projectId, "professional")) return;
       autoAttemptedRef.current = true;
       void startRef.current();
     }).catch(() => {});
     return () => { active = false; };
-  }, [projectId, enabled]);
+  }, [projectId, enabled, routeReady, toursAvailable]);
 
   return { startProjectTour };
 }

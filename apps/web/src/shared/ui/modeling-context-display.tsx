@@ -175,5 +175,3 @@ function PresetTrigger({ variant, className }: { variant: "ring" | "bar" | "text
 export const ContextDisplayRing: FC<PresetProps> = (props) => <MeterPreset {...props} variant="ring" />;
 export const ContextDisplayBar: FC<PresetProps> = (props) => <MeterPreset {...props} variant="bar" />;
 export const ContextDisplayText: FC<PresetProps> = (props) => <MeterPreset {...props} variant="text" />;
-export const ModelingContextDisplay = ContextDisplayText;
-export const ContextDisplay = { Root: ContextDisplayRoot, Trigger: ContextDisplayTrigger, Content: ContextDisplayContent, Ring: ContextDisplayRing, Bar: ContextDisplayBar, Text: ContextDisplayText };

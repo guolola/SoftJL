@@ -2,8 +2,40 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { platformApi } from "./platform-api";
 import { i18n } from "../../../shared/i18n/i18n";
+import { createAuthSessionResponse, createProjectInvitationResponse } from "@test/fixtures/contract-fixtures";
 
 describe("platformApi", () => {
+  it("requires current invitation responses without alternate member or empty success payloads", async () => {
+    const response = createProjectInvitationResponse();
+    const fetchMock = vi.fn(async () => Response.json(response));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(platformApi.inviteProjectMember("project", { username: "invitee", role: "viewer" })).resolves.toEqual(response);
+    await expect(platformApi.resendProjectInvitation("project", "invitation")).resolves.toEqual(response);
+    for (const invalid of [{ member: response.invitation }, { ...response, member: response.invitation }, {}]) {
+      fetchMock.mockImplementation(async () => Response.json(invalid));
+      await expect(platformApi.inviteProjectMember("project", { username: "invitee", role: "viewer" })).rejects.toThrow();
+      await expect(platformApi.resendProjectInvitation("project", "invitation")).rejects.toThrow();
+    }
+  });
+
+  it("accepts only current sessions and TOTP challenges at authentication boundaries", async () => {
+    const session = createAuthSessionResponse();
+    const challenge = { required: true, challengeId: "challenge-current-1", expiresAt: "2026-10-23T08:00:00.000Z", method: "totp" };
+    const fetchMock = vi.fn(async () => Response.json(session));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(platformApi.login({ identifier: "new_student", password: "password" })).resolves.toEqual(session);
+    await expect(platformApi.register({ username: "new_student", displayName: "Student", password: "password" })).resolves.toEqual(session);
+    await expect(platformApi.verifyMfa({ challengeId: challenge.challengeId, code: "123456" })).resolves.toEqual(session);
+    fetchMock.mockImplementation(async () => Response.json({ mfa: challenge }));
+    await expect(platformApi.login({ identifier: "new_student", password: "password" })).resolves.toEqual({ mfa: challenge });
+    for (const response of [{ mfaChallenge: challenge }, { mfa: challenge, mfaChallenge: challenge }, { ...session, mfaChallenge: challenge }, {}]) {
+      fetchMock.mockImplementation(async () => Response.json(response));
+      await expect(platformApi.login({ identifier: "new_student", password: "password" })).rejects.toThrow();
+      await expect(platformApi.register({ username: "new_student", displayName: "Student", password: "password" })).rejects.toThrow();
+      await expect(platformApi.verifyMfa({ challengeId: challenge.challengeId, code: "123456" })).rejects.toThrow();
+    }
+  });
+
   it('requests timed run events and forwards cancellation without changing ordinary run reads', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

@@ -46,7 +46,7 @@ type PersistJob = Promise<void>;
 export interface PersistentRunRecordStore extends RunRecordStore {
   flush(): Promise<void>;
   refreshRun(runId: string, options?: RunRecordReadOptions): Promise<RunRecord | null>;
-  refreshProject(projectId: string): Promise<void>;
+
 }
 
 function toIsoString(value: Date | string | null | undefined) {
@@ -176,7 +176,7 @@ function hydratePersistedEvent(
 
 function shouldMarkActiveRunsInterruptedOnRestore(env: NodeJS.ProcessEnv = process.env) {
   const queueMode = env.UML_RUN_QUEUE_MODE?.trim().toLowerCase();
-  return queueMode !== "bullmq" && env.UML_ENABLE_RUN_QUEUE !== "true";
+  return queueMode !== "bullmq";
 }
 
 function cloneSnapshot(snapshot: RunRecord["snapshot"]) {
@@ -234,7 +234,7 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
   async refreshRun(runId: string, options: RunRecordReadOptions = {}) {
     const local = super.get(runId);
     // A pipeline's live record owns cancellation/listeners and must retain object identity.
-    if (local && !local.terminal && local.conversationContext) return local;
+    if (local && !local.terminal && local.executionActive) return local;
     await this.flush();
     const records = await this.db.query<RunRecordRow>(
       `
@@ -251,11 +251,7 @@ class PostgresRunRecordStore extends Map<string, RunRecord> implements Persisten
     return this.applyLoadedRows(records.rows, events, { markActiveInterrupted: false })[0] ?? null;
   }
 
-  async refreshProject(projectId: string) {
-    for (const record of await this.listRecords([projectId])) super.set(record.snapshot.runId, record);
-  }
-
-  async listRecords(projectIds?: string[]) {
+async listRecords(projectIds?: string[]) {
     if (projectIds?.length === 0) return [];
     await this.flush();
     const result: RunRecord[] = [];

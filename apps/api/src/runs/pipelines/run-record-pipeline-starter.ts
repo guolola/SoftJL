@@ -9,7 +9,7 @@ import {
   type RunStage,
   type StartDocumentRunRequest,
 } from "@uml-platform/contracts";
-import type { LlmTransport, StreamChatCompletionInput } from "../../llm.js";
+import type { LlmTransport, StreamChatCompletionInput } from "../../adapters/llm/llm-transport.js";
 import {
   createScheduledLlmTransport,
   type LlmScheduler,
@@ -37,7 +37,6 @@ type RequirementPipeline = (
   providerSettings: ProviderSettings,
   llmTransport: LlmTransport,
   renderClient: RenderClient,
-  pngRenderClient?: PngRenderClient,
 ) => Promise<void>;
 
 type DesignPipeline = (
@@ -45,7 +44,6 @@ type DesignPipeline = (
   providerSettings: ProviderSettings,
   llmTransport: LlmTransport,
   renderClient: RenderClient,
-  pngRenderClient?: PngRenderClient,
 ) => Promise<void>;
 
 
@@ -343,7 +341,7 @@ export function startFeasibilityRecordPipeline({
     analyticsStore,
   });
   void (async () => {
-
+    record.executionActive = true;
     try {
       const demo = offlineFeasibilityAdapters(record);
       const promptVersions = await getPromptRuntimeStore().publishedSnapshot();
@@ -351,16 +349,16 @@ export function startFeasibilityRecordPipeline({
         demo?.llmTransport ?? withPinnedPrompts(withEngineeringContextBudget(scheduledTransport, record.snapshot.modelCapacity), promptVersions),
         { systemName: record.metadata?.systemName },
       );
-      record.conversationContext = conversation;
       await runFeasibilityStagePipeline(
         record,
         providerSettings,
-        conversation.transport,
+        conversation,
         demo?.renderClient ?? renderClient,
-        pngRenderClient,
       );
     } catch (error) {
       handleRunPipelineError(record, error);
+    } finally {
+      record.executionActive = false;
     }
   })();
 }
@@ -411,6 +409,7 @@ export async function runRunRecordPipeline({
     analyticsStore,
   });
 
+  record.executionActive = true;
   try {
     const demo = taskType === "feasibility_analysis" ? offlineFeasibilityAdapters(record) : null;
     const promptVersions = await getPromptRuntimeStore().publishedSnapshot();
@@ -418,15 +417,13 @@ export async function runRunRecordPipeline({
     const conversation = createContextualLlmTransport(demo?.llmTransport ?? promptTransport, {
       systemName: record.metadata?.systemName,
     });
-    record.conversationContext = conversation;
     const runPromise =
       taskType === "feasibility_analysis"
         ? runFeasibilityStagePipeline(
             record,
             providerSettings,
-            conversation.transport,
+            conversation,
             demo?.renderClient ?? renderClient,
-            pngRenderClient,
           )
         : taskType === "document_generation"
         ? runDocumentStagePipeline(
@@ -435,21 +432,22 @@ export async function runRunRecordPipeline({
             documentLibrary,
             projectDocumentWorkspaceId(record.metadata?.projectId ?? "default"),
             providerSettings,
-            conversation.transport,
+            conversation,
             pngRenderClient,
           )
         : taskType === "design_modeling"
             ? runDesignStagePipeline(
                 record,
                 providerSettings,
-                conversation.transport,
+                conversation,
                 renderClient,
-                pngRenderClient,
               )
-            : runStagePipeline(record, providerSettings, conversation.transport, renderClient, pngRenderClient);
+            : runStagePipeline(record, providerSettings, conversation, renderClient);
 
     await runPromise;
   } catch (error) {
     handleRunPipelineError(record, error);
+  } finally {
+    record.executionActive = false;
   }
 }

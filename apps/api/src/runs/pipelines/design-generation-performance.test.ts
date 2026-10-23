@@ -1,14 +1,14 @@
 // Measures the actual design pipeline with equally slow generation and pre-render structural checks.
-import { strictTestModelCapability } from "../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { modelFixture } from "../../../../../packages/contracts/src/testing/model-fixtures.js";
+import { modelFixture } from "@uml-platform/contracts/testing";
 import { deriveTableModel, designDependencies, designRequirementSources, designGenerationKinds, type DesignDiagramKind, type DesignDiagramModelSpec, type DiagramModelSpec, type DesignRunSnapshot } from "@uml-platform/contracts";
 import { createEmptyDesignSnapshot, createEmptySnapshot } from "../records/snapshots.js";
 import type { RunRecord } from "../records/run-record-store.js";
 import { runDesignStagePipeline } from "./design-pipeline.js";
-import type { LlmTransport } from "../../llm.js";
-import { collectModelRefs } from "../../normalizers/traceability/traceability-normalizer.js";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
+import { collectModelRefs } from "@uml-platform/contracts";
 import { createQueuedRunFromSource } from "../records/run-actions.js";
 
 async function runBatch(failClass = false, cancelDuringClass = false, selectedDiagrams = designGenerationKinds, sourceKinds = ["usecase", "function", "class", "prototype", "deployment"], options: { failSequence?: boolean; failSequenceRender?: boolean; sequenceDelayMs?: number; scopedRetry?: boolean } = {}) {
@@ -61,7 +61,7 @@ async function runBatch(failClass = false, cancelDuringClass = false, selectedDi
       const nodes = artifact.renderMapping?.elements.map((node) => `<g id="elem_${node.alias}"><text>${escaped(node.label ?? "")}</text></g>`).join("");
       const links = artifact.renderMapping?.relationships.filter((edge) => edge.statement && !edge.statement.trimStart().startsWith("'")).map((edge) => `<g class="link" data-entity-1="${aliases.get(edge.sourceId)}" data-entity-2="${aliases.get(edge.targetId)}"><text>${escaped(edge.label ?? "")}</text></g>`).join("");
       return { svg: `<svg>${nodes}${links}</svg>`, renderMeta: { engine: "test", generatedAt: new Date().toISOString(), sourceLength: artifact.source.length, durationMs: 0 } };
-    }, async () => { throw new Error("unexpected PNG render during model generation"); });
+    });
   } catch (error) { if (!failClass && !cancelDuringClass && !options.failSequence && !options.failSequenceRender) throw error; }
   return { snapshot: snapshot as DesignRunSnapshot, starts, ready, operations, events: run.events, elapsed: performance.now() - startedAt };
 }

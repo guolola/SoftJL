@@ -7,7 +7,7 @@ import { PlatformSidebar } from '../features/workspace-shell/components/platform
 import React, { useCallback, useEffect, useState, type ReactNode } from "react";
 import { SidebarProvider, useSidebar } from '../shared/ui/sidebar';
 import { TooltipProvider } from '../shared/ui/tooltip';
-import Error404 from '../shared/template/views/pages/misc/error-page-404';
+import Error404 from '../shared/template/views/pages/misc/error-page-404/index';
 import { PageErrorBoundary } from '../shared/ui/page-error-boundary';
 import { FeedbackDialogProvider } from "../shared/ui/feedback-dialog";
 import { FloatingAlertProvider } from "../shared/ui/floating-alert";
@@ -36,7 +36,7 @@ import { matchAppRoute, type AppRoute, type ProjectRouteSection } from "./app-ro
 import { StandardWorkspace } from "../features/standard-project/components/standard-workspace";
 import { LineageGraphPage } from "../features/lineage/components/lineage-graph-page";
 
-import { WorkspaceRepositoryProvider } from "../services/workspace-repository";
+import { WorkspaceRepositoryProvider } from "../services/workspace-repository/index";
 import { WorkspaceShellProvider, useWorkspaceShell } from "../features/workspace-shell/state";
 import {
   WorkspaceSessionProvider,
@@ -55,7 +55,6 @@ import {
 } from "../features/user-platform/components/user-platform-pages";
 import { DashboardPage } from "../features/dashboard/components/dashboard-page";
 import { OnboardingTourProvider } from "../features/onboarding/components/onboarding-tour-provider";
-import { clearLegacyRememberedLoginPassword } from "../features/user-platform/lib/remembered-login";
 import { useProjectOnboarding } from "../features/onboarding/hooks/use-project-onboarding";
 import {
   PROJECT_TASK_DRAWER_REQUEST_EVENT,
@@ -115,7 +114,7 @@ function ProjectWorkspaceShell({
   const projectOverview = useProjectOverview(projectId);
   const { generatedDesignDiagrams = [], staleDesignDiagrams = [], staleDesignModelIds = [] } = useWorkspaceSession();
   const designReady = generatedDesignDiagrams.length === 7 && staleDesignDiagrams.length === 0 && staleDesignModelIds.length === 0;
-  const { startProjectTour } = useProjectOnboarding(projectId, projectOverview.project?.projectMode !== "standard");
+  const { startProjectTour } = useProjectOnboarding(projectId, projectOverview.project?.projectMode === "professional");
   const projectRuns = projectOverview.runs;
   const projectPath = `/projects/${encodeURIComponent(projectId)}`;
   const traceabilityPrefix = t("traceability.title.scoped", { label: "" });
@@ -351,9 +350,9 @@ function ProjectWorkspaceShell({
   }
 
   if (projectOverview.project?.projectMode === "standard") {
-    return <StandardWorkspace key={projectId} projectId={projectId} projectName={projectOverview.project.name}
+    return <StandardWorkspace key={projectId} projectId={projectId}
       canEdit={projectOverview.project.status === "active" && ["owner", "editor"].includes(projectOverview.membership?.role ?? "")}
-      header={header} onNavigate={onNavigate} onSettings={onOpenProviderSettings} onOpenAccount={onOpenAccount}
+      header={header} onNavigate={onNavigate} onOpenAccount={onOpenAccount}
       projectSection={projectSection}
       sectionContent={projectSection && projectSection !== "lineage" ? body : undefined} />;
   }
@@ -398,10 +397,6 @@ function ProjectWorkspaceShell({
 }
 
 export function Shell({ initialPath }: { initialPath?: string }) {
-  useEffect(() => {
-    // Remove legacy plaintext passwords even when users land on an authenticated page.
-    clearLegacyRememberedLoginPassword();
-  }, []);
   const { locale } = useAppI18n();
   const [activeProjectDrawer, setActiveProjectDrawer] = useState<ProjectDrawerKind | null>(null);
   const [preferredTaskRunId, setPreferredTaskRunId] = useState<string | null>(null);

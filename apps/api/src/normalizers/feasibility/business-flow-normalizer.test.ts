@@ -35,7 +35,7 @@ const rules = new Set(["R1"]);
 test("accepts connected lanes and guarded alternatives, including provider null optionals", () => {
   const value = flow();
   Object.assign(value.model.nodes[1]!, { description: null });
-  const result = normalizeFeasibilityBusinessFlow(value, rules);
+  const result = normalizeFeasibilityBusinessFlow(value);
   assert.equal(result.model.modelId, "feasibility-business-flow");
   assert.equal(result.model.nodes.length, 6);
   assert.equal(result.model.nodes[1]?.description, undefined);
@@ -43,32 +43,32 @@ test("accepts connected lanes and guarded alternatives, including provider null 
 
 test("stores declared flow sources without coverage audits", () => {
   const value = flow();
-  assert.deepEqual(normalizeFeasibilityBusinessFlow(value, new Set(["R2"])).traceability, value.traceability);
+  assert.deepEqual(normalizeFeasibilityBusinessFlow(value).traceability, value.traceability);
   value.traceability = value.traceability.filter(row => row.targetId !== "check");
-  assert.deepEqual(normalizeFeasibilityBusinessFlow(value, rules).traceability, value.traceability);
+  assert.deepEqual(normalizeFeasibilityBusinessFlow(value).traceability, value.traceability);
   value.traceability.push({ requirementId: "R1", targetId: "declared-flow", targetKind: "node" });
-  assert.deepEqual(normalizeFeasibilityBusinessFlow(value, rules).traceability, value.traceability);
+  assert.deepEqual(normalizeFeasibilityBusinessFlow(value).traceability, value.traceability);
 });
 
 test("rejects missing lanes, duplicate ids and invalid endpoints", () => {
   const value = flow();
   Object.assign(value.model.nodes[1]!, { actorOrLane: "unknown" });
-  assert.throws(() => normalizeFeasibilityBusinessFlow(value, rules), /missing-reference/);
+  assert.throws(() => normalizeFeasibilityBusinessFlow(value), /missing-reference/);
   value.model.nodes.push({ id: "check", type: "end", name: "结束" });
-  assert.throws(() => normalizeFeasibilityBusinessFlow(value, rules), /duplicate-id/);
+  assert.throws(() => normalizeFeasibilityBusinessFlow(value), /duplicate-id/);
   const badEdge = flow();
   badEdge.model.relationships[0]!.targetId = "missing";
-  assert.throws(() => normalizeFeasibilityBusinessFlow(badEdge, rules), /missing-endpoint/);
+  assert.throws(() => normalizeFeasibilityBusinessFlow(badEdge), /missing-endpoint/);
 });
 
 test("rejects isolated nodes, dead-end loops and missing branch guards", () => {
   const isolated = flow();
   isolated.model.nodes.push({ id: "isolated", type: "end", name: "孤立" });
-  assert.throws(() => normalizeFeasibilityBusinessFlow(isolated, rules), /unreachable-node/);
+  assert.throws(() => normalizeFeasibilityBusinessFlow(isolated), /unreachable-node/);
   const loop = flow();
   loop.model.relationships[2]!.targetId = "check";
-  assert.throws(() => normalizeFeasibilityBusinessFlow(loop, rules), /split-degree|unreachable-node/);
+  assert.throws(() => normalizeFeasibilityBusinessFlow(loop), /split-degree|unreachable-node/);
   const missingGuard = flow();
   delete missingGuard.model.relationships[3]!.guard;
-  assert.throws(() => normalizeFeasibilityBusinessFlow(missingGuard, rules), /不同条件/);
+  assert.throws(() => normalizeFeasibilityBusinessFlow(missingGuard), /不同条件/);
 });

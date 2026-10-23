@@ -3,10 +3,10 @@ import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { captureWorkspaceGuard, createRequirementBaselineSnapshot, snapshotInputFingerprint, type AnalysisSequenceDiagramSpec, type UseCaseDiagramSpec } from "@uml-platform/contracts";
-import { modelFixture } from "../../../../../../packages/contracts/dist/testing/model-fixtures";
-import type { WorkspaceRepository } from "../../../services/workspace-repository";
-import { createRenderMeta, createRunSnapshot } from "../../../test/contract-fixtures";
-import { createRule, createWorkspaceRecord, withWorkspaceProviders } from "../../../test/workspace-test-utils";
+import { modelFixture } from "@uml-platform/contracts/testing";
+import type { WorkspaceRepository } from "../../../services/workspace-repository/index";
+import { createRenderMeta, createRunSnapshot } from "../../../../tests/fixtures/contract-fixtures";
+import { createRule, createWorkspaceRecord, withWorkspaceProviders } from "../../../../tests/helpers/workspace-test-utils";
 import { SidebarMenu } from "../../workspace-shell/components/sidebar-menu";
 import { useWorkspaceSession } from "../state";
 
@@ -45,11 +45,11 @@ it("shows every analysis model after successive guarded receipts and completion"
   let finish!: () => void;
   const subscription = new Promise<void>((resolve) => { finish = resolve; });
   const repository: WorkspaceRepository = {
-    loadWorkspace: vi.fn(async () => workspace), updateRequirementText: vi.fn(async () => {}),
+    loadWorkspace: vi.fn(async () => workspace),
     startRun: vi.fn(async () => ({ runId: completed.runId })),
     subscribeToRun: vi.fn(async (_runId, event, options) => { callbacks = { event, options }; await subscription; }),
-    getRunSnapshot: vi.fn(async () => completed), renderPlantUml: vi.fn(), testProviderSettings: vi.fn(),
-    saveRunHistory: vi.fn(), listRunHistory: vi.fn(async () => []), deleteRunHistory: vi.fn(async () => []), clearRunHistory: vi.fn(async () => {}),
+    getRunSnapshot: vi.fn(async () => completed),
+    saveRunHistory: vi.fn(), listRunHistory: vi.fn(async () => []), deleteRunHistory: vi.fn(async () => []),
   };
   const { result } = renderHook(() => useWorkspaceSession(), {
     wrapper: ({ children }) => withWorkspaceProviders(<>{children}<SidebarMenu /></>, repository),

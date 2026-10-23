@@ -1,8 +1,8 @@
 // Checks admission against actual assembled messages, schemas and reserved output.
-import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { StreamChatCompletionInput } from "../../../llm.js";
+import type { StreamChatCompletionInput } from "../../../adapters/llm/llm-transport.js";
 import { engineeringContextBudget, withEngineeringContextBudget } from "./context-budget.js";
 import { getRunError } from "./errors.js";
 const request: StreamChatCompletionInput = { providerSettings: { modelCapability: strictTestModelCapability("test"), apiBaseUrl: "https://example.test", apiKey: "test", model: "test" }, messages: [{ role: "user", content: "需求" }] };

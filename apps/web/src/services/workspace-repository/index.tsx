@@ -11,7 +11,7 @@ import { getProjectIdFromPath, normalizeProjectId } from "./project-scope";
 import { createHttpWorkspaceRepository } from "./http-repository";
 import type { WorkspaceRepository } from "./types";
 
-export { buildApiUrl } from "../api-client";
+export { buildApiUrl } from "../api-client/index";
 export { createHttpWorkspaceRepository } from "./http-repository";
 export { createMockWorkspaceRepository } from "./mock-repository";
 export type {

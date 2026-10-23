@@ -1,8 +1,8 @@
 // Ensures persisted reasoning applies to ordinary generation, repair and explicit-off requests without losing callbacks.
-import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { LlmTransport, StreamChatCompletionInput } from "../../../llm.js";
+import type { LlmTransport, StreamChatCompletionInput } from "../../../adapters/llm/llm-transport.js";
 import { withRunReasoning } from "./run-reasoning.js";
 
 for (const reasoning of [true, false, undefined]) test(`run reasoning preserves ${reasoning} on every call`, async () => {

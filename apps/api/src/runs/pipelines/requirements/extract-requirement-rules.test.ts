@@ -1,8 +1,8 @@
 // Protects long-source repairs and rejects unsupported rules without partial publication.
-import { strictTestModelCapability } from "../../../test-fixtures/providers/model-capability.js";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { LlmTransport, StreamChatCompletionInput } from "../../../llm.js";
+import type { LlmTransport, StreamChatCompletionInput } from "../../../adapters/llm/llm-transport.js";
 import { createEmptySnapshot } from "../../records/snapshots.js";
 import type { RunRecord } from "../../records/run-record-store.js";
 import { extractRequirementRulesWithRepair } from "./extract-requirement-rules.js";
@@ -36,7 +36,7 @@ test("source mismatch repairs with complete long input and draft", async () => {
     calls.push(input);
     yield calls.length === 1 ? draft : JSON.stringify({ rules: [rule("用户提交预约。")] });
   } };
-  const result = await extractRequirementRulesWithRepair({ record: record(source), requirementText: source, providerSettings, llmTransport: createContextualLlmTransport(transport).transport });
+  const result = await extractRequirementRulesWithRepair({ record: record(source), requirementText: source, providerSettings, llmTransport: createContextualLlmTransport(transport) });
   assert.equal(calls.length, 2);
   assert.ok(String(calls[1]!.messages.at(-1)!.content).includes(source));
   assert.ok(String(calls[1]!.messages.at(-1)!.content).includes(draft));

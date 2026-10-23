@@ -1,8 +1,8 @@
 // Screens untrusted requirement text before rule extraction and preserves source offsets.
 import { z } from "zod";
 import type { ProviderSettings, RequirementInputScreening } from "@uml-platform/contracts";
-import type { JsonSchemaResponseFormat, LlmTransport } from "../../../llm.js";
-import { getStructuredResponseFormat } from "../../../model-capabilities.js";
+import type { JsonSchemaResponseFormat, LlmTransport } from "../../../adapters/llm/llm-transport.js";
+import { getStructuredResponseFormat } from "../../../adapters/llm/model-capabilities.js";
 import { parseJson } from "../../../normalizers/json/parse-json.js";
 
 const MAX_SCREENING_CHARS = 60_000;

@@ -290,23 +290,7 @@ export function createInMemoryAuthStore() {
     return revokedCount;
   }
 
-  function revokeSessionsForUser(userId: string) {
-    const revokedAt = now();
-    let revokedCount = 0;
-    for (const session of sessions.values()) {
-      if (
-        session.userId === userId &&
-        !session.revokedAt &&
-        Date.parse(session.expiresAt) > Date.now()
-      ) {
-        session.revokedAt = revokedAt;
-        revokedCount += 1;
-      }
-    }
-    return revokedCount;
-  }
-
-  function createAuthToken(
+function createAuthToken(
     type: AuthTokenRecord["type"],
     userId: string,
     ttlMs: number,
@@ -724,8 +708,7 @@ export function createInMemoryAuthStore() {
     return Boolean(user && user.systemRoles.some((role) => roles.includes(role)));
   }
 
-
-  function listMemberInvitations(userId?: string) {
+function listMemberInvitations(userId?: string) {
     return [...members.values()].filter(member => member.invitedByUserId && (!userId || member.userId === userId)).map(withMemberUserProfile);
   }
   function refreshProjectInvitation(id: string) {
@@ -770,7 +753,7 @@ export function createInMemoryAuthStore() {
     revokeSession,
     listActiveSessionsForUser,
     revokeOtherSessions,
-    revokeSessionsForUser,
+
     createMfaChallenge,
     consumeMfaChallenge,
     listAdminInvitations,

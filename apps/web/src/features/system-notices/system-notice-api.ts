@@ -2,7 +2,7 @@
 import type {
   SystemNoticeListResponse,
 } from "@uml-platform/contracts";
-import { requestJson } from "../../services/api-client";
+import { requestJson } from "../../services/api-client/index";
 
 export const systemNoticeApi = {
   listPublished() {

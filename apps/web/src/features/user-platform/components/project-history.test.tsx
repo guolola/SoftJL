@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppI18nProvider } from "../../../shared/i18n/i18n-provider";
 import type { PlatformRunSummary, PlatformRunTokenConsumption } from "../services/platform-api";
 import { ProjectHistory } from "./project-history";
-import { createDesignRunSnapshot, createRunSnapshot } from "../../../test/contract-fixtures";
+import { createDesignRunSnapshot, createRunSnapshot } from "../../../../tests/fixtures/contract-fixtures";
 
 const mocks = vi.hoisted(() => ({
   deleteProjectRun: vi.fn(),

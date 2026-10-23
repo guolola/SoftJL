@@ -1,17 +1,8 @@
 // Defines the in-memory run record boundary shared by routes, pipelines, and SSE.
 import { randomUUID } from "node:crypto";
 import { acceptOutputEvent } from "./run-output-provenance.js";
-import { assertCurrentRunSnapshot, runEventSchema, runEventMetadataSchema } from "@uml-platform/contracts";
-import type {
-  DashboardRun,
-
-  DesignRunSnapshot,
-  DocumentRunSnapshot,
-  FeasibilityRunSnapshot,
-  RunEvent,
-  RunEventInput,
-  RunSnapshot,
-} from "@uml-platform/contracts";
+import { runEventMetadataSchema } from "@uml-platform/contracts";
+import type { DashboardRun, DesignRunSnapshot, DocumentRunSnapshot, FeasibilityRunSnapshot, RunEvent, RunEventInput, RunSnapshot } from "@uml-platform/contracts";
 
 export interface RunRecord {
   snapshot: RunSnapshot | DesignRunSnapshot | DocumentRunSnapshot | FeasibilityRunSnapshot;
@@ -22,23 +13,19 @@ export interface RunRecord {
   eventCreatedAt?: string[];
   listeners: Set<(event: RunEvent) => void>;
   terminal: boolean;
+  /** Local pipeline ownership preserves live listeners and cancellation during database refresh. */
+  executionActive?: boolean;
   beforeTerminal?: Set<() => void>;
   beforeTerminalStages?: Set<(event: RunEventInput) => void>;
   documentBuffer?: Buffer;
   metadata?: RunRecordMetadata;
   persist?: (record: RunRecord, event?: RunEvent) => void | Promise<void>;
-  /** Ephemeral chat context; validated artifacts remain in the persisted snapshot. */
-  conversationContext?: {
-    forkBranches(ids: string[]): void;
-    commitValidatedBranch(id: string, summary: string): void;
-  };
 }
 
 export type RunRecordStore = Map<string, RunRecord> & {
   // Dashboard queries persisted summaries without loading snapshots and event transcripts.
   listDashboardRuns?: (projectIds: string[]) => Promise<DashboardRun[]>;
   refreshRun?: (runId: string, options?: RunRecordReadOptions) => Promise<RunRecord | null>;
-  refreshProject?: (projectId: string) => Promise<void>;
   listRecords?: (projectIds?: string[]) => Promise<RunRecord[]>;
   release?: (runId: string) => void;
   /** Wait only for this run before acknowledging a durable workspace transition. */
@@ -69,13 +56,6 @@ export async function refreshRunRecordIfAvailable(
   return runs.refreshRun ? await runs.refreshRun(runId, options) : (runs.get(runId) ?? null);
 }
 
-export async function refreshProjectRunRecordsIfAvailable(
-  runs: RunRecordStore,
-  projectId: string,
-) {
-  await runs.refreshProject?.(projectId);
-}
-
 export interface RunRecordMetadata {
   /** Server-assigned fixture; persisted so retries remain offline. */
   offlineDemoFixture?: "library-seat";
@@ -89,20 +69,6 @@ export interface RunRecordMetadata {
   sourceRunId?: string;
   sourceAction?: "retry" | "rerun";
   sourceRunStatus?: string;
-}
-
-export interface SerializedRunRecord {
-  snapshot: RunRecord["snapshot"];
-  events: RunEvent[];
-  eventCreatedAt?: string[];
-  terminal: boolean;
-  metadata?: RunRecordMetadata;
-  documentBufferBase64?: string;
-}
-
-export interface SerializedRunRecordStore {
-  version: 1;
-  records: SerializedRunRecord[];
 }
 
 function shouldStoreEvent(event: RunEvent) {
@@ -137,42 +103,8 @@ function restoreRecordedTerminalStatus(record: RunRecord) {
   }
 }
 
-export function createRunRecordStore(
-  initialState?: SerializedRunRecordStore,
-): RunRecordStore {
-  const store = new Map<string, RunRecord>();
-  if (initialState && initialState.version !== 1) throw new Error("Unsupported run record format");
-  for (const record of initialState?.records ?? []) {
-    assertCurrentRunSnapshot(record.snapshot);
-    store.set(record.snapshot.runId, {
-      snapshot: record.snapshot,
-      events: record.events.map(event => runEventSchema.parse(event)),
-      eventCreatedAt: record.eventCreatedAt,
-      listeners: new Set(),
-      terminal: record.terminal,
-      metadata: record.metadata,
-      documentBuffer: record.documentBufferBase64
-        ? Buffer.from(record.documentBufferBase64, "base64")
-        : undefined,
-    });
-  }
-  return store;
-}
-
-export function serializeRunRecordStore(
-  runs: RunRecordStore,
-): SerializedRunRecordStore {
-  return {
-    version: 1,
-    records: Array.from(runs.values(), (record) => ({
-      snapshot: record.snapshot,
-      events: record.events,
-      eventCreatedAt: record.eventCreatedAt,
-      terminal: record.terminal,
-      metadata: record.metadata,
-      documentBufferBase64: record.documentBuffer?.toString("base64"),
-    })),
-  };
+export function createRunRecordStore(): RunRecordStore {
+  return new Map<string, RunRecord>();
 }
 
 export function emitEvent(record: RunRecord, input: RunEventInput) {

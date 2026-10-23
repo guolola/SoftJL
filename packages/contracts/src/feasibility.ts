@@ -1,11 +1,11 @@
 // Defines editable feasibility facts, context traceability, implementation plans, and run snapshots.
 import { z } from "zod";
-import { runOutputFields } from "./run-outputs.js";
-import { feasibilityActivityDiagramSpecSchema, contextDiagramSpecSchema, plantUmlArtifactSchema, svgArtifactSchema } from "./models.js";
-import { requirementBaselineSchema, requirementRulesSchema, requirementRuleFacts } from "./requirements.js";
+import { runOutputFields } from "./runs/run-outputs.js";
+import { feasibilityActivityDiagramSpecSchema, contextDiagramSpecSchema, plantUmlArtifactSchema, svgArtifactSchema } from "./modeling/models.js";
+import { requirementBaselineSchema, requirementRulesSchema, requirementRuleFacts } from "./requirements/requirements.js";
 import { providerSettingsSchema } from "./provider-configs.js";
 import { snapshotInputFingerprint } from "./fingerprints.js";
-import { diagramVisualReviewSchema } from "./visual-review.js";
+import { diagramVisualReviewSchema } from "./modeling/visual-review.js";
 
 const optionalText = z.string().trim().default("");
 const optionalNumber = z.number().nonnegative().nullable().default(null);
@@ -76,7 +76,7 @@ export function buildAcceptedRequirementSnapshot(
     baseline,
     snapshot: acceptedRequirementSnapshotSchema.parse({
       ruleIds: acceptedRules.map((rule) => rule.id),
-      baselineVersion: baseline?.id ?? baseline?.runId ?? null,
+      baselineVersion: baseline?.id ?? null,
       fingerprint: snapshotInputFingerprint({
         rules: acceptedRules,
         requirementBaseline: baseline,
@@ -197,7 +197,7 @@ export const feasibilityIntegrationSchema = feasibilitySourceRefSchema.extend({
   name: z.string().min(1),
   responsibility: z.string().min(1),
   contextExternalSystemId: z.string().min(1).nullable(),
-});
+}).strict();
 export type FeasibilityIntegration = z.infer<typeof feasibilityIntegrationSchema>;
 
 export const feasibilityMilestoneSchema = feasibilitySourceRefSchema.extend({
@@ -278,7 +278,7 @@ export const feasibilityAbsenceDeclarationSchema = z.object({
   ]),
   reason: z.string().min(1),
   provenance: feasibilityContentProvenanceSchema,
-});
+}).strict();
 export type FeasibilityAbsenceDeclaration = z.infer<typeof feasibilityAbsenceDeclarationSchema>;
 
 export const feasibilityCandidateImplementationSchema = z.object({

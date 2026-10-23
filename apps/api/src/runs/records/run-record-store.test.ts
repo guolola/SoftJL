@@ -1,72 +1,9 @@
-// Verifies the run record store can be serialized for first-pass persistence.
+// Verifies run event publication, terminal transitions and retained diagnostic history.
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  createRunRecordStore,
-  emitEvent,
-  serializeRunRecordStore,
-} from "./run-record-store.js";
+import { createRunRecordStore, emitEvent } from "./run-record-store.js";
 import {  createEmptySnapshot } from "./snapshots.js";
 import { summarizeRunRecord } from "./run-record-summaries.js";
-
-test("run record store serializes metadata, snapshots, and events without listeners", () => {
-  const runs = createRunRecordStore();
-  const snapshot = createEmptySnapshot(
-    "run-1",
-    "项目需求",
-    ["usecase"],
-  );
-  const record = {
-    snapshot,
-    events: [],
-    listeners: new Set<() => void>(),
-    terminal: false,
-    metadata: {
-      userId: "user-a",
-      projectId: "project-a",
-      createdAt: "2026-05-22T00:00:00.000Z",
-    },
-  };
-  runs.set(snapshot.runId, record);
-  emitEvent(record, { type: "queued" });
-
-  const serialized = serializeRunRecordStore(runs);
-  const restored = createRunRecordStore(serialized);
-
-  assert.deepEqual(serialized.records[0]?.metadata, record.metadata);
-  assert.equal(serialized.records[0]?.events.length, 1);
-  assert.equal(serialized.records[0]?.listeners, undefined);
-  assert.equal(restored.get("run-1")?.metadata?.projectId, "project-a");
-  assert.equal(restored.get("run-1")?.events[0]?.type, "queued");
-  assert.equal(restored.get("run-1")?.listeners.size, 0);
-});
-
-test("serialized stores reject obsolete snapshot contracts and unsupported formats", () => {
-  const snapshot = createEmptySnapshot("obsolete", "需求", []);
-  for (const field of ["operationType", "outputManifest"]) {
-    const obsolete = structuredClone(snapshot) as unknown as Record<string, unknown>;
-    delete obsolete[field];
-    assert.throws(() => createRunRecordStore({ version: 1, records: [{
-      snapshot: obsolete as unknown as typeof snapshot, events: [], terminal: true,
-    }] }));
-  }
-  assert.throws(() => createRunRecordStore({ version: 0, records: [] } as never), /Unsupported run record format/);
-});
-
-test("serialized stores reject obsolete event envelopes without filling missing metadata", () => {
-  const snapshot = createEmptySnapshot("obsolete-events", "需求", []);
-  for (const event of [
-    { type: "queued" },
-    { type: "queued", eventId: "queued" },
-    { type: "queued", createdAt: "2026-10-18T00:00:00.000Z" },
-  ]) {
-    const before = structuredClone(event);
-    assert.throws(() => createRunRecordStore({ version: 1, records: [{
-      snapshot, events: [event] as never, terminal: false,
-    }] }));
-    assert.deepEqual(event, before);
-  }
-});
 
 test("llm chunk events notify live listeners without entering run history by default", () => {
   const previousPersistChunks = process.env.UML_PERSIST_LLM_CHUNKS;

@@ -8,7 +8,6 @@
       "DOM.Iterable"
     ],
     "module": "ESNext",
-    "skipLibCheck": true,
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": false,
     "resolveJsonModule": true,
@@ -20,14 +19,17 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./src/*"
+      "@/lib/utils": [
+        "./src/shared/ui/utils.ts"
       ],
       "@/components/ui/*": [
         "./src/shared/ui/*"
       ],
-      "@/lib/utils": [
-        "./src/shared/ui/utils"
+      "@/*": [
+        "./src/*"
+      ],
+      "@test/*": [
+        "./tests/*"
       ]
     },
     "allowJs": true,
@@ -44,9 +46,12 @@
   "include": [
     "src",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    "tests"
   ],
   "exclude": [
-    "node_modules"
-  ]
+    "node_modules",
+    "src/assets/data"
+  ],
+  "extends": "../../tsconfig.base.json"
 }

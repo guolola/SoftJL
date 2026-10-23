@@ -50,7 +50,6 @@ function copy(file) {
   let text = original.replace(/((?:from\s*|import\s*\(\s*|import\s*)['"])([^'"]+)(['"])/g, (whole, before, spec, after) => {
     let dest;
     if (file.endsWith('/pages/home/demo/composer.tsx') && spec === 'react') dest = target + '/integration/composer-hooks.ts';
-    else if (file.endsWith('/elements/message-timing.aui.tsx') && spec === '@assistant-ui/react') dest = target + '/integration/message-timing.ts';
     else if (file.endsWith('/pages/home/demo/messages.tsx') && spec === '@assistant-ui/react') dest = target + '/integration/message-grouping.ts';
     // Keep the original selector available; the user requested a shared Switch beside its trigger.
     else if (file.endsWith('/pages/home/demo/composer.tsx') && spec === '@/components/assistant-ui/elements/model-selector.aui') {

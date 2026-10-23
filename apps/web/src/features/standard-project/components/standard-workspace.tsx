@@ -1,6 +1,6 @@
 // Composes saved project diagrams, tests and documents inside the platform shell.
 import { useTranslation } from "react-i18next";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { DefaultPagesLayout } from "../../../shared/template/layout/default-pages-layout";
 import { ProjectSidebar } from "../../workspace-shell/components/project-sidebar";
 import { useSidebar } from "../../../shared/ui/sidebar";
@@ -13,18 +13,20 @@ import { StandardDocumentsPage } from "./standard-documents-page";
 import { StandardDiagramDetailPage } from "./standard-diagram-detail-page";
 import { ConnectionState } from "./elements/connection-state";
 import { ProjectConversation } from "./project-conversation";
+import { QuickModelingIntroDialog } from "./quick-modeling-intro-dialog";
 import { useAuthenticatedRouteSession } from "../../user-platform/components/authenticated-route-session";
 
 type View = "home" | "tests" | "documents";
 
-export function StandardWorkspace({ projectId, projectName: _projectName, canEdit, header, onNavigate, onSettings: _onSettings, onOpenAccount, sectionContent, projectSection }: {
-  projectId: string; projectName: string; canEdit: boolean; header: ReactNode;
-  onNavigate: (path: string) => void; onSettings: () => void; onOpenAccount: () => void;
+export function StandardWorkspace({ projectId, canEdit, header, onNavigate, onOpenAccount, sectionContent, projectSection }: {
+  projectId: string;  canEdit: boolean; header: ReactNode;
+  onNavigate: (path: string) => void;  onOpenAccount: () => void;
   sectionContent?: ReactNode; projectSection?: ProjectRouteSection | null;
 }) {
   const { t } = useTranslation();
   const account = useAuthenticatedRouteSession();
   const session = useStandardProject(projectId, canEdit);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>("home");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { setOpenMobile } = useSidebar();
@@ -41,8 +43,9 @@ export function StandardWorkspace({ projectId, projectName: _projectName, canEdi
         onDiagram={diagram => { setView("home"); setSelectedId(diagram.id); setOpenMobile(false); if (sectionContent) onNavigate(`/projects/${encodeURIComponent(projectId)}`); }} onNavigate={onNavigate} />
     </ProjectSidebar>
   }>
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
+    <div ref={contentRef} data-testid="standard-project-content" className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
       {!state ? <div className="p-8" role="status">{session.error || t("standardProject.loading")}<ConnectionState phase={session.connection} onRetry={() => void session.reconnect()} /><Button variant="link" onClick={() => void session.refresh()}>{t("standardProject.reload")}</Button></div> : <>
+        {canEdit && showConversation && <QuickModelingIntroDialog key={`intro:${projectId}`} projectId={projectId} contentRef={contentRef} />}
         {!showConversation && <>
           {!canEdit && <p className="px-6 py-3 text-sm text-muted-foreground">{t("standardProject.readOnly")}</p>}
           <ConnectionState phase={session.connection} onRetry={() => void session.reconnect()} className="m-3" />

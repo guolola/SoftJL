@@ -6,26 +6,12 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { useOutsideClick } from "../../../shared/hooks/use-outside-click";
 import { useTranslation } from "react-i18next";
-import { Archive, ArrowUpRight, Clock3, GitBranch, MessagesSquare, UserRound, Users } from "lucide-react";
+import { Archive, ArrowUpRight, Clock3, UserRound, Users } from "lucide-react";
 import { Badge } from "../../../shared/ui/badge";
 import { CraftButton, CraftButtonIcon, CraftButtonLabel } from "../../../shared/ui/craft-button";
 import { AnimatedTooltip } from "../../../shared/ui/motion-tooltip";
-import { cn } from "../../../shared/ui/utils";
 import type { StaticProject } from "../lib/project-presentation";
-
-// Restores the original mode colors and icon above the expanded project's ownership details.
-function ProjectModeBadge({ mode }: { mode: StaticProject["projectMode"] }) {
-  const { t } = useTranslation();
-  return (
-    <Badge className={cn(
-      "h-auto shrink-0 gap-1.5 rounded-sm border border-transparent bg-linear-to-r bg-size-[105%] bg-center px-2! py-1 text-xs text-white md:px-2.5! md:text-sm",
-      mode === "standard" ? "from-indigo-500 to-pink-500" : "from-cyan-600 to-indigo-600",
-    )}>
-      {mode === "standard" ? <MessagesSquare className="size-4" aria-hidden="true" /> : <GitBranch className="size-4" aria-hidden="true" />}
-      {t(`projects.createForm.mode.${mode === "standard" ? "standard" : "professional"}`)}
-    </Badge>
-  );
-}
+import { ProjectModeBadge } from "./project-mode-badge";
 
 export function ProjectExpandableCards({ projects, onNavigate }: {
   projects: StaticProject[];

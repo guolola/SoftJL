@@ -7,53 +7,54 @@ export {
   adminRoleDataScopes,
   adminRolePermissions,
   adminRoleSchema,
-} from "./admin-rbac.js";
-export * from "./admin-platform.js";
+} from "./access/admin-rbac.js";
+export * from "./access/admin-platform.js";
 export type {
   AdminCapability,
   AdminDataScope,
   AdminPermission,
   AdminRole,
-} from "./admin-rbac.js";
-export * from "./auth-account.js";
-export * from "./avatars.js";
+} from "./access/admin-rbac.js";
+export * from "./access/auth-account.js";
+export * from "./access/avatars.js";
 export * from "./api-errors.js";
 export * from "./dashboard.js";
 export * from "./documents.js";
 export * from "./fingerprints.js";
-export * from "./active-requirement-models.js";
-export * from "./design-generation-merge.js";
+export * from "./requirements/active-requirement-models.js";
+export * from "./modeling/design-generation-merge.js";
 export * from "./feasibility.js";
-export * from "./models.js";
-export * from "./model-records.js";
-export * from "./model-semantics.js";
+export * from "./modeling/models.js";
+export * from "./modeling/model-records.js";
+export * from "./modeling/model-semantics.js";
 export * from "./provider-configs.js";
-export * from "./projects.js";
-export * from "./standard-project.js";
-export * from "./modeling-attachments.js";
-export * from "./requirements.js";
-export * from "./requirement-rule-types.js";
-export * from "./requirement-model-sources.js";
-export * from "./requirement-baseline-identity.js";
-export * from "./requirement-baseline-snapshot.js";
-export * from "./requirement-semantics.js";
-export * from "./requirement-model-inputs.js";
-export * from "./runs.js";
-export * from "./run-outputs.js";
-export * from "./render.js";
-export * from "./visual-review.js";
-export * from "./usecase-participation.js";
-export * from "./model-review-profiles.js";
+export * from "./workspace/projects.js";
+export * from "./workspace/standard-project.js";
+export * from "./modeling/modeling-attachments.js";
+export * from "./requirements/requirements.js";
+export * from "./requirements/requirement-rule-types.js";
+export * from "./requirements/requirement-model-sources.js";
+export * from "./requirements/requirement-baseline-identity.js";
+export * from "./requirements/requirement-baseline-snapshot.js";
+export * from "./requirements/requirement-semantics.js";
+export * from "./requirements/requirement-model-inputs.js";
+export * from "./runs/runs.js";
+export * from "./runs/run-outputs.js";
+export * from "./modeling/render.js";
+export * from "./modeling/visual-review.js";
+export * from "./modeling/usecase-participation.js";
+export * from "./modeling/model-review-profiles.js";
 export * from "./system-notices.js";
 
-export * from "./model-json-schema.js";
+export * from "./modeling/model-json-schema.js";
 export * from "./mcp/index.js";
 export * from "./mcp/implementation.js";
-export * from "./model-catalog.js";
-export * from "./design-freshness.js";
-export * from "./workspace-run-guard.js";
-export * from "./generation-policy.js";
-export * from "./current-workspace.js";
+export * from "./modeling/model-catalog.js";
+export * from "./modeling/design-freshness.js";
+export * from "./runs/workspace-run-guard.js";
+export * from "./runs/generation-policy.js";
+export * from "./workspace/current-workspace.js";
 
-export * from "./legacy-code-retirement.js";
 export * from "./inbox.js";
+
+export { collectModelRefs } from "./modeling/model-element-refs.js";

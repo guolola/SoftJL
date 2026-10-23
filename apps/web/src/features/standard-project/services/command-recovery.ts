@@ -1,8 +1,9 @@
 // Retains an unacknowledged command identifier across reloads; reconnect itself only performs reads.
 import type { StandardCommand } from "./standard-api";
+import { standardOperationSchema } from "@uml-platform/contracts";
 const key = (projectId: string) => `uml-standard-pending:${projectId}`;
 export function pendingCommand(projectId: string): StandardCommand | null {
-  try { const value = JSON.parse(sessionStorage.getItem(key(projectId)) ?? "null"); return typeof value?.requestId === "string" && typeof value.operation === "string" ? value : null; } catch { return null; }
+  try { const value = JSON.parse(sessionStorage.getItem(key(projectId)) ?? "null"); return typeof value?.requestId === "string" && standardOperationSchema.safeParse(value.operation).success ? value : null; } catch { return null; }
 }
 export function retainCommand(projectId: string, command: StandardCommand | null) {
   try { if (command) sessionStorage.setItem(key(projectId), JSON.stringify(command)); else sessionStorage.removeItem(key(projectId)); } catch { /* Storage is optional; the server still guards concurrent starts. */ }

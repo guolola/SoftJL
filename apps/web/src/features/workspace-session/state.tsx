@@ -1,97 +1,22 @@
 // Owns the workspace session provider and reducers that bridge repository snapshots, generation events, and UI state.
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import type {
-  DocumentKind,
-  DocumentStyleSettings,
-  DocumentRunSnapshot,
-  FeasibilityRunSnapshot,
-  DesignDiagramModelSpec,
-  DiagramModelSpec,
-  RequirementModelTraceabilityEntry,
-  RequirementBaseline,
-  RequirementQualityReport,
-  RunEventInput,
-  StandardAttachment,
-} from "@uml-platform/contracts";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import type { DocumentKind, DocumentStyleSettings, DocumentRunSnapshot, FeasibilityRunSnapshot, DesignDiagramModelSpec, DiagramModelSpec, RequirementModelTraceabilityEntry, RequirementBaseline, RunEventInput, StandardAttachment } from "@uml-platform/contracts";
 import { requirementOutputFingerprints, workspaceGuardConflicts, reuseRequirementBaseline, modelRecordBelongsToDiagramKinds, resolveModelArtifactIdentity, designBranchFingerprint, protectedDesignGenerationKinds, designGenerationBaseFingerprints } from "@uml-platform/contracts";
 import { modelPreviewGuardConflicts, rememberModelPreviewTargets } from "./lib/model-preview-guard";
-import {
-  getRequirementModelId,
-  findRequirementModelByKind,
-  type DesignDiagramType,
-  type DiagramType,
-} from "../../entities/diagram/model";
-import type {
-  WorkspaceRecord,
-
-  WorkspaceDesignRunSnapshot,
-  WorkspaceRunSnapshot,
-} from "../../entities/workspace/model";
+import { getRequirementModelId, type DesignDiagramType, type DiagramType } from "../../entities/diagram/model";
+import type { WorkspaceRecord, WorkspaceDesignRunSnapshot, WorkspaceRunSnapshot } from "../../entities/workspace/model";
 import type { RequirementRule } from "../../entities/requirement-rule/model";
-import {
-
-  createStartDesignRunInput,
-  createStartDocumentRunInput,
-  createStartRunInput,
-  useWorkspaceRepository,
-} from "../../services/workspace-repository";
-import {
-  type RunHistoryItem,
-} from "../../entities/run-history";
+import { createStartDesignRunInput, createStartDocumentRunInput, createStartRunInput, useWorkspaceRepository } from "../../services/workspace-repository/index";
+import { type RunHistoryItem } from "../../entities/run-history/index";
 import { useRunController } from "./run-controller";
-import type {
-  GenerationSubtask,
-  RunMode,
-  WorkspaceSessionState,
-} from "./model/session-state";
-import {
-  notifyGenerationCompleted,
-  notifyGenerationResultStale,
-} from "./lib/notifications";
-import {
-  cancelledRunUiState,
-
-  completedRunUiState,
-  createEmptyRunUiState,
-
-  deriveRunUiStateFromEvent,
-  failedRunUiState,
-} from "./lib/run-ui-state";
+import type { RunMode, WorkspaceSessionState } from "./model/session-state";
+import { notifyGenerationCompleted, notifyGenerationResultStale } from "./lib/notifications";
+import { cancelledRunUiState, completedRunUiState, createEmptyRunUiState, deriveRunUiStateFromEvent, failedRunUiState } from "./lib/run-ui-state";
 import { snapshotInputFingerprint } from "./lib/fingerprint";
-import {
-  addLocalFailureToRunDiagnostics,
-  createEmptyDiagnostics,
-
-  deriveRunDiagnosticsFromEvent,
-  getProgressFromEvent,
-  summarizeEvent,
-} from "./lib/diagnostics";
-import {
-  addLocalFailureToDiagnostics,
-  applyVisualReviewConfirmations,
-  assignTaskRunId,
-  updateTaskFromEvent,
-} from "./lib/generation-tasks";
+import { addLocalFailureToRunDiagnostics, createEmptyDiagnostics, deriveRunDiagnosticsFromEvent, summarizeEvent } from "./lib/diagnostics";
+import { addLocalFailureToDiagnostics, applyVisualReviewConfirmations, assignTaskRunId, updateTaskFromEvent } from "./lib/generation-tasks";
 import { designSnapshotToMaps, snapshotToMaps } from "./lib/snapshot-maps";
-import {
-  analyzeDesignGeneration,
-  analyzeRequirementGeneration,
-  collectExistingRequirementDiagramKinds,
-  designGenerationSubtasks,
-  designLabels,
-  orderedDesignDiagrams,
-  orderedRequirementDiagrams,
-  requirementGenerationSubtasks,
-  resolveDesignGenerationDiagrams,
-} from "./lib/generation-planning";
+import { analyzeDesignGeneration, analyzeRequirementGeneration, collectExistingRequirementDiagramKinds, designGenerationSubtasks, orderedDesignDiagrams, orderedRequirementDiagrams, requirementGenerationSubtasks, resolveDesignGenerationDiagrams } from "./lib/generation-planning";
 import { shouldRefreshRunSnapshotFromEvent } from "./lib/run-events";
 import { useFeasibilityGeneration } from "./lib/feasibility-generation";
 import { useRequirementsSlice } from "./slices/requirements-slice";
@@ -108,15 +33,7 @@ import { useDependentFreshness } from "./lib/use-dependent-freshness";
 import { useRunHistoryActions } from "./lib/run-history-actions";
 import { useRequirementRuleActions } from "./lib/requirement-review-actions";
 import { useAutoGeneratedUpstreamReviews } from "./lib/auto-generated-upstream-reviews";
-import {
-  cancelledRunResultDialog,
-
-  designRunCompletionDialog,
-  documentRunCompletionDialog,
-  failedRunResultDialog,
-  requirementRunCompletionDialog,
-  useGenerationDialogActions,
-} from "./lib/generation-dialog-actions";
+import { cancelledRunResultDialog, designRunCompletionDialog, documentRunCompletionDialog, failedRunResultDialog, requirementRunCompletionDialog, useGenerationDialogActions } from "./lib/generation-dialog-actions";
 import { useGenerationTaskActions } from "./lib/generation-task-actions";
 import { useGenerationCompletionChime } from "../../shared/lib/generation-completion-chime";
 import { useWorkspacePermissions } from "./lib/workspace-permissions";
@@ -128,150 +45,14 @@ import { updateTaskFromSnapshotArtifacts } from "./lib/snapshot-artifact-events"
 import { useLatestGenerationInputRef } from "./lib/latest-generation-input";
 import { feasibilityArtifactFromEvent, feasibilityArtifactLabels } from "../feasibility/lib/feasibility-run-progress";
 import { feasibilityArtifactState } from "../feasibility/lib/feasibility-freshness";
-import { usePlantUmlRenderActions } from "./lib/plantuml-render-actions";
-import {
-  operationFailureForCode,
-  operationFailurePresentation,
-  PresentedOperationError,
-  type OperationFailurePresentation,
-} from "./lib/operation-failure";
+
+import { operationFailureForCode, operationFailurePresentation, PresentedOperationError } from "./lib/operation-failure";
 import { deriveWorkspaceStatus } from "./lib/workspace-derived-status";
 
-import {
-  analyzeDesignGenerationPreflight,
-  analyzeRequirementGenerationPreflight,
-} from "./lib/generation-preflight";
-import {
-  createDesignGenerationUpstreamReviews,
-  createRequirementGenerationUpstreamReviews,
-} from "./lib/generation-upstream-reviews";
-import {
-  analysisTargetUseCaseIdsForRun,
-  clearDesignScopedRecord,
-  clearRequirementScopedRecordForScope,
-  designErrorDiagrams,
-  designFingerprintMatches,
-  designInputFingerprintFor,
-  designModelIdsFromRecord,
-  describeMissingDesignSources,
-  diagramErrorCount,
-  diagramsFromRequirementSnapshot,
-  fingerprintMatches,
-  hasDesignSources,
-  hasRequirementSources,
-  isRequirementDiagramStale,
-  keepDesignScopedRecord,
-  keepRequirementScopedRecordForScope,
-  mergeDesignPreviewTraceability,
-  mergeDesignTraceability,
-  requirementInputFingerprintFor,
-  requirementSnapshotScope,
-  sequenceModelsCoverUseCases,
-  successfulDesignDiagramsFromSnapshot,
-  successfulRequirementDiagramsFromSnapshot,
-  traceabilityEntryMatchesScope,
-  type ApplyRunSnapshotOptions,
-  type DesignRequirementContext,
-} from "./lib/workspace-context";
-
-function downstreamDesignBlockReason(input: {
-  designDiagramErrors: WorkspaceRecord["designDiagramErrors"];
-  designModels: WorkspaceRecord["designModels"];
-  models: WorkspaceRecord["models"];
-}) {
-  const erroredDiagrams = orderedDesignDiagrams([
-    ...designErrorDiagrams(input.designDiagramErrors),
-  ]);
-  if (erroredDiagrams.length > 0) {
-    return `设计模型存在失败项，请先回到设计页修复或重新生成：${designLabels(erroredDiagrams).join("、")}`;
-  }
-
-  const hasSequenceModels = Object.values(input.designModels).some(
-    (model) => model.diagramKind === "sequence",
-  );
-  const useCaseModel = findRequirementModelByKind(input.models, "usecase");
-  const hasUseCaseTargets =
-    Boolean(useCaseModel) &&
-    "useCases" in useCaseModel &&
-    useCaseModel.useCases.length > 0;
-  if (
-    hasSequenceModels &&
-    hasUseCaseTargets &&
-    !sequenceModelsCoverUseCases(input.designModels, useCaseModel)
-  ) {
-    return "用例实现设计覆盖不足，请先回到设计页补齐用例实现设计";
-  }
-
-  return null;
-}
-
-function withStartupValidationFailure(
-  subtasks: GenerationSubtask[],
-  failure: OperationFailurePresentation,
-  detail: string,
-) {
-  const validationFailure: GenerationSubtask = {
-    id: "start_validation",
-    label: "启动校验",
-    status: "failed",
-    message: null,
-    messageCode: failure.code,
-    messageParams: failure.params,
-    errorMessage: detail,
-  };
-  return [
-    validationFailure,
-    ...subtasks.filter((subtask) => subtask.id !== validationFailure.id),
-  ];
-}
-
-function latestTrustedMatrices(historyItems: RunHistoryItem[]) {
-  const latest = [...historyItems]
-    .sort(
-      (left, right) =>
-        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
-    )
-    .map((item) => item.snapshot)
-    .find(
-      (snapshot) =>
-        Boolean(snapshot?.coverageMatrix) ||
-        Boolean(snapshot?.traceabilityMatrix),
-    );
-  return {
-    coverageMatrix: latest?.coverageMatrix ?? null,
-    traceabilityMatrix: latest?.traceabilityMatrix ?? null,
-  };
-}
-
-function documentGenerationInputFingerprint(input: {
-  designModelTraceability: WorkspaceRecord["designModelTraceability"];
-  designModels: WorkspaceRecord["designModels"];
-  documentKind: DocumentKind;
-  documentStyle?: DocumentStyleSettings;
-  models: WorkspaceRecord["models"];
-  requirementModelTraceability: WorkspaceRecord["requirementModelTraceability"];
-  requirementText: string;
-  rules: RequirementRule[];
-}) {
-  const baseInput = {
-    documentKind: input.documentKind,
-    documentStyle: input.documentStyle ?? null,
-    models: input.models,
-    requirementModelTraceability: input.requirementModelTraceability,
-    requirementText: input.requirementText,
-    rules: input.rules,
-  };
-
-  if (input.documentKind === "requirementsSpec") {
-    return snapshotInputFingerprint(baseInput);
-  }
-
-  return snapshotInputFingerprint({
-    ...baseInput,
-    designModelTraceability: input.designModelTraceability,
-    designModels: input.designModels,
-  });
-}
+import { analyzeDesignGenerationPreflight, analyzeRequirementGenerationPreflight } from "./lib/generation-preflight";
+import { createDesignGenerationUpstreamReviews, createRequirementGenerationUpstreamReviews } from "./lib/generation-upstream-reviews";
+import { analysisTargetUseCaseIdsForRun, clearDesignScopedRecord, clearRequirementScopedRecordForScope, designErrorDiagrams, designFingerprintMatches, designInputFingerprintFor, designModelIdsFromRecord, describeMissingDesignSources, diagramErrorCount, diagramsFromRequirementSnapshot, fingerprintMatches, hasDesignSources, hasRequirementSources, isRequirementDiagramStale, keepDesignScopedRecord, keepRequirementScopedRecordForScope, mergeDesignPreviewTraceability, mergeDesignTraceability, requirementInputFingerprintFor, requirementSnapshotScope, successfulDesignDiagramsFromSnapshot, successfulRequirementDiagramsFromSnapshot, traceabilityEntryMatchesScope, type ApplyRunSnapshotOptions, type DesignRequirementContext } from "./lib/workspace-context";
+import { downstreamDesignBlockReason, withStartupValidationFailure, latestTrustedMatrices, documentGenerationInputFingerprint, pruneRequirementTraceabilityForRules } from "./lib/session-rules";
 
 const WorkspaceSessionContext = createContext<WorkspaceSessionState | null>(
   null,
@@ -281,18 +62,6 @@ type RunGenerationOptions = {
   suppressSuccessDialog?: boolean;
 };
 
-function pruneRequirementTraceabilityForRules(
-  traceability: WorkspaceRecord["requirementModelTraceability"],
-  rules: RequirementRule[],
-) {
-  const ruleIds = new Set(
-    rules.map((rule) => rule.id.trim().toLowerCase()).filter(Boolean),
-  );
-  if (ruleIds.size === 0) return [];
-  return traceability.filter((entry) =>
-    ruleIds.has(entry.ruleId.trim().toLowerCase()),
-  );
-}
 export function WorkspaceSessionProvider({
   children,
 }: {
@@ -323,7 +92,7 @@ export function WorkspaceSessionProvider({
     createRequirementRule: createRequirementRuleBase,
     updateRequirementRule: updateRequirementRuleBase,
     deleteRequirementRule: deleteRequirementRuleBase,
-    clearRequirementRules: clearRequirementRulesBase,
+
     rulesForDiagram,
   } = useRequirementsSlice(repository);
   const {
@@ -427,8 +196,7 @@ export function WorkspaceSessionProvider({
     setFeasibilityImplementationPlan(workspace.feasibilityImplementationPlan);
   }, []);
 
-
-  const [testGenerationResult, setTestGenerationResult] = useState<
+const [testGenerationResult, setTestGenerationResult] = useState<
     WorkspaceRecord["testGenerationResult"]
   >(null);
   const updateTestGenerationResult = useCallback(
@@ -463,28 +231,20 @@ export function WorkspaceSessionProvider({
     return { context: freshness.contextStatus, "business-flow": freshness.businessFlowStatus, implementation: freshness.implementationStatus };
   }, [rules, requirementBaseline, feasibilityBusinessFlow, feasibilityImplementationPlan, feasibilityContextArtifact, feasibilitySavedInputs]);
 
-  const [requirementQualityReport, setRequirementQualityReport] =
-    useState<RequirementQualityReport | null>(null);
-  const {
+const {
     appendAutoGeneratedUpstreamReviews,
     autoGeneratedUpstreamReviews,
     decideAutoGeneratedUpstreamReview,
     setAutoGeneratedUpstreamReviews,
   } = useAutoGeneratedUpstreamReviews(repository);
   const workspacePermissions = useWorkspacePermissions(repository);
-  const confirmVisualReview = useCallback(async (key: string, checkedAt: string) => {
-    if (!workspacePermissions.canUpdateWorkspace || !repository.confirmVisualReview) {
-      throw new Error("当前没有确认视觉检查的权限。");
-    }
-    const saved = await repository.confirmVisualReview(key, checkedAt);
-    setVisualReviews((current) => ({ ...current, [key]: saved }));
-  }, [repository, workspacePermissions.canUpdateWorkspace]);
+
   const { generationExecutionMode } = workspacePermissions;
   const generationModelBlockedReason = useGenerationModel(generationExecutionMode);
   const checkGenerationModel = useCallback(() => {
     const reason = workspacePermissions.reason ?? readGenerationModelBlockedReason(generationExecutionMode);
     if (!reason) return true;
-    setRunUiState((current) => ({ ...current, errorMessage: reason }));
+
     return false;
   }, [generationExecutionMode, workspacePermissions]);
   const {
@@ -495,31 +255,23 @@ export function WorkspaceSessionProvider({
   } = useGenerationDialogActions();
 
   const {
-    clearRequirementRules,
+
     createRequirementRule,
     deleteRequirementRule,
     updateRequirementRule,
   } = useRequirementRuleActions({
-    clearRequirementRulesBase,
+
     createRequirementRuleBase,
     deleteRequirementRuleBase,
     requirementBaseline,
     requirementText: committedRequirementText,
     rules,
     setRequirementBaseline,
-    setRequirementQualityReport,
+
     updateRequirementRuleBase,
   });
 
-  const addRequirementRule = useCallback(() => {
-    createRequirementRule({
-      type: "functional",
-      text: "待填写需求项",
-
-    });
-  }, [createRequirementRule]);
-
-  const runController = useRunController();
+const runController = useRunController();
   const [requirementGenerationRunId, setRequirementGenerationRunId] = useState<string | null>(null);
   // Only a rules run started by this session can be stopped from its composer.
   const activeRequirementGenerationRef = useRef<{
@@ -536,11 +288,10 @@ export function WorkspaceSessionProvider({
     designModels,
     designModelTraceability,
 
-
-  });
+});
 
   const {
-    clearCompletedGenerationTasks,
+
     enqueueGenerationTask,
     generating,
     generationTasks,
@@ -558,7 +309,7 @@ export function WorkspaceSessionProvider({
     () => generationTasks.map((task) => applyVisualReviewConfirmations(task, visualReviews)),
     [generationTasks, visualReviews],
   );
-  const displayedGenerationTask = displayedGenerationTasks.find((task) => task.clientTaskId === visibleGenerationTask?.clientTaskId) ?? null;
+
   const beginFeasibilityGenerationTask = useCallback(
     (input: { providerModel: string; startedAtMs: number; selectedArtifacts?: Array<keyof typeof feasibilityArtifactLabels> }) =>
       enqueueGenerationTask({
@@ -613,7 +364,7 @@ export function WorkspaceSessionProvider({
           progress: 100,
           message,
           errorMessage: message,
-          phaseSummary: message,
+
           finishedAt,
           diagnostics: addLocalFailureToDiagnostics(task.diagnostics, message),
         };
@@ -659,7 +410,7 @@ export function WorkspaceSessionProvider({
       setRequirementTextRaw,
       setRules,
       setRequirementBaseline,
-      setRequirementQualityReport,
+
         setAutoGeneratedUpstreamReviews,
       setModels,
       setRequirementModelTraceability,
@@ -681,8 +432,7 @@ export function WorkspaceSessionProvider({
       setFeasibilityImplementationPlan,
       setManualModelEditStatus,
 
-
-      setTestGenerationResult,
+setTestGenerationResult,
       setGeneratedDiagrams,
       setGeneratedDesignDiagrams,
       setRulesVersion,
@@ -706,7 +456,6 @@ export function WorkspaceSessionProvider({
     getHasActiveGenerationTask,
     repository,
     setHistoryItems,
-    setRunUiState,
   });
 
   const guardState = { requirementText, rules, requirementBaseline, models, requirementModelTraceability, designModels, designModelTraceability, plantUml, svgArtifacts, designPlantUml, designSvgArtifacts,
@@ -797,7 +546,7 @@ export function WorkspaceSessionProvider({
             ? reuseRequirementBaseline(latestInputRef.current.requirementBaseline, snapshot.requirementBaseline)
             : null;
           setRequirementBaseline(resolvedBaseline);
-          setRequirementQualityReport(resolvedBaseline?.qualityReport ?? null);
+
         }
       }
       setRulesVersion(nextRulesVersion);
@@ -927,7 +676,6 @@ export function WorkspaceSessionProvider({
   const applyDesignRunSnapshot = useCallback(
     (
       snapshot: WorkspaceDesignRunSnapshot,
-      requestedDiagrams: DesignDiagramType[],
       generatedOverride?: DesignDiagramType[],
     ) => {
       if (snapshot.publicationSkipped || snapshot.workspaceGuard && workspaceGuardConflicts({ snapshot }, latestGuardStateRef.current, false).length) return;
@@ -1151,8 +899,7 @@ export function WorkspaceSessionProvider({
       if ("selectedArtifacts" in snapshot) {
         return feasibilityGeneration.restoreSnapshot(snapshot);
       } else if ("requirementModels" in snapshot) {
-        applyDesignRunSnapshot(snapshot, snapshot.requestedDiagrams ?? snapshot.selectedDiagrams,
-          snapshot.svgArtifacts.map((artifact) => artifact.diagramKind));
+        applyDesignRunSnapshot(snapshot, snapshot.svgArtifacts.map((artifact) => artifact.diagramKind));
       } else if (snapshot.selectedDiagrams.length > 0) {
         const diagrams = snapshot.status === "queued" || snapshot.status === "running"
           ? [...new Set(snapshot.svgArtifacts.map((artifact) => artifact.diagramKind))]
@@ -1166,7 +913,7 @@ export function WorkspaceSessionProvider({
   });
 
   const {
-    clearRunHistory,
+
     deleteRunHistory,
     refreshHistory,
     saveHistorySnapshot,
@@ -1269,10 +1016,8 @@ export function WorkspaceSessionProvider({
         });
         setRunUiState({
           runStatus: "queued",
-          runProgress: 5,
-          runMessage: "任务已进入队列",
-          errorMessage: null,
-        });
+
+});
         setCurrentRunDiagnostics({
           ...createEmptyDiagnostics(),
           runKind: "requirements",
@@ -1314,7 +1059,7 @@ export function WorkspaceSessionProvider({
           }
 
           if (event.type === "completed" || event.type === "failed" || event.type === "cancelled") snapshotRefreshRevision += 1;
-          const progress = getProgressFromEvent(event);
+
           if (event.type === "completed") {
             lastCompletedSnapshot = event.snapshot as WorkspaceRunSnapshot;
           }
@@ -1346,12 +1091,7 @@ export function WorkspaceSessionProvider({
             deriveRunDiagnosticsFromEvent(current, event, diagnosticEvent),
           );
 
-          setRunUiState((current) =>
-            deriveRunUiStateFromEvent(current, event, progress, {
-              queued: "任务已进入队列",
-              completed: "生成完成",
-            }),
-          );
+          setRunUiState(deriveRunUiStateFromEvent(event));
         }, {
           signal: runController.getSubscriptionSignal(),
           onSnapshot: (partialSnapshot) => {
@@ -1384,7 +1124,7 @@ export function WorkspaceSessionProvider({
             providerModel,
             durationMs: Date.now() - startedAtMs,
           });
-          setRunUiState(cancelledRunUiState(snapshot));
+          setRunUiState(cancelledRunUiState());
           openGenerationResultDialog(
             cancelledRunResultDialog(snapshot, stageLabel, clientTaskId),
           );
@@ -1417,7 +1157,7 @@ export function WorkspaceSessionProvider({
             durationMs: Date.now() - startedAtMs,
           });
         }
-        setRunUiState(completedRunUiState("生成完成"));
+        setRunUiState(completedRunUiState());
         const diagramFailureCount = diagramErrorCount(snapshot);
         if (!options?.suppressSuccessDialog) {
           openGenerationResultDialog(
@@ -1510,7 +1250,7 @@ export function WorkspaceSessionProvider({
             // The visible error state below is more useful than a secondary history failure.
           }
         }
-        setRunUiState(failedRunUiState(detail));
+        setRunUiState(failedRunUiState());
         // Community failures retain actionable task details without an entitlement flow.
         openGenerationResultDialog(failedRunResultDialog({ clientTaskId, failure, runId, stageLabel: mode.kind === "rules-only" ? "需求规则" : "需求模型", requirementBaseline }));
         setCurrentRunDiagnostics((current) =>
@@ -1675,10 +1415,8 @@ export function WorkspaceSessionProvider({
         });
         setRunUiState({
           runStatus: "queued",
-          runProgress: 5,
-          runMessage: "设计生成任务已进入队列",
-          errorMessage: null,
-        });
+
+});
         setCurrentRunDiagnostics({
           ...createEmptyDiagnostics(),
           runKind: "design",
@@ -1712,7 +1450,7 @@ export function WorkspaceSessionProvider({
           }
 
           if (event.type === "completed" || event.type === "failed" || event.type === "cancelled") snapshotRefreshRevision += 1;
-          const progress = getProgressFromEvent(event);
+
           if (event.type === "completed") {
             lastCompletedSnapshot =
               event.snapshot as WorkspaceDesignRunSnapshot;
@@ -1736,7 +1474,6 @@ export function WorkspaceSessionProvider({
                   );
                   applyDesignRunSnapshot(
                     partialSnapshot,
-                    requestedDiagrams,
                     generatedKinds,
                   );
                 }
@@ -1750,20 +1487,14 @@ export function WorkspaceSessionProvider({
             deriveRunDiagnosticsFromEvent(current, event, diagnosticEvent),
           );
 
-          setRunUiState((current) =>
-            deriveRunUiStateFromEvent(current, event, progress, {
-              queued: "设计生成任务已进入队列",
-              completed: "设计生成完成",
-            }),
-          );
+          setRunUiState(deriveRunUiStateFromEvent(event));
         }, {
           signal: runController.getSubscriptionSignal(),
           onSnapshot: (partialSnapshot) => {
             if (!runController.isCurrentRun(runRequestId, "design")) return;
             snapshotRefreshRevision += 1;
             updateGenerationTask(clientTaskId, (task) => updateTaskFromSnapshotArtifacts(task, partialSnapshot));
-            applyDesignRunSnapshot(partialSnapshot, requestedDiagrams,
-              partialSnapshot.svgArtifacts.map((artifact) => artifact.diagramKind));
+            applyDesignRunSnapshot(partialSnapshot, partialSnapshot.svgArtifacts.map((artifact) => artifact.diagramKind));
           },
         });
 
@@ -1774,7 +1505,7 @@ export function WorkspaceSessionProvider({
           return null;
         }
         if (snapshot.status === "cancelled") {
-          applyDesignRunSnapshot(snapshot, requestedDiagrams);
+          applyDesignRunSnapshot(snapshot);
           setCurrentRunDiagnostics((current) => ({
             ...current,
             designTrace: snapshot.designTrace ?? [],
@@ -1783,14 +1514,14 @@ export function WorkspaceSessionProvider({
             providerModel,
             durationMs: Date.now() - startedAtMs,
           });
-          setRunUiState(cancelledRunUiState(snapshot));
+          setRunUiState(cancelledRunUiState());
           openGenerationResultDialog(
             cancelledRunResultDialog(snapshot, "设计模型", clientTaskId),
           );
           return null;
         }
 
-        applyDesignRunSnapshot(snapshot, requestedDiagrams);
+        applyDesignRunSnapshot(snapshot);
         setCurrentRunDiagnostics((current) => ({
           ...current,
           designTrace: snapshot.designTrace ?? [],
@@ -1799,7 +1530,7 @@ export function WorkspaceSessionProvider({
           providerModel,
           durationMs: Date.now() - startedAtMs,
         });
-        setRunUiState(completedRunUiState("设计生成完成"));
+        setRunUiState(completedRunUiState());
         const qualityHintCount =
           snapshot.requirementBaseline?.qualityReport.issues.length ?? 0;
         const diagramFailureCount = diagramErrorCount(snapshot);
@@ -1853,7 +1584,7 @@ export function WorkspaceSessionProvider({
         if (runId) {
           try {
             const failedSnapshot = await repository.getDesignRunSnapshot(runId);
-            applyDesignRunSnapshot(failedSnapshot, requestedDiagrams);
+            applyDesignRunSnapshot(failedSnapshot);
             setCurrentRunDiagnostics((current) => ({
               ...current,
               designTrace: failedSnapshot.designTrace ?? [],
@@ -1866,7 +1597,7 @@ export function WorkspaceSessionProvider({
             // The visible error state below is more useful than a secondary snapshot failure.
           }
         }
-        setRunUiState(failedRunUiState(detail));
+        setRunUiState(failedRunUiState());
         // Community failures retain actionable task details without an entitlement flow.
         openGenerationResultDialog(failedRunResultDialog({ clientTaskId, failure, runId, stageLabel: "设计模型", requirementBaseline }));
         setCurrentRunDiagnostics((current) =>
@@ -1878,8 +1609,7 @@ export function WorkspaceSessionProvider({
     [checkGenerationModel, runController, requirementText, rules, models, requirementModelTraceability, requirementBaseline, requirementInputFingerprint, rulesBasedOnTextVersion, textVersion, generatedDiagrams, manualModelEditStatus, repository, designModels, designModelTraceability, designPlantUml, designSvgArtifacts, generationExecutionMode, enqueueGenerationTask, setCurrentRunDiagnostics, updateGenerationTask, applyDesignRunSnapshot, saveHistorySnapshot, openGenerationResultDialog, latestInputRef, diagramInputFingerprints, diagramVersions, rulesVersion],
   );
 
-
-  const runDocumentGeneration = useCallback(
+const runDocumentGeneration = useCallback(
     async (
       documentKind: DocumentKind,
       documentStyle?: DocumentStyleSettings,
@@ -2026,12 +1756,7 @@ export function WorkspaceSessionProvider({
               activeDesignFingerprint,
             ),
         );
-        const designTraceabilityComplete = hasDesignSources(
-          Object.values(designModels),
-          designModelTraceability,
-          manualModelEditStatus,
-          Object.values(models),
-        );
+        const designTraceabilityComplete = hasDesignSources(Object.values(designModels), designModelTraceability, manualModelEditStatus);
         const hasDesignModels = Object.keys(designModels).length > 0;
         if (
           documentKind === "requirementsSpec" &&
@@ -2060,12 +1785,7 @@ export function WorkspaceSessionProvider({
             (hasDesignModels &&
               (!designFreshnessComplete || !designTraceabilityComplete)))
         ) {
-          const details = describeMissingDesignSources({
-            models: Object.values(designModels),
-            traceability: designModelTraceability,
-            manualModelEditStatus,
-            requirementModels: Object.values(models),
-          });
+          const details = describeMissingDesignSources(designModelTraceability);
           throw new PresentedOperationError(
             operationFailureForCode("DESIGN_MODELS_INVALID", {
               params: { count: 1 },
@@ -2121,10 +1841,8 @@ export function WorkspaceSessionProvider({
         if (runController.isCurrentRun(runRequestId, "document")) {
           setRunUiState({
             runStatus: "queued",
-            runProgress: 5,
-            runMessage: "说明书生成任务已进入队列",
-            errorMessage: null,
-          });
+
+});
           setCurrentRunDiagnostics({
             ...createEmptyDiagnostics(),
             runKind: "document",
@@ -2147,7 +1865,7 @@ export function WorkspaceSessionProvider({
         }
 
         await repository.subscribeToDocumentRun(runId, (event) => {
-          const progress = getProgressFromEvent(event);
+
           if (event.type === "completed" && "documentKind" in event.snapshot) {
             lastCompletedSnapshot = event.snapshot;
           }
@@ -2167,12 +1885,7 @@ export function WorkspaceSessionProvider({
             deriveRunDiagnosticsFromEvent(current, event, diagnosticEvent),
           );
 
-          setRunUiState((current) =>
-            deriveRunUiStateFromEvent(current, event, progress, {
-              queued: "说明书生成任务已进入队列",
-              completed: "说明书生成完成",
-            }),
-          );
+          setRunUiState(deriveRunUiStateFromEvent(event));
         });
 
         const snapshot =
@@ -2189,7 +1902,7 @@ export function WorkspaceSessionProvider({
           if (!runController.isCurrentRun(runRequestId, "document")) {
             return null;
           }
-          setRunUiState(cancelledRunUiState(snapshot));
+          setRunUiState(cancelledRunUiState());
           openGenerationResultDialog(
             cancelledRunResultDialog(snapshot, "说明书", clientTaskId),
           );
@@ -2216,7 +1929,7 @@ export function WorkspaceSessionProvider({
         if (!runController.isCurrentRun(runRequestId, "document")) {
           return snapshot;
         }
-        setRunUiState(completedRunUiState(completionMessage));
+        setRunUiState(completedRunUiState());
         openGenerationResultDialog(
           documentRunCompletionDialog({
             documentTitle,
@@ -2280,7 +1993,7 @@ export function WorkspaceSessionProvider({
         if (!runController.isCurrentRun(runRequestId, "document")) {
           return null;
         }
-        setRunUiState(failedRunUiState(detail));
+        setRunUiState(failedRunUiState());
         // Community failures retain actionable task details without an entitlement flow.
         openGenerationResultDialog(failedRunResultDialog({ clientTaskId, failure, runId, stageLabel: "说明书" }));
         setCurrentRunDiagnostics((current) =>
@@ -2308,14 +2021,6 @@ export function WorkspaceSessionProvider({
     },
     [runDocumentGeneration],
   );
-
-  const { renderPlantUml } = usePlantUmlRenderActions({
-    repository,
-    setDiagramErrors,
-    setGeneratedDiagrams,
-    setPlantUml,
-    setSvgArtifacts,
-  });
 
   const {
     rerenderDesignModel,
@@ -2362,10 +2067,7 @@ export function WorkspaceSessionProvider({
 
   const showGenerationPreflightBlock = useCallback(
     (block: Parameters<typeof openGenerationResultDialog>[0]) => {
-      setRunUiState((current) => ({
-        ...current,
-        errorMessage: block.message,
-      }));
+
       openGenerationResultDialog(block);
     },
     [openGenerationResultDialog],
@@ -2378,8 +2080,7 @@ export function WorkspaceSessionProvider({
     [runDocumentGeneration],
   );
 
-
-  const generateDiagrams = useCallback(
+const generateDiagrams = useCallback(
     async (only?: DiagramType[]) => {
       if (!checkGenerationModel()) return;
       const preflight = analyzeRequirementGenerationPreflight({
@@ -2512,7 +2213,6 @@ export function WorkspaceSessionProvider({
         );
       const confirmed = await confirmGeneration(
         analyzeDesignGeneration(
-          requestedDiagrams,
           effectiveDiagrams,
           dependencyDiagrams,
           existingDesignDiagrams,
@@ -2632,17 +2332,14 @@ export function WorkspaceSessionProvider({
     ],
   );
 
-
-  const {
+const {
     designGenerationBlockedReason,
-    designTraceabilityStale,
-    errorMessage: visibleErrorMessage,
-    isRulesStale,
+
+isRulesStale,
     rulesStaleReason,
     requirementTraceabilityStale,
-    runMessage: visibleRunMessage,
-    runProgress: visibleRunProgress,
-    runStatus: visibleRunStatus,
+
+runStatus: visibleRunStatus,
     staleDesignDiagrams,
     staleDesignModelIds,
     staleDiagrams,
@@ -2685,15 +2382,14 @@ export function WorkspaceSessionProvider({
       setRequirementText,
       rules,
       requirementBaseline,
-      requirementQualityReport,
 
-      autoGeneratedUpstreamReviews,
+autoGeneratedUpstreamReviews,
       decideAutoGeneratedUpstreamReview,
-      addRequirementRule,
+
       createRequirementRule,
       updateRequirementRule,
       deleteRequirementRule,
-      clearRequirementRules,
+
       models,
       requirementModelTraceability,
       manualModelEditStatus,
@@ -2720,38 +2416,29 @@ export function WorkspaceSessionProvider({
       feasibilityGeneration,
       syncFeasibilityArtifacts,
 
-
-      testGenerationResult,
+testGenerationResult,
       updateTestGenerationResult,
 
-
-      canUpdateWorkspace: workspacePermissions.canUpdateWorkspace,
+canUpdateWorkspace: workspacePermissions.canUpdateWorkspace,
       canStartRuns: workspacePermissions.canStartRuns,
-      generationExecutionMode,
+
       generationModelBlockedReason,
       workspacePermissionReason: workspacePermissions.reason,
       generatedDesignDiagrams,
       generatedDiagrams,
       generating,
       runStatus: visibleRunStatus,
-      runProgress: visibleRunProgress,
-      runMessage: visibleRunMessage,
-      errorMessage: visibleErrorMessage,
 
 
       generationTasks: displayedGenerationTasks,
       visualReviews,
-      confirmVisualReview,
-      visibleGenerationTask: displayedGenerationTask,
-      selectedGenerationTaskId,
+
+selectedGenerationTaskId,
       selectGenerationTask,
-      clearCompletedGenerationTasks,
+
       reconcileGenerationTasksWithProjectRuns,
-      beginFeasibilityGenerationTask,
-      attachFeasibilityGenerationRun,
-      updateFeasibilityGenerationTask,
-      failFeasibilityGenerationTask,
-      generateRules,
+
+generateRules,
       requirementGenerationRunId,
       cancelRequirementGeneration,
       saveRequirementModelEdit,
@@ -2767,29 +2454,117 @@ export function WorkspaceSessionProvider({
       rulesForDiagram,
       textVersion,
       rulesVersion,
-      rulesBasedOnTextVersion,
-      requirementInputFingerprint,
-      diagramVersions,
-      diagramInputFingerprints,
-      designInputFingerprints,
+
+designInputFingerprints,
       isRulesStale,
       rulesStaleReason,
       staleDiagrams,
       staleRequirementModelIds,
       requirementTraceabilityStale,
-      designTraceabilityStale,
+
       staleDesignModelIds,
       staleDesignDiagrams,
       designStaleReasons,
       designGenerationBlockedReason,
       historyItems,
-      refreshHistory,
+
       deleteRunHistory,
-      clearRunHistory,
-      renderPlantUml,
+
       currentRunDiagnostics: visibleRunDiagnostics,
     }),
-    [workspaceInitialized, requirementText, hasUncommittedRequirementDraft, inputScreening, inputScreeningError, setRequirementText, rules, requirementBaseline, requirementQualityReport, autoGeneratedUpstreamReviews, decideAutoGeneratedUpstreamReview, addRequirementRule, createRequirementRule, updateRequirementRule, deleteRequirementRule, clearRequirementRules, models, requirementModelTraceability, manualModelEditStatus, selectedDiagrams, setSelectedDiagrams, plantUml, svgArtifacts, diagramErrors, selectedDesignDiagrams, setSelectedDesignDiagrams, designModels, designModelTraceability, designPlantUml, designSvgArtifacts, designDiagramErrors, feasibilityContextArtifact, feasibilityContextSaveStatus, hasFeasibilityContextArtifact, feasibilityBusinessFlow, hasFeasibilityImplementationArtifact, feasibilityImplementationPlan, feasibilityArtifactStatuses, feasibilityGeneration, syncFeasibilityArtifacts, testGenerationResult, updateTestGenerationResult, workspacePermissions.canUpdateWorkspace, workspacePermissions.canStartRuns, workspacePermissions.reason, generationExecutionMode, generationModelBlockedReason, generatedDesignDiagrams, generatedDiagrams, generating, visibleRunStatus, visibleRunProgress, visibleRunMessage, visibleErrorMessage, displayedGenerationTasks, visualReviews, confirmVisualReview, displayedGenerationTask, selectedGenerationTaskId, selectGenerationTask, clearCompletedGenerationTasks, reconcileGenerationTasksWithProjectRuns, beginFeasibilityGenerationTask, attachFeasibilityGenerationRun, updateFeasibilityGenerationTask, failFeasibilityGenerationTask, generateRules, requirementGenerationRunId, cancelRequirementGeneration, saveRequirementModelEdit, saveDesignModelEdit, rerenderRequirementModel, rerenderDesignModel, generateDiagrams, generateDesignDiagrams, generateRequirementsSpec, generateSoftwareDesignSpec, generateFeasibilityStudy, rulesForDiagram, textVersion, rulesVersion, rulesBasedOnTextVersion, requirementInputFingerprint, diagramVersions, diagramInputFingerprints, designInputFingerprints, isRulesStale, rulesStaleReason, staleDiagrams, staleRequirementModelIds, requirementTraceabilityStale, designTraceabilityStale, staleDesignModelIds, staleDesignDiagrams, designStaleReasons, designGenerationBlockedReason, historyItems, refreshHistory, deleteRunHistory, clearRunHistory, renderPlantUml, visibleRunDiagnostics],
+    [
+      workspaceInitialized,
+      requirementText,
+      hasUncommittedRequirementDraft,
+      inputScreening,
+      inputScreeningError,
+      setRequirementText,
+      rules,
+      requirementBaseline,
+
+      autoGeneratedUpstreamReviews,
+      decideAutoGeneratedUpstreamReview,
+
+      createRequirementRule,
+      updateRequirementRule,
+      deleteRequirementRule,
+
+      models,
+      requirementModelTraceability,
+      manualModelEditStatus,
+      selectedDiagrams,
+      setSelectedDiagrams,
+      plantUml,
+      svgArtifacts,
+      diagramErrors,
+      selectedDesignDiagrams,
+      setSelectedDesignDiagrams,
+      designModels,
+      designModelTraceability,
+      designPlantUml,
+      designSvgArtifacts,
+      designDiagramErrors,
+      feasibilityContextArtifact,
+      feasibilityContextSaveStatus,
+      hasFeasibilityContextArtifact,
+      feasibilityBusinessFlow,
+      hasFeasibilityImplementationArtifact,
+      feasibilityImplementationPlan,
+      feasibilityArtifactStatuses,
+      feasibilityGeneration,
+      syncFeasibilityArtifacts,
+
+testGenerationResult,
+      updateTestGenerationResult,
+
+workspacePermissions,
+
+      generationModelBlockedReason,      generatedDesignDiagrams,
+      generatedDiagrams,
+      generating,
+      visibleRunStatus,
+      displayedGenerationTasks,
+      visualReviews,
+
+selectedGenerationTaskId,
+      selectGenerationTask,
+
+      reconcileGenerationTasksWithProjectRuns,
+
+generateRules,
+      requirementGenerationRunId,
+      cancelRequirementGeneration,
+      saveRequirementModelEdit,
+      saveDesignModelEdit,
+      rerenderRequirementModel,
+      rerenderDesignModel,
+      generateDiagrams,
+      generateDesignDiagrams,
+
+      generateRequirementsSpec,
+      generateSoftwareDesignSpec,
+      generateFeasibilityStudy,
+      rulesForDiagram,
+      textVersion,
+      rulesVersion,
+
+designInputFingerprints,
+      isRulesStale,
+      rulesStaleReason,
+      staleDiagrams,
+      staleRequirementModelIds,
+      requirementTraceabilityStale,
+
+      staleDesignModelIds,
+      staleDesignDiagrams,
+      designStaleReasons,
+      designGenerationBlockedReason,
+      historyItems,
+
+      deleteRunHistory,
+
+      visibleRunDiagnostics,
+    ],
   );
 
   return (

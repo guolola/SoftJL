@@ -1,5 +1,6 @@
 // Recursively guards fields, enums and nested union variants against drift between local and provider contracts.
 import assert from "node:assert/strict";
+import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import test from "node:test";
 import { generationResponseSchema, getStageModelSchemas } from "@uml-platform/contracts";
 import { GENERATE_DESIGN_MODELS_RESPONSE_FORMAT, getGenerateDesignModelsResponseFormat } from "./design-response-formats.js";
@@ -28,7 +29,7 @@ for (const stage of ["requirements", "design"] as const) {
   });
 }
 test("selected model response excludes other model types and unrelated relationship enums", () => {
-  const format = getGenerateDesignModelsResponseFormat("gpt-5.4", ["navigation"]);
+  const format = getGenerateDesignModelsResponseFormat(strictTestModelCapability("gpt-5.4"), ["navigation"]);
   const variants = (format?.json_schema.schema as any).properties.models.items.anyOf;
   assert.equal(variants.length, 1);
   assert.deepEqual(variants[0].properties.diagramKind.enum, ["navigation"]);
