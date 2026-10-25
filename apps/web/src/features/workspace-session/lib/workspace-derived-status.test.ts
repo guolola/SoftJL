@@ -1,4 +1,4 @@
-// Verifies workspace stale derivation keeps design freshness scoped to individual models.
+// Verifies workspace freshness and design blockers use the saved generation contract.
 import { describe, expect, it } from "vitest";
 import type {
   DesignDiagramModelSpec,
@@ -16,6 +16,17 @@ import {
   isRequirementDiagramStale,
 } from "./workspace-context";
 import { createEmptyWorkspace } from "../../../services/workspace-repository/workspace-state";
+import { validateModelInput, validateModelStructure } from "@uml-platform/contracts";
+import { modelFixture } from "@uml-platform/contracts/testing";
+
+function statusInput(models: Parameters<typeof deriveWorkspaceStatus>[0]["models"]): Parameters<typeof deriveWorkspaceStatus>[0] {
+  return {
+    ...createEmptyWorkspace(), models, requirementText: "系统支持可选处理与结果检查。",
+    hasUncommittedRequirementDraft: false, currentRunDiagnostics: createEmptyDiagnostics(),
+    generatedDiagrams: [], generatedDesignDiagrams: [], runUiState: createEmptyRunUiState(),
+    textVersion: 1, visibleGenerationTask: null,
+  };
+}
 
 const rule: RequirementRule = {
   id: "r1",
@@ -78,6 +89,45 @@ const designTableModel = {
 } as unknown as DesignDiagramModelSpec;
 
 describe("deriveWorkspaceStatus", () => {
+  it.each([false, true])("does not block schema-valid multi-entry decisions, including retry loops=%s", retry => {
+    const model = modelFixture("requirements", "activity");
+    if (model.diagramKind !== "activity") throw new Error("Expected an activity fixture");
+    model.nodes = [
+      { id: "start", type: "start", name: "开始", actorOrLane: "system" },
+      { id: "optional", type: "decision", name: "可选处理是否启用", actorOrLane: "system" },
+      { id: "work", type: "activity", name: "执行可选处理", actorOrLane: "system", input: [], output: [] },
+      { id: "check", type: "decision", name: "结果是否通过", actorOrLane: "system" },
+      { id: "correct", type: "activity", name: "补充处理", actorOrLane: "system", input: [], output: [] },
+      { id: "end", type: "end", name: "结束", actorOrLane: "system" },
+    ];
+    model.relationships = [
+      { id: "start-optional", sourceId: "start", targetId: "optional" },
+      { id: "enabled", sourceId: "optional", targetId: "work", condition: "启用" },
+      { id: "disabled", sourceId: "optional", targetId: "check", condition: "停用" },
+      { id: "work-check", sourceId: "work", targetId: "check" },
+      { id: "failed", sourceId: "check", targetId: "correct", condition: "未通过" },
+      { id: "passed", sourceId: "check", targetId: "end", condition: "通过" },
+      { id: "corrected", sourceId: "correct", targetId: retry ? "check" : "end" },
+    ].map(edge => ({ ...edge, type: "control_flow" as const }));
+    expect(validateModelStructure(model, "requirements")).toEqual([]);
+    expect(validateModelInput(model, "requirements")).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "split-degree", elementId: "check", severity: "error" }),
+    ]));
+    const before = JSON.stringify(model);
+    expect(deriveWorkspaceStatus(statusInput({ [model.modelId!]: model })).designGenerationBlockedReason).toBeNull();
+    expect(JSON.stringify(model)).toBe(before);
+  });
+
+  it.each(["missing-title", "unsupported-field"])("continues blocking saved models with %s", invalid => {
+    const model = modelFixture("requirements", "activity");
+    if (model.diagramKind !== "activity") throw new Error("Expected an activity fixture");
+    if (invalid === "missing-title") model.title = "";
+    else Object.assign(model, { obsoleteField: true });
+    expect(validateModelStructure(model, "requirements").length).toBeGreaterThan(0);
+    expect(deriveWorkspaceStatus(statusInput({ [model.modelId!]: model })).designGenerationBlockedReason)
+      .toBe("上游需求模型未通过结构校验，请修复或重新生成后继续设计");
+  });
+
   it("requires a model receipt even when no generated flag or version is stored", () => {
     const workspace = createEmptyWorkspace();
     expect(isRequirementDiagramStale({
@@ -112,7 +162,7 @@ describe("deriveWorkspaceStatus", () => {
             modelId: "design-class",
           },
           targets: [requirementTrace[0]!.target],
-          rationale: "设计类承接订单领域概念。",
+
           },
       ],
       designModels: {
@@ -168,7 +218,7 @@ describe("deriveWorkspaceStatus", () => {
             modelId: "design-class",
           },
           targets: [requirementTrace[0]!.target],
-          rationale: "设计类承接订单领域概念。",
+
           },
       ],
       designModels: {

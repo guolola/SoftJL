@@ -1,8 +1,6 @@
 // Computes generation preflight blockers and dependency plans without mutating session state.
 import {
-  validateModelInput,
-  candidateRulesForDiagram,
-  REQUIREMENT_MODEL_RULE_TYPES,
+  validateModelStructure,
   type DiagramModelSpec,
   type RequirementBaseline,
 } from "@uml-platform/contracts";
@@ -126,16 +124,15 @@ function staleRulesBlock(targetLabel: string): PreflightBlock {
 
 export function missingRequirementRulesReason(plan: RequirementAutoUpstreamPlan) {
   if (!plan.needsRulesRun) return null;
-  return "缺少需求规则，请先抽取或添加规则。需求模型按固定类型映射表关联规则。";
+  return "缺少需求规则，请先抽取或添加规则。";
 }
 
 function missingMappedRulesBlock(diagrams: readonly DiagramType[], rules: readonly RequirementRule[]): PreflightBlock | null {
-  const diagram = diagrams.find(kind => candidateRulesForDiagram(rules, kind).length === 0);
+  const diagram = rules.length ? undefined : diagrams[0];
   if (!diagram) return null;
-  const types = REQUIREMENT_MODEL_RULE_TYPES[diagram].map(type => i18n.t(`requirementSemantics.kinds.${type}`)).join("、");
   return {
-    title: "缺少对应类型的需求规则", tone: "warning",
-    message: `${getDiagramLabel(diagram, i18n.t)}需要以下类型的需求规则：${types}。请先添加规则或修改需求类型。`,
+    title: "缺少上游需求规则", tone: "warning",
+    message: `${getDiagramLabel(diagram, i18n.t)}缺少上游需求规则，请先抽取或添加规则。`,
     stageLabel: "需求规则", targetLabel: getDiagramLabel(diagram, i18n.t),
     primaryAction: openWorkspaceAction("system-requirements", "systemRequirements"),
   };
@@ -151,7 +148,7 @@ function missingRulesBlock(plan: RequirementAutoUpstreamPlan, targetLabel: strin
 }
 
 function invalidStructureBlock(models: unknown[], stage: "requirements" | "design", targetLabel: string): PreflightBlock | null {
-  const count = models.flatMap((model) => validateModelInput(model, stage).filter((issue) => issue.severity === "error")).length;
+  const count = models.flatMap((model) => validateModelStructure(model, stage)).length;
   if (!count) return null;
   return {
     title: "上游模型结构需修复", tone: "warning",

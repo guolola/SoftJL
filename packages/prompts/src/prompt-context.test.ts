@@ -1,7 +1,7 @@
 // Guards semantic evidence, dependency scope and candidate isolation while reducing prompt payloads.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createRequirementBaselineSnapshot, feasibilityInputsSchema, getStageModelSchemas, type ModelingStage, type RequirementRule } from "@uml-platform/contracts";
+import { feasibilityInputsSchema, getStageModelSchemas, type ModelingStage, type RequirementRule } from "@uml-platform/contracts";
 import { modelFixture } from "@uml-platform/contracts/testing";
 import { compactPromptRules, scopeUseCaseModelForPrompt } from "./prompt-context.js";
 
@@ -11,24 +11,21 @@ import { expandPromptData } from "./prompt-data.js";
 import { FEASIBILITY_IMPLEMENTATION_EXAMPLE } from "./feasibility-example.js";
 
 const rules: RequirementRule[] = [{ id: "R1", type: "functional" as const, text: "金额达到5000元（含5000元）时进入审核；拒绝时保留原记录。",  }];
-const baseline = createRequirementBaselineSnapshot({ runId: "context", requirementText: rules[0].text, rules });
 
 test("type and explicit conditions survive compaction without removed classification fields", () => {
   const text = "订单系统调用门店接口时，95%的请求不超过2秒；失败时保留输入。";
   const source = [{ id: "R1", type: "interface" as const, text, sourceFragment: text }];
-  const saved = createRequirementBaselineSnapshot({ runId: "text", requirementText: text, rules: source });
-  const model = modelFixture("feasibility", "context");
-  const prompts = [buildGenerateFeasibilityContextPrompt({ rules: source, requirementBaseline: saved, inputs: feasibilityInputsSchema.parse({}) })];
+  const prompts = [buildGenerateFeasibilityContextPrompt({ rules: source, inputs: feasibilityInputsSchema.parse({}) })];
   assert.deepEqual(compactPromptRules(source), [{ id: "R1", type: "interface", text }]);
   for (const prompt of prompts) {
     assert.ok(prompt.includes(text));
     assert.ok(prompt.includes('"type":"interface"'));
     assert.doesNotMatch(prompt, /participantIds|goalIds|assumptionIds|classification/);
   }
-  // Context generation only receives functional/interface rules under the fixed routing contract.
+  // Mapping validation allows every real rule type; prompts retain the complete task source.
   const quality = { id: "R2", type: "quality" as const, text: "页面必须支持键盘操作" };
-  const context = buildGenerateFeasibilityContextPrompt({ rules: [...source, quality], requirementBaseline: saved, inputs: feasibilityInputsSchema.parse({}) });
-  assert.ok(!context.includes(quality.text));
+  const context = buildGenerateFeasibilityContextPrompt({ rules: [...source, quality], inputs: feasibilityInputsSchema.parse({}) });
+  assert.ok(context.includes(quality.text));
 });
 
 test("single-target generation retains transitive use-case evidence without generating its siblings", () => {
@@ -46,7 +43,7 @@ test("single-target generation retains transitive use-case evidence without gene
   assert.deepEqual(scoped.useCases[1].eventFlows, original.useCases[0].eventFlows);
   assert.deepEqual(model, original);
   const analysis = buildGenerateRequirementAnalysisPrompt(scoped);
-  const sequence = buildGenerateDesignSequencePrompt(baseline, scoped, [], "target");
+  const sequence = buildGenerateDesignSequencePrompt(scoped, [], "target");
   for (const prompt of [analysis, sequence]) {
     assert.ok(prompt.includes('"sourceUseCaseId":"target"'));
     assert.ok(prompt.includes('"outputCount":1'));
@@ -64,7 +61,7 @@ test("analysis participant vocabulary is taken from the requirement-stage contra
 
 test("implementation generation retains both-candidate instructions and the complete business flow", () => {
   const model = modelFixture("feasibility", "activity"); if (model.diagramKind !== "activity") throw new Error("fixture");
-  const prompt = buildGenerateFeasibilityImplementationPrompt({ rules, requirementBaseline: baseline, inputs: {} as any,
+  const prompt = buildGenerateFeasibilityImplementationPrompt({ rules, inputs: {} as any,
     contextModel: modelFixture("feasibility", "context") as any, businessFlow: { model, traceability: [] } });
   assert.match(prompt, /恰好 2 个可执行候选方案/);
   assert.match(prompt, /实际必须生成两份完整候选/);

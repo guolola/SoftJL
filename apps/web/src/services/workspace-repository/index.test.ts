@@ -41,7 +41,7 @@ function storeManagedUserSettings() {
 function createBaselineRule(
   overrides: Partial<RequirementBaseline["rules"][number]> = {},
 ): RequirementBaseline["rules"][number] {
-  return { requirementId: "REQ-001", id: "r1", text: "用户提交订单。", type: "functional" as const, ...overrides, origin: "generated" as const };
+  return { requirementId: "REQ-001", id: "r1", text: "用户提交订单。", type: "functional" as const, ...overrides };
 }
 
 function createRequirementBaseline(
@@ -52,20 +52,9 @@ function createRequirementBaseline(
       version: 1,
       sourceInputFingerprint: "test-source-input",
     runId: "run-baseline",
-    sourceDocumentId: "inline-requirement",
     schemaVersion: 3 as const,
 
       rules: (requirements),
-    assumptions: [],
-    conflicts: [],
-    qualityReport: {
-      runId: "run-baseline",
-      status: "pending-review",
-      summary: "存在待确认字段。",
-      issues: [],
-      blockingIssueIds: [],
-      reviewRequiredRequirementIds: requirements.map((item) => item.requirementId),
-    },
     createdAt: "2026-05-27T00:00:00.000Z",
   };
 }
@@ -497,7 +486,6 @@ describe("createHttpWorkspaceRepository", () => {
               rulesVersion: 4,
               rulesBasedOnTextVersion: 0,
               requirementBaseline: oldBaseline,
-              requirementQualityReport: oldBaseline.qualityReport,
 
               requirementInputFingerprint: snapshotInputFingerprint({
                 requirementText,
@@ -557,7 +545,6 @@ describe("createHttpWorkspaceRepository", () => {
           },
         },
       ],
-      requirementQualityReport: null,
 
       rulesBasedOnTextVersion: 0,
       rulesVersion: 5,
@@ -574,7 +561,7 @@ describe("createHttpWorkspaceRepository", () => {
       }),
     ]);
     expect(retriedState.requirementBaseline).toBeNull();
-    expect(retriedState.requirementQualityReport).toBeNull();
+    expect(retriedState).not.toHaveProperty("requirementQualityReport");
     expect(retriedState.rulesBasedOnTextVersion).toBe(0);
     expect(retriedState.rulesVersion).toBe(5);
   });
@@ -596,7 +583,6 @@ describe("createHttpWorkspaceRepository", () => {
     const repository = createMockWorkspaceRepository({
       requirementText,
       requirementBaseline: oldBaseline,
-      requirementQualityReport: oldBaseline.qualityReport,
 
     });
 
@@ -614,7 +600,6 @@ describe("createHttpWorkspaceRepository", () => {
           },
         },
       ],
-      requirementQualityReport: null,
 
       rulesBasedOnTextVersion: 0,
       rulesVersion: 1,
@@ -630,7 +615,7 @@ describe("createHttpWorkspaceRepository", () => {
       }),
     ]);
     expect(workspace.requirementBaseline).toBeNull();
-    expect(workspace.requirementQualityReport).toBeNull();
+    expect(workspace).not.toHaveProperty("requirementQualityReport");
     expect(workspace.rulesBasedOnTextVersion).toBe(0);
     expect(workspace.rulesVersion).toBe(1);
   });
@@ -2218,7 +2203,6 @@ describe("createHttpWorkspaceRepository", () => {
               requirementText: "订单需求",
               rules: [rule],
               requirementBaseline: reviewedBaseline,
-              requirementQualityReport: reviewedBaseline.qualityReport,
 
             },
           }),
@@ -2483,7 +2467,7 @@ describe("createHttpWorkspaceRepository", () => {
           label: "预约座位",
         },
       ],
-      mappingSource: "llm",
+
     };
     const generatedTableTraceability = {
       source: {
@@ -2502,7 +2486,7 @@ describe("createHttpWorkspaceRepository", () => {
           label: "预约座位",
         },
       ],
-      mappingSource: "llm",
+
     };
     const snapshot = {
       runId: "design-table",

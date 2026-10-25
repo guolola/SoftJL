@@ -1,4 +1,4 @@
-// Model membership is determined by type; element-level references never change this set.
+// Offers all current rules as upstream sources; actual mappings decide element provenance.
 import type { DiagramKind, RequirementRule } from "./requirements.js";
 import type { DiagramModelSpec, RequirementModelTraceabilityEntry } from "../modeling/models.js";
 import { candidateRulesForDiagram } from "./requirement-model-inputs.js";

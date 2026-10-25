@@ -1,6 +1,5 @@
 // Guards replay and publication against edits to relevant inputs and write targets.
 import { snapshotInputFingerprint } from "../fingerprints.js";
-import { requirementBaselinePromptContext } from "../requirements/requirement-baseline-snapshot.js";
 import { requirementBaselineSchema } from "../requirements/requirements.js";
 import { designDependencies } from "../modeling/design-freshness.js";
 import { assertCurrentRunSnapshot } from "../workspace/current-workspace.js";
@@ -34,7 +33,9 @@ function valueFor(state: State, key: string) {
   if (field === "feasibilityContextPlantUml" || field === "feasibilityContextSvg") return value || null;
   if (field === "requirementBaseline") {
     const parsed = requirementBaselineSchema.safeParse(value);
-    return parsed.success ? requirementBaselinePromptContext(parsed.data) : value ?? null;
+    // Baselines are backend version metadata; generation depends on the pinned
+    // requirement content fingerprint rather than an LLM-facing baseline payload.
+    return parsed.success ? { sourceInputFingerprint: parsed.data.sourceInputFingerprint } : value ?? null;
   }
   if (!kind) return value ?? null;
   return Object.fromEntries(Object.entries(object(value)).filter(([id, model]) =>

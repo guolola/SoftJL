@@ -1,16 +1,15 @@
 // Defines a rule-driven, high-level activity workflow independent of later requirement models.
-import { requirementBaselinePromptContext } from "@uml-platform/contracts";
-import type { RequirementBaseline, RequirementRule } from "@uml-platform/contracts";
+import type { FeasibilityInputs, RequirementRule } from "@uml-platform/contracts";
 import { getModelReviewProfile } from "@uml-platform/contracts";
 import { compactPromptRules } from "./prompt-context.js";
 import { modelGenerationSelfCheck } from "./generation-self-check.js";
 
 export function buildGenerateFeasibilityBusinessFlowPrompt(input: {
   rules: RequirementRule[];
-  requirementBaseline: RequirementBaseline | null;
+  inputs: FeasibilityInputs;
 }) {
   return `只返回一个 JSON 对象，不要 Markdown、代码围栏或解释文字。
-根据已确认需求规则生成可行性分析阶段的“业务流程图”，使用一张 UML 泳道活动图展示目标系统参与的核心端到端业务流程。
+根据已确认需求规则生成可行性分析阶段的“业务流程图”，使用一张 UML 竖向泳道活动图展示目标系统参与的核心端到端业务流程。
 这是需求规则驱动的业务流程，不是技术调用时序、页面跳转或实现方案；不依赖已生成的需求模型。
 按责任主体划分泳道：目标系统泳道 id 固定为 system，人员和外部系统仅在需求明确提到时添加。每个 activity 的 actorOrLane 必须引用泳道 id。
 明确区分人员执行的业务动作与目标系统的自动处理。保留规则中的条件、阈值、顺序、失败/拒绝/重试路径，不能把“超过”改成“大于等于”。不添加需求没有规定的登录、审批、支付、通知、数据库或接口。
@@ -19,9 +18,9 @@ export function buildGenerateFeasibilityBusinessFlowPrompt(input: {
 ${getModelReviewProfile("feasibility", "activity").structure.join("\n")}
 ${modelGenerationSelfCheck("feasibility", ["activity"])}
 不要把互不相关的功能强行串成前后步骤。优先表达核心业务闭环，范围边界和无法确定的步骤在 notes 中注明，不得为了覆盖所有规则而虚构流程。
-traceability 中 requirementId 只能取自输入 rules.id；每个 activity 和 decision 至少映射一条规则；每个非 system 泳道也必须映射规则。可追踪关系条件时使用 targetKind=relationship。
+traceability 中 requirementId 只能取自输入 rules.id；每个元素都必须至少映射一条真实规则，包括所有泳道（含 system）、全部节点（含 start/end）及每一条关系，不能遗漏。
 modelId 固定为 feasibility-business-flow，title 使用“<系统名称>业务流程图”。严格使用以下对象形状，示例仅说明结构，不是输入事实：
-{"model":{"diagramKind":"activity","modelId":"feasibility-business-flow","title":"示例系统业务流程图","summary":"核心业务闭环","notes":[],"swimlanes":[{"id":"system","name":"目标系统"}],"nodes":[{"id":"start","type":"start","name":"开始"},{"id":"process","type":"activity","name":"处理业务","actorOrLane":"system","input":[],"output":[]},{"id":"end","type":"end","name":"结束"}],"relationships":[{"id":"flow-1","type":"control_flow","sourceId":"start","targetId":"process"},{"id":"flow-2","type":"control_flow","sourceId":"process","targetId":"end"}]},"traceability":[{"requirementId":"R1","targetId":"process","targetKind":"node"}]}
+{"model":{"diagramKind":"activity","modelId":"feasibility-business-flow","title":"示例系统业务流程图","summary":"核心业务闭环","notes":[],"swimlanes":[{"id":"system","name":"目标系统"}],"nodes":[{"id":"start","type":"start","name":"开始"},{"id":"process","type":"activity","name":"处理业务","actorOrLane":"system","input":[],"output":[]},{"id":"end","type":"end","name":"结束"}],"relationships":[{"id":"flow-1","type":"control_flow","sourceId":"start","targetId":"process"},{"id":"flow-2","type":"control_flow","sourceId":"process","targetId":"end"}]},"traceability":[{"requirementId":"R1","targetId":"process","targetKind":"node"},{"requirementId":"R1","targetId":"system","targetKind":"swimlane"},{"requirementId":"R1","targetId":"start","targetKind":"node"},{"requirementId":"R1","targetId":"end","targetKind":"node"},{"requirementId":"R1","targetId":"flow-1","targetKind":"relationship"},{"requirementId":"R1","targetId":"flow-2","targetKind":"relationship"}]}
 输入：
-${JSON.stringify({ ...input, rules: compactPromptRules(input.rules), requirementBaseline: input.requirementBaseline ? requirementBaselinePromptContext(input.requirementBaseline, input.rules.map(rule => rule.id)) : null })}`;
+${JSON.stringify({ rules: compactPromptRules(input.rules), inputs: input.inputs })}`;
 }

@@ -20,7 +20,10 @@ import type {
 } from "openai/resources/chat/completions";
 
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
+  toolCalls?: ChatToolCall[];
+  toolCallId?: string;
+  reasoningContent?: string;
   content:
     | string
     | Array<
@@ -28,6 +31,19 @@ export interface ChatMessage {
         | { type: "image_url"; image_url: { url: string } }
       >;
 }
+
+export interface ChatToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+export interface ChatTool {
+  type: "function";
+  function: { name: string; description: string; strict: boolean; parameters: Record<string, unknown> };
+}
+
+export type ChatToolChoice = "required" | "auto" | { type: "function"; function: { name: string } };
 
 export interface JsonObjectResponseFormat {
   type: "json_object";
@@ -54,10 +70,17 @@ export interface ResponseFormatFallbackEvent {
 }
 
 export interface StreamChatCompletionInput {
+  tools?: ChatTool[];
+  toolChoice?: ChatToolChoice;
+  // Callers opt into batches and remain responsible for enforcing allowed tool combinations.
+  parallelToolCalls?: boolean;
+  onToolCall?: (call: ChatToolCall) => void;
+  onToolStrictFallback?: () => void;
+  onToolChoiceFallback?: () => void;
   // Explicit output reservation used by engineering context admission checks.
   maxOutputTokens?: number;
   // Internal per-call attribution survives concurrent pipeline stage changes.
-  runContext?: { stage?: import("@uml-platform/contracts").RunStage; diagramKind?: string; subtaskId?: string; subtaskLabel?: string; operation?: "structure_check" | "visual_check" | "model_repair" | "render_repair"; round?: number };
+  runContext?: { stage?: import("@uml-platform/contracts").RunStage; diagramKind?: string; subtaskId?: string; subtaskLabel?: string; operation?: import("@uml-platform/contracts").RunActivityEvent["operation"]; round?: number };
   providerSettings: ProviderSettings;
   reasoning?: boolean;
   messages: ChatMessage[];
@@ -84,6 +107,15 @@ export interface LlmTransport {
   streamChatCompletion(
     input: StreamChatCompletionInput,
   ): AsyncIterable<string>;
+}
+
+// A completed but length-limited reply is recoverable by the owning generation
+// workflow; partial tool calls must never cross the execution boundary.
+export class ProviderOutputTruncatedError extends Error {
+  constructor() {
+    super("模型输出达到长度限制，回复被截断，未接收完整结果");
+    this.name = "ProviderOutputTruncatedError";
+  }
 }
 
 export interface ProviderDiscoveredModel {
@@ -450,7 +482,10 @@ async function* withIdleTimeout<T>(
 }
 
 function asChatMessages(messages: ChatMessage[]) {
-  return messages as ChatCompletionMessageParam[];
+  return messages.map(({ toolCalls, toolCallId, reasoningContent, ...message }) => ({ ...message,
+    ...(toolCalls ? { tool_calls: toolCalls } : {}), ...(toolCallId ? { tool_call_id: toolCallId } : {}),
+    ...(reasoningContent !== undefined ? { reasoning_content: reasoningContent } : {}),
+  })) as ChatCompletionMessageParam[];
 }
 
 function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
@@ -484,9 +519,11 @@ const providerActivityHeartbeat = Symbol("provider-activity-heartbeat");
 
 async function* extractChatCompletionText(
   stream: AsyncIterable<ChatCompletionChunk>,
-  observer: Pick<StreamChatCompletionInput, "onTokenUsage" | "onReasoningChunk" | "onReasoningSummary" | "onUsageUnavailable"> = {},
+  observer: Pick<StreamChatCompletionInput, "onTokenUsage" | "onReasoningChunk" | "onReasoningSummary" | "onUsageUnavailable" | "onToolCall"> = {},
 ) {
   let usageSeen = false;
+  let truncated = false;
+  const calls = new Map<number, ChatToolCall>();
   for await (const chunk of stream) {
     const rawChunk = chunk as unknown as Record<string, unknown>;
     const usage = normalizeStreamTokenUsage(rawChunk.usage);
@@ -496,10 +533,14 @@ async function* extractChatCompletionText(
     }
     const choice = chunk.choices?.[0] as
       | {
-          delta?: { content?: unknown; reasoning?: unknown; reasoning_content?: unknown; reasoning_summary?: unknown };
+          delta?: { content?: unknown; reasoning?: unknown; reasoning_content?: unknown; reasoning_summary?: unknown;
+            tool_calls?: Array<{ index: number; id?: string; type?: string; function?: { name?: string; arguments?: string } }> };
           message?: { content?: unknown };
+          finish_reason?: string | null;
         }
       | undefined;
+    if (choice?.finish_reason === "length") truncated = true;
+    if (choice?.finish_reason === "content_filter" && (calls.size || choice.delta?.tool_calls?.length)) throw new Error(`Incomplete provider tool response: ${choice.finish_reason}`);
     const reasoning = choice?.delta?.reasoning_content ?? choice?.delta?.reasoning;
     if (typeof reasoning === "string" && reasoning) {
       observer.onReasoningChunk?.(reasoning);
@@ -515,8 +556,25 @@ async function* extractChatCompletionText(
     if (typeof text === "string" && text) {
       yield text;
     }
+    // Argument fragments are visible technical output and provider activity, but are
+    // executable only after the entire stream has completed successfully.
+    for (const delta of choice?.delta?.tool_calls ?? []) {
+      if (!Number.isInteger(delta.index) || delta.index < 0 || delta.type && delta.type !== "function") throw new Error("Invalid provider tool call delta");
+      const call = calls.get(delta.index) ?? { id: "", type: "function" as const, function: { name: "", arguments: "" } };
+      if (delta.id) call.id = delta.id;
+      if (delta.function?.name) call.function.name += delta.function.name;
+      if (delta.function?.arguments) { call.function.arguments += delta.function.arguments; yield delta.function.arguments; }
+      else yield providerActivityHeartbeat;
+      calls.set(delta.index, call);
+    }
   }
+  // Drain the final usage frame even when reasoning alone exhausted the budget.
   if (!usageSeen) observer.onUsageUnavailable?.("provider_stream_did_not_return_usage");
+  if (truncated) throw new ProviderOutputTruncatedError();
+  for (const [, call] of [...calls].sort(([a], [b]) => a - b)) {
+    if (!call.id || !call.function.name) throw new Error("Incomplete provider tool call");
+    observer.onToolCall?.(call);
+  }
 }
 
 function createStreamingChatCompletionBody({
@@ -526,6 +584,9 @@ function createStreamingChatCompletionBody({
   includeUsage = true,
   reasoning,
   maxOutputTokens,
+  tools,
+  toolChoice,
+  parallelToolCalls = false,
 }: {
   providerSettings: ProviderSettings;
   messages: ChatMessage[];
@@ -533,6 +594,9 @@ function createStreamingChatCompletionBody({
   includeUsage?: boolean;
   reasoning?: boolean;
   maxOutputTokens?: number;
+  tools?: ChatTool[];
+  toolChoice?: ChatToolChoice;
+  parallelToolCalls?: boolean;
 }): ChatCompletionCreateParamsStreaming {
   return {
     model: providerSettings.model,
@@ -543,9 +607,10 @@ function createStreamingChatCompletionBody({
     temperature: 0.2,
     ...(maxOutputTokens === undefined ? {} : /^(?:o[134]|gpt-5)(?:[-.]|$)/i.test(providerSettings.model)
       ? { max_completion_tokens: maxOutputTokens } : { max_tokens: maxOutputTokens }),
-    ...(responseFormat === null ? {} : { response_format: responseFormat }),
-    tools: [],
-    tool_choice: "none",
+    ...(tools?.length || responseFormat === null ? {} : { response_format: responseFormat }),
+    tools: tools ?? [],
+    ...(tools?.length ? toolChoice === "auto" ? {} : { tool_choice: toolChoice ?? "required" } : { tool_choice: "none" }),
+    ...(tools?.length ? { parallel_tool_calls: parallelToolCalls } : {}),
   } as ChatCompletionCreateParamsStreaming;
 }
 
@@ -774,6 +839,8 @@ export async function listOpenAiCompatibleModels({
 export function createRealLlmTransport(
   options: RealProviderClientOptions = {},
 ): LlmTransport {
+  const nonStrictTools = new Set<string>();
+  const automaticToolChoice = new Set<string>();
   return {
     async *streamChatCompletion({
       providerSettings,
@@ -788,6 +855,12 @@ export function createRealLlmTransport(
       onReasoningChunk,
       onReasoningSummary,
       onUsageUnavailable,
+      tools,
+      toolChoice,
+      parallelToolCalls,
+      onToolCall,
+      onToolStrictFallback,
+      onToolChoiceFallback,
     }: StreamChatCompletionInput) {
       const safeBaseUrl = normalizeManagedProviderBaseUrl(
         providerSettings.apiBaseUrl,
@@ -800,7 +873,10 @@ export function createRealLlmTransport(
         baseURL: resolveOpenAiBaseUrl(safeBaseUrl),
         timeoutMs: responseTimeoutMs,
       });
-      const requestResponseFormat = effectiveResponseFormat(responseFormat);
+      const requestResponseFormat = tools?.length ? null : effectiveResponseFormat(responseFormat);
+      const toolCapabilityKey = JSON.stringify([safeBaseUrl, providerSettings.model]);
+      let requestTools = nonStrictTools.has(toolCapabilityKey) ? tools?.map(tool => ({ ...tool, function: { ...tool.function, strict: false } })) : tools;
+      let requestToolChoice = automaticToolChoice.has(toolCapabilityKey) ? "auto" as const : toolChoice;
       let activeAbortController = new AbortController();
       let cleanupExternalAbort: (() => void) | undefined;
       const replaceActiveAbortController = () => {
@@ -841,6 +917,9 @@ export function createRealLlmTransport(
               includeUsage,
               reasoning,
               maxOutputTokens,
+              tools: requestTools,
+              toolChoice: requestToolChoice,
+              parallelToolCalls,
             }),
             { signal: activeAbortController.signal },
           ),
@@ -869,8 +948,25 @@ export function createRealLlmTransport(
             return requestCompletionStream(nextResponseFormat, false);
           }
         };
+        const requestWithToolCompatibility = async () => {
+          for (let attempt = 0; ; attempt++) {
+            try { return await requestWithUsageFallback(requestResponseFormat); }
+            catch (error) {
+              const httpError = toProviderHttpError(error, "LLM request failed");
+              const detail = httpError?.detail ?? "";
+              if (!requestTools?.length || httpError?.status !== 400 || attempt >= 2) throw error;
+              // Capability is established by an explicit endpoint rejection, not a model-name guess.
+              if (requestTools.some(tool => tool.function.strict) && /strict.{0,80}(?:not supported|unsupported|unavailable)|(?:not supported|unsupported).{0,80}strict/i.test(detail)) {
+                nonStrictTools.add(toolCapabilityKey); onToolStrictFallback?.();
+                requestTools = requestTools.map(tool => ({ ...tool, function: { ...tool.function, strict: false } }));
+              } else if (requestToolChoice !== "auto" && /tool.?choice/i.test(detail) && /not supported|unsupported|not support|only.*auto/i.test(detail)) {
+                automaticToolChoice.add(toolCapabilityKey); requestToolChoice = "auto"; onToolChoiceFallback?.();
+              } else throw error;
+            }
+          }
+        };
         try {
-          stream = await requestWithUsageFallback(requestResponseFormat);
+          stream = await requestWithToolCompatibility();
         } catch (error) {
           const httpError = toProviderHttpError(error, "LLM request failed");
           if (
@@ -902,7 +998,7 @@ export function createRealLlmTransport(
         }
 
         for await (const text of withIdleTimeout(
-          extractChatCompletionText(stream, { onTokenUsage, onReasoningChunk, onReasoningSummary, onUsageUnavailable }),
+          extractChatCompletionText(stream, { onTokenUsage, onReasoningChunk, onReasoningSummary, onUsageUnavailable, onToolCall }),
           responseTimeoutMs,
           () => activeAbortController.abort(),
         )) {

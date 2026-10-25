@@ -271,8 +271,6 @@ export const activityNodeTypeSchema = z.enum([
   "merge",
   "fork",
   "join",
-  "object",
-  "flow_final",
 ]);
 export type ActivityNodeType = z.infer<typeof activityNodeTypeSchema>;
 
@@ -283,19 +281,11 @@ export const swimlaneSchema = z.object({
 });
 export type Swimlane = z.infer<typeof swimlaneSchema>;
 
-export const activityPinSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  dataType: z.string().min(1),
-  multiplicity: z.string().min(1).optional(),
-});
-export type ActivityPin = z.infer<typeof activityPinSchema>;
-
 const activityNodeBaseSchema = z.object({
   actorOrLane: z.string().min(1).optional(),
   id: z.string().min(1),
   description: z.string().min(1).optional(),
-});
+}).strict();
 
 export const activityStartNodeSchema = activityNodeBaseSchema.extend({
   type: z.literal("start"),
@@ -315,8 +305,6 @@ export const activityActionNodeSchema = activityNodeBaseSchema.extend({
   actorOrLane: z.string().min(1).optional(),
   input: z.array(z.string().min(1)).default([]),
   output: z.array(z.string().min(1)).default([]),
-  inputPins: z.array(activityPinSchema).optional(),
-  outputPins: z.array(activityPinSchema).optional(),
 });
 export type ActivityActionNode = z.infer<typeof activityActionNodeSchema>;
 
@@ -345,17 +333,6 @@ export const activityJoinNodeSchema = activityNodeBaseSchema.extend({
 });
 export type ActivityJoinNode = z.infer<typeof activityJoinNodeSchema>;
 
-export const activityObjectNodeSchema = activityNodeBaseSchema.extend({
-  type: z.literal("object"),
-  name: z.string().min(1),
-  dataType: z.string().min(1),
-  state: z.string().min(1).optional(),
-});
-export const activityFlowFinalNodeSchema = activityNodeBaseSchema.extend({
-  type: z.literal("flow_final"),
-  name: z.string().min(1).default("分支结束"),
-});
-
 export const activityNodeSchema = z.discriminatedUnion("type", [
   activityStartNodeSchema,
   activityEndNodeSchema,
@@ -364,12 +341,10 @@ export const activityNodeSchema = z.discriminatedUnion("type", [
   activityMergeNodeSchema,
   activityForkNodeSchema,
   activityJoinNodeSchema,
-  activityObjectNodeSchema,
-  activityFlowFinalNodeSchema,
 ]);
 export type ActivityNode = z.infer<typeof activityNodeSchema>;
 
-export const activityRelationshipTypeSchema = z.enum(["control_flow", "object_flow"]);
+export const activityRelationshipTypeSchema = z.enum(["control_flow"]);
 export type ActivityRelationshipType = z.infer<typeof activityRelationshipTypeSchema>;
 
 export const activityRelationshipSchema = z.object({
@@ -384,6 +359,7 @@ export const activityRelationshipSchema = z.object({
 });
 export type ActivityRelationship = z.infer<typeof activityRelationshipSchema>;
 
+// Requirements and feasibility share the same vertical swimlane control-flow contract.
 export const activityDiagramSpecSchema = z.object({
   diagramKind: z.literal("activity"),
   modelId: z.string().min(1).optional(),
@@ -395,14 +371,6 @@ export const activityDiagramSpecSchema = z.object({
   relationships: z.array(activityRelationshipSchema),
 });
 export type ActivityDiagramSpec = z.infer<typeof activityDiagramSpecSchema>;
-
-// Feasibility uses a high-level control-flow subset, not the full activity profile.
-export const feasibilityActivityDiagramSpecSchema = activityDiagramSpecSchema.extend({
-  nodes: z.array(z.discriminatedUnion("type", [activityStartNodeSchema, activityEndNodeSchema,
-    activityActionNodeSchema.extend({ inputPins: z.array(activityPinSchema).max(0).optional(), outputPins: z.array(activityPinSchema).max(0).optional() }),
-    activityDecisionNodeSchema, activityMergeNodeSchema, activityForkNodeSchema, activityJoinNodeSchema])),
-  relationships: z.array(activityRelationshipSchema.extend({ type: z.literal("control_flow") })),
-});
 
 
 export const deploymentNodeTypeSchema = z.enum([
@@ -586,10 +554,12 @@ export type SequenceDiagramSpec = z.infer<typeof sequenceDiagramSpecSchema>;
 
 export const analysisSequenceDiagramSpecSchema = sequenceDiagramSpecSchema.extend({
   diagramKind: z.literal("analysis"),
-  // Generation records exact use-case/flow/step IDs on each analysis business element.
+  // Every identified analysis element declares its upstream IDs, including branches and activations.
   participants: z.array(sequenceParticipantSchema.extend({ participantType: z.enum(["actor", "boundary", "control", "entity"]), sourceElementIds: z.array(z.string().min(1)).min(1).optional() })),
   messages: z.array(sequenceMessageSchema.extend({ sourceElementIds: z.array(z.string().min(1)).min(1).optional() })),
-  fragments: z.array(sequenceFragmentSchema.extend({ sourceElementIds: z.array(z.string().min(1)).min(1).optional() })),
+  fragments: z.array(sequenceFragmentSchema.extend({ sourceElementIds: z.array(z.string().min(1)).min(1).optional(),
+    branches: z.array(sequenceFragmentBranchSchema.extend({ sourceElementIds: z.array(z.string().min(1)).min(1).optional() })).optional() })),
+  activations: z.array(sequenceActivationSchema.extend({ sourceElementIds: z.array(z.string().min(1)).min(1).optional() })).optional(),
 });
 export type AnalysisSequenceDiagramSpec = z.infer<
   typeof analysisSequenceDiagramSpecSchema
@@ -880,7 +850,7 @@ export const contextDiagramSpecSchema = z.object({
   title: z.string().min(1),
   summary: z.string().min(1),
   notes: noteListSchema,
-  system: contextElementSchema.extend({ sourceRequirementIds: z.array(z.string()).max(0).default([]) }),
+  system: contextElementSchema,
   people: z.array(contextElementSchema.extend({ sourceRequirementIds: z.array(z.string().min(1)).min(1) })),
   externalSystems: z.array(contextElementSchema.extend({ sourceRequirementIds: z.array(z.string().min(1)).min(1) })),
   relationships: z.array(contextRelationshipSchema),
@@ -927,8 +897,6 @@ export type ModelElementRef = z.infer<typeof modelElementRefSchema>;
 export const requirementModelTraceabilityEntrySchema = z.object({
   ruleId: z.string().min(1),
   target: modelElementRefSchema,
-  mappingSource: z.enum(["llm"]).optional(),
-  rationale: z.string().min(1).optional(),
 }).strict();
 export type RequirementModelTraceabilityEntry = z.infer<
   typeof requirementModelTraceabilityEntrySchema
@@ -937,11 +905,6 @@ export type RequirementModelTraceabilityEntry = z.infer<
 export const designModelTraceabilityEntrySchema = z.object({
   source: modelElementRefSchema,
   targets: z.array(modelElementRefSchema).min(1),
-  upstreamDesignRefs: z.array(modelElementRefSchema).optional(),
-  mappingSource: z
-    .enum(["llm", "derived-from-endpoints"])
-    .optional(),
-  rationale: z.string().min(1).optional(),
 }).strict();
 export type DesignModelTraceabilityEntry = z.infer<
   typeof designModelTraceabilityEntrySchema
@@ -1133,7 +1096,6 @@ export function designTraceabilityTouchesDiagramKinds(
   };
   return (
     touchesRef(entry.source) ||
-    entry.targets.some(touchesRef) ||
-    (entry.upstreamDesignRefs ?? []).some(touchesRef)
+    entry.targets.some(touchesRef)
   );
 }

@@ -11,6 +11,7 @@ export function createCallActivity(input: {
   format?: "text" | "technical";
   modelId?: string;
   operation?: RunActivityEvent["operation"];
+  artifactKind?: RunActivityEvent["artifactKind"];
   round?: number;
 }) {
   const callId = randomUUID();
@@ -24,7 +25,7 @@ export function createCallActivity(input: {
     emitEvent(input.record, {
       type: "run_activity", eventId: randomUUID(), createdAt: new Date().toISOString(),
       runId: input.record.snapshot.runId, stage: input.stage, callId,
-      modelId: input.modelId, operation: input.operation, round: input.round,
+      modelId: input.modelId, operation: input.operation, round: input.round, artifactKind: input.artifactKind,
       subtaskId: input.subtaskId, subtaskLabel: input.subtaskLabel,
       format: input.format ?? "technical", phase, text,
       ...(inputImages?.length ? { inputImages } : {}),

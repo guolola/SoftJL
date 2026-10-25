@@ -29,6 +29,27 @@ const providerSettings: ProviderSettings = {
   model: "test-model",
 };
 
+test("scheduling preserves tool callbacks, tool choice and output reservation, and records protocol fallback", async () => {
+  const telemetry: LlmRequestTelemetry[] = [];
+  let observed = false;
+  const input: StreamChatCompletionInput = { providerSettings, messages: [], maxOutputTokens: 1234,
+    tools: [{ type: "function", function: { name: "validate_model", description: "Submit", strict: true, parameters: { type: "object" } } }],
+    toolChoice: { type: "function", function: { name: "validate_model" } }, onToolCall: () => { observed = true; } };
+  const transport = createScheduledLlmTransport({ scheduler: createInMemoryLlmScheduler(), context: context(),
+    analyticsStore: { recordTelemetry: async value => { telemetry.push(value); } },
+    transport: { async *streamChatCompletion(forwarded) {
+      assert.equal(forwarded.tools, input.tools); assert.equal(forwarded.toolChoice, input.toolChoice);
+      assert.equal(forwarded.maxOutputTokens, 1234);
+      forwarded.onToolChoiceFallback?.();
+      forwarded.onToolCall?.({ id: "submitted", type: "function", function: { name: "validate_model", arguments: "{}" } });
+      yield "{}";
+    } },
+  });
+  for await (const _ of transport.streamChatCompletion(input)) { /* Drain native tool output. */ }
+  assert.equal(observed, true);
+  assert.equal(telemetry[0]!.formatFallbackCount, 1);
+});
+
 test("scheduled transport forwards transient retries and records their count without duplicating token usage", async () => {
   const telemetry: LlmRequestTelemetry[] = [];
   const observedRetries: number[] = [];

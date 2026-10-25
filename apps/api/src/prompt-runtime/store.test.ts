@@ -13,7 +13,7 @@ for (const kind of ["architecture", "class", "navigation", "component", "deploym
   test(`published instructions reach the actual ${kind} generation prompt`, async () => {
     const store = new PromptRuntimeStore(null);
     const baseline = createRequirementBaselineSnapshot({ runId: "catalog", requirementText: "", rules: [] });
-    const prompt = buildGenerateDesignModelsPrompt(baseline, [], [], [kind]);
+    const prompt = buildGenerateDesignModelsPrompt([], [], [kind]);
     const id = `design.model.${kind}`;
     assert.equal(findPromptForMessage(prompt)?.id, id);
     const version = await store.createDraft(id, `已发布的 ${kind} 约束`, "operator");

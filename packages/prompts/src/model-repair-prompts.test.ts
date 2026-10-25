@@ -10,6 +10,10 @@ test("model feedback allows linked changes and requires the complete original ou
   assert.match(prompt, /tree-parent/);
   assert.match(prompt, /models\.0\.relationships/);
   assert.match(prompt, /不得通过删除需求要求的业务内容/);
+  assert.match(prompt, /actual.*实际模型身份/);
+  assert.match(prompt, /expected\.legalSources/);
+  assert.match(prompt, /analysis.*sequence/);
+  assert.match(prompt, /禁止把当前输出作为自己的直接上游/);
   assert.doesNotMatch(prompt, /允许修改路径|"changes":\[|修复上下文|targetId|baseFingerprint|full-output|"paths"|"round"|可选|额外修复说明/);
 });
 

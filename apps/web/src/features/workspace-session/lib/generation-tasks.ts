@@ -333,7 +333,7 @@ function updateSubtasksFromEvent(
   event: RunEventInput,
 ): GenerationSubtask[] {
   // Call telemetry never changes the pipeline's authoritative artifact/subtask status.
-  if (event.type === "run_activity") return subtasks;
+  if (event.type === "run_activity" || event.type === "run_tool") return subtasks;
   const subtaskId = subtaskIdFromEvent(event);
   const rawSubtaskId = rawSubtaskIdFromEvent(event);
   if (!subtaskId) return subtasks;
@@ -410,48 +410,7 @@ function updateSubtasksFromEvent(
         },
       ]
     : next;
-  return removeExpandedAggregatePlaceholders(
-    failDownstreamRenderSubtasksForModelFailure(updated, event, rawSubtaskId),
-  );
-}
-
-function failDownstreamRenderSubtasksForModelFailure(
-  subtasks: GenerationSubtask[],
-  event: RunEventInput,
-  rawSubtaskId: string | null,
-) {
-  if (
-    event.type !== "stage_progress" ||
-    event.subtaskStatus !== "failed" ||
-    !rawSubtaskId ||
-    (event.stage !== "generate_models" &&
-      event.stage !== "generate_design_sequence" &&
-      event.stage !== "generate_design_models" &&
-      event.stage !== "render_svg")
-  ) {
-    return subtasks;
-  }
-  return subtasks.map((subtask) => {
-    const scoped = splitScopedSubtaskId(subtask.id);
-    if (
-      (event.stage === "render_svg"
-        ? scoped?.stage !== "verify_diagram_visual"
-        : scoped?.stage !== "generate_plantuml" && scoped?.stage !== "render_svg" && scoped?.stage !== "verify_diagram_visual") ||
-      (scoped.rawId !== rawSubtaskId &&
-        !(scoped.rawId === event.diagramKind && !isExpandableAggregateSubtaskId(scoped.rawId))) ||
-      subtask.status === "completed"
-    ) {
-      return subtask;
-    }
-    return {
-      ...subtask,
-      status: "failed" as const,
-      message: event.stage === "render_svg" ? "图像渲染失败" : "前置模型生成失败，未执行",
-      errorMessage: event.error
-        ? localizeRunFailure(event.error, "前置模型生成失败")
-        : event.message ?? "前置模型生成失败",
-    };
-  });
+  return removeExpandedAggregatePlaceholders(updated);
 }
 
 function collectCompletedSubtaskIds(snapshot: unknown) {

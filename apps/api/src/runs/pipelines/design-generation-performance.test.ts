@@ -11,6 +11,7 @@ import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 import { collectModelRefs } from "@uml-platform/contracts";
 import { createQueuedRunFromSource } from "../records/run-actions.js";
 
+
 async function runBatch(failClass = false, cancelDuringClass = false, selectedDiagrams = designGenerationKinds, sourceKinds = ["usecase", "function", "class", "prototype", "deployment"], options: { failSequence?: boolean; failSequenceRender?: boolean; sequenceDelayMs?: number; scopedRetry?: boolean } = {}) {
   const requirementModels = sourceKinds.map((kind) => modelFixture("requirements", kind) as DiagramModelSpec);
   const useCase = requirementModels.find(model => model.diagramKind === "usecase");
@@ -30,7 +31,7 @@ async function runBatch(failClass = false, cancelDuringClass = false, selectedDi
     if (event.type === "artifact_ready" && event.artifactKind === "model" && event.diagramKind) ready.set(event.diagramKind, performance.now());
   });
   const transport: LlmTransport = { async *streamChatCompletion(input) {
-    const content = input.messages.at(-1)!.content;
+    const content = String(input.messages.at(-1)?.content ?? "");
     assert.equal(typeof content, "string", "model generation must not send post-render images");
     const review = typeof content === "string" && content.startsWith("核对 ");
     const kind = input.runContext?.subtaskId?.startsWith("sequence:") ? "sequence" : input.runContext?.subtaskId ?? "";
@@ -49,7 +50,7 @@ async function runBatch(failClass = false, cancelDuringClass = false, selectedDi
         ...requirementModels.filter(model => sourceKindsForModel.includes(model.diagramKind)),
         ...snapshot.models.filter(model => (designDependencies[kind] ?? []).includes(model.diagramKind)),
       ];
-      yield JSON.stringify({ models: [model], designModelTraceability: collectModelRefs([model]).refs.map(source => ({ source, targets: [collectModelRefs(availableSources).refs[0]] })) });
+      yield JSON.stringify({ models: [model], designModelTraceability: collectModelRefs([model], true).refs.map(source => ({ source, targets: [collectModelRefs(availableSources).refs[0]] })) });
     }
   } };
   const escaped = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

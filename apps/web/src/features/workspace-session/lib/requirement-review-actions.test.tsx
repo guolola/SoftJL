@@ -34,12 +34,13 @@ describe("manual requirement baseline snapshots", () => {
     act(() => result.current.createRequirementRule({ type: "functional" as const, text: "管理员可以导出成绩。",  }));
     const added = result.current.baseline!;
     expect(added.version).toBe(2);
-    expect(added.rules?.map((entry) => entry.origin)).toEqual(["generated", "manual-added"]);
+    expect(added.rules).toHaveLength(2);
+    expect(added.rules.every(entry => !("origin" in entry))).toBe(true);
     expect(save).toHaveBeenLastCalledWith(result.current.rules, expect.objectContaining({ requirementBaseline: added }));
     act(() => result.current.updateRequirementRule("r1", { text: "学生只能查询自己的成绩。" }));
     const edited = result.current.baseline!;
     expect(edited.version).toBe(3);
-    expect(edited.rules?.[0]).toMatchObject({ text: "学生只能查询自己的成绩。", requirementId: initial.rules![0]!.requirementId, origin: "manual-edited" });
+    expect(edited.rules?.[0]).toMatchObject({ text: "学生只能查询自己的成绩。", requirementId: initial.rules![0]!.requirementId });
     expect(edited.rules?.[1]).toEqual(added.rules?.[1]);
     expect(initial.rules?.[0]?.text).toBe(rule.text);
     save.mockClear();

@@ -1,7 +1,7 @@
-// Verifies rule snapshots preserve facts, identity, edit provenance and complete prompt inputs.
+// Verifies backend snapshots preserve complete facts, identity and versions without retired review metadata.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createRequirementBaselineSnapshot, requirementBaselinePromptContext } from "./requirement-baseline-snapshot.js";
+import { createRequirementBaselineSnapshot } from "./requirement-baseline-snapshot.js";
 import { requirementBaselineSchema, type RequirementRule } from "./requirements.js";
 import { reuseRequirementBaseline } from "./requirement-baseline-identity.js";
 
@@ -14,7 +14,7 @@ test("snapshots keep the complete rule without fabricated semantic or review fie
   assert.equal("requirements" in baseline, false);
   assert.equal(baseline.rules?.[0]?.text, rule.text);
   assert.equal(baseline.rules?.[0]?.sourceFragment, rule.sourceFragment);
-  assert.equal(baseline.rules?.[0]?.origin, "generated");
+  assert.equal("origin" in baseline.rules[0]!, false);
   assert.doesNotMatch(JSON.stringify(baseline), /fieldProvenance|系统满足该需求|"accepted"|"confidence"/);
   assert.deepEqual(requirementBaselineSchema.parse(baseline), baseline);
 });
@@ -22,40 +22,34 @@ test("snapshots keep the complete rule without fabricated semantic or review fie
 test("manual add, edit, delete and no-op saves preserve identities and immutable versions", () => {
   const original = build();
   const addedRule = { ...rule, id: "r2", text: "管理员可以导出成绩。", sourceFragment: undefined };
-  const added = createRequirementBaselineSnapshot({ runId: "extract", requirementText: "校验学生登录", rules: [rule, addedRule], origin: "manual", previousBaseline: original });
+  const added = createRequirementBaselineSnapshot({ runId: "extract", requirementText: "校验学生登录", rules: [rule, addedRule], previousBaseline: original });
   assert.equal(added.version, 2);
-  assert.equal(added.rules?.[0]?.origin, "generated");
-  assert.equal(added.rules?.[1]?.origin, "manual-added");
-  const edited = createRequirementBaselineSnapshot({ runId: "extract", requirementText: "校验学生登录", rules: [{ ...rule, text: "学生只能查询自己的成绩。" }, addedRule], origin: "manual", previousBaseline: added });
+  const edited = createRequirementBaselineSnapshot({ runId: "extract", requirementText: "校验学生登录", rules: [{ ...rule, text: "学生只能查询自己的成绩。" }, addedRule], previousBaseline: added });
   assert.equal(edited.version, 3);
   assert.notEqual(edited.id, added.id);
   assert.equal(edited.rules?.[0]?.requirementId, original.rules?.[0]?.requirementId);
-  assert.equal(edited.rules?.[0]?.origin, "manual-edited");
   assert.equal(added.rules?.[0]?.text, rule.text);
   const same = createRequirementBaselineSnapshot({ runId: "model-run", requirementText: "校验学生登录", rules: edited.rules!, previousBaseline: edited });
   assert.deepEqual(same, edited);
   assert.notEqual(same, edited);
-  const deleted = createRequirementBaselineSnapshot({ runId: "extract", requirementText: "校验学生登录", rules: [addedRule], origin: "manual", previousBaseline: edited });
+  const deleted = createRequirementBaselineSnapshot({ runId: "extract", requirementText: "校验学生登录", rules: [addedRule], previousBaseline: edited });
   assert.equal(deleted.rules?.[0]?.requirementId, added.rules?.[1]?.requirementId);
   assert.equal(deleted.version, 4);
 });
 
-test("large design context keeps every rule and final constraints without truncation", () => {
+test("backend snapshots retain every rule and final constraints without truncation", () => {
   const rules = Array.from({ length: 80 }, (_, index) => ({ ...rule, id: `r${index + 1}`, text: `规则${index + 1}：${"完整业务约束；".repeat(70)}` }));
   rules[79] = { ...rules[79]!, type: "quality" as const, text: "尾部约束：服务必须部署在校内网络，响应时间不超过2秒。" };
   const baseline = build(rules);
-  const design = requirementBaselinePromptContext(baseline);
-  assert.equal(design.rules?.length, 80);
-  assert.ok(JSON.stringify(design).length > 24000);
-  assert.match(JSON.stringify(design), /尾部约束/);
-  assert.deepEqual(requirementBaselinePromptContext(baseline, true), {});
+  assert.equal(baseline.rules.length, 80);
+  assert.ok(JSON.stringify(baseline).length > 24000);
+  assert.match(JSON.stringify(baseline), /尾部约束/);
+  assert.ok(baseline.version && baseline.sourceInputFingerprint);
 });
 
-test("filtered diagram rules retain the other baseline constraints and corrupt equal-hash snapshots rebuild", () => {
+test("backend baselines keep identity while corrupt equal-hash snapshots rebuild", () => {
   const second = { ...rule, id: "r2", type: "quality" as const, text: "所有响应必须低于2秒。" };
   const original = build([rule, second]);
-  const context = requirementBaselinePromptContext(original, [rule.id]);
-  assert.deepEqual(context.rules?.map(item => item.id), ["r2"]);
   const incomplete = structuredClone(original);
   incomplete.rules = incomplete.rules!.slice(0, 1);
   const rebuilt = createRequirementBaselineSnapshot({ runId: "restore", requirementText: "校验学生登录", rules: [rule, second], previousBaseline: incomplete });
@@ -85,13 +79,18 @@ test("type edits create a new snapshot and no removed context is persisted", () 
   assert.equal("context" in next, false);
 });
 
-test("updated quality facts are retained even when the source rules are unchanged", () => {
+test("unchanged rule snapshots retain identity across consuming tasks", () => {
   const current = build();
-  const incoming = structuredClone(current);
-  incoming.qualityReport = { ...incoming.qualityReport, status: "pending-review", summary: "需要确认业务范围" };
-  assert.equal(reuseRequirementBaseline(current, incoming), incoming);
   const anotherRun = structuredClone(current);
   anotherRun.runId = "models-run";
-  anotherRun.qualityReport.runId = "models-run";
   assert.equal(reuseRequirementBaseline(current, anotherRun), current);
+});
+
+test("rejects retired baseline and rule metadata instead of silently stripping it", () => {
+  const baseline = build();
+  for (const [key, value] of Object.entries({ assumptions: [], conflicts: [], qualityReport: {}, sourceDocumentId: "inline-requirement" })) {
+    assert.equal(requirementBaselineSchema.safeParse({ ...baseline, [key]: value }).success, false, key);
+  }
+  assert.equal(requirementBaselineSchema.safeParse({ ...baseline, rules: [{ ...baseline.rules[0], origin: "generated" }] }).success, false);
+  assert.deepEqual(Object.keys(baseline).sort(), ["schemaVersion", "id", "version", "rules", "runId", "sourceInputFingerprint", "createdAt"].sort());
 });

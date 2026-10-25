@@ -7,7 +7,7 @@ import { modelFixture } from "@uml-platform/contracts/testing";
 import { buildGenerateFeasibilityContextPrompt } from "./feasibility-prompts.js";
 import { buildGenerateFeasibilityBusinessFlowPrompt } from "./feasibility-business-flow-prompt.js";
 test("feasibility generation uses its own context and control-flow profiles", () => {
-  const source = { rules: [], requirementBaseline: null };
+  const source = { rules: [], inputs: feasibilityInputsSchema.parse({}) };
   const context = buildGenerateFeasibilityContextPrompt({ ...source, inputs: feasibilityInputsSchema.parse({}) });
   const flow = buildGenerateFeasibilityBusinessFlowPrompt(source);
   for (const rule of getModelReviewProfile("feasibility", "context").structure) assert.ok(context.includes(rule));

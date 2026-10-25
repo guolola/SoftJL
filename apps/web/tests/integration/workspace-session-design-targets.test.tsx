@@ -212,7 +212,6 @@ it("targets missing analysis use cases while preserving existing analysis artifa
         createWorkspaceRecord({
           requirementText,
           requirementBaseline: baseline,
-          requirementQualityReport: baseline.qualityReport,
           rules: [rule],
           models: {
             usecase: usecaseModel,

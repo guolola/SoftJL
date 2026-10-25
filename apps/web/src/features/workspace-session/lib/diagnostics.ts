@@ -76,7 +76,7 @@ export function isMeaningfulLlmChunkEvent(
 }
 
 export function shouldDisplayDiagnosticEvent(event: RunEventInput) {
-  return event.type !== "llm_chunk" && event.type !== "run_activity" && event.type !== "stage_finished";
+  return event.type !== "llm_chunk" && event.type !== "run_activity" && event.type !== "run_tool" && event.type !== "stage_finished";
 }
 
 export function summarizeEvent(event: RunEventInput): DiagnosticEvent {
@@ -84,6 +84,7 @@ export function summarizeEvent(event: RunEventInput): DiagnosticEvent {
   const suffix = `${at}:${Math.random().toString(36).slice(2, 8)}`;
   switch (event.type) {
     case "run_activity":
+    case "run_tool":
       return { id: event.eventId, at: event.createdAt, label: formatStageForDiagnostics(event.stage), detail: null };
     case "run_action":
       return { id: event.eventId ?? suffix, at, label: "任务操作", detail: null };

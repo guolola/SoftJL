@@ -6,7 +6,6 @@ import * as prompts from "./index.js";
 const REQUIRED_RUNTIME_EXPORTS = [
   "JSON_ONLY_SYSTEM_PROMPT",
   "buildExtractRulesPrompt",
-  "buildRepairExtractedRulesPrompt",
   "buildGenerateModelsPrompt",
   "buildModelRepairPrompt",
   "buildGenerateRequirementAnalysisPrompt",

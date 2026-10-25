@@ -25,7 +25,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Version-v2.2.5-2563eb?style=flat-square" alt="Current product version v2.2.5" />
+  <img src="https://img.shields.io/badge/Version-v2.2.6-2563eb?style=flat-square" alt="Current product version v2.2.6" />
   <img src="https://img.shields.io/badge/Frontend-React%20%2B%20Next.js-61dafb?style=flat-square" alt="React and Next.js" />
   <img src="https://img.shields.io/badge/API-Fastify%20%2B%20Zod-111827?style=flat-square" alt="Fastify and Zod" />
   <img src="https://img.shields.io/badge/UML-PlantUML-f59e0b?style=flat-square" alt="PlantUML" />
@@ -205,15 +205,18 @@ Core services include document generation, built-in DOCX preview and downloads. 
 
 Add your provider in account model settings, test the connection and select a model. Configure persistence and encryption secrets for deployment, and disable development guest access and legacy plaintext provider settings.
 
-## What changed in v2.2.5
+## What changed in v2.2.6
 
-- Align shared contract domains, application integration tests and the independent demo-fixtures workspace.
-- Use typed Quick Modeling structures, native activity swimlanes and editors for each supported model.
-- Load maintained modeling skills and explicit Pi extensions through the native resource loader, with restricted resource reads.
-- Add structured QuestionFlow inquiries, saved receipts, actual reply timing and project introduction controls.
-- Reject obsolete model and requirement formats explicitly; deploy the complete API resources and the relocated PlantUML jar.
+- Generate and repair complete model JSON in one conversation with pinned upstream inputs and one shared repair budget.
+- Validate model structure, semantics, source mappings and diagram compilation before publishing; report precise element and source errors.
+- Simplify requirement baselines and traceability to current facts and references, rejecting obsolete persisted fields.
+- Compile complex activity swimlanes with branches, joins, parallel paths and loops; repair unsupported structures explicitly.
+- Show per-artifact generation, validation, compilation and rendering progress, and cancel superseded lineage toolbar timers.
+
+本次同步官网建模核心改动：固定上游资料、完整 JSON 会话修复、精确来源诊断、泳道编译及分产物任务进度。继续保留社区版 BYOK、项目权限与可选 MCP。
 
 See [release notes and upgrade requirements](release-notes.md). Hosted billing, operations administration, exams and marketing pages remain excluded.
+
 ## Architecture
 
 | Directory | Responsibility |
@@ -231,7 +234,7 @@ The root `npm run dev` builds shared packages automatically; use `npm run build:
 
 ## Release and upgrades
 
-Current version: **v2.2.5**. See [release notes and setup requirements](release-notes.md), including obsolete model formats, API resources and the relocated PlantUML runtime. New installations initialize an empty database with `current_platform_schema_v3`; existing data must meet current contracts. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
+Current version: **v2.2.6**. See [release notes and setup requirements](release-notes.md), including obsolete model formats, API resources and the relocated PlantUML runtime. New installations initialize an empty database with `current_platform_schema_v3`; existing data must meet current contracts. Historical community migration chains and model formats are no longer supported; the application rejects obsolete schemas instead of upgrading them. New projects explicitly select Standard or Professional mode.
 
 ## Documentation
 

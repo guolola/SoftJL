@@ -4,10 +4,13 @@ import { umlAlias } from "./plantuml-text.js";
 
 // Labels occupy executable DSL lines: escape delimiters as visible text, including lane separators.
 const text = (value: string) => value.replace(/\r?\n/g, "\\n").replace(/[&<>";|()[\]{}]/g, char => `&#${char.charCodeAt(0)};`);
+// PlantUML spots accept one non-whitespace character. Keep every pair distinct.
+const returnLabel = (index: number) => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"[index] ?? String.fromCharCode(0x4e00 + index - 62);
 
 export class NativeActivityStructureError extends Error {}
 
 export function renderActivitySwimlanes(model: ActivityDiagramSpec): { source: string; renderMapping: ModelRenderMapping } {
+  if (!model.swimlanes.length) throw new NativeActivityStructureError("竖向业务流程图至少需要一条泳道");
   const lines = ["@startuml", "skinparam shadowing false", "skinparam conditionStyle inside"];
   const elements: ModelRenderMapping["elements"] = [];
   const relationships: ModelRenderMapping["relationships"] = [];
@@ -15,29 +18,49 @@ export function renderActivitySwimlanes(model: ActivityDiagramSpec): { source: s
   const outgoing = new Map(model.nodes.map(node => [node.id, model.relationships.filter(edge => edge.sourceId === node.id)]));
   const visited = new Set<string>();
   const emittedEdges = new Set<string>();
+  const anchors = new Map<string, number>();
+  const returnLabels = new Map<string, string>();
+  const backTargets = new Set<string>();
+  const scanning = new Set<string>(), scanned = new Set<string>();
+  // Find graph return targets independently of the structured renderer's branch order.
+  // In particular, a retry can enter a previously drawn branch behind a parallel join.
+  const scan = (id: string) => {
+    if (scanned.has(id)) return;
+    scanning.add(id);
+    for (const edge of outgoing.get(id) ?? []) {
+      if (scanning.has(edge.targetId)) backTargets.add(edge.targetId);
+      else scan(edge.targetId);
+    }
+    scanning.delete(id); scanned.add(id);
+  };
+  model.nodes.filter(node => node.type === "start").forEach(node => scan(node.id));
   let lane: string | undefined;
   const laneAlias = (id: string) => `lane_${umlAlias(id)}`;
   // Declare lanes once in model order, then switch by stable ID even when their names repeat.
   model.swimlanes.forEach(item => lines.push(`|${laneAlias(item.id)}| ${text(item.name)}`));
   const selectLane = (id: string | undefined) => {
+    if (id && !model.swimlanes.some(item => item.id === id)) throw new NativeActivityStructureError(`泳道 ${id} 不存在`);
     if (id && id !== lane) { lines.push(`|${laneAlias(id)}|`); lane = id; }
   };
   selectLane(model.nodes.find(node => node.type === "start")?.actorOrLane ?? model.nodes.find(node => node.actorOrLane)?.actorOrLane ?? model.swimlanes[0]?.id);
   const element = (node: ActivityNode, statement: string) => {
-    lines.push(`' @element ${umlAlias(node.id)}`, statement);
-    elements.push({ elementId: node.id, alias: umlAlias(node.id), statement });
+    // A shared downstream path can occur in separate non-joining branches. Draw each
+    // occurrence while keeping one canonical mapping for the original model identity.
+    if (!visited.has(node.id)) anchors.set(node.id, lines.length);
+    lines.push(`' @${visited.has(node.id) ? "repeat-element" : "element"} ${umlAlias(node.id)}`, statement);
+    if (!visited.has(node.id)) elements.push({ elementId: node.id, alias: umlAlias(node.id), statement });
     visited.add(node.id);
   };
   const wording = (edge: ActivityRelationship) => [edge.guard, edge.condition, edge.trigger].filter(Boolean).join(" / ");
   const rememberRelationship = (edge: ActivityRelationship, statement: string) => {
-    if (emittedEdges.has(edge.id)) throw new Error(`Duplicate activity relationship ${edge.id}`);
+    if (emittedEdges.has(edge.id)) return;
     emittedEdges.add(edge.id);
     relationships.push({ relationshipId: edge.id, sourceId: edge.sourceId, targetId: edge.targetId, type: edge.type, symbol: "->", statement });
   };
   const relationship = (edge: ActivityRelationship, statement?: string) => {
     // Native edges are implicit in source order or a structured branch, never explicit graph aliases.
     const emitted = statement ?? (wording(edge) ? `-> ${text(wording(edge))};` : "->;");
-    lines.push(`' @relationship ${umlAlias(edge.id)}`, emitted);
+    lines.push(`' @${emittedEdges.has(edge.id) ? "repeat-relationship" : "relationship"} ${umlAlias(edge.id)}`, emitted);
     rememberRelationship(edge, emitted);
   };
 
@@ -64,7 +87,6 @@ export function renderActivitySwimlanes(model: ActivityDiagramSpec): { source: s
     switch (node.type) {
       case "start": element(node, "start"); break;
       case "end": element(node, "stop"); break;
-      case "flow_final": element(node, "end"); break;
       case "activity": {
         element(node, `:${text(node.name)};`);
         const annotations = [...node.input.map(value => `输入说明：${text(value)}`), ...node.output.map(value => `输出说明：${text(value)}`)];
@@ -166,34 +188,35 @@ export function renderActivitySwimlanes(model: ActivityDiagramSpec): { source: s
     return exit.targetId;
   };
 
-  const renderPath = (start: string, stops = new Set<string>()) => {
+  const renderPath = (start: string, stops = new Set<string>(), ancestors = new Set<string>()) => {
+    const activePath = new Set(ancestors);
     let current: string | undefined = start;
     while (current && !stops.has(current)) {
       const node = nodes.get(current)!;
-      if (visited.has(current)) {
-        // A shared terminal can be drawn at each terminating branch. Other revisits
-        // require a structured loop; goto would silently omit its cross-lane arrow.
-        if (node.type === "end" || node.type === "flow_final") {
-          selectLane(node.actorOrLane);
-          lines.push(node.type === "end" ? "stop" : "end");
-          return;
-        }
-        throw new NativeActivityStructureError(`Activity flow at ${current} cannot be represented by structured native commands`);
+      // Native paired connectors preserve non-local return edges without redrawing
+      // business steps or forcing a cross-join graph into a different loop topology.
+      if (visited.has(current) && (activePath.has(current) || backTargets.has(current))) {
+        const label = returnLabels.get(current) ?? returnLabel(returnLabels.size);
+        returnLabels.set(current, label);
+        lines.push(`' @return-to ${umlAlias(current)}`, `(${label})`, "detach");
+        return;
       }
+      activePath.add(current);
       selectLane(node.actorOrLane);
       const retry = retryLoop(current);
-      if (retry && !retry.prefix.some(item => visited.has(item.id)) && !visited.has(retry.decision.id) && !retry.actions.some(item => visited.has(item.id))) {
+      if (retry && ![...retry.prefix, retry.decision, ...retry.actions].some(item => item.id !== current && activePath.has(item.id))) {
         current = renderRetry(retry);
         continue;
       }
       const entryLane = lane;
       const edges: ActivityRelationship[] = outgoing.get(current) ?? [];
       if (node.type === "decision" || node.type === "fork" || edges.length > 1) {
-        const blocked = new Set([...visited, current]);
+        const blocked = activePath;
         const parallel = node.type !== "decision";
         const common = convergence(edges, blocked, stops, parallel ? "join" : undefined);
         const boundary = new Set(stops);
         if (common) boundary.add(common);
+        let closedCommon = false;
         // Keep routing nodes after their incoming branches; array order never determines business order.
         if (parallel) {
           const keyword = common ? "fork" : "split";
@@ -203,12 +226,13 @@ export function renderActivitySwimlanes(model: ActivityDiagramSpec): { source: s
             if (index) lines.push(`${keyword} again`);
             selectLane(entryLane);
             relationship(edge);
-            renderPath(edge.targetId, boundary);
+            renderPath(edge.targetId, boundary, activePath);
           });
           if (common && !stops.has(common)) {
             const join = nodes.get(common)!;
             selectLane(join.actorOrLane);
             element(join, "end fork");
+            closedCommon = true;
           } else lines.push(common ? "end fork" : "end split");
         } else {
           const question = text(node.question ?? node.name ?? "判断条件");
@@ -219,16 +243,16 @@ export function renderActivitySwimlanes(model: ActivityDiagramSpec): { source: s
             element(node, statement);
             // The condition command itself emits the first branch edge.
             rememberRelationship(first, statement);
-            renderPath(first.targetId, boundary);
+            renderPath(first.targetId, boundary, activePath);
             relationship(second, `else (${text(wording(second))})`);
             selectLane(entryLane);
-            renderPath(second.targetId, boundary);
+            renderPath(second.targetId, boundary, activePath);
           } else {
             element(node, `switch (${question})`);
             for (const edge of edges) {
               relationship(edge, `case (${text(wording(edge))})`);
               selectLane(entryLane);
-              renderPath(edge.targetId, boundary);
+              renderPath(edge.targetId, boundary, activePath);
             }
           }
           const closing = edges.length === 2 ? "endif" : "endswitch";
@@ -236,11 +260,12 @@ export function renderActivitySwimlanes(model: ActivityDiagramSpec): { source: s
           if (merge && merge.type === "merge" && !stops.has(merge.id)) {
             selectLane(merge.actorOrLane);
             element(merge, closing);
+            closedCommon = true;
           } else lines.push(closing);
         }
         if (!common || stops.has(common)) return;
         const commonNode = nodes.get(common)!;
-        if (visited.has(common)) {
+        if (closedCommon) {
           const next = outgoing.get(common) ?? [];
           if (next.length !== 1) throw new Error(`Activity convergence ${common} needs one outgoing flow`);
           relationship(next[0]!);
@@ -266,5 +291,11 @@ export function renderActivitySwimlanes(model: ActivityDiagramSpec): { source: s
   if (commonStart) renderPath(commonStart);
   if (visited.size !== model.nodes.length || emittedEdges.size !== model.relationships.length) throw new Error("Native activity rendering omitted model nodes or relationships");
   lines.push("@enduml");
-  return { source: lines.join("\n"), renderMapping: { mode: "native", elements, relationships } };
+  // Insert entry connectors only for actual returns. Simple repeat/while diagrams
+  // retain their existing source and layout without unused connector symbols.
+  const entries = new Map([...returnLabels].map(([id, label]) => [anchors.get(id)!, `' @return-entry ${umlAlias(id)}\n(${label})`]));
+  const source = lines.flatMap((line, index) => entries.has(index) ? [entries.get(index)!, line] : [line]).join("\n");
+  return { source, renderMapping: { mode: "native", elements, relationships,
+    auxiliary: [...returnLabels].map(([id, label]) => ({ kind: "flow-connector", elementId: id, label, ownerId: nodes.get(id)?.actorOrLane })),
+  } };
 }

@@ -1,14 +1,16 @@
 // Orchestrates requirement extraction, model generation, PlantUML, and SVG rendering.
-import { MAX_GENERATION_REPAIR_ATTEMPTS, candidateRulesForDiagram, requirementBaselinePromptContext } from "@uml-platform/contracts";
-import { ModelGenerationConversation } from "./shared/model-generation-conversation.js";
-import { assertRequirementMappings } from "./shared/model-mapping-validation.js";
+import { generateWithModelConversation } from "./shared/model-generation-session.js";
+import { assertGeneratedModelCandidate, assertAnalysisMappings } from "../../normalizers/modeling/model-candidate-validation.js";
+import { assertRequirementMappings } from "../../normalizers/traceability/model-mapping-validation.js";
+import { generatePlantUmlArtifacts } from "../../adapters/plantuml/model-renderer.js";
 import { missingRequestedModelOutputs } from "../records/run-output-provenance.js";
-import { getStageModelSchema, contractResponseSchema } from "@uml-platform/contracts";
+import { getStageModelSchema, generationResponseSchema } from "@uml-platform/contracts";
 
 import { createStageLifecycle } from "./shared/stage-lifecycle.js";
 import { screenRequirementInput } from "./requirements/input-screening.js";
 import { extractRequirementRulesWithRepair } from "./requirements/extract-requirement-rules.js";
 import { prepareRequirementInput } from "./requirements/prepare-requirement-input.js";
+import type { RequirementSourceUnit } from "../../normalizers/requirements/requirement-source-units.js";
 import { withRequirementTokenUsage } from "../records/requirement-token-usage.js";
 import { withRunReasoning } from "./shared/run-reasoning.js";
 import {
@@ -23,7 +25,6 @@ import {
   type DiagramModelSpec,
   type PlantUmlArtifact,
   type ProviderSettings,
-  type RequirementBaseline,
   type RequirementModelTraceabilityEntry,
   type RequirementRule,
   type RunSnapshot,
@@ -38,17 +39,17 @@ import {
 import { type LlmTransport } from "../../adapters/llm/llm-transport.js";
 import { type RenderClient } from "../../adapters/render/render-client.js";
 import {
-  getGenerateModelsResponseFormat,
+  GENERATE_MODELS_RESPONSE_FORMAT,
 } from "../../adapters/llm/response-formats/index.js";
 
 import {
   parseGeneratedAnalysisModels,
   parseRequirementDiagramModelsResult,
 } from "../../normalizers/requirements/requirement-model-normalizer.js";
-import { assertRequirementModelSemanticFidelity } from "../../normalizers/requirements/requirement-model-semantic-fidelity.js";
+
 import { formatParseError } from "../../normalizers/json/parse-json.js";
 import { emitEvent, type RunRecord } from "../records/run-record-store.js";
-import { readDiagramReviewCounters } from "../records/diagram-review-record.js";
+
 import {
   isRunCancelled,
   RunCancelledError,
@@ -58,16 +59,13 @@ import {
 import { DiagramReviewRenderError, reviewRenderedArtifact } from "./render/review-rendered-artifact.js";
 
 import { stageProgressValue } from "./shared/pipeline-events.js";
-import { createMessages } from "./shared/llm-messages.js";
-import {
-  collectTextResult,
-  logFailedStructuredOutput,
-} from "./shared/structured-output.js";
+
+
 import {
   withModelTaskTimeout,
   type ModelTaskActivity,
 } from "./shared/model-task-timeout.js";
-import { createRunLlmChunkHandlers } from "./shared/llm-chunk-events.js";
+
 import { appendRequirementTrace } from "./shared/trace-events.js";
 import { createRunError, normalizeRunError, throwRunError } from "./shared/errors.js";
 import {
@@ -80,7 +78,6 @@ import {
   buildRequirementStageTrustedChain,
 } from "../traceability/trusted-chain-traceability.js";
 
-const MAX_MODEL_REPAIR_ATTEMPTS = MAX_GENERATION_REPAIR_ATTEMPTS;
 const DEFAULT_REQUIREMENT_ANALYSIS_CONCURRENCY = 2;
 const DEFAULT_MODEL_TASK_IDLE_TIMEOUT_MS = 300_000;
 const DEFAULT_MODEL_TASK_BLANK_OUTPUT_TIMEOUT_MS = 30_000;
@@ -260,128 +257,34 @@ function coerceAnalysisModelForUseCase(
 }
 
 async function generateAnalysisModelWithRepair(
-  record: RunRecord,
-  providerSettings: ProviderSettings,
-  llmTransport: LlmTransport,
-  scopedUseCaseModel: DiagramModelSpec,
-  onActivity?: ModelTaskActivity,
-  onBlankActivity?: ModelTaskActivity,
-  abortSignal?: AbortSignal,
-  promptOverride?: string,
-) {
-  const selectedDiagrams: DiagramKind[] = ["analysis"];
-  const responseFormat = getGenerateModelsResponseFormat(
-      providerSettings,
-      selectedDiagrams,
-    );
-  const sourceUseCase =
-    scopedUseCaseModel.diagramKind === "usecase"
-      ? scopedUseCaseModel.useCases[0]
-      : null;
-  const modelId = sourceUseCase ? analysisModelIdForUseCase(sourceUseCase) : undefined;
-  const initialPrompt = promptOverride ?? buildGenerateRequirementAnalysisPrompt(scopedUseCaseModel);
-  let lastErrorMessage = "";
-
-  const repair = new ModelGenerationConversation(modelId ?? "analysis", createMessages(initialPrompt));
-  for (let attempt = 0; attempt <= MAX_MODEL_REPAIR_ATTEMPTS; attempt += 1) {
-    if (attempt > 0 && modelId && readDiagramReviewCounters(record, modelId, "analysis").repairAttempts >= MAX_MODEL_REPAIR_ATTEMPTS) throw new Error("已达到共享 5 次结构修复上限");
-    let content = await collectTextResult(
-      llmTransport,
-      providerSettings,
-      repair.messages,
-      createRunLlmChunkHandlers({
-        record,
-        stage: "generate_models",
-        onActivity,
-        onBlankActivity,
-        diagramKind: "analysis",
-        modelId,
-        subtaskId: modelId,
-        operation: attempt > 0 ? "model_repair" : undefined,
-        round: attempt > 0 ? attempt : undefined,
-        subtaskLabel: sourceUseCase
-          ? `需求分析模型：${sourceUseCase.name}`
-          : "需求分析模型",
-      }),
-      responseFormat,
-      abortSignal,
-    );
-    appendRequirementTrace(record, {
-      stage: "generate_models",
-      attempt: attempt + 1,
-      kind: "llm_output",
-      rawOutput: content,
-    });
-
-    try {
-      content = repair.accept(content);
-      const parsed = parseGeneratedAnalysisModels(content);
-      if (parsed.models.some((model) => model.diagramKind !== "analysis")) throw new Error("本次只允许返回 analysis 模型，不能丢弃其他模型换取成功");
-      const analysisModels = parsed.models.filter(
-        (model) => model.diagramKind === "analysis",
-      );
-      if (analysisModels.length === 0) {
-        const received =
-          parsed.models.map((model) => model.diagramKind).join(", ") || "none";
-        throw new Error(
-          `generate_models returned no selected models; expected analysis, received ${received}`,
-        );
-      }
-      const result: {
-        models: AnalysisRequirementModel[];
-        requirementModelTraceability: RequirementModelTraceabilityEntry[];
-      } = {
-        models: analysisModels,
-        requirementModelTraceability: [],
-      };
-      appendRequirementTrace(record, {
-        stage: "generate_models",
-        attempt: attempt + 1,
-        kind: "parsed_model",
-        parsedData: result,
-      });
-      return { ...result, conversation: repair };
-    } catch (error) {
-      logFailedStructuredOutput(
-        "generate_models",
-        providerSettings.model,
-        error,
-        content,
-        attempt + 1,
-      );
-      lastErrorMessage = formatParseError(error);
-      appendRequirementTrace(record, {
-        stage: "generate_models",
-        attempt: attempt + 1,
-        kind: "parse_error",
-        rawOutput: content,
-        errorMessage: lastErrorMessage,
-      });
-      if (attempt === MAX_MODEL_REPAIR_ATTEMPTS) {
-        throw new Error(`generate_models structured output failed: ${lastErrorMessage}（已达到共享 5 次修复上限）`, { cause: error });
-      }
-      emitEvent(
-        record,
-        stageProgressRunEventSchema.parse({
-          type: "stage_progress",
-          stage: "generate_models",
-          progress: stageProgressValue("generate_models"),
-          message: `需求分析模型结构不合法，正在修复（${attempt + 1}/${MAX_MODEL_REPAIR_ATTEMPTS}）`,
-          diagramKind: "analysis",
-          modelId,
-          subtaskId: modelId,
-          subtaskLabel: sourceUseCase
-            ? `需求分析模型：${sourceUseCase.name}`
-            : "需求分析模型",
-          subtaskStatus: "repairing",
-        }),
-      );
-      onActivity?.();
-      repair.prepare(error);
-    }
-  }
-
-  throw new Error(`generate_models structured output failed: ${lastErrorMessage}（已达到共享 5 次修复上限）`);
+  record: RunRecord, providerSettings: ProviderSettings, llmTransport: LlmTransport,
+  scopedUseCaseModel: DiagramModelSpec, onActivity?: ModelTaskActivity, onBlankActivity?: ModelTaskActivity,
+  abortSignal?: AbortSignal, promptOverride?: string,
+): Promise<{ models: AnalysisRequirementModel[]; requirementModelTraceability: RequirementModelTraceabilityEntry[] }> {
+  scopedUseCaseModel = structuredClone(scopedUseCaseModel);
+  const sourceUseCase = scopedUseCaseModel.diagramKind === "usecase" ? scopedUseCaseModel.useCases[0] : undefined;
+  const modelId = sourceUseCase ? analysisModelIdForUseCase(sourceUseCase) : "analysis";
+  const result = await generateWithModelConversation<{ models: AnalysisRequirementModel[]; requirementModelTraceability: RequirementModelTraceabilityEntry[] }>({
+    record, providerSettings, transport: llmTransport, stage: "generate_models", targetId: modelId,
+    diagramKind: "analysis", label: sourceUseCase ? `需求分析模型：${sourceUseCase.name}` : "需求分析模型",
+    prompt: promptOverride ?? buildGenerateRequirementAnalysisPrompt(scopedUseCaseModel),
+    schema: requirementResponseSchema(["analysis"]),
+    compile: result => { generatePlantUmlArtifacts(result.models, "requirements", "schema"); },
+    onActivity, onBlankActivity, abortSignal,
+    validate: raw => {
+      assertGeneratedModelCandidate(raw, { stage: "requirements", kinds: ["analysis"], upstream: [scopedUseCaseModel] });
+      const parsed = parseGeneratedAnalysisModels(raw);
+      if (parsed.models.length !== 1 || parsed.models[0]?.diagramKind !== "analysis") throw new Error("单用例任务必须仅返回一个需求分析模型");
+      const result = { models: parsed.models as AnalysisRequirementModel[], requirementModelTraceability: [] as RequirementModelTraceabilityEntry[] };
+      return sourceUseCase ? coerceAnalysisModelForUseCase(result, sourceUseCase) : result;
+    },
+    onCandidate: (raw, attempt, error, parsed) => {
+      appendRequirementTrace(record, { stage: "generate_models", attempt, kind: "llm_output", rawOutput: raw });
+      appendRequirementTrace(record, { stage: "generate_models", attempt, kind: error ? "parse_error" : "parsed_model",
+        ...(error ? { rawOutput: raw, errorMessage: formatParseError(error) } : { parsedData: parsed }) });
+    },
+  });
+  return result;
 }
 
 function missingUseCasesForAnalysis(
@@ -442,22 +345,18 @@ function validateUseCaseAnalysisCoverage(
 
 function buildCompactActivityModelPrompt(
   rules: RequirementRule[],
-  requirementBaseline: RequirementBaseline,
 ) {
   return [
-    "请只生成需求阶段总体业务流程 activity 模型。",
+    "请只生成需求阶段总体业务流程 activity 模型，使用与可行性分析一致的竖向泳道结构。每个 activity 的 actorOrLane 引用真实泳道，关系仅使用 control_flow；分支用 decision/merge，并行用 fork/join，循环用明确判断和回路。",
     "这是 activity 子任务超时后的精简重试：优先返回完整、合法、较小的 JSON，不要输出解释、Markdown 或代码块。",
     "返回 JSON 对象，格式必须是 {\"models\":[...],\"requirementModelTraceability\":[...]}。",
     "models 必须且只能包含一个 diagramKind=\"activity\" 的模型。",
-    `当前阶段的字段与枚举：${JSON.stringify(contractResponseSchema(getStageModelSchema("requirements", "activity")!))}`,
-    "保留业务控制流和对象流，端点必须引用节点或动作引脚的标识。同名动作、循环、并发和不同终止语义不能合并或替换。",
+    `当前阶段的字段与枚举：${JSON.stringify(generationResponseSchema(getStageModelSchema("requirements", "activity")!))}`,
+    "只使用控制流，端点必须引用真实节点。同名动作、循环、并发和业务条件不能合并或替换。",
     "requirementModelTraceability 必须与模型同时返回，每个业务元素和业务关系至少有一条真实规则来源；没有来源的业务元素不得生成，禁止按类别或位置猜测关联。",
     "",
     "Activity 相关规则：",
     JSON.stringify(rules, null, 2),
-    "",
-    "RequirementBaseline（保留上下文、人工补充、假设和未决事项，规则正文已在上方提供）：",
-    JSON.stringify(requirementBaselinePromptContext({ ...requirementBaseline, rules: requirementBaseline.rules.filter(rule => rules.some(source => source.id === rule.id)) }, true)),
   ].join("\n");
 }
 
@@ -477,7 +376,7 @@ function buildCompactAnalysisModelPrompt(useCase: UseCaseForAnalysis, scopedUseC
     "models 必须且只能包含一个 diagramKind=\"analysis\" 的模型。",
     `analysis 模型必须使用 modelId=\"${analysisModelIdForUseCase(useCase)}\"、sourceUseCaseId=\"${useCase.id}\"、sourceUseCaseName=\"${useCase.name}\"。`,
     "analysis 模型字段必须包含 diagramKind, modelId, sourceUseCaseId, sourceUseCaseName, title, summary, notes, participants, messages, fragments。",
-    `字段与枚举：${JSON.stringify(contractResponseSchema(getStageModelSchema("requirements", "analysis")!))}`,
+    `字段与枚举：${JSON.stringify(generationResponseSchema(getStageModelSchema("requirements", "analysis")!))}`,
     "messages 建议 4-10 条，必须覆盖主成功场景、关键权限/异常分支和系统响应；sourceId/targetId 必须引用 participants 中存在的 id。每个 participants/messages/fragments 必须填写非空 sourceElementIds，引用本次用例模型真实角色、用例、事件流或步骤编号；首次来源默认采信。",
     "fragments 可以为空数组；如使用 alt/loop/opt，必须保持 messageIds 引用 messages 中存在的 id。",
     "requirementModelTraceability 固定返回 []。",
@@ -498,138 +397,42 @@ function isProviderTimeout(runError: ReturnType<typeof normalizeRunError>) {
   );
 }
 
-// LLM structured output repair retries malformed requirement models without changing the run event contract.
+// JSON responses and local validation share the current model contracts.
+function requirementResponseSchema(selectedDiagrams: DiagramKind[]) {
+  const schema = structuredClone(GENERATE_MODELS_RESPONSE_FORMAT);
+  const models = (schema.json_schema.schema.properties as any).models;
+  models.minItems = models.maxItems = selectedDiagrams.length;
+  const items = models.items;
+  items.anyOf = items.anyOf.filter((variant: any) => selectedDiagrams.includes(variant.properties.diagramKind.enum[0]));
+  return schema;
+}
+
 export async function generateModelsWithRepair(
-  record: RunRecord,
-  providerSettings: ProviderSettings,
-  llmTransport: LlmTransport,
-  rules: RequirementRule[],
-  requirementBaseline: RequirementBaseline,
-  selectedDiagrams: DiagramKind[],
-  promptOverride?: string,
-  onActivity?: ModelTaskActivity,
-  onBlankActivity?: ModelTaskActivity,
-  abortSignal?: AbortSignal,
+  record: RunRecord, providerSettings: ProviderSettings, llmTransport: LlmTransport,
+  rules: RequirementRule[], selectedDiagrams: DiagramKind[],
+  promptOverride?: string, onActivity?: ModelTaskActivity, onBlankActivity?: ModelTaskActivity, abortSignal?: AbortSignal,
 ) {
-  const responseFormat = getGenerateModelsResponseFormat(
-      providerSettings,
-      selectedDiagrams,
-    );
-  let prompt =
-    promptOverride ??
-    buildGenerateModelsPrompt(
-      rules,
-      requirementBaseline,
-      selectedDiagrams,
-    );
-  let lastErrorMessage = "";
-  const singleDiagram = selectedDiagrams.length === 1 ? selectedDiagrams[0] : undefined;
-  const taskIdentity = { diagramKind: singleDiagram, subtaskId: singleDiagram };
-
-  const repair = new ModelGenerationConversation(singleDiagram ?? selectedDiagrams.join(","), createMessages(prompt));
-  for (let attempt = 0; attempt <= MAX_MODEL_REPAIR_ATTEMPTS; attempt += 1) {
-    if (attempt > 0 && readDiagramReviewCounters(record, singleDiagram ?? selectedDiagrams.join(","), singleDiagram).repairAttempts >= MAX_MODEL_REPAIR_ATTEMPTS) throw new Error("已达到共享 5 次结构修复上限");
-    const repairRound = readDiagramReviewCounters(record, singleDiagram ?? selectedDiagrams.join(","), singleDiagram).repairAttempts + 1;
-    let content = await collectTextResult(
-      llmTransport,
-      providerSettings,
-      repair.messages,
-      createRunLlmChunkHandlers({
-        record,
-        stage: "generate_models",
-        onActivity,
-        onBlankActivity,
-        diagramKind: singleDiagram,
-        subtaskId: singleDiagram ?? selectedDiagrams.join(","),
-        operation: attempt > 0 ? "model_repair" : undefined,
-        round: attempt > 0 ? repairRound : undefined,
-      }),
-      responseFormat,
-      abortSignal,
-    );
-    appendRequirementTrace(record, {
-      stage: "generate_models",
-      attempt: attempt + 1,
-      kind: "llm_output",
-      rawOutput: content,
-    });
-
-    try {
-      content = repair.accept(content);
-      const parsed = parseRequirementDiagramModelsResult(content, true);
-      if (parsed.models.some((model) => !selectedDiagrams.includes(model.diagramKind))) throw new Error("返回了本次未请求的模型类型，必须修复结构化输出");
-      const selectedSet = new Set(selectedDiagrams);
-      const filteredModels = parsed.models.filter((model) =>
-        selectedSet.has(model.diagramKind),
-      );
-      if (selectedDiagrams.length > 0 && filteredModels.length === 0) {
-        const received = parsed.models
-          .map((model) => model.diagramKind)
-          .filter(Boolean)
-          .join(", ") || "none";
-        throw new Error(
-          `generate_models returned no selected models; expected ${selectedDiagrams.join(", ")}, received ${received}`,
-        );
-      }
-      const filteredTraceability = parsed.requirementModelTraceability.filter((entry) =>
-        selectedSet.has(entry.target.diagramKind as DiagramKind),
-      );
-      // Model and source references have passed the same generation boundary.
-      const filteredParsed = {
-        models: filteredModels,
-        requirementModelTraceability: filteredTraceability,
-      };
-      assertRequirementModelSemanticFidelity(rules, filteredModels);
-      // Structure and source completeness share this task's exact conversation and repair budget.
-      assertRequirementMappings(filteredModels, rules, filteredTraceability);
-      appendRequirementTrace(record, {
-        stage: "generate_models",
-        attempt: attempt + 1,
-        kind: "parsed_model",
-        parsedData: filteredParsed,
-      });
-      return { ...filteredParsed, conversation: repair };
-    } catch (error) {
-      logFailedStructuredOutput(
-        "generate_models",
-        providerSettings.model,
-        error,
-        content,
-        attempt + 1,
-      );
-      lastErrorMessage = formatParseError(error);
-      appendRequirementTrace(record, {
-        stage: "generate_models",
-        attempt: attempt + 1,
-        kind: "parse_error",
-        rawOutput: content,
-        errorMessage: lastErrorMessage,
-      });
-
-      if (attempt === MAX_MODEL_REPAIR_ATTEMPTS) {
-        throw new Error(
-          `generate_models structured output failed: ${lastErrorMessage}（已达到共享 5 次修复上限）`,
-          { cause: error },
-        );
-      }
-
-      emitEvent(
-        record,
-        stageProgressRunEventSchema.parse({
-          type: "stage_progress",
-          stage: "generate_models",
-          progress: stageProgressValue("generate_models"),
-          message: `模型 JSON 结构不合法，正在尝试修复（${attempt + 1}/${MAX_MODEL_REPAIR_ATTEMPTS}）`,
-          ...taskIdentity,
-        }),
-      );
-      onActivity?.();
-
-      repair.prepare(error);
-    }
-  }
-
-  throw new Error(`generate_models structured output failed: ${lastErrorMessage}（已达到共享 5 次修复上限）`);
+  rules = structuredClone(rules);
+  const existingMappings = structuredClone((record.snapshot as RunSnapshot).requirementModelTraceability);
+  return generateWithModelConversation<ReturnType<typeof parseRequirementDiagramModelsResult>>({
+    record, providerSettings, transport: llmTransport, stage: "generate_models",
+    targetId: selectedDiagrams.join(","), diagramKind: selectedDiagrams.length === 1 ? selectedDiagrams[0] : undefined,
+    prompt: promptOverride ?? buildGenerateModelsPrompt(rules, selectedDiagrams),
+    schema: requirementResponseSchema(selectedDiagrams),
+    compile: result => { generatePlantUmlArtifacts(result.models, "requirements", "schema"); },
+    onActivity, onBlankActivity, abortSignal,
+    validate: raw => {
+      assertGeneratedModelCandidate(raw, { stage: "requirements", kinds: selectedDiagrams, rules,
+        existingMappings });
+      const parsed = parseRequirementDiagramModelsResult(raw, rules);
+      return parsed;
+    },
+    onCandidate: (raw, attempt, error, parsed) => {
+      appendRequirementTrace(record, { stage: "generate_models", attempt, kind: "llm_output", rawOutput: raw });
+      appendRequirementTrace(record, { stage: "generate_models", attempt, kind: error ? "parse_error" : "parsed_model",
+        ...(error ? { rawOutput: raw, errorMessage: formatParseError(error) } : { parsedData: parsed }) });
+    },
+  });
 }
 
 // route -> pipeline -> record store contract: this pipeline mutates the run snapshot and emits stage/artifact events.
@@ -671,36 +474,20 @@ export async function runStagePipeline(
   const renderFailures: string[] = [];
   let diagramErrors: Record<string, DiagramError> = {};
 
-  const renderRequirementModelArtifact = async <T extends DiagramModelSpec>(model: T, traceability: typeof requirementModelTraceability, conversation: ModelGenerationConversation) => {
+  const renderRequirementModelArtifact = async <T extends DiagramModelSpec>(model: T, traceability: typeof requirementModelTraceability) => {
     throwIfRunCancelled(record);
     try {
       const modelTrace = (candidate: DiagramModelSpec, value: unknown) => requirementModelTraceabilityEntrySchema.array().parse(value)
         .filter(entry => entry.target.diagramKind === candidate.diagramKind && (!candidate.modelId || entry.target.modelId === candidate.modelId));
       const checked = await reviewRenderedArtifact({
-        record, providerSettings, llmTransport, renderClient, model, mutable: true,
+        record, providerSettings, llmTransport, renderClient, model, mutable: false,
         basis: { stage: "requirements", baseline: snapshot.requirementBaseline, rules: snapshot.rules,
           upstreamModels: models, traceability },
-        validateTraceability: (candidate, value) => assertRequirementMappings([candidate as DiagramModelSpec], snapshot.rules, modelTrace(candidate as DiagramModelSpec, value)),
-        generationRepair: {
-          conversation: conversation.fork(model.modelId ?? model.diagramKind),
-          parse: (raw, current) => {
-            let parsed: { models: DiagramModelSpec[]; requirementModelTraceability: RequirementModelTraceabilityEntry[] };
-            if (current.diagramKind === "analysis") {
-              const useCaseModel = models.find(source => source.diagramKind === "usecase");
-              const useCase = useCaseModel && useCasesFromModel(useCaseModel).find(useCase => useCase.id === current.sourceUseCaseId);
-              if (!useCase) throw new Error("修复对象的上游用例不存在");
-              parsed = coerceAnalysisModelForUseCase({ models: parseGeneratedAnalysisModels(raw).models as AnalysisRequirementModel[], requirementModelTraceability: [] }, useCase);
-            } else {
-              parsed = parseRequirementDiagramModelsResult(raw, true);
-            }
-            const candidates = parsed.models.filter(candidate => candidate.diagramKind === current.diagramKind && candidate.modelId === current.modelId);
-            if (candidates.length !== 1 || parsed.models.length !== 1) throw new Error("结构修复必须只返回当前模型并保持模型 ID");
-            const candidate = candidates[0]!;
-            const sources = modelTrace(candidate, parsed.requirementModelTraceability);
-            assertRequirementMappings([candidate], snapshot.rules, sources);
-            return { model: candidate, traceability: sources };
-          },
+        validateTraceability: (candidate, value) => {
+          if (candidate.diagramKind === "analysis") assertAnalysisMappings(candidate, models.filter(model => model.diagramKind === "usecase"));
+          else assertRequirementMappings([candidate as DiagramModelSpec], snapshot.rules, modelTrace(candidate as DiagramModelSpec, value));
         },
+
       });
       throwIfRunCancelled(record);
       // Publish the accepted tuple together; rejected candidates stay private.
@@ -743,6 +530,7 @@ export async function runStagePipeline(
     );
     throwIfRunCancelled(record);
     let screenedText: string;
+    let sourceUnits: RequirementSourceUnit[];
     try {
       const screening = await withModelTaskTimeout(
         (markActivity, _markBlankActivity, abortSignal) =>
@@ -768,6 +556,7 @@ export async function runStagePipeline(
         throwRunError(createRunError("RUN_REQUIREMENT_INPUT_IRRELEVANT"));
       }
       screenedText = screening.acceptedText;
+      sourceUnits = screening.acceptedUnits;
     } catch (error) {
       if (isRunCancelled(record) || error instanceof RunCancelledError) throw error;
       if (error instanceof Error && "runError" in error) throw error;
@@ -778,6 +567,8 @@ export async function runStagePipeline(
         extractRequirementRulesWithRepair({
           record,
           requirementText: screenedText,
+          sourceText,
+          sourceUnits,
           providerSettings,
           llmTransport,
           onActivity: markActivity,
@@ -845,7 +636,7 @@ export async function runStagePipeline(
     const generateRequirementDiagram = async (
       diagram: Exclude<DiagramKind, "analysis">,
     ) => {
-      const diagramRules = candidateRulesForDiagram(rules, diagram);
+      const diagramRules = rules;
       emitEvent(
         record,
         stageProgressRunEventSchema.parse({
@@ -860,8 +651,8 @@ export async function runStagePipeline(
       );
       try {
         throwIfRunCancelled(record);
-        // A missing mapped type is a prerequisite failure, never permission to use other types.
-        if (!diagramRules.length) throw new Error(`${diagram} 没有对应类型的需求规则，请先添加或修改需求类型。`);
+        // Generation needs at least one real upstream rule; its classification does not restrict mappings.
+        if (!diagramRules.length) throw new Error(`${diagram} 缺少上游需求规则，请先添加需求规则。`);
         const modelRules = diagramRules;
         const timeoutConfig = readRequirementModelTaskTimeoutConfig();
         const runModelGeneration = (promptOverride?: string, labelSuffix = "") =>
@@ -871,7 +662,6 @@ export async function runStagePipeline(
               providerSettings,
               llmTransport,
               modelRules,
-              requirementBaseline,
               [diagram],
               promptOverride,
               markActivity,
@@ -906,11 +696,11 @@ export async function runStagePipeline(
             }),
           );
           result = await runModelGeneration(
-            buildCompactActivityModelPrompt(modelRules, requirementBaseline),
+            buildCompactActivityModelPrompt(modelRules),
             "（精简重试）",
           );
         }
-        result.models = await Promise.all(result.models.map((model) => renderRequirementModelArtifact(model, result.requirementModelTraceability, result.conversation)));
+        result.models = await Promise.all(result.models.map((model) => renderRequirementModelArtifact(model, result.requirementModelTraceability)));
         result.requirementModelTraceability = requirementModelTraceability.filter((entry) => result.models.some((model) => model.modelId ? entry.target.modelId === model.modelId : entry.target.diagramKind === model.diagramKind)) as typeof result.requirementModelTraceability;
         models = [
           ...models.filter((model) => model.diagramKind !== diagram),
@@ -1099,7 +889,7 @@ export async function runStagePipeline(
             );
           }
           const result = coerceAnalysisModelForUseCase(rawResult, useCase);
-          result.models = await Promise.all(result.models.map((model) => renderRequirementModelArtifact(model, result.requirementModelTraceability, rawResult.conversation)));
+          result.models = await Promise.all(result.models.map((model) => renderRequirementModelArtifact(model, result.requirementModelTraceability)));
         result.requirementModelTraceability = requirementModelTraceability.filter((entry) => result.models.some((model) => model.modelId ? entry.target.modelId === model.modelId : entry.target.diagramKind === model.diagramKind)) as typeof result.requirementModelTraceability;
           models = mergeRequirementModels(models, result.models);
           requirementModelTraceability = [

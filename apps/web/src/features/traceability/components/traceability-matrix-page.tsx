@@ -125,8 +125,6 @@ function createTraceabilityCopy(t: TFunction): TraceabilityRowCopy {
     missingSourceUseCaseOrEventFlow: t("traceability.rows.missingSourceUseCaseOrEventFlow"),
     sourceUseCase: (label) => t("traceability.rows.sourceUseCase", { label }),
     sourceUseCaseMissing: t("traceability.rows.sourceUseCaseMissing"),
-    endpointDerived: t("traceability.rows.endpointDerived"),
-    mappingDescription: (note) => t("traceability.rows.mappingDescription", { note }),
     sourceUseCaseRealization: (modelLabel, elementLabel) =>
       t("traceability.rows.sourceUseCaseRealization", { modelLabel, elementLabel }),
     requirementElement: (groupLabel, elementLabel) =>

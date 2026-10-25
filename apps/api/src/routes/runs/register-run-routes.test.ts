@@ -315,7 +315,7 @@ const workspaceDesignTraceability: DesignModelTraceabilityEntry[] = [
         label: "查看活动",
       },
     ],
-    mappingSource: "llm",
+
   },
 ];
 
@@ -2290,7 +2290,7 @@ test("project design start command loads complete workspace input with large svg
   assert.equal(snapshot.requirementModels[0]?.diagramKind, "usecase");
   assert.equal(snapshot.requirementModelTraceability[0]?.ruleId, "REQ-001");
   assert.equal(snapshot.models[0]?.modelId, "design-sequence-view");
-  assert.equal(snapshot.designModelTraceability[0]?.mappingSource, "llm");
+  assert.deepEqual(Object.keys(snapshot.designModelTraceability[0]!), ["source", "targets"]);
   assert.equal(snapshot.plantUml[0]?.source.includes("活动服务"), true);
   assert.equal(snapshot.svgArtifacts[0]?.svg, largeSvg);
 
@@ -2545,7 +2545,7 @@ test("project design start command filters old records for the replacing design 
           label: "ExistingDesign",
         },
       ],
-      mappingSource: "llm",
+
     },
   ];
   const { app, runs } = await createRunRouteTestContext({

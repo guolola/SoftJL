@@ -117,7 +117,7 @@ describe("feasibilityArtifactState", () => {
     // A manual rule commit creates its baseline before any freshness read.
     workspace.requirementBaseline = createRequirementBaselineSnapshot({
       runId: "manual-rules", requirementText: workspace.requirementText, rules: workspace.rules,
-      previousBaseline: workspace.requirementBaseline, origin: "manual",
+      previousBaseline: workspace.requirementBaseline,
     });
     expect(feasibilityArtifactState(workspace).businessFlowStale).toBe(true);
   });

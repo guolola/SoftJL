@@ -29,8 +29,8 @@ function workspace() {
     designModels: { "design-order": designData, "design-pages": designUi }, generatedDesignDiagramTypes: ["class", "navigation"],
     designInputFingerprints: { "design-order": designFingerprint, "design-pages": designFingerprint },
     designModelTraceability: [
-      { source: { modelId: "design-order", diagramKind: "class", elementId: "order", elementKind: "class", label: "Order" }, targets: [requirementModelTraceability[0].target], rationale: "承接订单数据", },
-      { source: { modelId: "design-pages", diagramKind: "navigation", elementId: "a", elementKind: "screen", label: "列表页" }, targets: [requirementModelTraceability[1].target], rationale: "承接原型页面", },
+      { source: { modelId: "design-order", diagramKind: "class", elementId: "order", elementKind: "class", label: "Order" }, targets: [requirementModelTraceability[0].target],  },
+      { source: { modelId: "design-pages", diagramKind: "navigation", elementId: "a", elementKind: "screen", label: "列表页" }, targets: [requirementModelTraceability[1].target],  },
     ],
   });
 }
@@ -57,7 +57,7 @@ describe("dependency-scoped workspace freshness", () => {
       designInputFingerprints: { "sequence:a": designFingerprint, "sequence:b": designFingerprint },
       designModelTraceability: ["a", "b"].map((id, index) => ({ source: { modelId: `sequence:${id}`,
         diagramKind: "sequence", elementId: "m", elementKind: "message", label: "提交订单" },
-        targets: [trace[index].target], rationale: "承接对应需求分析", })),
+        targets: [trace[index].target],  })),
     }));
     const { result } = renderHook(() => useWorkspaceSession(), { wrapper: ({ children }) => withWorkspaceProviders(children, repository) });
     await waitFor(() => expect(result.current.workspaceInitialized).toBe(true));

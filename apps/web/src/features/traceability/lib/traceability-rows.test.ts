@@ -17,7 +17,7 @@ describe("traceability row builders", () => {
     expect(overview).toHaveLength(3);
     expect(overview.every(row => row.status === "mapped")).toBe(true);
   });
-  it("counts only existing targets of allowed types and counts duplicate valid mappings once", () => {
+  it("counts only existing rules and targets, regardless of rule type, and deduplicates valid mappings", () => {
     const model = {
       diagramKind: "function" as const, modelId: "config", title: "系统配置", summary: "配置", notes: [],
       nodes: [{ id: "configure", name: "系统配置", description: "安装时进行配置", sourceRequirementIds: ["r1"] }], relationships: [],
@@ -28,10 +28,11 @@ describe("traceability row builders", () => {
     ];
     const entry: RequirementModelTraceabilityEntry = { ruleId: "r1", target: { diagramKind: "function", elementId: "configure", elementKind: "function", label: "系统配置" } };
     for (const trace of [
-      { ...entry, ruleId: "missing" }, { ...entry, ruleId: "r2" },
+      { ...entry, ruleId: "missing" },
       { ...entry, target: { ...entry.target, elementId: "missing" } },
       { ...entry, target: { ...entry.target, modelId: "other-model" } },
     ]) expect(buildRequirementRows(rules, { config: model }, [trace])[0]?.status).toBe("unmapped");
+    expect(buildRequirementRows(rules, { config: model }, [{ ...entry, ruleId: "r2" }])[0]?.status).toBe("mapped");
     expect(buildRequirementRows(rules, { config: model }, [entry, entry])[0]?.status).toBe("mapped");
     expect(buildRequirementRows(rules, { a: { ...model, modelId: "a" }, b: { ...model, modelId: "b" } }, [entry]).every(row => row.status === "unmapped")).toBe(true);
   });
@@ -121,8 +122,8 @@ describe("traceability row builders", () => {
             elementKind: "class",
             label: "Book",
           },
-          mappingSource: "llm",
-          rationale: "系统按相关图类型兜底补齐，需人工复核。",
+
+
         },
       ],
     );
@@ -260,27 +261,22 @@ describe("traceability row builders", () => {
             elementKind: "class",
             label: "BorrowingService",
           },
-          upstreamDesignRefs: [
-            {
-              diagramKind: "sequence",
-              modelId: "sequence:borrow-book",
-              elementId: "BorrowingService",
-              elementKind: "participant",
-              label: "借书服务调用",
-            },
-          ],
-          targets: [
-            {
+
+          targets: [{
               diagramKind: "usecase",
               modelId: "usecase",
               elementId: "borrow-book",
               elementKind: "usecase",
               label: "借书",
-            },
-          ],
-          mappingSource: "llm",
-          rationale:
-            "未找到明确上游来源，系统仅按最接近的需求元素临时补齐；请在跟踪矩阵中采纳、忽略或稍后处理。",
+            }, {
+              diagramKind: "sequence",
+              modelId: "sequence:borrow-book",
+              elementId: "BorrowingService",
+              elementKind: "participant",
+              label: "借书服务调用",
+            }],
+
+
         },
       ]);
 

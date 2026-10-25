@@ -26,9 +26,6 @@ export function compactPromptTraceability(value: unknown): unknown {
       ...(entry.source ? { source: ref(entry.source) } : {}),
       ...(entry.target ? { target: ref(entry.target) } : {}),
       ...(entry.targets ? { targets: rows(entry.targets).map(ref) } : {}),
-      ...(entry.upstreamDesignRefs ? { upstreamDesignRefs: rows(entry.upstreamDesignRefs).map(ref) } : {}),
-      ...(entry.mappingSource ? { mappingSource: entry.mappingSource } : {}),
-      ...(entry.rationale ? { rationale: entry.rationale } : {}),
     };
   });
 }

@@ -24,17 +24,23 @@ function countTextTokens(text: string, model: string) {
 
 export function engineeringContextBudget(input: StreamChatCompletionInput, capacity?: ModelCapacity) {
   const context = capacity?.context ?? null;
-  const output = Math.max(1, Math.min(input.maxOutputTokens ?? 16_384, capacity?.output ?? 16_384, context ? Math.floor(context / 3) : Infinity));
   // Images reserve a separate diagnostic allowance, never their base64 byte length.
   let images = 0;
   const messages = input.messages.map(message => ({ ...message, content: typeof message.content === "string" ? message.content : message.content.flatMap(part => {
     if (part.type === "image_url") { images++; return []; }
     return [part];
   }) }));
-  const counted = countTextTokens(JSON.stringify({ messages, responseFormat: input.responseFormat }), input.providerSettings.model);
+  const counted = countTextTokens(JSON.stringify({ messages, responseFormat: input.responseFormat, tools: input.tools, toolChoice: input.toolChoice }), input.providerSettings.model);
   const estimatedInput = counted.tokens + 1024 + images * 8192;
+  const enforceable = context !== null && counted.method !== "character-estimate" && images === 0;
+  // The catalog owns output capacity. Only a reliable input count can reduce it
+  // to the remaining context; provider-specific estimates stay diagnostic.
+  const limits = [input.maxOutputTokens, capacity?.output,
+    enforceable ? Math.max(1, context - estimatedInput) : undefined,
+  ].filter((value): value is number => value !== undefined && value !== null);
+  const output = limits.length ? Math.max(1, Math.min(...limits)) : null;
   return { context, output, estimatedInput, tokenMethod: counted.method, estimated: true,
-    enforceable: context !== null && counted.method !== "character-estimate" && images === 0,
+    enforceable,
     capacitySource: capacity?.context ? capacity.source : "unknown" };
 }
 
@@ -42,11 +48,11 @@ export function withEngineeringContextBudget(transport: LlmTransport, capacity?:
   return { async *streamChatCompletion(input) {
     const budget = engineeringContextBudget(input, capacity);
     const exceeded = () => new RunPipelineError(createRunError("RUN_CONTEXT_LIMIT_EXCEEDED",
-      `上下文容量不足：输入估算 ${(budget.estimatedInput / 1000).toFixed(1)}k，输出预留 ${(budget.output / 1000).toFixed(1)}k，${budget.context === null ? "模型容量未知" : `容量 ${(budget.context / 1000).toFixed(1)}k`}。请选择更大上下文模型或缩小范围；估算不用于计费。`,
+      `上下文容量不足：输入估算 ${(budget.estimatedInput / 1000).toFixed(1)}k，${budget.output === null ? "输出容量未知" : `输出预留 ${(budget.output / 1000).toFixed(1)}k`}，${budget.context === null ? "模型容量未知" : `容量 ${(budget.context / 1000).toFixed(1)}k`}。请选择更大上下文模型或缩小范围；估算不用于计费。`,
       { details: { contextBudget: budget } },
     ));
-    if (budget.enforceable && budget.context !== null && budget.estimatedInput + budget.output > budget.context) throw exceeded();
-    try { yield* transport.streamChatCompletion({ ...input, maxOutputTokens: budget.output }); }
+    if (budget.enforceable && budget.context !== null && budget.estimatedInput + (budget.output ?? 0) > budget.context) throw exceeded();
+    try { yield* transport.streamChatCompletion({ ...input, ...(budget.output === null ? {} : { maxOutputTokens: budget.output }) }); }
     catch (error) {
       // Provider-specific tokenizers and image accounting may differ from estimates.
       if (error instanceof Error && /context_length_exceeded|maximum context length|context window|too many tokens|input.*token.*limit/i.test(error.message)) throw exceeded();

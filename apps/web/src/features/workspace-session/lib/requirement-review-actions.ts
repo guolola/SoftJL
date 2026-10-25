@@ -21,7 +21,7 @@ interface RequirementRuleActionsInput {
 }
 export function useRequirementRuleActions({
    createRequirementRuleBase, deleteRequirementRuleBase,
-  requirementBaseline, requirementText, rules: previousRules, setRequirementBaseline,
+  requirementBaseline, requirementText, setRequirementBaseline,
   updateRequirementRuleBase,
 }: RequirementRuleActionsInput) {
   // Resolve after the slice assigns IDs and normalizes the actual saved rules.
@@ -31,13 +31,11 @@ export function useRequirementRuleActions({
       requirementText,
       rules,
       previousBaseline: requirementBaseline,
-      previousRules,
-      origin: "manual",
     });
     setRequirementBaseline(baseline);
 
-    return { requirementBaseline: baseline, requirementQualityReport: baseline.qualityReport,  };
-  }, [requirementBaseline, requirementText, previousRules, setRequirementBaseline]);
+    return { requirementBaseline: baseline };
+  }, [requirementBaseline, requirementText, setRequirementBaseline]);
 
   const createRequirementRule = useCallback((input: RequirementRuleCreateInput) => {
     createRequirementRuleBase(input, snapshotRules);

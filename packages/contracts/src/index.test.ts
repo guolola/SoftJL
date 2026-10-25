@@ -109,24 +109,20 @@ test("design traceability scope helpers inspect targets and upstream design refs
       elementKind: "usecase",
       label: "登录",
     },
-    targets: [
-      {
+    targets: [{
         modelId: "sequence:uc_login",
         diagramKind: "sequence",
         elementId: "msg-1",
         elementKind: "message",
         label: "提交登录",
-      },
-    ],
-    upstreamDesignRefs: [
-      {
+      }, {
         modelId: "class",
         diagramKind: "class",
         elementId: "UserService",
         elementKind: "class",
         label: "UserService",
-      },
-    ],
+      }],
+
   };
   assert.equal(designTraceabilityTouchesDiagramKinds(entry, ["sequence"]), true);
   assert.equal(designTraceabilityTouchesDiagramKinds(entry, ["table"]), false);
@@ -243,51 +239,14 @@ test("contracts describe source-attributed requirement baselines", () => {
       version: 1,
       sourceInputFingerprint: "test-source-input",
     runId: "run-baseline",
-    sourceDocumentId: "inline-requirement",
     schemaVersion: 3 as const,
 
-      rules: [{ id: "REQ-001", requirementId: ("REQ-001"), text: ("借阅者必须登录后才能借书。"), sourceFragment: ("借阅者必须登录后才能借书。"), type: "functional" as const, origin: "generated" as const }],
-    assumptions: [
-      {
-        id: "ASM-001",
-        requirementId: "REQ-001",
-        text: "登录状态由平台会话判断。",
-        rationale: "原始需求没有指定认证服务。",
-        confidence: 0.72,
-        status: "derived",
-      },
-    ],
-    conflicts: [
-      {
-        id: "CON-001",
-        requirementIds: ["REQ-001", "REQ-002"],
-        description: "借阅权限规则互相冲突。",
-        severity: "critical",
-        status: "conflict",
-      },
-    ],
-    qualityReport: {
-      runId: "run-baseline",
-      status: "blocked",
-      summary: "发现 1 个冲突。",
-      issues: [
-        {
-          id: "ISS-001",
-          requirementId: "REQ-001",
-          severity: "critical",
-          code: "conflict",
-          message: "借阅权限规则互相冲突。",
-          blocksDownstream: true,
-        },
-      ],
-      blockingIssueIds: ["ISS-001"],
-      reviewRequiredRequirementIds: ["REQ-001"],
-    },
+      rules: [{ id: "REQ-001", requirementId: "REQ-001", text: "借阅者必须登录后才能借书。", sourceFragment: "借阅者必须登录后才能借书。", type: "functional" as const }],
     createdAt: "2026-05-24T00:00:00.000Z",
   });
 
   assert.equal(baseline.rules[0]?.sourceFragment, "借阅者必须登录后才能借书。");
-  assert.equal(baseline.qualityReport.status, "blocked");
+  assert.equal("qualityReport" in baseline, false);
 });
 
 
@@ -564,21 +523,10 @@ test("contracts accept existing design context for incremental design runs", () 
       version: 1,
       sourceInputFingerprint: "test-source-input",
     runId: "run-baseline",
-    sourceDocumentId: "inline-requirement",
     createdAt: "2026-06-05T00:00:00.000Z",
     schemaVersion: 3 as const,
 
-      rules: [{ id: "r1", requirementId: ("REQ-001"), text: ("管理员可以借书和还书。"), sourceFragment: ("管理员可以借书和还书。"), type: "functional" as const, origin: "generated" as const }],
-    assumptions: [],
-    conflicts: [],
-    qualityReport: {
-      runId: "run-baseline",
-      status: "passed",
-      summary: "需求基线已确认。",
-      issues: [],
-      blockingIssueIds: [],
-      reviewRequiredRequirementIds: [],
-    },
+      rules: [{ id: "r1", requirementId: "REQ-001", text: "管理员可以借书和还书。", sourceFragment: "管理员可以借书和还书。", type: "functional" as const }],
   });
   const parsed = startDesignRunRequestSchema.parse({
     requirementBaseline,
@@ -711,21 +659,10 @@ test("start run contracts accept optional project context", () => {
       version: 1,
       sourceInputFingerprint: "test-source-input",
     runId: "run-project",
-    sourceDocumentId: "inline-requirement",
     createdAt: "2026-06-05T00:00:00.000Z",
     schemaVersion: 3 as const,
 
-      rules: [{ id: "r1", requirementId: ("REQ-001"), text: ("生成设计模型"), sourceFragment: ("生成设计模型"), type: "functional" as const, origin: "generated" as const }],
-    assumptions: [],
-    conflicts: [],
-    qualityReport: {
-      runId: "run-project",
-      status: "passed",
-      summary: "需求基线已确认。",
-      issues: [],
-      blockingIssueIds: [],
-      reviewRequiredRequirementIds: [],
-    },
+      rules: [{ id: "r1", requirementId: "REQ-001", text: "生成设计模型", sourceFragment: "生成设计模型", type: "functional" as const }],
   });
   assert.equal(
     startRunRequestSchema.parse({
@@ -1497,8 +1434,8 @@ test("contracts require element-level traceability for generated model results",
             label: "UserDomain",
           },
         ],
-        mappingSource: "derived-from-endpoints",
-        rationale: "由关系两端设计元素的需求映射合并推导",
+
+
       },
     ],
   });
@@ -1506,22 +1443,20 @@ test("contracts require element-level traceability for generated model results",
     designModelsWithTrace.designModelTraceability[0]?.targets[0]?.label,
     "UserDomain",
   );
-  assert.equal(
-    designModelsWithTrace.designModelTraceability[0]?.mappingSource,
-    "derived-from-endpoints",
-  );
+  assert.deepEqual(Object.keys(designModelsWithTrace.designModelTraceability[0]!), ["source", "targets"]);
 });
 
-test("contracts reject removed mapping review and confidence fields", () => {
+test("contracts reject removed mapping annotations and review fields", () => {
   const source = { diagramKind: "class", elementId: "service", elementKind: "class", label: "Service" };
   const target = { diagramKind: "usecase", elementId: "borrow", elementKind: "usecase", label: "借书" };
-  for (const removed of [{ reviewStatus: "pending" }, { reviewStatus: "confirmed" }, { confidence: "low" }, { mappingSource: "auto-filled-pending-review" }]) {
+  for (const removed of [{ reviewStatus: "pending" }, { reviewStatus: "confirmed" }, { confidence: "low" },
+    { mappingSource: "llm" }, { rationale: "来源说明" }, { upstreamDesignRefs: [target] }]) {
     assert.equal(designDiagramModelsResultSchema.safeParse({ models: [], designModelTraceability: [{ source, targets: [target], ...removed }] }).success, false);
     assert.equal(diagramModelsResultSchema.safeParse({ models: [], requirementModelTraceability: [{ ruleId: "r1", target, ...removed }] }).success, false);
   }
 });
 
-test("contracts accept use-case scoped sequence models and upstream design refs", () => {
+test("contracts accept use-case scoped sequence models and design sources in targets", () => {
   const parsed = designDiagramModelsResultSchema.parse({
     models: [
       {
@@ -1558,23 +1493,19 @@ test("contracts accept use-case scoped sequence models and upstream design refs"
           elementKind: "message",
           label: "submitRequirement",
         },
-        targets: [
-          {
+        targets: [{
             diagramKind: "usecase",
             elementId: "uc_submit",
             elementKind: "usecase",
             label: "提交需求",
-          },
-        ],
-        upstreamDesignRefs: [
-          {
+          }, {
             modelId: "sequence:uc_submit",
             diagramKind: "sequence",
             elementId: "m_submit",
             elementKind: "message",
             label: "submitRequirement",
-          },
-        ],
+          }],
+
       },
     ],
   });
@@ -1587,7 +1518,7 @@ test("contracts accept use-case scoped sequence models and upstream design refs"
     "uc_submit",
   );
   assert.equal(
-    parsed.designModelTraceability[0]?.upstreamDesignRefs?.[0]?.modelId,
+    parsed.designModelTraceability[0]?.targets[1]?.modelId,
     "sequence:uc_submit",
   );
 });

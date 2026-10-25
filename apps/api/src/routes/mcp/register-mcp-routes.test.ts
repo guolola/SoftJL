@@ -347,7 +347,7 @@ function designWorkspace(summary: string) {
   };
 }
 
-test("MCP rejects obsolete and semantically invalid saved inputs without rewriting them", async (t) => {
+test("MCP rejects obsolete and contract-invalid saved inputs without rewriting them", async (t) => {
   const s = await setup();
   t.after(() => s.app.close());
   const service = createMcpToolService(s.access, await s.access.authenticate(s.headers.authorization));
@@ -355,14 +355,14 @@ test("MCP rejects obsolete and semantically invalid saved inputs without rewriti
   const states = [
     { designModels: { implementation: { diagramKind: "architecture", title: "旧结构" } } },
     { ...base, designModels: { implementation: { ...base.designModels.implementation,
-      relationships: [{ id: "missing-node", type: "contains", sourceId: "absent", targetId: "service" }],
+      relationships: [{ id: "invalid-source", type: "contains", sourceId: "", targetId: "service" }],
     } } },
     { ...base, designSvgArtifacts: { implementation: { diagramKind: "architecture", svg: "<svg/>" } } },
   ];
   for (const [baseVersion, state] of states.entries()) {
     await s.authStore.saveProjectWorkspace({ projectId: s.a.id, baseVersion, updatedByUserId: s.alice.id, state });
     const before = structuredClone(await s.authStore.getProjectWorkspace(s.a.id));
-    await assert.rejects(() => service.get_implementation_context(mcpContextInputSchema.parse({ projectId: s.a.id })));
+    await assert.rejects(() => service.get_implementation_context(mcpContextInputSchema.parse({ projectId: s.a.id })), `saved input ${baseVersion} must satisfy the current contract`);
     assert.deepEqual(await s.authStore.getProjectWorkspace(s.a.id), before);
   }
 });
@@ -373,10 +373,8 @@ test("MCP exports saved inputs without review opinions and review-only edits kee
   const state = { ...designWorkspace("落实平台设计"),
     requirementBaseline: {
           schemaVersion: 3, id: "baseline-test", version: 1, sourceInputFingerprint: "test-source-input",
-          runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
-           assumptions: [], conflicts: [],
-          qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
-          rules: [{ id: "BORROW", requirementId: ("BORROW"), text: ("借阅"), sourceFragment: ("借阅"), origin: "generated", type: "functional" as const }],
+          runId: "test", createdAt: "2026-01-01T00:00:00Z",
+          rules: [{ id: "BORROW", requirementId: "BORROW", text: "借阅", sourceFragment: "借阅", type: "functional" as const }],
         },
     visualReviews: { "design:implementation": { status: "pending_review", issues: ["private-review-opinion"],
       reason: "private-review-opinion", attempts: 1, checkedAt: "2026-10-18T00:00:00.000Z",

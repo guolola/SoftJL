@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { designInputFingerprint, snapshotInputFingerprint, startDocumentRunRequestSchema, createRequirementBaselineSnapshot, requirementBaselineSchema, type DesignDiagramModelSpec } from "@uml-platform/contracts";
-import { modelFixture, parallelObjectActivityFixture } from "@uml-platform/contracts/testing";
+import { modelFixture, parallelActivityFixture, objectActivityFixture } from "@uml-platform/contracts/testing";
 
 import { parseRequirementDiagramModelsOnly } from "../requirements/requirement-model-normalizer.js";
 import { collectModelRefs } from "@uml-platform/contracts";
@@ -24,7 +24,7 @@ test("external rule edits rebuild the saved baseline and remove deleted rules", 
   const baseline = requirementBaselineSchema.parse(saved.requirementBaseline);
   assert.equal(baseline.rules?.[0]?.text, state.rules[0]!.text);
   assert.equal(baseline.rules?.[0]?.requirementId, old.rules![0]!.requirementId);
-  assert.equal(baseline.rules?.[0]?.origin, "manual-edited");
+  assert.equal("origin" in baseline.rules[0]!, false);
   assert.deepEqual(requirementBaselineSchema.parse(normalizeWorkspaceModelState({ ...saved, rules: [] }).requirementBaseline).rules, []);
   assert.equal(old.rules![0]!.text, rule.text);
 });
@@ -64,22 +64,24 @@ test("saving a rule edit preserves unrelated requirement and design model freshn
   assert.deepEqual(reloaded.designInputFingerprints, saved.designInputFingerprints);
 });
 
-test("activity pins and object flows survive parsing, saving and redraw without mandatory pin trace entries", () => {
-  const generated = parseRequirementDiagramModelsOnly(JSON.stringify({ models: [parallelObjectActivityFixture()] })).models[0]!;
+test("vertical lane flows survive parsing, saving and redraw with their exact graph", () => {
+  const generated = parseRequirementDiagramModelsOnly(JSON.stringify({ models: [parallelActivityFixture()] })).models[0]!;
   const state = normalizeWorkspaceModelState({ models: { activity: generated } });
   assert.deepEqual((state.models as Record<string, unknown>).activity, generated);
   const artifact = generatePlantUmlArtifacts([generated])[0]!;
-  assert.ok(artifact.renderMapping?.elements.some((item) => item.elementId === "invoiceIn"));
-  assert.ok(artifact.renderMapping?.relationships.some((item) => item.relationshipId === "invoice"));
-  const { refs } = collectModelRefs([generated]);
-  assert.ok(refs.some((ref) => ref.elementId === "invoice"));
-  assert.ok(!refs.some((ref) => ref.elementId === "invoiceIn"));
+  assert.equal(artifact.renderMapping?.mode, "native");
+  assert.ok(artifact.renderMapping?.elements.some(item => item.elementId === "settle"));
+  assert.ok(artifact.renderMapping?.relationships.some(item => item.relationshipId === "right"));
+  const { refs } = collectModelRefs([generated], true);
+  assert.ok(refs.some(ref => ref.elementId === "right"));
+  assert.throws(() => parseRequirementDiagramModelsOnly(JSON.stringify({ models: [objectActivityFixture()] })));
+  assert.throws(() => normalizeWorkspaceModelState({ models: { activity: objectActivityFixture() } }));
 });
 
 test("workspace writes enforce feasibility profiles and reject malformed model collections", () => {
   assert.throws(() => normalizeWorkspaceModelState({ models: [] }), /models/);
   assert.throws(() => normalizeWorkspaceModelState({ feasibilityContextModel: modelFixture("feasibility", "activity") }), /stage-model/);
-  assert.throws(() => normalizeWorkspaceModelState({ feasibilityBusinessFlow: { model: parallelObjectActivityFixture() } }));
+  assert.throws(() => normalizeWorkspaceModelState({ feasibilityBusinessFlow: { model: objectActivityFixture() } }));
   assert.throws(() => normalizeWorkspaceModelState({ feasibilityBusinessFlow: { model: modelFixture("feasibility", "activity") } }));
   const flow = {
     model: modelFixture("feasibility", "activity"),

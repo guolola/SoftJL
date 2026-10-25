@@ -38,12 +38,7 @@ test("duplicate lane identifiers authorize only their lane references", () => {
   assert.deepEqual(diagnostic.relatedPaths, ["nodes.1.actorOrLane"]);
 });
 
-test("nested pin and sequence auxiliary collisions point to their declarations", () => {
-  const activity = objectActivityFixture();
-  const work = activity.nodes.find(node => node.type === "activity")!;
-  if (work.type !== "activity") throw new Error("fixture");
-  work.outputPins![0]!.id = "work";
-  assert.ok(validateModelInput(activity, "requirements").some(issue => issue.code === "duplicate-id" && issue.path === "nodes.1.outputPins.0.id"));
+test("sequence auxiliary collisions point to their declarations", () => {
   const sequence = modelFixture("design", "sequence");
   if (sequence.diagramKind !== "sequence") throw new Error("fixture");
   sequence.activations = [{ id: "m", participantId: "b", startMessageId: "m", endMessageId: "m" }];
@@ -80,19 +75,21 @@ test("boundary membership, extension references and actor/usecase directions are
   const codes = validateModelInput(model, "requirements").map((issue) => issue.code);
   assert.ok(codes.includes("invalid-endpoints") && codes.includes("missing-reference"));
 });
-test("objects, pins, repeated action names and distinct final semantics survive validation", () => {
-  const model = objectActivityFixture();
-  assert.deepEqual(validateModelSemantics(model, "requirements"), []);
-  model.relationships.push({ id: "again", type: "control_flow", sourceId: "consume", targetId: "work" });
-  assert.deepEqual(validateModelSemantics(model, "requirements"), []);
-  model.relationships.find((edge) => edge.id === "data2")!.targetId = "out";
-  assert.ok(validateModelSemantics(model, "requirements").some((issue) => issue.code === "invalid-endpoints"));
+test("requirements and feasibility reject obsolete object-flow models without rewriting them", () => {
+  const model = objectActivityFixture(), before = structuredClone(model);
+  for (const stage of ["requirements", "feasibility"] as const) assert.ok(validateModelInput(model, stage).some(issue => issue.code === "contract"));
+  assert.deepEqual(model, before);
 });
-test("object types and pin identifiers are authoritative", () => {
-  const model = objectActivityFixture();
-  const object = model.nodes.find((node) => node.type === "object")!;
-  if (object.type === "object") object.dataType = "Invoice";
-  assert.ok(validateModelSemantics(model, "requirements").some((issue) => issue.code === "object-type"));
+test("both flow stages reject unsupported node kinds, object flows and even empty pin fields", () => {
+  for (const stage of ["requirements", "feasibility"] as const) for (const change of [
+    (model: any) => { model.nodes[1].type = "object"; model.nodes[1].dataType = "Order"; },
+    (model: any) => { model.nodes[2].type = "flow_final"; },
+    (model: any) => { model.nodes[1].inputPins = []; },
+    (model: any) => { model.relationships[0].type = "object_flow"; },
+  ]) {
+    const model = modelFixture(stage, "activity"); change(model);
+    assert.ok(validateModelInput(model, stage).length);
+  }
 });
 test("bad package membership and containment cycles fail before rendering", () => {
   const model = modelFixture("design", "architecture") as any;
@@ -145,14 +142,11 @@ test("crossing fragments, invalid parent branches and activation intervals are r
   assert.ok(validateModelInput(model, "design").some((issue) => issue.code === "activation-overlap"));
 });
 
-test("object types propagate through fork and join, while global ID collisions cannot hide in auxiliary collections", () => {
-  const model = objectActivityFixture();
-  model.nodes.push({ id: "fork", type: "fork" }, { id: "other", type: "object", name: "发票", dataType: "Invoice" });
-  model.relationships.find((edge) => edge.id === "data1")!.targetId = "fork";
-  model.relationships.push({ id: "split1", type: "object_flow", sourceId: "fork", targetId: "data" }, { id: "split2", type: "object_flow", sourceId: "fork", targetId: "other" });
-  assert.ok(validateModelInput(model, "requirements").some((issue) => issue.code === "object-type"));
+test("activity node IDs cannot collide with lane IDs", () => {
+  const model = modelFixture("requirements", "activity");
+  if (model.diagramKind !== "activity") throw new Error("fixture");
   model.swimlanes[0]!.id = "work";
-  assert.ok(validateModelInput(model, "requirements").some((issue) => issue.code === "duplicate-id"));
+  assert.ok(validateModelInput(model, "requirements").some(issue => issue.code === "duplicate-id"));
 });
 
 test("business concept names do not trigger implementation heuristics", () => {

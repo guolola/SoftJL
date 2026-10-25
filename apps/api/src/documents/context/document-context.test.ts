@@ -64,8 +64,8 @@ test("software design documents omit pending traceability review appendix", () =
             label: "借书",
           },
         ],
-        mappingSource: "llm",
-        rationale: "缺失映射由系统自动补齐",
+
+
       },
     ],
   });
@@ -93,20 +93,9 @@ test("software design documents preserve accepted numeric business constraints",
       version: 1,
       sourceInputFingerprint: "test-source-input",
       runId: "run-requirements",
-      sourceDocumentId: "requirements-input",
       schemaVersion: 3 as const,
 
-      rules: [{ id: "R3", requirementId: ("B03"), text: ("报销总额达到5000元（包含正好5000元）时必须由直属经理审批。"), sourceFragment: ("报销总额达到5000元（包含正好5000元）时必须由直属经理审批。"), type: "functional" as const, origin: "generated" as const }],
-      assumptions: [],
-      conflicts: [],
-      qualityReport: {
-        runId: "run-requirements",
-        status: "passed",
-        summary: "已确认",
-        issues: [],
-        blockingIssueIds: [],
-        reviewRequiredRequirementIds: [],
-      },
+      rules: [{ id: "R3", requirementId: "B03", text: "报销总额达到5000元（包含正好5000元）时必须由直属经理审批。", sourceFragment: "报销总额达到5000元（包含正好5000元）时必须由直属经理审批。", type: "functional" as const }],
       createdAt: "2026-07-30T00:00:00.000Z",
     },
   });
@@ -183,9 +172,8 @@ test("requirements documents omit trace basis column from rule mapping tables", 
           elementId: "Book",
           label: "Book",
         },
-        mappingSource: "llm",
-        rationale:
-          "未找到明确来源，系统仅按相关图类型临时补齐；请在跟踪矩阵中采纳、忽略或稍后处理。",
+
+
       },
       {
         ruleId: "r2",
@@ -195,9 +183,8 @@ test("requirements documents omit trace basis column from rule mapping tables", 
           elementId: "BookSearch",
           label: "图书检索",
         },
-        mappingSource: "llm",
-        rationale:
-          "系统按需求规则文本和模型元素名称的相似度补齐；请在跟踪矩阵中确认是否采纳。",
+
+
       },
     ],
     useAiText: false,
@@ -438,27 +425,22 @@ test("software design class matrix includes declared ID mappings", () => {
           elementId: "BorrowingService",
           label: "BorrowingService",
         },
-        upstreamDesignRefs: [
-          {
-            diagramKind: "sequence",
-            modelId: "sequence:borrow",
-            elementKind: "participant",
-            elementId: "BorrowingService",
-            label: "借书实现",
-          },
-        ],
-        targets: [
-          {
+
+        targets: [{
             diagramKind: "usecase",
             modelId: "usecase:requirements",
             elementKind: "useCase",
             elementId: "UC-Borrow",
             label: "借书",
-          },
-        ],
-        mappingSource: "llm",
-        rationale:
-          "未找到明确上游来源，系统仅按最接近的需求元素临时补齐；请在跟踪矩阵中采纳、忽略或稍后处理。",
+          }, {
+            diagramKind: "sequence",
+            modelId: "sequence:borrow",
+            elementKind: "participant",
+            elementId: "BorrowingService",
+            label: "借书实现",
+          }],
+
+
       },
     ],
     useAiText: false,
@@ -477,7 +459,7 @@ test("software design class matrix includes declared ID mappings", () => {
   assert.deepEqual(traceSection.table?.rows[0], [
     "1",
     "BorrowingService",
-    "用例图：借书",
+    "用例图：借书；用例实现设计：借书实现",
   ]);
   assert.equal(
     traceSection.table?.rows.flat().some((cell) =>
@@ -509,9 +491,8 @@ test("software design class matrix presents declared source labels without revie
             label: "借书",
           },
         ],
-        mappingSource: "llm",
-        rationale:
-          "未找到明确上游来源，系统仅按最接近的需求元素临时补齐；请在跟踪矩阵中采纳、忽略或稍后处理。",
+
+
       },
     ],
     useAiText: false,

@@ -610,7 +610,7 @@ describe("buildLineageGraph", () => {
     const graph = buildLineageGraph(
       input({
         rules: [{ ...baseRule, type: "data" }],
-        requirementModelTraceability: [{ ruleId: baseRule.id, mappingSource: "llm", target: { diagramKind: "class", elementId: "resource", elementKind: "class", label: "资源" } }],
+        requirementModelTraceability: [{ ruleId: baseRule.id,  target: { diagramKind: "class", elementId: "resource", elementKind: "class", label: "资源" } }],
         models: {
           usecase: model("usecase"),
           class: model("class"),

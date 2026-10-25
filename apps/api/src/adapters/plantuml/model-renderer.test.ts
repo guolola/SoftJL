@@ -6,7 +6,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { deriveTableModel, getModelGraphElements, getStageModelSchemas, type AnyDiagramModel, type ModelingStage } from "@uml-platform/contracts";
-import { modelFixture, objectActivityFixture, parallelObjectActivityFixture } from "@uml-platform/contracts/testing";
+import { modelFixture, objectActivityFixture, parallelActivityFixture } from "@uml-platform/contracts/testing";
 import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "./model-renderer.js";
 import { umlAlias } from "./plantuml-text.js";
 
@@ -69,19 +69,9 @@ test("3-5 class role names, cardinalities, abstract/static members and navigabil
   model.relationships[0].type = "composition"; model.relationships[0].navigability = "bidirectional";
   source = draw(model).source; assert.match(source, /\*-->/); assert.ok(source.includes("{navigable}")); compile(source);
 });
-test("6-8 activity explicitly maps object flow, repeated names, loops and two final types", () => {
+test("obsolete object-flow activities are rejected instead of drawn with another layout", () => {
   const model = objectActivityFixture();
-  model.relationships.push({ id: "loop", type: "control_flow", sourceId: "consume", targetId: "work", guard: "后续订单仍存在且每个审批条件全部成立" });
-  const artifact = draw(model, "requirements"), svg = compile(artifact.source);
-  assert.equal(artifact.renderMapping?.mode, "explicit-graph");
-  assert.equal(artifact.renderMapping?.relationships.length, model.relationships.length);
-  assert.ok(artifact.source.includes(`${umlAlias("out")} --> ${umlAlias("data")}`));
-  assert.ok(artifact.source.includes(`${umlAlias("data")} --> ${umlAlias("in")}`));
-  assert.equal(artifact.source.match(/rectangle "处理"/g)?.length, 2);
-  assert.ok(artifact.source.includes("●") && artifact.source.includes("×"));
-  assert.match(artifact.source, /usecase "<size:18>●<\/size>"/);
-  assert.match(artifact.source, /usecase "<size:18>×<\/size>"/);
-  for (const item of getModelGraphElements(model)) assert.ok(svg.includes(umlAlias(item.id)));
+  for (const stage of ["requirements", "feasibility"] as const) assert.throws(() => draw(model, stage), /contract|unsupported-field/);
 });
 test("9 return navigation keeps source-to-destination and complete trigger/guard", () => {
   const model = modelFixture("design", "navigation") as any;
@@ -159,11 +149,14 @@ test("review mapping preserves labels, symbols, ownership and distinct parallel 
   compile(artifact.source);
 });
 
-test("parallel control and object flows preserve multiple pins and cross-partition endpoints", () => {
-  const model = parallelObjectActivityFixture(), artifact = draw(model, "requirements"), svg = compile(artifact.source);
-  for (const item of getModelGraphElements(model)) assert.ok(svg.includes(umlAlias(item.id)), `Missing ${item.id}`);
-  for (const edge of model.relationships) assert.ok(artifact.source.includes(`${umlAlias(edge.sourceId)} --> ${umlAlias(edge.targetId)}`));
-  assert.equal(artifact.renderMapping?.relationships.length, model.relationships.length);
+test("parallel control flows preserve lanes, all nodes and edges in both stages", () => {
+  const model = parallelActivityFixture();
+  const requirements = draw(model, "requirements"), feasibility = draw(model, "feasibility");
+  assert.equal(requirements.source, feasibility.source);
+  assert.equal(requirements.renderMapping?.mode, "native");
+  for (const item of getModelGraphElements(model)) assert.ok(requirements.renderMapping?.elements.some(entry => entry.elementId === item.id));
+  for (const edge of model.relationships) assert.ok(requirements.renderMapping?.relationships.some(entry => entry.relationshipId === edge.id && entry.sourceId === edge.sourceId && entry.targetId === edge.targetId));
+  const svg = compile(requirements.source);
   const visibleText = svg.replace(/&#x([\da-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16))).replace(/&#(\d+);/g, (_, number) => String.fromCodePoint(Number(number)));
   assert.ok(visibleText.includes("履约") && visibleText.includes("结算"));
 });

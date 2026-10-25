@@ -50,7 +50,6 @@ function applyRequirementBaselineToWorkspaceState(state: WorkspaceState, baselin
   const current = requirementBaselineSchema.safeParse(state.requirementBaseline);
   const resolved = reuseRequirementBaseline(current.success ? current.data : null, baseline);
   state.requirementBaseline = structuredClone(resolved);
-  state.requirementQualityReport = structuredClone(resolved.qualityReport);
 }
 
 export function restoreRunSnapshotToWorkspaceState({

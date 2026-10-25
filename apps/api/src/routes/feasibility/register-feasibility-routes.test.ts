@@ -29,7 +29,7 @@ const contextOutput = JSON.stringify({
   title: "维修预约系统上下文",
   summary: "系统边界",
   notes: [],
-  system: { id: "system", name: "维修预约系统", sourceRequirementIds: [] },
+  system: { id: "system", name: "维修预约系统", sourceRequirementIds: ["R9"] },
   people: [{ id: "technician", name: "技工", sourceRequirementIds: ["R9"] }],
   externalSystems: [],
   relationships: [{ id: "rel-1", sourceId: "technician", targetId: "system", direction: "directed", label: "计算总成本", sourceRequirementIds: ["R9"] }],
@@ -49,7 +49,11 @@ const businessFlowOutput = JSON.stringify({
       { id: "flow-2", type: "control_flow", sourceId: "calculate", targetId: "end" },
     ],
   },
-  traceability: [{ requirementId: "R9", targetId: "calculate", targetKind: "node" }],
+  traceability: [
+    ...["start", "calculate", "end"].map(targetId => ({ requirementId: "R9", targetId, targetKind: "node" })),
+    ...["flow-1", "flow-2"].map(targetId => ({ requirementId: "R9", targetId, targetKind: "relationship" })),
+    { requirementId: "R9", targetId: "system", targetKind: "swimlane" },
+  ],
 });
 
 function generatedCandidate(id: string, name: string) {
@@ -61,34 +65,34 @@ function generatedCandidate(id: string, name: string) {
       provenance: "ai-estimate",
       architecture: { summary: "模块化架构", modules: [{ name: "成本模块", responsibility: "计算总成本", sourceRequirementIds: ["R9"], provenance: "ai-estimate" }] },
       dataStrategy: { summary: "保存业务数据", sourceRequirementIds: ["R9"], provenance: "ai-estimate" }, integrations: [], integrationRationale: "当前规则未要求外部系统集成。",
-      deploymentAndOperations: { summary: "容器化部署", sourceRequirementIds: [], assumption: "目标环境尚未确认，按单节点容器估算", provenance: "ai-estimate" },
+      deploymentAndOperations: { summary: "容器化部署", sourceRequirementIds: ["R9"], assumption: "目标环境尚未确认，按单节点容器估算", provenance: "ai-estimate" },
       securityAndCompliance: { summary: "最小权限与审计", sourceRequirementIds: ["R9"], provenance: "ai-estimate" },
       milestones: [{ name: "核心交付", timeframe: "8–12 周", deliverables: ["可运行系统"], roles: ["开发者"], dependencies: [], dependencyRationale: "不依赖项目外部团队。", acceptanceCriteria: ["规则通过"], sourceRequirementIds: ["R9"], provenance: "ai-estimate" }],
       analysisPeriodAssumption: { years: 3, basis: "按教学项目常见生命周期", provenance: "ai-estimate" },
       costEstimates: [
-        { id: `${id}-capital`, name: "开发设备", category: "capital", frequency: "one-time", range, sourceRequirementIds: [], assumption: "按现有团队补充设备估算", provenance: "ai-estimate" },
-        { id: `${id}-once`, name: "上线准备", category: "other-one-time", frequency: "one-time", range, sourceRequirementIds: [], assumption: "按部署准备工时估算", provenance: "ai-estimate" },
-        { id: `${id}-recurring`, name: "运维服务", category: "recurring", frequency: "annual", range, sourceRequirementIds: [], assumption: "按年度服务估算", provenance: "ai-estimate" },
+        { id: `${id}-capital`, name: "开发设备", category: "capital", frequency: "one-time", range, sourceRequirementIds: ["R9"], assumption: "按现有团队补充设备估算", provenance: "ai-estimate" },
+        { id: `${id}-once`, name: "上线准备", category: "other-one-time", frequency: "one-time", range, sourceRequirementIds: ["R9"], assumption: "按部署准备工时估算", provenance: "ai-estimate" },
+        { id: `${id}-recurring`, name: "运维服务", category: "recurring", frequency: "annual", range, sourceRequirementIds: ["R9"], assumption: "按年度服务估算", provenance: "ai-estimate" },
       ],
       benefitEstimates: [
-        { id: `${id}-benefit-once`, name: "初始化节省", category: "one-time", frequency: "one-time", range, outcome: "减少初始化人工", sourceRequirementIds: [], assumption: "按人工时折算", provenance: "ai-estimate" },
+        { id: `${id}-benefit-once`, name: "初始化节省", category: "one-time", frequency: "one-time", range, outcome: "减少初始化人工", sourceRequirementIds: ["R9"], assumption: "按人工时折算", provenance: "ai-estimate" },
         { id: `${id}-benefit-recurring`, name: "效率收益", category: "recurring", frequency: "annual", range, outcome: "持续减少计算时间", sourceRequirementIds: ["R9"], provenance: "ai-estimate" },
         { id: `${id}-benefit-intangible`, name: "可追踪性", category: "intangible", frequency: "annual", range: null, outcome: "提高结果可追踪性", sourceRequirementIds: ["R9"], provenance: "ai-estimate" },
       ],
       absenceDeclarations: [],
-      risks: ["进度偏差", "估算偏差", "运维能力"].map((risk) => ({ risk, probability: "medium", impact: "medium", mitigation: "设置阶段检查点", owner: "项目经理", sourceRequirementIds: [], assumption: "基于方案实施特征", provenance: "ai-estimate" })),
+      risks: ["进度偏差", "估算偏差", "运维能力"].map((risk) => ({ risk, probability: "medium", impact: "medium", mitigation: "设置阶段检查点", owner: "项目经理", sourceRequirementIds: ["R9"], assumption: "基于方案实施特征", provenance: "ai-estimate" })),
       verdicts: ["technical", "operational", "schedule", "economic", "legal"].map((category) => ({ category, verdict: "conditional", rationale: "满足前置条件后可行", provenance: "ai-estimate" })),
       decision: "conditional-go", preconditions: ["确认真实预算与法律约束"],
     },
   };
 }
 
-const implementationOutput = JSON.stringify({
+const implementationOutput = JSON.stringify(normalizeFeasibilityImplementationDetailed({
   overview: "分阶段实现",
   candidates: [generatedCandidate("candidate-1", "模块化方案"), generatedCandidate("candidate-2", "托管服务方案")],
   recommendedCandidateId: "candidate-1",
   recommendationRationale: "综合成本、周期和风险后复杂度可控",
-});
+}, []).plan);
 
 function providerConfigs() {
   return {
@@ -140,7 +144,7 @@ function registerTestRoutes(input: {
       onReasoning?.(input.reasoning);
       const current = input.messages.at(-1)?.content;
       if (typeof current === "string" && /^核对 feasibility\.[a-z]+ 的结构与业务内容。/.test(current)) { yield '{"passed":true,"issues":[],"findings":[]}'; return; }
-      prompts.push(input.messages.map((message) => message.content).join("\n")); yield outputs.shift() ?? "{}";
+      prompts.push(input.messages.map((message) => [message.content, ...(message.toolCalls ?? []).map(call => call.function.arguments)].join("\n")).join("\n")); yield outputs.shift() ?? "{}";
     } },
     providerConfigs: providerConfigs() as never,
     modelCatalog: catalog,
@@ -270,7 +274,7 @@ test("persists the run before syncing context and implementation from the select
 test("generates a standalone business flow, repairs invalid references and emits persisted activity artifacts", async () => {
   const app = Fastify();
   const invalid = JSON.parse(businessFlowOutput);
-  invalid.model.relationships[0].targetId = "missing-node";
+  invalid.traceability[0].requirementId = "invented-rule";
   const { runs } = registerTestRoutes({ app, outputs: [JSON.stringify(invalid), businessFlowOutput] });
   const start = await app.inject({ method: "POST", url: "/api/feasibility-runs", headers: { authorization: "Bearer test" }, payload: {
     projectId: "project-1", selectedArtifacts: ["business-flow"], providerSettings: { providerConfigId: "provider-1", model: "test-model" },
@@ -383,7 +387,7 @@ test("repairs invalid context once and keeps new context when implementation sti
   await app.close();
 });
 
-test("section repair fixes integrations without overwriting valid economics", async () => {
+test("complete candidate repair fixes integrations while preserving valid economics", async () => {
   const app = Fastify();
   const externalContext = JSON.stringify({
     ...JSON.parse(contextOutput),
@@ -407,6 +411,7 @@ test("section repair fixes integrations without overwriting valid economics", as
   const invalidPlan = JSON.parse(implementationOutput);
   for (const candidate of invalidPlan.candidates) {
     candidate.implementation.integrations = [{
+      id: `${candidate.id}-integration-1`,
       name: "支付平台",
       contextExternalSystemId: "external-payment",
       sourceRequirementIds: ["R9"],
@@ -416,7 +421,6 @@ test("section repair fixes integrations without overwriting valid economics", as
   const repairedPlan = structuredClone(invalidPlan);
   for (const candidate of repairedPlan.candidates) {
     candidate.implementation.integrations[0].responsibility = "提交支付请求";
-    candidate.implementation.costEstimates[0].range.minimum = 999_999;
   }
   registerTestRoutes({
     app,
@@ -425,7 +429,6 @@ test("section repair fixes integrations without overwriting valid economics", as
       businessFlowOutput,
       JSON.stringify(invalidPlan),
       JSON.stringify(repairedPlan),
-      JSON.stringify({ targetId: "implementation", baseFingerprint: snapshotInputFingerprint(invalidPlan), changes: invalidPlan.candidates.map((candidate, index) => ({ path: `candidates.${index}.implementation.integrations.0.responsibility`, value: "提交支付请求" })) }),
     ],
   });
 
@@ -457,16 +460,13 @@ test("section repair fixes integrations without overwriting valid economics", as
   await app.close();
 });
 
-test("economics patches use one candidate's chapter and preserve the other complete candidate", async t => {
+test("complete economics corrections retain the other candidate", async t => {
   const app = Fastify(); t.after(() => app.close());
   const valid = JSON.parse(implementationOutput);
   valid.candidates[1].name = "OTHER_CANDIDATE_UNCHANGED";
   const invalid = structuredClone(valid);
   invalid.candidates[0].implementation.costEstimates[0].range.minimum = "invalid amount";
-  const patch = { targetId: "implementation", baseFingerprint: snapshotInputFingerprint(invalid), changes: [{
-    path: "candidates.0.implementation.costEstimates.0.range.minimum", value: 10_000,
-  }] };
-  const fixture = registerTestRoutes({ app, outputs: [contextOutput, businessFlowOutput, JSON.stringify(invalid), JSON.stringify(patch)] });
+  const fixture = registerTestRoutes({ app, outputs: [contextOutput, businessFlowOutput, JSON.stringify(invalid), JSON.stringify(valid)] });
   const start = await app.inject({ method: "POST", url: "/api/feasibility-runs", headers: { authorization: "Bearer test" }, payload: {
     projectId: "project-1", selectedArtifacts: ["context", "business-flow", "implementation"], providerSettings: { providerConfigId: "provider-1", model: "test-model" },
   } });
@@ -475,9 +475,9 @@ test("economics patches use one candidate's chapter and preserve the other compl
   assert.equal(snapshot.implementationPlan.candidates[0].implementation.costEstimates[0].range.minimum, 10_000);
   const expected = normalizeFeasibilityImplementationDetailed(valid, []).plan;
   assert.deepEqual(snapshot.implementationPlan.candidates[1].implementation, expected.candidates[1].implementation);
-  const repair = fixture.prompts.find(prompt => prompt.includes("仅修复候选方案索引"));
+  const repair = fixture.prompts.find(prompt => prompt.includes("costEstimates.0.range.minimum"));
   assert.ok(repair);
-  assert.ok(!repair.includes("OTHER_CANDIDATE_UNCHANGED"));
+  assert.ok(repair.includes("OTHER_CANDIDATE_UNCHANGED"), "complete candidates remain available in the original conversation");
   assert.ok(repair.includes("完成维护后计算总成本"));
 });
 
@@ -536,7 +536,8 @@ test("feasibility preserves business boundary questions and implementation recei
     { id: "no", type: "control_flow", sourceId: "decision", targetId: "end", guard: "数量<=10" },
     { id: "done", type: "control_flow", sourceId: "calculate", targetId: "end" },
   ];
-  flow.traceability.push({ requirementId: "R9", targetId: "yes", targetKind: "relationship" });
+  flow.traceability = flow.traceability.filter((entry: any) => entry.targetKind !== "relationship");
+  flow.traceability.push(...["initial", "yes", "no", "done"].map(targetId => ({ requirementId: "R9", targetId, targetKind: "relationship" })));
   flow.traceability.push({ requirementId: "R9", targetId: "decision", targetKind: "node" });
   const fixture = registerTestRoutes({ app, outputs: [contextOutput, JSON.stringify(flow), implementationOutput], state: {
     name: "维修预约系统", rules: [{ id: "R9", type: "functional" as const, text: "数量>=10时计算总成本",  }], requirementBaseline: baseline,
@@ -547,7 +548,7 @@ test("feasibility preserves business boundary questions and implementation recei
   assert.equal(snapshot.businessFlow.model.relationships[1].guard, "数量>10");
   assert.equal(snapshot.businessFlow.model.relationships[2].guard, "数量<=10");
   assert.equal(snapshot.visualReviews[flow.model.modelId].repairAttempts, 0);
-  assert.ok(snapshot.visualReviews[flow.model.modelId].findings.some((item: { category: string }) => item.category === "business_content"));
+  assert.equal(snapshot.visualReviews[flow.model.modelId].findings.length, 0);
   assert.ok(fixture.prompts.at(-1)?.includes("数量>10"));
   assert.ok(fixture.prompts.at(-1)?.includes("数量<=10"));
   await app.close();

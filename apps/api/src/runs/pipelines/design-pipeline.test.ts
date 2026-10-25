@@ -75,11 +75,11 @@ test("design generation repairs complete output in the same direct dependency co
     calls++;
     if (calls === 2) {
       assert.deepEqual(input.messages.map(message => message.role), ["system", "user", "assistant", "user"]);
-      assert.equal(input.messages[1]!.content, "只读取上游设计类图");
-      assert.match(String(input.messages.at(-1)!.content), /映射仍缺少/);
+      assert.match(String(input.messages[1]!.content), /只使用本次绑定的需求模型和上游设计模型/);
+      assert.match(String(input.messages.at(-1)?.content ?? ""), /mapping-coverage-missing/);
     }
-    yield calls === 1 ? JSON.stringify({ models: [generated], designModelTraceability: [declaration] }) : JSON.stringify({ models: [generated], designModelTraceability: collectModelRefs([generated]).refs.map(source => ({ source, targets: declaration.targets })) });
-  } }, [], ["component"], "只读取上游设计类图", "generate_design_models", { upstreamDesignModels: [upstream] });
+    yield calls === 1 ? JSON.stringify({ models: [generated], designModelTraceability: [declaration] }) : JSON.stringify({ models: [generated], designModelTraceability: collectModelRefs([generated], true).refs.map(source => ({ source, targets: declaration.targets })) });
+  } }, [], ["component"], "generate_design_models", { upstreamDesignModels: [upstream] });
   assert.equal(calls, 2);
   assert.equal(result.designModelTraceability.length, 3);
   assert.equal(result.designModelTraceability[0]!.targets[0]!.elementId, "order");
@@ -106,13 +106,13 @@ test("generation and repair both match event-flow references against the actual 
     calls++;
     if (calls === 2) {
       assert.deepEqual(input.messages.map(message => message.role), ["system", "user", "assistant", "user"]);
-      assert.match(String(input.messages.at(-1)!.content), /designModelTraceability\.0\.targets\.0/);
-      assert.match(String(input.messages.at(-1)!.content), /missing-flow/);
+      assert.match(String(input.messages.at(-1)?.content ?? ""), /designModelTraceability\.0\.targets\.0/);
+      assert.match(String(input.messages.at(-1)?.content ?? ""), /missing-flow/);
     }
-    yield JSON.stringify({ models: [generated], designModelTraceability: collectModelRefs([generated]).refs.map(source => ({
+    yield JSON.stringify({ models: [generated], designModelTraceability: collectModelRefs([generated], true).refs.map(source => ({
       source, targets: [{ modelId: upstream.modelId, diagramKind: "usecase", elementId: calls === 1 ? "missing-flow" : "EF_ORDER_MAIN", elementKind: "eventFlow", label: "下单主流程" }],
     })) });
-  } }, [upstream], ["sequence"], "根据已提供用例模型生成 JSON", "generate_design_sequence");
+  } }, [upstream], ["sequence"], "generate_design_sequence");
   assert.equal(calls, 2);
   assert.deepEqual(result.models, [generated]);
   assert.ok(result.designModelTraceability.every(binding => binding.targets[0]!.elementId === "EF_ORDER_MAIN"));

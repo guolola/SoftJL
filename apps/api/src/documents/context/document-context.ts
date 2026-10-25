@@ -499,7 +499,7 @@ function activityBody(input: StartDocumentRunRequest, stage: "requirement" | "de
   }
   return [
     ...(model.diagramKind === "activity" ? model.swimlanes.map((lane) => `泳道 ${lane.id}：${lane.name}`) : []),
-    ...model.nodes.map((node) => `节点 ${node.id}：${node.name ?? node.id}（${"type" in node ? node.type : node.nodeType}）${"dataType" in node ? `，对象类型 ${node.dataType}，状态 ${node.state ?? "未指定"}` : ""}${"route" in node && node.route ? `，路由 ${node.route}` : ""}${"inputPins" in node ? `，输入引脚 ${(node.inputPins ?? []).map((pin) => `${pin.id}:${pin.dataType}`).join("、")}，输出引脚 ${(node.outputPins ?? []).map((pin) => `${pin.id}:${pin.dataType}`).join("、")}` : ""}`),
+    ...model.nodes.map((node) => `节点 ${node.id}：${node.name ?? node.id}（${"type" in node ? node.type : node.nodeType}）${"actorOrLane" in node && node.actorOrLane ? `，所属泳道 ${node.actorOrLane}` : ""}${"route" in node && node.route ? `，路由 ${node.route}` : ""}`),
     ...model.relationships.map((edge) => `${edge.id}：${edge.sourceId} → ${edge.targetId}（${edge.type}）${"label" in edge && edge.label ? `，${edge.label}` : ""}${edge.condition ? `；条件：${edge.condition}` : ""}${edge.guard ? `；守卫：${edge.guard}` : ""}${edge.trigger ? `；触发：${edge.trigger}` : ""}`),
   ];
 }

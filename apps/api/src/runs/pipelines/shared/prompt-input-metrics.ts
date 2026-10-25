@@ -1,14 +1,16 @@
 // Measures prompt sections without persisting source text, credentials, image bytes, or guessed provider tokens.
 import type { RunInputMetrics } from "@uml-platform/contracts";
-import type { ChatMessage, ChatCompletionResponseFormat } from "../../../adapters/llm/llm-transport.js";
+import type { ChatMessage, ChatCompletionResponseFormat, ChatTool } from "../../../adapters/llm/llm-transport.js";
 
-export function promptInputMetrics(messages: ChatMessage[], responseFormat?: ChatCompletionResponseFormat | null): RunInputMetrics {
+export function promptInputMetrics(messages: ChatMessage[], responseFormat?: ChatCompletionResponseFormat | null, tools?: ChatTool[]): RunInputMetrics {
   const sections: Record<string, number> = {};
   let total = 0;
   let repair: RunInputMetrics["repair"];
   const add = (key: string, text: string) => { sections[key] = (sections[key] ?? 0) + text.length; };
   for (const message of messages) {
     const texts = typeof message.content === "string" ? [message.content] : message.content.flatMap(part => part.type === "text" ? [part.text] : []);
+    if (message.toolCalls) texts.push(JSON.stringify(message.toolCalls));
+    if (message.reasoningContent) { total += message.reasoningContent.length; add("reasoning", message.reasoningContent); }
     for (const text of texts) {
       total += text.length;
       let section = message.role === "assistant" ? "currentModel" : "instructions";
@@ -38,5 +40,6 @@ export function promptInputMetrics(messages: ChatMessage[], responseFormat?: Cha
       }
     }
   }
+  if (tools?.length) sections.tools = JSON.stringify(tools).length;
   return { unit: "utf16-characters", messages: total, responseFormat: responseFormat ? JSON.stringify(responseFormat).length : 0, sections, ...(repair ? { repair } : {}) };
 }

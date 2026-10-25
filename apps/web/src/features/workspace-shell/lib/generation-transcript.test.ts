@@ -356,12 +356,12 @@ describe("generation transcript", () => {
     expect(result.steps[0].entries?.map((entry) => entry.kind)).toEqual(["call", "message", "call"]);
   });
 
-  it("only shows executed steps and groups parallel rendering under workflow order", () => {
+  it("keeps the actual event order when independent branches overlap", () => {
     const result = projectGenerationTranscript([
       { type: "stage_progress", stage: "render_svg", progress: 90, subtaskId: "usecase", subtaskStatus: "running" },
       activity("a", "activity", "started"),
     ]);
-    expect(result.steps.map((step) => step.stage)).toEqual(["generate_models", "render_svg"]);
+    expect(result.steps.map((step) => step.stage)).toEqual(["render_svg", "generate_models"]);
     expect(result.steps).toHaveLength(2);
   });
 

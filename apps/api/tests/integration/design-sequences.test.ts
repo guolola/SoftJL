@@ -113,7 +113,7 @@ test("api rejects empty design sequence sources after the shared repair budget",
   assert.equal(prompts.length, 6);
   assert.deepEqual(snapshot.models, []);
   assert.deepEqual(snapshot.designModelTraceability, []);
-  assert.match(JSON.stringify(snapshot.diagramErrors), /designModelTraceability/);
+  assert.match(JSON.stringify(snapshot.diagramErrors), /mapping-coverage-missing/);
 
   await app.close();
 });

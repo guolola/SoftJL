@@ -8,7 +8,7 @@ export function completeRenderMapping(model: AnyDiagramModel, source: string, ma
   const items = new Map(graph.map((item) => [item.id, item]));
   const valueAt = (path: string): Record<string, unknown> => path.split(".").reduce<any>((value, key) => value?.[key], model) ?? {};
   const edges = "messages" in model ? model.messages : model.relationships;
-  const auxiliary: NonNullable<ModelRenderMapping["auxiliary"]> = [];
+  const auxiliary: NonNullable<ModelRenderMapping["auxiliary"]> = [...(mapping.auxiliary ?? [])];
   const add = (kind: string, item: { id: string; name?: string }, alias = umlAlias(item.id)) => auxiliary.push({ kind, elementId: item.id, label: item.name, alias });
   if (model.diagramKind === "usecase") model.systemBoundaries.forEach((item) => add("system-boundary", item));
   if (model.diagramKind === "activity") model.swimlanes.forEach((item) => add("swimlane", item, `lane_${umlAlias(item.id)}`));

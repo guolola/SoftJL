@@ -13,7 +13,7 @@ import {
   snapshotInputFingerprint,
   designRecordBelongsToDiagramKinds,
   resolveModelArtifactIdentity,
-  validateModelInput,
+  validateModelStructure,
   type ModelingStage,
   designTraceabilityTouchesDiagramKinds,
 
@@ -84,7 +84,7 @@ function runInputResolutionError(
 }
 
 function rejectInvalidModelStructures(models: unknown[], stage: ModelingStage): InputResolution<never> | null {
-  const diagnostics = models.flatMap((model) => validateModelInput(model, stage)).filter((issue) => issue.severity === "error");
+  const diagnostics = models.flatMap((model) => validateModelStructure(model, stage));
   return diagnostics.length ? runInputResolutionError(409, "MODEL_STRUCTURE_INVALID", { details: { diagnostics }, params: { count: diagnostics.length } }) : null;
 }
 

@@ -27,7 +27,6 @@ type Verify = (input: { root: string; snapshot: unknown; report: unknown; runChe
 function savedState(limit = 5) {
   const requirementText = `每位读者最多同时借阅${limit}本书，归还后可继续借阅；拒绝借阅不能增加已借数量。`;
   const rule = { id: "BORROW-RULE", type: "business-rule" as const, text: requirementText, sourceFragment: requirementText };
-  const qualityReport = { runId: "requirements-run", status: "passed", summary: "借阅约束已确认", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] };
   const analysis = {
     diagramKind: "class", modelId: "borrow-domain", title: "借阅领域", summary: "图书借阅概念", notes: [],
     classes: [{ id: "loan", name: "Loan", attributes: [], operations: [] }], interfaces: [], enums: [], relationships: [],
@@ -45,9 +44,9 @@ function savedState(limit = 5) {
     requirementBaseline: {
       id: "baseline-test",
       version: 1,
-      sourceInputFingerprint: "test-source-input", runId: "requirements-run", sourceDocumentId: "requirements-document", schemaVersion: 3 as const,
+      sourceInputFingerprint: "test-source-input", runId: "requirements-run", schemaVersion: 3 as const,
 
-      rules: [{ ...rule, requirementId: "BORROW", origin: "generated" as const }], assumptions: [], conflicts: [], qualityReport, createdAt: "2026-01-01T00:00:00Z" },
+      rules: [{ ...rule, requirementId: "BORROW" }], createdAt: "2026-01-01T00:00:00Z" },
     models: { "borrow-domain": analysis }, designModels: { "borrow-implementation": design },
     plantUml: { "borrow-domain": "@startuml\nclass Loan\n@enduml" },
     designPlantUml: { "borrow-implementation": `@startuml\nclass LoanService\nnote right of LoanService : 最多同时借阅${limit}本\n@enduml` },

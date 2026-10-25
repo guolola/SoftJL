@@ -75,7 +75,7 @@ export function createRunSnapshot(overrides: Partial<RunSnapshot> = {}): RunSnap
     snapshot.requirementBaseline = { ...createRequirementBaselineSnapshot({
       runId: baseline.runId, requirementText: snapshot.requirementText, rules: snapshot.rules,
       previousBaseline: baseline, createdAt: baseline.createdAt,
-    }), qualityReport: baseline.qualityReport };
+    }) };
   }
   return snapshot;
 }
@@ -112,7 +112,7 @@ export function createDesignRunSnapshot(
     snapshot.requirementBaseline = { ...createRequirementBaselineSnapshot({
       runId: baseline.runId, requirementText: snapshot.requirementText, rules: snapshot.rules,
       previousBaseline: baseline, createdAt: baseline.createdAt,
-    }), qualityReport: baseline.qualityReport };
+    }) };
   }
   return snapshot;
 }

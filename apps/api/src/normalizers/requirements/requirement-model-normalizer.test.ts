@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { collectModelRefs } from "@uml-platform/contracts";
-import { modelFixture, objectActivityFixture } from "@uml-platform/contracts/testing";
+import { modelFixture, parallelActivityFixture } from "@uml-platform/contracts/testing";
 import { parseGeneratedAnalysisModels, parseRequirementDiagramModelsOnly, parseRequirementDiagramModelsResult } from "./requirement-model-normalizer.js";
 const parse = (model: unknown) => parseRequirementDiagramModelsOnly(JSON.stringify({ models: [model] })).models[0]!;
 
@@ -11,18 +11,18 @@ test("requirement parsing preserves every supported model", () => {
     const model = modelFixture("requirements", kind); assert.deepEqual(parse(model), model);
   }
 });
-test("technical classes, methods and unsupported relationships fail instead of disappearing", () => {
+test("Schema rejects unsupported methods and relationships while retaining class stereotypes", () => {
   const model = modelFixture("requirements", "class") as any;
   model.classes[0].stereotype = "service";
-  assert.throws(() => parse(model), /analysis-implementation-detail/);
+  assert.deepEqual(parse(model), model);
   delete model.classes[0].stereotype; model.classes[0].operations.push({ name: "save", visibility: "public", parameters: [] });
   assert.throws(() => parse(model), /operations/);
   model.classes[0].operations = []; model.relationships[0].type = "dependency";
-  assert.throws(() => parse(model), /relationships.0.type/);
+  assert.throws(() => parse(model), /invalid_enum_value/);
 });
 test("function dependencies and conflicting parentId are rejected", () => {
   const model = modelFixture("requirements", "function") as any;
-  model.relationships[0].type = "dependency"; assert.throws(() => parse(model), /contract/);
+  model.relationships[0].type = "dependency"; assert.throws(() => parse(model), /invalid_enum_value/);
   model.relationships[0].type = "decomposition"; model.nodes[1].parentId = "wrong";
   assert.throws(() => parse(model), /unsupported-field/);
 });
@@ -31,16 +31,16 @@ test("localized concept metadata survives intact", () => {
   Object.assign(model.classes[0], { chineseName: "订单", englishName: "Order", constraints: ["已完成订单不得再次提交"] });
   assert.deepEqual(parse(model), model);
 });
-test("same-name actions, ordinary completion names, object pins and full conditions survive", () => {
-  const model = objectActivityFixture();
+test("ordinary completion names, parallel swimlanes and full conditions survive", () => {
+  const model = parallelActivityFixture();
   const node = model.nodes.find((node) => node.id === "work")!; Object.assign(node, { name: "完成业务校验" });
   Object.assign(model.relationships[0]!, { guard: "订单金额达到5000元（包含正好5000元）且每一项审批均符合要求", trigger: "所有参与方已经确认完整的业务输入" });
   assert.deepEqual(parse(model), model);
 });
-test("missing endpoints or flow continuity fail without invented nodes or edges", () => {
+test("Schema parsing preserves graph content without connectivity inference", () => {
   const model = modelFixture("requirements", "activity") as any;
   model.relationships = [];
-  assert.throws(() => parse(model), /unreachable-node/);
+  assert.deepEqual(parse(model), model);
   assert.equal(model.nodes.length, 3); assert.equal(model.relationships.length, 0);
 });
 test("optional null fields normalize but unknown elements fail with exact paths", () => {
@@ -59,10 +59,10 @@ test("prototype returns retain the original endpoint, guard and trigger without 
 test("first model response retains declared sources without coverage audits", () => {
   const model = modelFixture("requirements", "usecase") as any;
   const reference = { ruleId: "r1", target: { diagramKind: "usecase", elementId: "case", elementKind: "usecase", label: "下单" } };
-  const parseOutput = (entries: unknown[]) => parseRequirementDiagramModelsResult(JSON.stringify({ models: [model], requirementModelTraceability: entries }), true);
+  const parseOutput = (entries: unknown[]) => parseRequirementDiagramModelsResult(JSON.stringify({ models: [model], requirementModelTraceability: entries }));
   assert.equal(parseOutput([reference]).requirementModelTraceability.length, 1);
   assert.equal(parseOutput([{ ...reference, ruleId: "provider-declared" }]).requirementModelTraceability[0]!.ruleId, "provider-declared");
-  assert.equal(parseOutput([reference]).requirementModelTraceability[0]!.mappingSource, "llm");
+  assert.deepEqual(Object.keys(parseOutput([reference]).requirementModelTraceability[0]!), ["ruleId", "target"]);
   assert.deepEqual(parseOutput([]).requirementModelTraceability, []);
 });
 
@@ -98,9 +98,9 @@ test("analysis element source IDs survive parsing without guessed rule bindings"
 });
 
 
-test("new analysis JSON requires source fields but does not resolve or audit their references", () => {
+test("Schema parsing leaves analysis coverage to the unified validator", () => {
   const model = modelFixture("requirements", "analysis") as any;
-  assert.throws(() => parseGeneratedAnalysisModels(JSON.stringify({ models: [model] })), /sourceElementIds/);
+  assert.equal(parseGeneratedAnalysisModels(JSON.stringify({ models: [model] })).models.length, 1);
   model.participants.forEach((item: any) => item.sourceElementIds = ["declared-upstream"]);
   model.messages.forEach((item: any) => item.sourceElementIds = ["declared-flow"]);
   assert.equal(parseGeneratedAnalysisModels(JSON.stringify({ models: [model] })).models.length, 1);

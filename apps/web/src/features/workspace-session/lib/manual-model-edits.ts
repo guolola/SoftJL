@@ -100,6 +100,7 @@ export function useManualModelEditActions({
       const modelKey = getRequirementModelId(model);
       const nextModels = { ...models, [modelKey]: model };
       const prunedTraceability = pruneTraceabilityForRequirementModels({
+        designModels,
         models: nextModels,
         requirementModelTraceability,
         designModelTraceability,
@@ -123,6 +124,7 @@ export function useManualModelEditActions({
     [
       createManualEditStatus,
       designModelTraceability,
+      designModels,
       models,
       repository,
       requirementModelTraceability,

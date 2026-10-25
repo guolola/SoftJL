@@ -97,22 +97,14 @@ describe("UpstreamWorkflowIllustration", () => {
     expect(screen.queryByText(/^间接依赖：/)).not.toBeInTheDocument();
   });
 
-  it("keeps existing sources and adds each missing mapped type even when the aggregate input is ready", () => {
+  it("shows real sources without requiring absent rule types", () => {
     const { container } = renderIllustration({ stage: "requirement", target: "usecase", targetLabel: "用例模型", rules: [createRule({ id: "r2", type: "functional" as const })], ruleMode: "mapped", resolveState: () => "ready" });
     const items = within(screen.getByRole("list", { name: "直接上游输入" })).getAllByRole("listitem");
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(1);
     expect(items[0]).toHaveTextContent("功能需求 1已关联");
-    expect(items.slice(1).map(item => item.getAttribute("data-input"))).toEqual([
-      "rules:relevant:missing:business-rule", "rules:relevant:missing:data", "rules:relevant:missing:interface",
-      "rules:relevant:missing:exception", "rules:relevant:missing:quality",
-    ]);
-    for (const item of items.slice(1)) expect(item).toHaveAttribute("data-state", "missing");
-    expect(items[1]).toHaveTextContent("缺少业务规则");
-    expect(screen.queryByText("缺少界面交互")).not.toBeInTheDocument();
-    expect(screen.getByText("按需求类型固定关联；生成后的具体元素另行追踪")).toBeInTheDocument();
-    const connectors = container.querySelectorAll("[data-slot='upstream-connectors'] path");
-    expect(connectors).toHaveLength(6);
-    for (const path of Array.from(connectors).slice(1)) expect(path).toHaveAttribute("stroke-dasharray", "3 4");
+    expect(screen.queryByText("缺少业务规则")).not.toBeInTheDocument();
+    expect(screen.getByText("每个模型元素至少关联一条真实的上游来源")).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-slot='upstream-connectors'] path")).toHaveLength(1);
   });
 
   it("preserves stale input status while a model needs regeneration", () => {
@@ -123,7 +115,7 @@ describe("UpstreamWorkflowIllustration", () => {
 
   it("shows missing mapped inputs without mapping review counts", () => {
     renderIllustration({ stage: "requirement", target: "function", targetLabel: "功能结构图", rules: [], ruleMode: "mapped", resolveState: () => "missing" });
-    expect(screen.getByText("缺少功能需求").closest("li")).toHaveAttribute("data-state", "missing");
+    expect(within(screen.getByRole("list", { name: "直接上游输入" })).getAllByRole("listitem")[0]).toHaveAttribute("data-state", "missing");
     expect(screen.queryByText("暂无该模型对应类型的需求")).not.toBeInTheDocument();
     expect(screen.queryByText(/元素关联待审核/)).not.toBeInTheDocument();
   });

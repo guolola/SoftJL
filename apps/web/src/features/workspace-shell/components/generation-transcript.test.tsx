@@ -13,6 +13,61 @@ const steps: TranscriptStep[] = [{ stage: "generate_models", title: "生成模�
 afterEach(async () => { await act(async () => { await i18n.changeLanguage("zh-CN"); }); });
 
 describe("stage reading surface", () => {
+  it("shows text candidate generation and backend checks without upstream tool calls", () => {
+    const activity = (id: string, operation?: RunActivityEvent["operation"]): RunActivityEvent => ({
+      type: "run_activity", eventId: id, createdAt: "2026-10-25T00:00:00Z", runId: "r", callId: id,
+      stage: "generate_models", phase: "completed", format: "technical", modelId: "usecase", subtaskId: "usecase",
+      subtaskLabel: "用例图", operation,
+    });
+    const events: RunEventInput[] = [activity("candidate"), activity("validation", "structure_check"), activity("compile", "model_compile"),
+      { type: "artifact_ready", stage: "generate_models", artifactKind: "model", modelId: "usecase", subtaskId: "usecase", diagramKind: "usecase" }];
+    const projected = projectGenerationTranscript(events, "completed", [], {}, { includeContent: false });
+    render(<GenerationTranscript taskKey="text-json" kind="requirements" active={false} finalMessage="" steps={projected.visibleSteps} />);
+    const task = screen.getByRole("heading", { name: "生成用例模型" }).closest('[data-testid="generation-task-step"]') as HTMLElement;
+    expect(within(task).getByText("生成完成")).toBeVisible();
+    expect(within(task).getByText(/结构核对/)).toBeVisible();
+    expect(within(task).getByText("编译通过")).toBeVisible();
+    expect(screen.queryByText(/查询上游资料/)).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="generation-tool-call"]')).toBeNull();
+  });
+
+  it.each(["zh-CN", "en"])("keeps the model name on the parent and short operation labels on children (%s)", async language => {
+    await act(async () => { await i18n.changeLanguage(language); });
+    const activity = (id: string, operation?: RunActivityEvent["operation"]): RunActivityEvent => ({
+      type: "run_activity", eventId: id, createdAt: "2026-10-25T00:00:00Z", runId: "r", callId: id,
+      stage: "generate_design_sequence", phase: "completed", format: "technical", modelId: "sequence:UC-01", subtaskId: "sequence:UC-01",
+      subtaskLabel: "用例实现设计：填写指导日志", operation,
+    });
+    const events: RunEventInput[] = [activity("candidate"), activity("validation", "structure_check"), activity("compile", "model_compile"),
+      { ...activity("render"), stage: "render_svg" },
+      { type: "artifact_ready", stage: "generate_design_sequence", artifactKind: "model", modelId: "sequence:UC-01", subtaskId: "sequence:UC-01", diagramKind: "sequence" }];
+    const project = (input: RunEventInput[]) => projectGenerationTranscript(input, "completed", [], {}, { includeContent: false }).visibleSteps;
+    const { container, rerender } = render(<GenerationTranscript taskKey="short-labels" kind="design" active={false} finalMessage="" steps={project(events)} />);
+    expect(screen.getByRole("heading", { name: "生成用例实现设计：填写指导日志" })).toBeVisible();
+    const childLabels = () => Array.from(container.querySelectorAll('[data-slot="generation-call-title"] > span:first-of-type')).map(row => row.textContent);
+    const expected = language === "en" ? ["Generation completed", "Check structure", "Compile diagram source", "绘制并保存"]
+      : ["生成完成", "结构核对", "编译图形源码", "绘制并保存"];
+    expect(childLabels()).toEqual(expected);
+    rerender(<GenerationTranscript taskKey="short-labels" kind="design" active={false} finalMessage="" steps={project([...events, ...events])} />);
+    expect(childLabels()).toEqual(expected);
+  });
+
+  it.each([
+    ["started", "正在生成"], ["failed", "生成未完成"], ["cancelled", "生成已停止"],
+  ] as const)("uses the actual generation status for a %s child", (phase, label) => {
+    const activity: RunActivityEvent = { type: "run_activity", eventId: "candidate", createdAt: "2026-10-25T00:00:00Z",
+      runId: "r", callId: "candidate", stage: "generate_design_sequence", phase: phase === "cancelled" ? "started" : phase, format: "technical",
+      modelId: "sequence:UC-01", subtaskId: "sequence:UC-01", subtaskLabel: "用例实现设计：填写指导日志" };
+    const events: RunEventInput[] = [activity, { ...activity, eventId: "check", callId: "check", phase: "started", operation: "structure_check" }];
+    if (phase === "cancelled") events.push({ type: "cancelled", message: "任务已停止" });
+    const { container } = render(<GenerationTranscript taskKey="generation-status" kind="design" active finalMessage=""
+      steps={projectGenerationTranscript(events).visibleSteps} />);
+    const title = container.querySelector('[data-slot="generation-call-title"] > span:first-of-type');
+    expect(title).toHaveTextContent(label);
+    expect(title).not.toHaveTextContent("填写指导日志");
+    expect(screen.queryByText("生成完成")).not.toBeInTheDocument();
+  });
+
   it.each([false, true])("shows named coverage repairs and preserves incomplete coverage after model completion (exhausted=%s)", exhausted => {
     const message = exhausted
       ? "追踪覆盖修复已达到共享 5 次上限，仍有 12 个元素缺少有效映射，覆盖状态仍为不完整。"
@@ -32,7 +87,7 @@ describe("stage reading surface", () => {
     if (exhausted) expect(within(modelStep).getByText("覆盖不完整")).toBeVisible();
   });
 
-  it("places all coverage rounds below counted structure checks under the matching model", () => {
+  it("keeps correction rounds before actual publication under the matching model", () => {
     const call = (id: string, stage: RunActivityEvent["stage"], subtaskId: string, label?: string): RunActivityEvent => ({
       type: "run_activity", eventId: id, createdAt: "2026-10-18T00:00:00Z", callId: id, runId: "r", stage, subtaskId,
       subtaskLabel: label, phase: "completed", format: "technical",
@@ -57,12 +112,11 @@ describe("stage reading surface", () => {
     expect(repairCalls.map(item => item.diagramKind)).toEqual(["activity", "activity"]);
     render(<GenerationTranscript taskKey="coverage-order" kind="requirements" active={false} finalMessage="" steps={projected.visibleSteps} />);
     const model = screen.getByRole("heading", { name: "生成总体业务流程" }).closest('[data-testid="generation-task-step"]') as HTMLElement;
-    const children = model.querySelector('[data-slot="generation-task-children"]') as HTMLElement;
-    expect(within(children).getAllByRole("heading").map(heading => heading.textContent)).toEqual([
-      "生成图形描述", "生成图形预览", "模型结构检查（已检查 2 次）", "覆盖修复（第 3/5 次）",
+    const rows = model.querySelectorAll('[data-slot="generation-call-title"]');
+    expect(Array.from(rows).map(row => row.textContent)).toEqual([
+      expect.any(String), expect.stringContaining("修正模型 · 第 2 次"), expect.stringContaining("修正模型 · 第 3 次"), expect.stringContaining("绘制并保存"),
     ]);
-    const coverage = within(model).getByRole("heading", { name: "覆盖修复（第 3/5 次）" }).closest('[data-testid="generation-task-step"]')!;
-    expect(coverage.querySelectorAll('[data-slot="generation-call"]')).toHaveLength(2);
+    expect(within(model).queryByRole("heading", { name: /生成图形描述|生成图形预览|模型结构检查/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "生成需求模型" })).not.toBeInTheDocument();
   });
 
@@ -135,9 +189,9 @@ describe("stage reading surface", () => {
     expect(configure).not.toHaveTextContent(jsonRepair);
     expect(architecture).toHaveTextContent(mappingRepair);
     expect(architecture.querySelectorAll('[data-slot="generation-call"]')).toHaveLength(2);
-    expect(within(architecture as HTMLElement).getByRole("heading", { name: "覆盖修复" })).toBeVisible();
+    expect(within(architecture as HTMLElement).getByText("正在生成")).toBeVisible();
     expect(screen.queryByRole("heading", { name: "生成设计模型" })).not.toBeInTheDocument();
-    expect(container.querySelectorAll('[data-testid="generation-task-step"]')).toHaveLength(5);
+    expect(container.querySelectorAll('[data-testid="generation-task-step"]')).toHaveLength(4);
   });
 
   it("keeps unscoped repair messages outside the neighboring analysis model", () => {
@@ -202,7 +256,7 @@ describe("stage reading surface", () => {
       ] }]} />);
     expect(container).not.toHaveTextContent(detail);
     expect(container.querySelector('[data-slot="diagram-review-details"]')).toBeNull();
-    expect(screen.getAllByText("检查已结束")).toHaveLength(20);
+    expect(screen.getAllByText("待确认")).toHaveLength(20);
     expect(container.querySelector('[data-slot="generation-task-issues"]')).toBeNull();
     expect(screen.queryByRole("button", { name: /重试/ })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "输出总结" })).toHaveTextContent("绘图器故障。");
@@ -225,7 +279,7 @@ describe("stage reading surface", () => {
     expect(container).not.toHaveTextContent("明确外键");
     expect(container).not.toHaveTextContent("候选改变了模型标题");
     expect(container).not.toHaveTextContent("候选越界");
-    expect(screen.getByTestId("generation-task-step")).toHaveTextContent("视觉检查");
+    expect(screen.getByTestId("generation-task-step")).toHaveTextContent("绘制并保存");
     expect(screen.getByRole("region", { name: "输出总结" })).toHaveTextContent("生成完成，问题待确认。");
   });
   it("retains the user's disclosure choice when prose starts and the stage finishes", () => {
@@ -306,27 +360,27 @@ describe("stage reading surface", () => {
   });
 
   it("marks all unfinished parallel stages as active", () => {
-    render(<GenerationTranscript taskKey="parallel" steps={[steps[0], { ...steps[0], stage: "render_svg", title: "生成图形预览", messages: [], calls: [] }]} active finalMessage="" />);
+    render(<GenerationTranscript taskKey="parallel" steps={[steps[0], { ...steps[0], stage: "render_svg", title: "生成图形预览", messages: [], calls: [{ ...steps[0].calls[0], subtaskId: "usecase" }] }]} active finalMessage="" />);
     expect(screen.queryByText(/任务状态/)).not.toBeInTheDocument();
     expect(document.querySelectorAll('[data-slot="chain-of-thought-step"][data-status="active"]')).toHaveLength(2);
   });
 
-  it("groups generation, rendering and visual review without generated descriptions", () => {
+  it("groups generation and actual publication with the same artifact identity", () => {
     const description = "展示学生和管理员与预约系统的交互关系。";
     const contextSteps: TranscriptStep[] = [
-      { ...steps[0], stage: "generate_context", title: "生成系统环境图", finished: true, status: "completed", messages: [], calls: [{ ...steps[0].calls[0], output: description, status: "completed", thinking: false }] },
+      { ...steps[0], stage: "generate_context", title: "生成系统环境图", finished: true, status: "completed", messages: [], calls: [{ ...steps[0].calls[0], subtaskId: "context", title: "系统环境图", output: description, status: "completed", thinking: false }] },
       { ...steps[0], stage: "render_context", title: "渲染系统环境图", finished: true, status: "completed", messages: [], calls: [] },
-      { ...steps[0], stage: "verify_diagram_visual", title: "视觉检查", finished: true, status: "completed", messages: [], calls: [{ ...steps[0].calls[0], id: "visual", output: "", reasoning: "对照图片核对节点。", status: "completed", thinking: false,
+      { ...steps[0], stage: "verify_diagram_visual", title: "视觉检查", finished: true, status: "completed", messages: [], calls: [{ ...steps[0].calls[0], id: "visual", subtaskId: "context", output: "", reasoning: "对照图片核对节点。", status: "completed", thinking: false,
         inputImages: [{ url: "data:image/png;base64,cG5n", caption: "视觉检查使用的环境图" }] }] },
     ];
     const { container } = render(<GenerationTranscript taskKey="context" steps={contextSteps} active={false} finalMessage="系统环境图已生成。" />);
     const chain = container.querySelector('[data-slot="chain-of-thought"]')!;
     expect(screen.getAllByRole("button", { name: "思考过程" })).toHaveLength(1);
-    expect(within(chain as HTMLElement).getAllByTestId("generation-task-step")).toHaveLength(3);
+    expect(within(chain as HTMLElement).getAllByTestId("generation-task-step")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "执行过程" })).not.toBeInTheDocument();
     expect(screen.queryByText(description)).not.toBeInTheDocument();
     const image = screen.getByRole("img", { name: "视觉检查使用的环境图" });
-    expect(image.closest('[data-testid="generation-task-step"]')).toHaveAttribute("aria-label", "视觉检查");
+    expect(image.closest('[data-testid="generation-task-step"]')).toHaveAttribute("aria-label", "生成系统环境图");
     expect(image.closest('[data-slot="chain-of-thought-image"]')).toHaveTextContent("视觉检查使用的环境图");
     const summary = screen.getByRole("region", { name: "输出总结" });
     expect(chain.contains(summary)).toBe(false);

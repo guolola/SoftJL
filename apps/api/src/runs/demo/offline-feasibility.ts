@@ -1,4 +1,5 @@
 // Runs fixed feasibility demo data through the real validation and persistence pipeline.
+import { randomUUID } from "node:crypto";
 import { feasibilityInputsSchema } from "@uml-platform/contracts";
 import type { RenderClient } from "../../adapters/render/render-client.js";
 import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
@@ -16,27 +17,28 @@ export function offlineFeasibilityAdapters(record: RunRecord) {
   snapshot.inputs = feasibilityInputsSchema.parse({ ...librarySeatFeasibilityInputs,
     ...Object.fromEntries(Object.entries(snapshot.inputs).filter(([, value]) => value !== "" && value !== null && (!Array.isArray(value) || value.length > 0))),
   });
-  const results = [
-    ...(snapshot.selectedArtifacts.includes("context") ? [librarySeatFeasibilityContext] : []),
-    ...(snapshot.selectedArtifacts.includes("business-flow") ? [librarySeatFeasibilityFlow] : []),
-    ...(snapshot.selectedArtifacts.includes("implementation") ? [librarySeatFeasibilityPlan] : []),
-  ];
+  const results: Record<string, unknown> = { generate_context: librarySeatFeasibilityContext,
+    generate_business_flow: librarySeatFeasibilityFlow, generate_implementation: librarySeatFeasibilityPlan };
   const llmTransport: LlmTransport = {
     async *streamChatCompletion(input) {
       throwIfRunCancelled(record);
-      // Review calls must not consume the next fixed generation artifact.
-      const current = input.messages.at(-1)?.content;
-      if (typeof current === "string" && /^核对 feasibility\.(?:context|activity) 的结构与业务内容。/.test(current)) {
-        input.onReasoningChunk?.("演示推理片段：核对本模型的已确认需求、端点和业务约束，相似度映射不授权增删。");
-        input.onReasoningSummary?.("演示摘要：模型结构与明确引用核对通过。");
-        yield JSON.stringify({ passed: true, issues: [], findings: [] });
-        return;
+      const forced = typeof input.toolChoice === "object" ? input.toolChoice.function.name : undefined;
+      const name = forced ?? "validate_model";
+      let args: string;
+      if (name === "get_upstream_artifact") {
+        const schema = input.tools?.find(tool => tool.function.name === name)?.function.parameters as any;
+        if (!schema) throw new Error("固定演示缺少上游查询工具契约");
+        args = JSON.stringify({ sourceType: schema.properties.sourceType.enum[0], sourceId: schema.properties.sourceId.enum[0] });
+      } else {
+        const value = results[input.runContext?.stage ?? ""];
+        if (!value) throw new Error("固定演示任务缺少对应的可行性产物");
+        args = JSON.stringify(value);
       }
-      const result = results.shift();
-      if (!result) throw new Error("固定可行性 Mock 数据校验失败，请检查演示需求是否与座位预约场景一致。");
-      yield JSON.stringify(result);
+      yield args;
+      input.onToolCall?.({ id: randomUUID(), type: "function", function: { name, arguments: args } });
     },
   };
+
   const renderClient: RenderClient = async (artifact) => {
     throwIfRunCancelled(record);
     const svg = artifact.modelId === "feasibility-business-flow" ? librarySeatFlowSvg : librarySeatContextSvg;

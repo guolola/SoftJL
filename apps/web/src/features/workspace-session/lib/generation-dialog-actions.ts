@@ -145,7 +145,6 @@ export function requirementRunCompletionDialog(input: {
         : "success",
     message: [
       completedRunResultMessage({
-        qualityHintCount: 0,
         diagramFailureCount: input.diagramFailureCount,
       }),
       input.ignoredCount > 0
@@ -160,17 +159,12 @@ export function requirementRunCompletionDialog(input: {
 
 export function designRunCompletionDialog(input: {
   diagramFailureCount: number;
-  qualityHintCount: number;
   runId: string;
 }): GenerationResultDialogState {
   return {
     title: input.diagramFailureCount > 0 ? i18n.t("generation.dialog.titles.designPartial") : i18n.t("generation.dialog.titles.designCompleted"),
-    tone:
-      input.qualityHintCount > 0 || input.diagramFailureCount > 0
-        ? "warning"
-        : "success",
+    tone: input.diagramFailureCount > 0 ? "warning" : "success",
     message: completedRunResultMessage({
-      qualityHintCount: input.qualityHintCount,
       diagramFailureCount: input.diagramFailureCount,
     }),
     runId: input.runId,

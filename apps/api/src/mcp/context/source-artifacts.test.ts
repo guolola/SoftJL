@@ -18,11 +18,9 @@ function savedState() {
     rules: [{ id: "r1", type: "functional" as const, text: "private-rule-body",  }],
     requirementBaseline: {
           schemaVersion: 3, id: "baseline-test", version: 1, sourceInputFingerprint: "test-source-input",
-          runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
-           assumptions: [], conflicts: [],
-          qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
+          runId: "test", createdAt: "2026-01-01T00:00:00Z",
           rules: [{ id: "r1", requirementId: "REQ-001",
-            text: "借阅成功后保存一条记录", sourceFragment: "private-requirement-body", origin: "generated",
+            text: "借阅成功后保存一条记录", sourceFragment: "private-requirement-body",
             type: "functional" as const,
           }],
         },
@@ -75,15 +73,15 @@ test("upstream design references preserve dependency closure and missing refs re
   const state = {
     ...savedState(), designModels: { service: classModel("service"), storage: classModel("storage"), other: classModel("other") },
     designModelTraceability: [
-      { source: ref("service", "loan"), targets: [ref("domain", "loan")], upstreamDesignRefs: [ref("storage", "loan")] },
-      { source: ref("storage", "loan"), targets: [ref("missing-domain", "loan")], upstreamDesignRefs: [ref("service", "loan")] },
+      { source: ref("service", "loan"), targets: [ref("domain", "loan"), ref("storage", "loan")],  },
+      { source: ref("storage", "loan"), targets: [ref("missing-domain", "loan"), ref("service", "loan")],  },
     ],
   };
   const context = buildContext(state, { requirementIds: ["REQ-001"], artifactIds: [] });
   assert.ok(context.artifacts.some((artifact) => artifact.id === "design:storage"));
   assert.ok(!context.artifacts.some((artifact) => artifact.id === "design:other"));
   assert.deepEqual(buildImplementationTasks(context.artifacts, context.scope).map((task) => task.id), ["implement:requirement:REQ-001"]);
-  state.designModelTraceability[0].upstreamDesignRefs.push(ref("deleted-design", "loan"));
+  state.designModelTraceability[0].targets.push(ref("deleted-design", "loan"));
   const missing = buildImplementationTasks(buildContext(state, whole).artifacts);
   const requirementTask = missing.find((task) => task.id === "implement:requirement:REQ-001")!;
   assert.ok(requirementTask.issues.some((issue) => issue.code === "trace-reference-missing" && issue.message.includes("deleted-design")));

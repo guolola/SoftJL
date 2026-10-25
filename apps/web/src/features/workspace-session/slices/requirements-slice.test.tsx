@@ -91,7 +91,7 @@ describe("useRequirementsSlice", () => {
     act(() => result.current.updateRequirementRule("r1", { type: "data" as const }));
     expect(result.current.rulesForDiagram("class")).toHaveLength(1);
     expect(result.current.rules[0]!.type).toBe("data");
-    expect(result.current.rulesForDiagram("activity")).toHaveLength(0);
+    expect(result.current.rulesForDiagram("activity")).toHaveLength(1);
     const updatedRules = result.current.rules;
     const updatedFingerprint = requirementInputFingerprintFor("", updatedRules);
     expect(result.current.requirementInputFingerprint).toBe(updatedFingerprint);

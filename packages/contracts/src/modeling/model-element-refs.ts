@@ -1,4 +1,4 @@
-// Collects current model business identities for generation coverage checks.
+// Collects model references; full mode includes every identified structural and nested element.
 import type { DiagramModelSpec, DesignDiagramModelSpec, ModelElementRef } from "./models.js";
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -51,8 +51,6 @@ function addRef(
 
 function activityNodeKind(nodeType: unknown) {
   switch (nodeType) {
-    case "object": return "object-node";
-    case "flow_final": return "flow-final-node";
     case "activity":
       return "activity";
     case "decision":
@@ -135,8 +133,6 @@ export function collectModelRefs(
     ];
 
     const businessElementIds = new Set<string>();
-    const pinOwners = new Map<string, string>();
-    if (model.diagramKind === "activity") for (const node of model.nodes) if (node.type === "activity") for (const pin of [...node.inputPins ?? [], ...node.outputPins ?? []]) pinOwners.set(pin.id, node.id);
     for (const [key, defaultKind] of listKeys) {
       for (const item of ensureArray(record[key])) {
         if (!isPlainRecord(item)) continue;
@@ -147,7 +143,7 @@ export function collectModelRefs(
               ? prototypeNodeKind(item.nodeType)
               : defaultKind;
         const beforeCount = refs.length;
-        if (isBusinessElementKind(kind)) {
+        if (includeStructuralRelationships || isBusinessElementKind(kind)) {
           addRef(refs, diagramKind, item.id, kind, item.name ?? item.label, modelId);
         }
         if (refs.length > beforeCount) {
@@ -177,8 +173,8 @@ export function collectModelRefs(
       if (!isPlainRecord(relationship)) continue;
       if (
         !includeStructuralRelationships && diagramKind === "activity" &&
-        (!businessElementIds.has(pinOwners.get(compactString(relationship.sourceId)) ?? compactString(relationship.sourceId)) ||
-          !businessElementIds.has(pinOwners.get(compactString(relationship.targetId)) ?? compactString(relationship.targetId)))
+        (!businessElementIds.has(compactString(relationship.sourceId)) ||
+          !businessElementIds.has(compactString(relationship.targetId)))
       ) {
         continue;
       }
@@ -190,6 +186,21 @@ export function collectModelRefs(
         relationship.label ?? `${compactString(relationship.sourceId)} -> ${compactString(relationship.targetId)}`,
         modelId,
       );
+    }
+    if (includeStructuralRelationships) {
+      const known = new Set(refs.filter(ref => ref.diagramKind === diagramKind && ref.modelId === (modelId || undefined)).map(ref => ref.elementId));
+      const visit = (value: unknown, collection: string, parentId = "") => {
+        if (Array.isArray(value)) { value.forEach(item => visit(item, collection, parentId)); return; }
+        if (!isPlainRecord(value)) return;
+        const id = compactString(value.id);
+        const qualified = id ? (parentId ? `${parentId}.${id}` : id) : parentId;
+        if (id && !known.has(qualified)) {
+          addRef(refs, diagramKind, qualified, collection, value.name ?? value.label ?? id, modelId);
+          known.add(qualified);
+        }
+        for (const [field, child] of Object.entries(value)) visit(child, field, qualified);
+      };
+      visit(model, "");
     }
   }
 

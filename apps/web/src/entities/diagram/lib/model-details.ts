@@ -735,8 +735,6 @@ function buildClassDetailModel(model: ClassDiagramSpec): DiagramDetailModel {
 
 function mapActivityNodeKind(node: ActivityNode): SemanticElementKind {
   switch (node.type) {
-    case "object": return "object-node";
-    case "flow_final": return "flow-final-node";
     case "start":
       return "start-node";
     case "end":
@@ -759,8 +757,6 @@ function nodeLabel(node: ActivityNode) {
     return node.name;
   }
   switch (node.type) {
-    case "object": return node.name;
-    case "flow_final": return node.name;
     case "start":
       return "开始";
     case "end":
@@ -798,7 +794,6 @@ function buildActivityDetailModel(model: ActivityDiagramSpec): DiagramDetailMode
           fields.push({ label: "输出", value: joinList(node.output) });
         }
       }
-      if (node.type === "object") { pushField(fields, "对象类型", node.dataType); pushField(fields, "状态", node.state); }
       if (node.type === "decision") {
         pushField(fields, "判断条件", node.question);
       }
@@ -812,7 +807,6 @@ function buildActivityDetailModel(model: ActivityDiagramSpec): DiagramDetailMode
     }),
   ];
 
-  for (const node of model.nodes) if (node.type === "activity") for (const key of ["inputPins", "outputPins"] as const) for (const pin of node[key] ?? []) items.push({ kind: key === "inputPins" ? "input-pin" : "output-pin", id: pin.id, label: pin.name, fields: [{ label: "所属动作", value: node.name }, { label: "类型", value: pin.dataType }] });
   const relationships: DiagramRelationshipDetail[] = model.relationships.map(
     (relation) => {
       const fields: DetailField[] = [];

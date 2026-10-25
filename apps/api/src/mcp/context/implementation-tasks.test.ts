@@ -34,7 +34,10 @@ function ref(modelId: string | undefined, elementId: string, diagramKind: ModelE
   return { ...(modelId ? { modelId } : {}), diagramKind, elementId, elementKind: "class", label: elementId };
 }
 function modelArtifact(id: string, stage: "analysis" | "design", elementId = "loan", requirementIds = ["BORROW"]) {
-  return artifact(`${stage}:${id}`, stage, { model: classModel(id, elementId), traceability: [] }, { requirementIds });
+  // Public design inputs retain private requirement-model provenance as version hashes.
+  return artifact(`${stage}:${id}`, stage, { model: classModel(id, elementId), traceability: [],
+    ...(stage === "design" ? { upstreamVersions: [{ artifactId: "analysis:business", contentHash: "private-analysis-hash" }] } : {}),
+  }, { requirementIds });
 }
 const blocking = (task: ReturnType<typeof buildImplementationTasks>[number]) => task.issues.filter((issue) => issue.severity === "blocking");
 
@@ -97,7 +100,7 @@ test("linked sources follow a dependency closure while missing sources never bec
 test("current acceptance and trace references allow unknown freshness while conflicts and stale sources block", () => {
   const accepted = requirement();
   const pending = modelArtifact("pending", "design");
-  pending.payload.traceability = [{ source: ref("pending", "loan"), targets: [ref("business", "borrow-case")], rationale: "待确认" }];
+  pending.payload.traceability = [{ source: ref("pending", "loan"), targets: [ref("business", "borrow-case")],  }];
   pending.version.freshness = "unknown";
   assert.equal(blocking(buildImplementationTasks([accepted, pending])[0]).length, 0);
   assert.ok(!buildImplementationTasks([accepted, pending])[0].issues.some((issue) => /review|unconfirmed/.test(issue.code)));
@@ -124,6 +127,8 @@ test("valid relationship trace refs remain legal and absent sibling models do no
   const design = modelArtifact("loan", "design", "loan-service");
   design.payload.model = { ...classModel("loan", "loan-service"), classes: [{ id: "loan-service", name: "Loan" }, { id: "book", name: "Book" }], relationships: [{ id: "borrows", type: "association", sourceId: "loan-service", targetId: "book" }] };
   design.payload.traceability = [{ source: { ...ref("loan", "borrows"), elementKind: "relationship" }, targets: [ref("business", "borrows"), ref("outside-scope", "other")] }];
+  design.payload.upstreamVersions = [{ artifactId: "analysis:business", contentHash: "private-analysis-hash" },
+    { artifactId: "analysis:outside-scope", contentHash: "private-sibling-hash" }];
   const task = buildImplementationTasks([requirement(), analysis, design])[0];
   assert.equal(blocking(task).length, 0);
   assert.deepEqual(task.dependsOnTaskIds, []);
@@ -164,22 +169,6 @@ test("sequence messages, fragments and activations are legal design trace source
   assert.equal(blocking(buildImplementationTasks([requirement(), design])[0]).length, 0);
 });
 
-test("upstream requirement quality stays on the platform while coding validates design and acceptance", () => {
-  const quality = artifact("requirements:review", "requirements", {
-    qualityReport: {
-      status: "blocked", summary: "需要澄清", blockingIssueIds: ["borrow-limit"],
-      issues: [{ id: "borrow-limit", requirementId: "BORROW", code: "ambiguity", message: "次数不明确", blocksDownstream: false }],
-    },
-  });
-  const design = modelArtifact("loan", "design", "loan-service", ["BORROW", "RETURN"]);
-  const tasks = buildImplementationTasks([requirement(), requirement("RETURN"), quality, design]);
-  assert.ok(!tasks[0].issues.some((issue) => issue.code.startsWith("requirement-quality")));
-  assert.equal(blocking(tasks[1]).length, 0);
-  const global = structuredClone(quality);
-  global.payload.qualityReport = { blockingIssueIds: ["unknown-blocker"], issues: [] };
-  assert.equal(blocking(buildImplementationTasks([requirement(), global, design])[0]).length, 0);
-});
-
 test("raw requirements do not create coding tasks and unlinked designs retain explicit acceptance gaps", () => {
   const raw = artifact("requirements:source", "requirements", { text: "实现图书借阅" });
   raw.version.freshness = "unknown";
@@ -199,11 +188,9 @@ test("context functional scopes generate only their requirements and never mutat
   const state = {
     requirementText: "借阅与归还", requirementBaseline: {
           schemaVersion: 3, id: "baseline-test", version: 1, sourceInputFingerprint: "test-source-input",
-          runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
-           assumptions: [], conflicts: [],
-          qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
+          runId: "test", createdAt: "2026-01-01T00:00:00Z",
           rules: [borrow.payload.requirement, returnRequirement.payload.requirement].map(item => ({ id: item.id, requirementId: item.id,
-            text: item.text, origin: "generated",
+            text: item.text,
             type: "functional" as const,
           })),
         },

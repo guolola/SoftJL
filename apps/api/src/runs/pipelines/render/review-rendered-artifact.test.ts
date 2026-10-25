@@ -2,6 +2,7 @@
 import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { branchedRetryActivity, parallelRetryActivity } from "../../../../tests/fixtures/complex-activity.js";
 import { getStageModelSchemas, validateModelInput, type ModelingStage, type DiagramModelSpec, type ProviderSettings } from "@uml-platform/contracts";
 import type { LlmTransport } from "../../../adapters/llm/llm-transport.js";
 import type { RenderClient } from "../../../adapters/render/render-client.js";
@@ -15,12 +16,6 @@ import { modelFixture } from "@uml-platform/contracts/testing";
 import { generateDesignPlantUmlArtifacts } from "../../../adapters/plantuml/model-renderer.js";
 import { RunCancelledError } from "../../records/run-cancellation.js";
 import { createCallActivity } from "../shared/call-activity.js";
-import { ModelGenerationConversation } from "../shared/model-generation-conversation.js";
-import { createMessages } from "../shared/llm-messages.js";
-import { parseDesignDiagramModelsResult } from "../../../normalizers/design/design-model-normalizer.js";
-import { assertDesignMappings } from "../shared/model-mapping-validation.js";
-import { collectModelRefs } from "@uml-platform/contracts";
-import { designModelTraceabilityEntrySchema } from "@uml-platform/contracts";
 
 function repairTransport(candidate?: DesignDiagramModelSpec): LlmTransport {
   return { async *streamChatCompletion(input) {
@@ -44,6 +39,25 @@ const renderClient: RenderClient = async (artifact) => {
 function record(): RunRecord {
   return { snapshot: createEmptySnapshot("visual-test", "需求", ["usecase"]), events: [], listeners: new Set(), terminal: false };
 }
+
+for (const stage of ["feasibility", "requirements"] as const) test(`${stage}: complex business flows finish rendering without model repair or repeated rebuilds`, async () => {
+  for (const fixture of [branchedRetryActivity, parallelRetryActivity]) {
+    const candidate = fixture(), before = structuredClone(candidate), run = record();
+    let renders = 0;
+    const checked = await reviewRenderedArtifact({
+      record: run, providerSettings: settings, model: candidate, basis: { stage }, mutable: false,
+      llmTransport: { async *streamChatCompletion() { throw new Error("Drawing must never rewrite business semantics"); } },
+      renderClient: async (artifact, signal) => { renders++; return renderClient(artifact, signal); },
+    });
+    assert.equal(renders, 1);
+    assert.equal(checked.review.renderStatus, "passed");
+    assert.equal(checked.review.repairAttempts, 0);
+    assert.deepEqual(checked.model, before);
+    assert.deepEqual(candidate, before);
+    assert.ok(checked.rendered.artifact.renderMapping?.auxiliary?.some(item => item.kind === "flow-connector"));
+    assert.ok(!run.events.some(event => event.type === "run_activity" && event.operation === "render_repair"));
+  }
+});
 
 test("valid models never spend an LLM call on repeated validation or another run", async () => {
   let calls = 0;
@@ -143,9 +157,12 @@ test("two correction rounds keep one artifact scope and never trigger an indepen
   before.notes = ["UNCHANGED_GENERATED_CONTENT"];
   const corrected = structuredClone(before); corrected.relationships[0].targetMultiplicity = "0..*";
   const run = record(); const prompts: string[] = [];
+  const baseline = createEmptySnapshot("backend-only", "BACKEND_ONLY_BASELINE", [], [{ id: "r0", type: "functional", text: "BACKEND_ONLY_BASELINE" }]).requirementBaseline!;
+  const savedBaseline = structuredClone(baseline);
   const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, model: before, mutable: true,
-    basis: { stage: "design", upstreamModels: [{ ...before, title: "UNRELATED_UPSTREAM_CONTENT" }] }, renderClient,
+    basis: { stage: "design", baseline, upstreamModels: [{ ...before, title: "UNRELATED_UPSTREAM_CONTENT" }] }, renderClient,
     llmTransport: { async *streamChatCompletion(input) {
+      assert.doesNotMatch(JSON.stringify(input.messages), /BACKEND_ONLY_BASELINE|"baseline"/);
       prompts.push(String(input.messages.at(-1)?.content));
       assert.deepEqual(input.messages.map(message => message.role), prompts.length === 1
         ? ["system", "user", "assistant", "user"]
@@ -158,65 +175,26 @@ test("two correction rounds keep one artifact scope and never trigger an indepen
   assert.equal(result.review.structureAttempts, 0); assert.equal(result.review.status, "passed");
   assert.deepEqual(result.review.repairHistory?.map(item => item.status), ["rejected", "accepted"]);
   assert.deepEqual(result.model, corrected);
+  assert.deepEqual(baseline, savedBaseline);
   assert.deepEqual(run.events.filter(event => event.type === "run_activity" && event.phase === "started").map(event => event.type === "run_activity" && [event.operation, event.round]), [["model_repair", 1], ["model_repair", 2]]);
 });
 
-test("late repair appends to the original generation history and publishes only synchronized sources", async () => {
-  const before = modelFixture("design", "class");
-  if (before.diagramKind !== "class") throw new Error("fixture");
-  before.relationships[0]!.id = "order";
-  const corrected = structuredClone(before);
-  corrected.relationships[0]!.id = "relation_order";
-  const upstream = modelFixture("requirements", "usecase");
-  const target = collectModelRefs([upstream]).refs.find(ref => ref.elementId === "case")!;
-  const bindings = (model: typeof before) => collectModelRefs([model]).refs.map(source => ({ source, targets: [target] }));
-  const stale = bindings(before), valid = bindings(corrected);
-  const conversation = new ModelGenerationConversation("class", createMessages("ORIGINAL_GENERATION_INPUT"));
-  const rejectedGeneration = JSON.stringify({ models: [], designModelTraceability: [] });
-  conversation.accept(rejectedGeneration);
-  conversation.prepare(new Error("EARLIER_GENERATION_DIAGNOSIS"));
-  const originalOutput = JSON.stringify({ models: [before], designModelTraceability: stale });
-  conversation.accept(originalOutput);
-  const prefix = conversation.messages;
-  const candidateOutputs = [
-    JSON.stringify({ models: [corrected], designModelTraceability: stale }),
-    JSON.stringify({ models: [corrected], designModelTraceability: valid }),
-  ];
-  const run = record();
-  const previous = createCallActivity({ record: run, stage: "generate_design_models", modelId: "class", subtaskId: "class", operation: "model_repair", round: 1 });
-  previous.onStart(); previous.onComplete();
+test("validated models never acquire associations or late LLM repairs during rendering", async () => {
+  const before = modelFixture("requirements", "usecase");
+  if (before.diagramKind !== "usecase") throw new Error("fixture");
+  before.useCases[0]!.primaryActorId = before.actors[0]!.id;
+  before.relationships = [];
   let calls = 0, renders = 0;
-  const result = await reviewRenderedArtifact({
-    record: run, providerSettings: settings, model: before, mutable: true,
-    basis: { stage: "design", upstreamModels: [upstream], traceability: stale },
-    generationRepair: {
-      conversation,
-      parse: raw => {
-        const parsed = parseDesignDiagramModelsResult(raw, [upstream]);
-        assertDesignMappings(parsed.models, [upstream], parsed.designModelTraceability);
-        return { model: parsed.models[0]!, traceability: parsed.designModelTraceability };
-      },
-    },
-    validateTraceability: (model, traceability) => assertDesignMappings([model as DesignDiagramModelSpec], [upstream], designModelTraceabilityEntrySchema.array().parse(traceability)),
-    llmTransport: { async *streamChatCompletion(input) {
-      assert.deepEqual(input.messages.slice(0, prefix.length), prefix);
-      assert.equal(input.messages.at(-1)!.role, "user");
-      if (calls === 1) {
-        assert.equal(input.messages.at(-2)!.content, candidateOutputs[0]);
-        assert.match(String(input.messages.at(-1)!.content), /映射仍缺少.*relation_order/);
-      }
-      yield candidateOutputs[calls++]!;
-    } },
+  const checked = await reviewRenderedArtifact({
+    record: record(), providerSettings: settings, model: before, mutable: false,
+    basis: { stage: "requirements", traceability: [] },
+    llmTransport: { async *streamChatCompletion() { calls++; yield "unexpected"; } },
     renderClient: async artifact => { renders++; return renderClient(artifact); },
   });
-  assert.equal(calls, 2);
+  assert.equal(calls, 0);
   assert.equal(renders, 1);
-  assert.deepEqual(result.model, corrected);
-  assert.deepEqual(result.traceability, valid.map(binding => ({ ...binding, mappingSource: "llm" })));
-  assert.equal(result.review.repairAttempts, 3);
-  assert.deepEqual(result.review.repairHistory?.map(item => item.status), ["rejected", "accepted"]);
-  assert.equal(before.relationships[0]!.id, "order");
-  assert.deepEqual(stale, bindings(before));
+  assert.deepEqual(checked.model.relationships, []);
+  assert.deepEqual(before.relationships, []);
 });
 
 test("a deterministic correction cannot publish a model whose source validation fails", async () => {
@@ -424,15 +402,37 @@ test("model repairs and render-failure retries retain the shared five-attempt bu
   assert.equal(renders, 6);
 });
 
-test("a transient render failure still rebuilds from the valid model", async () => {
+test("a submitted immutable model retains operational render retries", async () => {
   let renders = 0; const run = record();
   const result = await reviewRenderedArtifact({ record: run, providerSettings: settings, llmTransport: repairTransport(),
-    model, basis: { stage: "requirements" }, mutable: true,
+    model, basis: { stage: "requirements" }, mutable: false,
     renderClient: async (artifact) => { if (++renders === 1) throw new Error("renderer offline"); return renderClient(artifact); },
   });
   assert.equal(renders, 2); assert.equal(result.review.status, "passed");
   assert.equal(result.review.repairAttempts, 1); assert.equal(result.review.repairHistory?.[0].target, "render");
   assert.deepEqual(result.model, model); assert.equal(result.review.renderStatus, "passed");
+});
+
+test("deterministic compilation failure stops before render retries or provider calls", async () => {
+  const run = record(); let renders = 0, providerCalls = 0;
+  const candidate = modelFixture("requirements", "analysis");
+  if (candidate.diagramKind !== "analysis") throw new Error("fixture");
+  candidate.fragments = [{ id: "unassigned", type: "alt", label: "分支", messageIds: ["m"], branches: [
+    { id: "yes", label: "允许", messageIds: [] }, { id: "no", label: "拒绝", messageIds: [] },
+  ] }];
+  await assert.rejects(reviewRenderedArtifact({ record: run, providerSettings: settings,
+    llmTransport: { async *streamChatCompletion() { providerCalls++; yield ""; } },
+    renderClient: async artifact => { renders++; return renderClient(artifact); },
+    model: candidate, basis: { stage: "requirements" }, mutable: false,
+  }), error => {
+    assert.ok(error instanceof DiagramReviewRenderError);
+    assert.match(error.message, /消息未归入分支/);
+    assert.equal(error.review.repairAttempts, 0);
+    assert.equal(error.review.renderStatus, "failed");
+    return true;
+  });
+  assert.equal(renders, 0); assert.equal(providerCalls, 0);
+  assert.ok(!run.events.some(event => event.type === "run_activity" && event.operation === "render_repair"));
 });
 
 test("conditional correction timeout and render cancellation propagate abort without image calls", async () => {

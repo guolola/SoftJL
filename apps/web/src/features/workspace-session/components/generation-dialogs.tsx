@@ -71,24 +71,13 @@ export function generationResultFeedback(
 }
 
 export function completedRunResultMessage({
-  qualityHintCount,
   diagramFailureCount,
 }: {
-  qualityHintCount: number;
   diagramFailureCount: number;
 }) {
-  const parts: string[] = [];
-  if (diagramFailureCount > 0) {
-    parts.push(
-      i18n.t("generation.dialog.completedWithFailures", { count: diagramFailureCount }),
-    );
-  } else {
-    parts.push(i18n.t("generation.dialog.completed"));
-  }
-  if (qualityHintCount > 0) {
-    parts.push(i18n.t("generation.dialog.qualityHints", { count: qualityHintCount }));
-  }
-  return parts.join(" ");
+  return diagramFailureCount > 0
+    ? i18n.t("generation.dialog.completedWithFailures", { count: diagramFailureCount })
+    : i18n.t("generation.dialog.completed");
 }
 
 export function generationResultDialogGroup(

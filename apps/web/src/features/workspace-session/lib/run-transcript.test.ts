@@ -19,6 +19,16 @@ it("keeps local progress without provider text or input-image bodies", () => {
   expect(call.inputImages).toHaveLength(1);
 });
 
+it("retains and deduplicates tool lifecycle receipts in progress-only reconnects", () => {
+  const append = createProgressTranscriptAccumulator();
+  const tool: RunEventInput = { type: "run_tool", eventId: "tool-start", createdAt: "2026-10-25T00:00:00Z", runId: "run", stage: "generate_models",
+    callId: "call", toolCallId: "validation", toolName: "validate_model", phase: "started" };
+  expect(append([tool])).toEqual([tool]);
+  expect(append([tool])).toBeNull();
+  const completed = { ...tool, phase: "failed" as const, errorCount: 2, eventId: "tool-end" };
+  expect(append([tool, completed])).toEqual([tool, completed]);
+});
+
 it("incrementally restores 30,000 text events without retaining bodies or replaying known progress", () => {
   const append = createProgressTranscriptAccumulator();
   const call: RunActivityEvent = { type: "run_activity", eventId: "start", runId: "run", callId: "call", stage: "generate_models", createdAt: "2026-10-12T00:00:00Z", format: "technical", phase: "started" };

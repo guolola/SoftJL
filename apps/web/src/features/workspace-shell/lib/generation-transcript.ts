@@ -1,5 +1,5 @@
 // Projects ordered run events into user-readable steps, keeping parallel calls and retries separate.
-import type { DiagramVisualReview, RunError, RunEventInput, RunInputImage, RunStage } from "@uml-platform/contracts";
+import type { DiagramVisualReview, RunError, RunEventInput, RunInputImage, RunStage, RunToolEvent } from "@uml-platform/contracts";
 import { MAX_GENERATION_REPAIR_ATTEMPTS } from "@uml-platform/contracts";
 import { localizeRunFailure } from "../../../shared/i18n/api-errors";
 import { formatStageForDiagnostics, sanitizeDiagnosticText } from "../../workspace-session/lib/diagnostics";
@@ -9,6 +9,14 @@ import { generationFailureSummary } from "./generation-failure-summary";
 import { DIAGRAM_META, DESIGN_DIAGRAM_META } from "../../../entities/diagram/model";
 
 export type TranscriptStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "pending_review";
+export interface TranscriptToolCall {
+  id: string;
+  name: RunToolEvent["toolName"];
+  status: "running" | "completed" | "failed" | "cancelled";
+  source?: RunToolEvent["source"];
+  errorCount?: number;
+  warningCount?: number;
+}
 export interface TranscriptCall {
   id: string;
   stage?: RunStage;
@@ -32,6 +40,10 @@ export interface TranscriptCall {
   review?: DiagramVisualReview;
   operation?: string;
   round?: number;
+  tools?: TranscriptToolCall[];
+  artifactKind?: "model" | "requirement-rules";
+  eventOrder?: number;
+  statusOrder?: number;
 }
 export interface TranscriptStep {
   id?: string;
@@ -47,15 +59,24 @@ export interface TranscriptStep {
   artifactGroup?: boolean;
   diagramKind?: string;
   compactCalls?: boolean;
-  phase?: "coverage-repair";
+  artifactType?: "requirement-rules" | "model" | "implementation" | "document" | "tests";
+  eventOrder?: number;
 }
 
-const order: RunStage[] = [
-  "extract_rules", "generate_models", "generate_design_sequence", "generate_design_models",
-  "generate_plantuml", "render_svg", "verify_diagram_visual",
+export function generationValidationProgress(calls: TranscriptCall[]) {
+  const validations = new Map<string, TranscriptToolCall["status"]>();
+  return calls.map(call => {
+    const identity = JSON.stringify([call.stage, call.modelId ?? call.subtaskId ?? call.diagramKind]);
+    const previous = validations.get(identity);
+    const validation = call.tools?.filter(tool => tool.name === "validate_model" || tool.name === "validate_requirement_rules").at(-1);
+    if (validation) validations.set(identity, validation.status);
+    if (call.operation === "model_compile" && ["failed", "completed"].includes(call.status)) validations.set(identity, call.status as "failed" | "completed");
+    // Repair counters also include query/protocol failures. Only a real rejected
+    // candidate or compiler rejection proves that the next request corrects this model.
+    return { call, revalidation: previous !== undefined, correctsRejectedCandidate: previous === "failed" };
+  });
+}
 
-  "generate_document_text", "render_document_file", "generate_context", "render_context", "generate_business_flow", "render_business_flow", "generate_implementation", "generate_tests",
-];
 const diagrams: Record<string, string> = {
   ...Object.fromEntries(Object.entries(DESIGN_DIAGRAM_META).map(([kind, meta]) => [kind, meta.label])),
   ...Object.fromEntries(Object.entries(DIAGRAM_META).map(([kind, meta]) => [kind, meta.label])),
@@ -136,7 +157,7 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
   };
   const getStep = (stage: RunStage) => {
     if (!currentSteps.has(stage)) {
-      const step: TranscriptStep = { id: `${stage}:${steps.filter((item) => item.stage === stage).length}`, stage, title: label(stage), messages: [], calls: [], entries: [], status: "running", finished: false };
+      const step: TranscriptStep = { id: `${stage}:${steps.filter((item) => item.stage === stage).length}`, stage, title: label(stage), messages: [], calls: [], entries: [], status: "running", finished: false, eventOrder: eventIndex };
       steps.push(step);
       currentSteps.set(stage, step);
     }
@@ -147,6 +168,7 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
     if (!call) {
       call = { ...newCall(id, callTitle(step.stage, subtaskId, subtaskLabel), at, subtaskId), ...metadata };
       call.stage = step.stage;
+      call.eventOrder = eventIndex;
       startedOrder.set(call, eventIndex);
       step.calls.push(call); step.entries?.push({ kind: "call", id });
     } else {
@@ -155,12 +177,12 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
     }
     return call;
   };
-  const activityIds = new Set(events.flatMap((event) => event.type === "run_activity" ? [event.callId] : []));
+  const activityIds = new Set(events.flatMap((event) => event.type === "run_activity" || event.type === "run_tool" ? [event.callId] : []));
   for (const event of events) {
-    eventIndex++;
     if (event.eventId && seen.has(event.eventId)) continue;
     if (event.eventId) seen.add(event.eventId);
     if (completed) break;
+    eventIndex++;
     // Empty diagram selections still emit an internal generate_models phase.
     if (rulesOnly && "stage" in event && event.stage === "generate_models") continue;
     const at = event.createdAt;
@@ -178,12 +200,27 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
         if ([event.subtaskId, event.modelId, event.diagramKind].includes(failure.id)) modelFailures.delete(key);
       }
     }
+    if (event.type === "run_tool") {
+      const call = getCall(getStep(event.stage), event.callId, at, event.subtaskId, event.subtaskLabel, { modelId: event.modelId, diagramKind: event.diagramKind });
+      const tools = call.tools ??= [];
+      let tool = tools.find(tool => tool.id === event.toolCallId);
+      if (!tool) { tool = { id: event.toolCallId, name: event.toolName, status: "running" }; tools.push(tool); }
+      tool.status = event.phase === "started" ? "running" : event.phase;
+      tool.source = event.source ?? tool.source;
+      tool.errorCount = event.errorCount ?? tool.errorCount;
+      tool.warningCount = event.warningCount ?? tool.warningCount;
+      // Validation failures remain visible on that tool attempt, while a later
+      // corrected candidate can still complete its owning model successfully.
+      call.thinking = false;
+      continue;
+    }
     if (event.type === "run_activity") {
       const step = getStep(event.stage);
       const call = getCall(step, event.callId, at, event.subtaskId, event.subtaskLabel, { modelId: event.modelId });
+      call.artifactKind ??= event.artifactKind;
       if (event.operation) {
         call.operation = event.operation; call.round = event.round;
-        const operationNames = { structure_check: "结构核对", model_repair: "结构纠错", render_repair: "重建图形", visual_check: event.round ? "视觉复查" : "视觉检查" };
+        const operationNames = { structure_check: "结构核对", model_repair: "结构纠错", render_repair: "重建图形", model_compile: "编译图形源码", visual_check: event.round ? "视觉复查" : "视觉检查" };
         const coverageRepair = event.operation === "model_repair" && event.subtaskLabel?.includes("补全模型与需求的对应关系");
         call.title = `${callTitle(event.stage, event.subtaskId, event.subtaskLabel)} · ${coverageRepair
           ? `覆盖修复${event.round ? `（第 ${event.round}/${MAX_GENERATION_REPAIR_ATTEMPTS} 次）` : ""}`
@@ -208,7 +245,7 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
       }
       // A thinking marker alone contains no provider reasoning to display.
       if (event.phase === "completed" || event.phase === "failed") {
-        call.status = event.phase; call.finishedAt = at; call.thinking = false;
+        call.status = event.phase; call.statusOrder = eventIndex; call.finishedAt = at; call.thinking = false;
       }
       continue;
     }
@@ -231,7 +268,7 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
       step.status = event.status;
       for (const call of step.calls) {
         if (["running", "queued"].includes(call.status)) {
-          call.status = event.status; call.finishedAt = at; call.thinking = false;
+          call.status = event.status; call.statusOrder = eventIndex; call.finishedAt = at; call.thinking = false;
         }
       }
     } else if (event.type === "stage_progress") {
@@ -249,6 +286,7 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
           call.coverageIncomplete = text.includes("上限") && text.includes("不完整");
         }
         call.status = event.subtaskStatus === "repairing" || event.subtaskStatus === "rendering" ? "running" : event.subtaskStatus ?? "running";
+        call.statusOrder = eventIndex;
         call.message = text;
         if (event.stage === "verify_diagram_visual" && event.message === "正在执行程序结构校验与绘制") {
           const identity = event.modelId ?? subtaskId;
@@ -272,6 +310,7 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
       if (subtaskId && !sequenceBatchReceipt) {
         const call = getCall(step, `${event.stage}:${subtaskId}`, at, subtaskId, event.subtaskLabel, { modelId: event.modelId, diagramKind: event.diagramKind });
         call.status = event.subtaskStatus === "pending_review" ? "pending_review" : "completed";
+        call.statusOrder = eventIndex;
         call.finishedAt = at;
         mirrorOrder.set(call, eventIndex);
       }
@@ -284,7 +323,7 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
         if (!failure) continue;
         const stage = failure.stage ?? "generate_models";
         const call = getCall(getStep(stage), `${stage}:${id}`, at, id);
-        call.status = "failed"; call.message = "此模型未能完成生成，可重试。"; call.finishedAt = at;
+        call.status = "failed"; call.statusOrder = eventIndex; call.message = "此模型未能完成生成，可重试。"; call.finishedAt = at;
         mirrorOrder.set(call, eventIndex);
       }
       if (failures && "diagramErrors" in snapshot) {
@@ -366,8 +405,11 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
     for (const subtask of currentSteps.get(step.stage) === step ? subtasks : []) {
       const prefix = `${step.stage}:`;
       if (!subtask.id.startsWith(prefix) && subtask.id !== step.stage) continue;
-      if (subtask.status === "queued" && !step.calls.some((call) => call.subtaskId === subtask.id.slice(prefix.length))) continue;
       const rawId = subtask.id.startsWith(prefix) ? subtask.id.slice(prefix.length) : subtask.id;
+      if (subtask.status === "queued") continue;
+      // Planned state may refine an executed task, but cannot invent execution for
+      // a sibling whose prerequisite failed before this stage ever started.
+      if (!step.calls.some(call => call.subtaskId === rawId || call.modelId === rawId || call.diagramKind === rawId)) continue;
       const call = getCall(step, `${step.stage}:${rawId}`, undefined, rawId, subtask.label);
       call.title = readableTaskText(subtask.label);
       call.status = ["repairing", "rendering"].includes(subtask.status) ? "running" : subtask.status as TranscriptStatus;
@@ -398,6 +440,10 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
       }
     }
     for (const call of step.calls) {
+      for (const tool of call.tools ?? []) if (terminal && tool.status === "running") {
+        // A terminal run cannot imply that an unfinished tool completed successfully.
+        tool.status = status === "cancelled" ? "cancelled" : "failed";
+      }
       if (!call.diagramKind) {
         const kinds = new Set([call.modelId, call.subtaskId].flatMap(id => id ? [...kindsByIdentity.get(id) ?? []] : []));
         if (kinds.size === 1) call.diagramKind = [...kinds][0];
@@ -405,10 +451,12 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
       if (step.stage === "verify_diagram_visual" && call.status !== "failed" && call.subtaskId && completed && "visualReviews" in completed.snapshot &&
         isConfirmedVisualReview(completed.snapshot.visualReviews?.[call.subtaskId], currentVisualReviews[call.subtaskId])) {
         call.status = "completed";
+        call.statusOrder = eventIndex;
         call.message = "已人工确认当前图";
       }
       if (terminal && ["running", "queued"].includes(call.status)) {
         call.status = status === "completed" ? "completed" : status === "cancelled" ? "cancelled" : "failed";
+        call.statusOrder = eventIndex;
         call.finishedAt = terminalAt;
         call.thinking = false;
       }
@@ -433,7 +481,7 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
       }
       actual.structureCheckCount = Math.max(actual.structureCheckCount ?? 0, mirror.structureCheckCount ?? 0) || undefined;
       if (["failed", "pending_review"].includes(mirror.status) && (mirrorOrder.get(mirror) ?? startedOrder.get(mirror) ?? -1) >= (startedOrder.get(actual) ?? 0)) {
-        actual.status = mirror.status; actual.message = mirror.message;
+        actual.status = mirror.status; actual.statusOrder = mirror.statusOrder; actual.message = mirror.message;
       } else if (step.stage === "verify_diagram_visual" && mirror.status === "completed" && mirror.message?.includes("跳过")) {
         // Unsupported image input is a handled skip; preserve the trace without presenting a failed task.
         actual.status = "completed"; actual.message = mirror.message; actual.thinking = false;
@@ -449,6 +497,7 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
         if (review) {
           if (includeContent) call.review = review;
           call.status = review.status === "failed" ? "failed" : review.status === "not_completed" || (review.status === "pending_review" && !isConfirmedVisualReview(review, currentVisualReviews[subtaskId])) ? "pending_review" : "completed";
+          call.statusOrder = eventIndex;
           call.message = isConfirmedVisualReview(review, currentVisualReviews[subtaskId])
             ? "已人工确认当前图" : includeContent ? visualReviewDetail(review) ?? undefined : modelProgressMessage(call.status);
           call.thinking = false;
@@ -471,10 +520,6 @@ export function projectGenerationTranscript(events: RunEventInput[], fallbackSta
     }
     if (terminal) step.finished = true;
   }
-  // UML render events can arrive before other model producers have finished. Code repair
-  // passes, on the other hand, retain their actual sequence (check -> repair -> recheck).
-  const diagramFlow = steps.some((step) => ["extract_rules", "generate_models", "generate_design_sequence", "generate_design_models"].includes(step.stage));
-  if (diagramFlow) steps.sort((a, b) => order.indexOf(a.stage) - order.indexOf(b.stage));
   // Parallel model/render stages already have events, even while an earlier stage is open.
   return { steps, visibleSteps: steps, status, finalMessage, completed };
 }

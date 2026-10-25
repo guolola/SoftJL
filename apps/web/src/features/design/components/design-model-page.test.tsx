@@ -30,10 +30,10 @@ function completeRequirementSources() {
   for (const [index, target] of gaps.entries()) {
     const rule = createRule({ id: `control-fixture-${index}`, type: target.diagramKind === "deployment" ? "operations" : "functional", text: `测试明确要求：${target.label}` });
     snapshot.rules.push(rule);
-    snapshot.requirementModelTraceability.push({ ruleId: rule.id, target, mappingSource: "llm" });
+    snapshot.requirementModelTraceability.push({ ruleId: rule.id, target });
   }
   snapshot.requirementBaseline = createRequirementBaselineSnapshot({ runId: snapshot.runId, requirementText: snapshot.requirementText,
-    rules: snapshot.rules, previousBaseline: snapshot.requirementBaseline, origin: "manual" });
+    rules: snapshot.rules, previousBaseline: snapshot.requirementBaseline });
   return snapshot;
 }
 
@@ -1113,8 +1113,8 @@ describe("DesignModelPage", () => {
                   label: "生成模型",
                 },
               ],
-              mappingSource: "llm",
-              rationale: "设计元素缺少上游来源，AI 自动补齐到需求用例。",
+
+
             },
           ],
         }),

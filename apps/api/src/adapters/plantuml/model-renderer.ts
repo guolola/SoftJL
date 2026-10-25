@@ -1,15 +1,15 @@
 // Deterministically renders validated models, preserving graph identity and recording emitted connections.
 import {
-  assertValidModel, deriveTableModel, getModelGraphElements,
+  assertValidModel, getStageModelSchema, deriveTableModel, getModelGraphElements,
   type AnyDiagramModel, type ModelingStage, type DiagramModelSpec, type DesignDiagramModelSpec,
   type PlantUmlArtifact, type DesignPlantUmlArtifact, type ClassAttribute, type ClassOperation,
   type SequenceDiagramSpec, type AnalysisSequenceDiagramSpec,
   type ModelRenderMapping,
 } from "@uml-platform/contracts";
 import { completeRenderMapping } from "./render-mapping.js";
-import { renderActivityGraph } from "./activity-renderer.js";
-import { NativeActivityStructureError, renderActivitySwimlanes } from "./activity-swimlane-renderer.js";
+import { renderActivitySwimlanes } from "./activity-swimlane-renderer.js";
 import { umlAlias as alias, umlLabel as quote, umlText as text } from "./plantuml-text.js";
+import { ModelCompilationError } from "./model-compilation-error.js";
 
 const symbols = { public: "+", protected: "#", private: "-", package: "~" };
 const label = (parts: Array<string | undefined>) => parts.filter(Boolean).map((part) => text(part!)).join("\\n");
@@ -20,8 +20,11 @@ function operationText(item: ClassOperation) {
   return `${item.isStatic ? "{static} " : ""}${item.isAbstract ? "{abstract} " : ""}${symbols[item.visibility]}${text(item.name)}(${item.parameters.map((parameter) => `${parameter.direction ? `${parameter.direction} ` : ""}${text(parameter.name)}: ${text(parameter.type)}${parameter.required === false ? "?" : ""}`).join(", ")})${item.returnType ? `: ${text(item.returnType)}` : ""}`;
 }
 
-function render(model: AnyDiagramModel, stage: ModelingStage) {
-  assertValidModel(model, stage);
+function render(model: AnyDiagramModel, stage: ModelingStage, validation: "schema" | "semantic") {
+  // Generated candidates have already passed Schema and complete provenance. Rendering
+  // must not add semantic acceptance rules or synthesize additional graph elements.
+  if (validation === "semantic") assertValidModel(model, stage);
+  else getStageModelSchema(stage, model.diagramKind)!.parse(model);
   if (model.diagramKind === "table") model = deriveTableModel(model);
   const lines: string[] = ["@startuml", "skinparam shadowing false"];
   const emitted = new Map<string, ModelRenderMapping["elements"][number]>();
@@ -92,30 +95,10 @@ function render(model: AnyDiagramModel, stage: ModelingStage) {
       break;
     }
     case "activity": {
-      // Business control flows use native vertical lanes. The full requirements profile also
-      // supports explicit object/pin graphs, which PlantUML's activity DSL cannot express.
-      const objectGraph = model.relationships.some(edge => edge.type === "object_flow") || model.nodes.some(node => node.type === "object" || node.type === "activity" && ((node.inputPins?.length ?? 0) + (node.outputPins?.length ?? 0) > 0));
-      if (!objectGraph) {
-        try {
-          const native = renderActivitySwimlanes(model);
-          return { source: native.source, renderMapping: completeRenderMapping(model, native.source, native.renderMapping) };
-        } catch (error) {
-          // Current contracts allow unstructured control graphs too. Preserve their
-          // explicit edges rather than silently dropping a cross-lane return arrow.
-          if (!(error instanceof NativeActivityStructureError)) throw error;
-        }
-      }
-      const source = renderActivityGraph(model);
-      // Verify the explicit renderer emitted declarations and the actual edge statement, not just labels.
-      for (const item of getModelGraphElements(model)) {
-        if (!source.includes(`as ${alias(item.id)}`)) throw new Error(`Activity rendering omitted ${item.id}`);
-        emitted.set(item.id, { elementId: item.id, alias: alias(item.id) });
-      }
-      for (const edge of model.relationships) {
-        if (!source.includes(`${alias(edge.sourceId)} --> ${alias(edge.targetId)}`)) throw new Error(`Activity rendering omitted ${edge.id}`);
-        connections.set(edge.id, { relationshipId: edge.id, sourceId: edge.sourceId, targetId: edge.targetId, type: edge.type });
-      }
-      return { source, renderMapping: completeRenderMapping(model, source, { elements: [...emitted.values()], relationships: [...connections.values()], mode: "explicit-graph" }) };
+      // Both stages keep native vertical lanes, including paired connectors for
+      // non-local returns across branches and parallel synchronization regions.
+      const native = renderActivitySwimlanes(model);
+      return { source: native.source, renderMapping: completeRenderMapping(model, native.source, native.renderMapping) };
     }
     case "analysis": case "sequence": {
       renderSequence(model, lines, element, connection); break;
@@ -217,6 +200,14 @@ function renderSequence(
       const fragment = starts.get(id);
       if (fragment) {
         if (renderedFragments.has(fragment.id)) throw new Error(`Duplicate fragment ${fragment.id}`);
+        // Branch rendering cannot place fragment messages that belong to no operand.
+        const branchIds = new Set(fragment.branches?.flatMap(branch => branch.messageIds));
+        const missing = fragment.branches?.length ? fragment.messageIds.filter(id => !branchIds.has(id)) : [];
+        if (missing.length) throw new ModelCompilationError("顺序图编译失败：片段中的消息未归入分支", missing.map(id => ({
+          code: "model-compile", path: `fragments.${model.fragments.indexOf(fragment)}.branches`,
+          modelId: model.modelId, elementId: id, name: messages.get(id)?.name,
+          message: `消息 ${id} 属于片段 ${fragment.id}，但没有归入任何分支，无法完整绘制；请修正消息的片段或分支归属并保留业务含义。`,
+        })));
         renderedFragments.add(fragment.id);
         const branches = fragment.branches?.length ? fragment.branches : [{ id: undefined, label: fragment.label, condition: fragment.condition, messageIds: fragment.messageIds }];
         branches.forEach((branch, i) => {
@@ -239,9 +230,18 @@ function renderSequence(
   if (rendered.size !== model.messages.length || renderedFragments.size !== model.fragments.length) throw new Error("Sequence rendering omitted messages or fragments");
 }
 
-export function generatePlantUmlArtifacts(models: DiagramModelSpec[], stage: "requirements" | "feasibility" = "requirements"): PlantUmlArtifact[] {
-  return models.map((model) => ({ modelId: "modelId" in model ? model.modelId : undefined, diagramKind: model.diagramKind, ...render(model, stage) }));
+export function generatePlantUmlArtifacts(models: DiagramModelSpec[], stage: "requirements" | "feasibility" = "requirements", validation: "schema" | "semantic" = "semantic"): PlantUmlArtifact[] {
+  return models.map((model) => ({ modelId: "modelId" in model ? model.modelId : undefined, diagramKind: model.diagramKind, ...compile(model, stage, validation) }));
 }
-export function generateDesignPlantUmlArtifacts(models: DesignDiagramModelSpec[]): DesignPlantUmlArtifact[] {
-  return models.map((model) => ({ modelId: model.modelId, diagramKind: model.diagramKind, ...render(model, "design") }));
+export function generateDesignPlantUmlArtifacts(models: DesignDiagramModelSpec[], validation: "schema" | "semantic" = "semantic"): DesignPlantUmlArtifact[] {
+  return models.map((model) => ({ modelId: model.modelId, diagramKind: model.diagramKind, ...compile(model, "design", validation) }));
+}
+
+function compile(model: AnyDiagramModel, stage: ModelingStage, validation: "schema" | "semantic") {
+  try { return render(model, stage, validation); }
+  catch (error) {
+    if (error instanceof ModelCompilationError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ModelCompilationError(message, [{ code: "model-compile", path: "", modelId: model.modelId, message }], { cause: error });
+  }
 }

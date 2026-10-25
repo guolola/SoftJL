@@ -97,7 +97,7 @@ test("harness mock mode produces json and markdown reports", async () => {
   assert.equal(report.passMetrics.passPowerK, 1);
   assert.equal(report.passMetrics.bestAtK, 100);
   assert.equal(report.totals.semanticAccuracyRate, 1);
-  assert.equal(report.totals.harmfulRepairCount, 0);
+  assert.equal("harmfulRepairCount" in report.totals, false);
   assert.equal(report.totals.terminalInconsistencyCount, 0);
   assert.match(renderMarkdownReport(report), /UML 生成质量评测报告/);
   assert.match(renderMarkdownReport(report), /关键语义准确率: 100\.0%/);
@@ -112,7 +112,7 @@ test("Pass metrics distinguish at-1, at-k, power-k, and best-k", () => {
     taskType: "requirements_to_uml", status: "completed", rulesCount: 1, modelsCount: 1,
     svgSuccessCount: 1, diagramErrorCount: 0, durationMs: 1, errorMessage: null,
     semanticFactsTotal: 1, semanticFactsPreserved: 1, semanticAccuracyRate: 1,
-    harmfulRepairCount: 0, unfoundedAdditionCount: 0, effectiveTraceCovered: 1,
+    unfoundedAdditionCount: 0, effectiveTraceCovered: 1,
     effectiveTraceTotal: 1, effectiveTraceCoverageRate: 1, terminalStateConsistent: true,
 
   } satisfies Omit<EvalCaseResult, "fixtureId" | "attempt" | "qualityScore" | "automaticVerdict">;

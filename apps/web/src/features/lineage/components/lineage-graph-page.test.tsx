@@ -31,6 +31,22 @@ async function setup() {
   return { user, card, onViewArtifact };
 }
 describe('lineage node toolbar', () => {
+  it('cancels every delayed hide when repeated leave events are followed by unmount', async () => {
+    const { unmount } = render(<I18nextProvider i18n={i18n}><LineageGraphPage /></I18nextProvider>);
+    const card = await screen.findByTestId('lineage-node-requirement-model:function');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.mouseLeave(card);
+      fireEvent.mouseLeave(card);
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      unmount();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps measured cards visible when workspace status changes and after returning to the page', async () => {
     const view = () => <I18nextProvider i18n={i18n}><LineageGraphPage projectRuns={[]} /></I18nextProvider>;
     const first = render(view());

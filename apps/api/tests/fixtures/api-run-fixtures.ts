@@ -19,8 +19,8 @@ import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "../.
 import { TEST_RUN_ACCESS_CONTEXT, TEST_PROVIDER_CONFIG_ID, MANAGED_PROVIDER_SETTINGS, RULES_JSON, TEST_REQUIREMENT_BASELINE, CLASSIFIED_RULES_JSON, VALID_PNG, DOCUMENT_WORKSPACE_HEADERS, USECASE_MODEL_JSON, ACTIVITY_MODEL, PROTOTYPE_MODEL, CLASS_MODEL, MULTI_MODEL_JSON, USECASE_REQUIREMENT_TRACEABILITY, PROTOTYPE_REQUIREMENT_TRACEABILITY, CLASS_REQUIREMENT_TRACEABILITY, DESIGN_SEQUENCE_MODEL, DESIGN_SEQUENCE_JSON, DESIGN_NAVIGATION_JSON, DESIGN_CLASS_AND_TABLE_JSON } from "./api-models.js";
 
 export function expectedResponseFormat(context: StreamChatCompletionInput["runContext"]) {
-  const modelGeneration = ["generate_models", "generate_design_models", "generate_design_sequence"].includes(context?.stage ?? "");
-  return context?.operation === "model_repair" && !modelGeneration ? "json_object" : "json_schema";
+  const modelGeneration = ["extract_rules", "generate_models", "generate_design_models", "generate_design_sequence", "generate_context", "generate_business_flow", "generate_implementation"].includes(context?.stage ?? "");
+  return modelGeneration ? "json_schema" : context?.operation === "model_repair" ? "json_object" : "json_schema";
 }
 
 export function assertApiErrorCode(response: { json(): unknown }, code: string) {

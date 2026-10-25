@@ -3,7 +3,7 @@
 export const requirementsZh = {
         editorTable: { primaryKey: "主键", foreignKey: "外键", nullable: "可空", referenceTable: "引用表", referenceColumn: "引用字段" },
         traceDialogs: { title: "需求模型追踪证明", description: "查看需求规则到需求模型元素的覆盖解释；这些内容用于审计和排查，不影响当前页面编辑。", evidence: "覆盖证明", count: "共 {{count}} 项", complete: "证明已补齐", reason: "问题原因：{{value}}", repair: "补齐方式：{{value}}", status: "证明状态：{{value}}", repairAgain: "重新补齐证明", resultTitle: "单项证明补齐完成", resultDescription: "已只重新检查当前需求模型覆盖证明，没有重新生成全部需求模型。", stage: "阶段：", requirementModels: "需求模型", target: "对象：", acknowledge: "我知道了" },
-        newRule: { title: "新增需求项", description: "选择需求类型并填写需求文本；对应模型由系统按需求类型固定关联。", type: "需求类型", models: "对应模型", text: "需求文本", placeholder: "填写这条需求项的具体内容", create: "创建需求项" },
+        newRule: { title: "新增需求项", description: "选择需求类型并填写需求文本；生成时通过真实来源映射关联模型元素。", type: "需求类型", models: "对应模型", text: "需求文本", placeholder: "填写这条需求项的具体内容", create: "创建需求项" },
         review: { fields: { actor: "角色/执行者", subject: "主体", action: "动作", object: "对象", condition: "条件", outcome: "结果", acceptanceCriteria: "验收标准" }, sources: { ai: "AI补齐", manual: "手动编辑", source: "原文提取", inferred: "规则推断" } },
         permissions: {
           edit: "当前项目角色不能编辑需求内容。",
@@ -137,7 +137,7 @@ export const requirementsZh = {
 export const requirementsEn = {
         editorTable: { primaryKey: "Primary key", foreignKey: "Foreign key", nullable: "Nullable", referenceTable: "Referenced table", referenceColumn: "Referenced column" },
         traceDialogs: { title: "Requirement-model trace evidence", description: "Review how requirement rules cover model elements. This evidence supports audits and troubleshooting without changing the current page.", evidence: "Coverage evidence", count: "{{count}} items", complete: "Evidence complete", reason: "Reason: {{value}}", repair: "Resolution: {{value}}", status: "Evidence status: {{value}}", repairAgain: "Rebuild evidence", resultTitle: "Evidence rebuilt", resultDescription: "Only this requirement-model coverage item was checked again; all requirement models were not regenerated.", stage: "Stage: ", requirementModels: "Requirement models", target: "Target: ", acknowledge: "Got it" },
-        newRule: { title: "Add requirement", description: "Choose a type and describe the requirement; related models follow the fixed requirement-type mapping.", type: "Requirement type", models: "Target models", text: "Requirement text", placeholder: "Describe this requirement", create: "Create requirement" },
+        newRule: { title: "Add requirement", description: "Choose a type and describe the requirement; generated model elements link to real upstream sources.", type: "Requirement type", models: "Target models", text: "Requirement text", placeholder: "Describe this requirement", create: "Create requirement" },
         review: { fields: { actor: "Role / actor", subject: "Subject", action: "Action", object: "Object", condition: "Condition", outcome: "Outcome", acceptanceCriteria: "Acceptance criteria" }, sources: { ai: "AI suggestion", manual: "Manual edit", source: "Source text", inferred: "Rule inference" } },
         permissions: {
           edit: "Your project role cannot edit requirements.",

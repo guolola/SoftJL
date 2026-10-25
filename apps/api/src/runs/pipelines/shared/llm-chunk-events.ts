@@ -27,6 +27,7 @@ export interface RunLlmChunkHandlerOptions {
   diagramKind?: string;
   modelId?: string;
   operation?: RunActivityEvent["operation"];
+  artifactKind?: RunActivityEvent["artifactKind"];
   round?: number;
   subtaskId?: string;
   subtaskLabel?: string;
@@ -47,6 +48,7 @@ export function createRunLlmChunkHandlers({
   diagramKind,
   modelId,
   operation,
+  artifactKind,
   round,
   subtaskId,
   subtaskLabel,
@@ -57,7 +59,7 @@ export function createRunLlmChunkHandlers({
   noVisibleChunkHeartbeatIntervalMs = NO_VISIBLE_CHUNK_HEARTBEAT_INTERVAL_MS,
   noVisibleChunkHeartbeatMessage = NO_VISIBLE_CHUNK_HEARTBEAT_MESSAGE,
 }: RunLlmChunkHandlerOptions): LlmChunkHandlers {
-  const activity = createCallActivity({ record, stage, subtaskId: subtaskId ?? modelId ?? diagramKind, subtaskLabel, modelId, operation, round });
+  const activity = createCallActivity({ record, stage, subtaskId: subtaskId ?? modelId ?? diagramKind, subtaskLabel, modelId, operation, round, artifactKind });
   let emittedChunks = 0;
   let emittedChars = 0;
   let blankChunksSinceContent = 0;

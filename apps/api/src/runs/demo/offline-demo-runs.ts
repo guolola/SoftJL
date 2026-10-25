@@ -253,7 +253,6 @@ export async function completeOfflineDemoRequirementRun(
       ...snapshot.requirementBaseline,
       runId: snapshot.runId,
       sourceInputFingerprint: snapshotInputFingerprint({ requirementText: input.requirementText, rules: snapshot.rules }),
-      qualityReport: { ...snapshot.requirementBaseline.qualityReport, runId: snapshot.runId },
     }));
   }
   const availableKinds = requirementKinds(snapshot);
@@ -267,7 +266,7 @@ export async function completeOfflineDemoRequirementRun(
     snapshot.diagramErrors = {};
     snapshot.currentStage = "extract_rules";
   } else {
-    // Frozen demos obey the same type prerequisites and must expose unsupported model requests.
+    // Frozen demos need real source rules; rule classification does not gate model availability.
     const missingKinds = selectedKinds.filter(diagram => candidateRulesForDiagram(snapshot.rules, diagram).length === 0);
     const selected = new Set(selectedKinds.filter(diagram => !missingKinds.includes(diagram)));
     snapshot.models = snapshot.models.filter((model) =>
@@ -290,7 +289,7 @@ export async function completeOfflineDemoRequirementRun(
     ) as RunSnapshot["diagramErrors"];
     for (const diagram of missingKinds) snapshot.diagramErrors[diagram] = {
       stage: "generate_models",
-      error: createRunError("RUN_MODEL_OUTPUT_EMPTY", `${diagram} 没有对应类型的需求规则，请先补充需求。`),
+      error: createRunError("RUN_MODEL_OUTPUT_EMPTY", `${diagram} 缺少上游需求规则，请先补充需求。`),
     };
     snapshot.outputManifest = snapshot.outputManifest.filter(output => output.kind !== "model" ||
       snapshot.models.some(model => (model.modelId ?? model.diagramKind) === output.id));

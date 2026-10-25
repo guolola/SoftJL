@@ -373,15 +373,13 @@ describe("TraceabilityMatrixPage", () => {
               elementKind: "class",
               label: "Class_UserAuth",
             },
-            upstreamDesignRefs: [{ modelId: "sequence:submit-order", diagramKind: "sequence", elementId: "auth-service", elementKind: "participant", label: "认证服务" }],
-            targets: [
-              {
+
+            targets: [{
                 diagramKind: "class",
                 elementId: "domain-user",
                 elementKind: "class",
                 label: "UserDomain",
-              },
-            ],
+              }, { modelId: "sequence:submit-order", diagramKind: "sequence", elementId: "auth-service", elementKind: "participant", label: "认证服务" }],
           },
         ],
       }),
@@ -504,15 +502,13 @@ describe("TraceabilityMatrixPage", () => {
               elementKind: "class",
               label: "Class_UserAuth",
             },
-            upstreamDesignRefs: [{ modelId: "sequence:submit-order", diagramKind: "sequence", elementId: "auth-service", elementKind: "participant", label: "认证服务" }],
-            targets: [
-              {
+
+            targets: [{
                 diagramKind: "class",
                 elementId: "domain-user",
                 elementKind: "class",
                 label: "UserDomain",
-              },
-            ],
+              }, { modelId: "sequence:submit-order", diagramKind: "sequence", elementId: "auth-service", elementKind: "participant", label: "认证服务" }],
           },
         ],
       }),

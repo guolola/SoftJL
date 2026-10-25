@@ -93,7 +93,7 @@ const designModelTraceability = [
   ...["participant-user", "participant-order-service"].map(elementId => ({
     source: { modelId: "sequence", diagramKind: "sequence" as const, elementId, elementKind: "participant", label: elementId },
     targets: [{ diagramKind: "usecase" as const, elementId: "usecase-submit-order", elementKind: "usecase", label: "提交订单" }],
-    mappingSource: "llm" as const,
+
   })),
   {
     source: {
@@ -111,7 +111,7 @@ const designModelTraceability = [
         label: "提交订单",
       },
     ],
-    mappingSource: "llm" as const,
+
   },
 ];
 

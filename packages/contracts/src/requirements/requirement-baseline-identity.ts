@@ -8,10 +8,6 @@ export function reuseRequirementBaseline(
 ): RequirementBaseline {
   if (!current) return incoming;
   // Run attribution changes do not replace an identical saved source snapshot.
-  const facts = (baseline: RequirementBaseline) => {
-    const { runId: _runId, ...qualityReport } = baseline.qualityReport;
-    return { rules: baseline.rules, assumptions: baseline.assumptions, conflicts: baseline.conflicts, qualityReport };
-  };
   return current.sourceInputFingerprint === incoming.sourceInputFingerprint &&
-    snapshotInputFingerprint(facts(current)) === snapshotInputFingerprint(facts(incoming)) ? current : incoming;
+    snapshotInputFingerprint(current.rules) === snapshotInputFingerprint(incoming.rules) ? current : incoming;
 }

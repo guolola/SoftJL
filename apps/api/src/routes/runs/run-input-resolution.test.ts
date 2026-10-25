@@ -236,10 +236,10 @@ test("analysis requires a saved usecase even when the same batch requests one", 
   }
 });
 
-test("analysis refuses a saved disconnected use case while regeneration may replace it", async () => {
+test("analysis refuses a saved Schema-invalid use case while regeneration may replace it", async () => {
   const usecase = modelFixture("requirements", "usecase");
   if (usecase.diagramKind !== "usecase") throw new Error("fixture");
-  usecase.useCases[0]!.primaryActorId = "actor"; usecase.relationships = [];
+  usecase.title = "";
   const input = { projectId: "p", selectedDiagrams: ["analysis"] };
   const loadWorkspace = async () => ({ state: { requirementText: "用户可以下单", rules, models: { usecase } } });
   const result = await resolveRequirementRunInput(input, undefined, loadWorkspace);
@@ -275,7 +275,7 @@ test("analysis uses the saved usecase without scheduling an implicit replacement
 test("project design commands reject invalid source structure before traceability or content confirmation", async () => {
   const usecase = modelFixture("requirements", "usecase");
   if (usecase.diagramKind !== "usecase") throw new Error("fixture");
-  usecase.relationships = [];
+  usecase.title = "";
   const result = await resolveDesignRunInput({ projectId: "project-a", selectedDiagrams: ["class"] }, { projectId: "project-a" },
     async () => ({ state: { requirementText: "用户可以下单", rules, models: { usecase }, manualModelEditStatus: { usecase: "confirmed" } } }));
   assert.equal(result.ok, false);

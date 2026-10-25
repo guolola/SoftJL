@@ -79,10 +79,10 @@ test("demo generation keeps prototype entry mappings in full and prototype-only 
       snapshot.rules,
       snapshot.models.filter((model) => model.diagramKind !== "analysis"),
     );
-    assert.ok(coverage.missingTargets.every(target => target.diagramKind === "function"));
+    assert.ok(coverage.missingTargets.every(target => ["function", "deployment"].includes(target.diagramKind)));
     if (selectedDiagrams.includes("deployment")) {
-      assert.equal(snapshot.models.some(model => model.diagramKind === "deployment"), false);
-      assert.match(snapshot.diagramErrors.deployment?.error.message ?? "", /没有对应类型/);
+      assert.equal(snapshot.models.some(model => model.diagramKind === "deployment"), true);
+      assert.equal(snapshot.diagramErrors.deployment, undefined);
     }
     for (const elementId of ["mobile-entry", "mobile-login"]) {
       assert.ok(snapshot.requirementModelTraceability.some((entry) =>

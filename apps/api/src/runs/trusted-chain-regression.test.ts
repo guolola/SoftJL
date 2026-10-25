@@ -138,11 +138,7 @@ test("trusted chain accepts representative ordinary-business domains", () => {
       ],
     });
 
-    assert.equal(
-      baseline.qualityReport.status,
-      "passed",
-      `${domain.domain} baseline should pass`,
-    );
+    assert.equal("qualityReport" in baseline, false);
     assert.equal(
       trustedChain.coverageMatrix.rows[0]?.status,
       "covered",

@@ -18,10 +18,8 @@ export function normalizeWorkspaceModelState(state: Record<string, unknown>, pre
       requirementText: typeof next.requirementText === "string" ? next.requirementText : "",
       rules: requirementRulesSchema.parse(next.rules),
       previousBaseline: previous,
-      origin: "manual",
     });
     next.requirementBaseline = baseline;
-    next.requirementQualityReport = baseline.qualityReport;
   }
   assertCurrentWorkspaceState(next);
   const normalize = (model: unknown, stage: ModelingStage, expectedKind?: string) => {

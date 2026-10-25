@@ -1,5 +1,5 @@
 // Derives stale flags, generation blockers, and visible run status for the session provider.
-import { designRequirementModelIds, validateModelInput, type DiagramModelSpec, type RequirementBaseline } from "@uml-platform/contracts";
+import { designRequirementModelIds, validateModelStructure, type DiagramModelSpec, type RequirementBaseline } from "@uml-platform/contracts";
 import type { DesignDiagramType, DiagramType } from "../../../entities/diagram/model";
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
@@ -115,9 +115,10 @@ const requirementInputStale =
     generatedRequirementDiagramSet.size > 0 &&
     (requirementInputStale || requirementTraceabilityMissing);
   // Extracted rules count as generated; rule confirmation never gates design generation.
+  // Use the same schema boundary as saved upstreams and the design action guard.
   const designGenerationBlockedReason = !requirementText.trim()
     ? "请先输入需求文本"
-    : (Object.values(input.models).some((model) => model && validateModelInput(model, "requirements").some((issue) => issue.severity === "error"))
+    : (Object.values(input.models).some((model) => model && validateModelStructure(model, "requirements").some((issue) => issue.severity === "error"))
       ? "上游需求模型未通过结构校验，请修复或重新生成后继续设计" : null);
   const staleDesignReasons: Record<string, string> = {};
   const staleDesignModelIds = Object.values(input.designModels).flatMap((model) => {

@@ -1531,13 +1531,10 @@ setTestGenerationResult,
           durationMs: Date.now() - startedAtMs,
         });
         setRunUiState(completedRunUiState());
-        const qualityHintCount =
-          snapshot.requirementBaseline?.qualityReport.issues.length ?? 0;
         const diagramFailureCount = diagramErrorCount(snapshot);
         openGenerationResultDialog(
           designRunCompletionDialog({
             diagramFailureCount,
-            qualityHintCount,
             runId: snapshot.runId,
           }),
         );

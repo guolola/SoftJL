@@ -2,7 +2,7 @@
 import { Eye, WandSparkles } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { REQUIREMENT_MODEL_RULE_TYPES, type DiagramKind } from "@uml-platform/contracts";
+import { type DiagramKind } from "@uml-platform/contracts";
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
 import { Badge } from "../../../shared/ui/badge";
@@ -34,7 +34,6 @@ type RequirementModelCardPopoversProps = {
 export function RequirementModelCardPopovers({
   autoFillLabels,
   label,
-  diagram,
   linkedRules,
   pendingAutoReviews,
   onDecideAutoReviews,
@@ -170,7 +169,7 @@ export function RequirementModelCardPopovers({
           >
             <PopoverTitle>{t("requirements.relatedRulesAria", { label })}</PopoverTitle>
             <PopoverDescription>
-              {REQUIREMENT_MODEL_RULE_TYPES[diagram].map(type => t(`requirementSemantics.kinds.${type}`)).join(" · ")}
+              {[...new Set(linkedRules.map(rule => rule.type))].map(type => t(`requirementSemantics.kinds.${type}`)).join(" · ")}
             </PopoverDescription>
             <div className="mt-3 grid max-h-[min(60vh,24rem)] gap-2 overflow-y-auto pr-1">
               {linkedRules.map((rule) => {

@@ -1,4 +1,4 @@
-// Ensures fixed type membership cannot be changed by LLM references, generation or staleness.
+// Ensures available sources cannot be changed by LLM references, generation or staleness.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { requirementModelSources } from "./requirement-model-sources.js";
@@ -10,16 +10,16 @@ const model = functionStructureDiagramSpecSchema.parse({ diagramKind: "function"
 test("fixed sources stay the same before and after generation, including stale models", () => {
   for (const models of [[], [model]]) for (const stale of [false, true]) {
     const result = requirementModelSources({ diagram: "function", rules, models, stale, traceability: [
-      { ruleId: "r2", target: { diagramKind: "function", elementId: "f1", elementKind: "function", label: "提交订单" }, mappingSource: "llm" },
+      { ruleId: "r2", target: { diagramKind: "function", elementId: "f1", elementKind: "function", label: "提交订单" },  },
     ] });
     assert.equal(result.mode, "mapped");
-    assert.deepEqual(result.rules.map(rule => rule.id), ["r1"]);
+    assert.deepEqual(result.rules.map(rule => rule.id), ["r1", "r2"]);
   }
   assert.deepEqual(requirementModelSources({ diagram: "prototype", rules, models: [], traceability: [] }).rules, rules);
 });
 
-test("changing a requirement type changes membership without requiring model generation", () => {
-  assert.deepEqual(requirementModelSources({ diagram: "class", rules, models: [], traceability: [] }).rules, []);
+test("changing a requirement type does not remove real upstream sources", () => {
+  assert.deepEqual(requirementModelSources({ diagram: "class", rules, models: [], traceability: [] }).rules, rules);
   const changed = rules.map(rule => ({ ...rule, type: "data" as const }));
   assert.deepEqual(requirementModelSources({ diagram: "class", rules: changed, models: [], traceability: [] }).rules, changed);
 });

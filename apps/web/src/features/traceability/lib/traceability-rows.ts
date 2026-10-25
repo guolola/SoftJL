@@ -1,10 +1,8 @@
 // Builds traceability matrix rows from workspace state without rendering UI.
 import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
-import { requirementTypeAppliesToModel } from "@uml-platform/contracts";
 import type {
   DesignDiagramKind,
   DiagramKind,
-  DiagramModelSpec,
   ContextDiagramSpec,
   ContextTraceRow,
   ModelElementRef,
@@ -171,8 +169,6 @@ export type TraceabilityRowCopy = {
   missingSourceUseCaseOrEventFlow: string;
   sourceUseCase: (label: string) => string;
   sourceUseCaseMissing: string;
-  endpointDerived: string;
-  mappingDescription: (note: string) => string;
   sourceUseCaseRealization: (modelLabel: string, elementLabel?: string) => string;
   requirementElement: (groupLabel: string, elementLabel?: string) => string;
 };
@@ -209,8 +205,6 @@ export const DEFAULT_TRACEABILITY_ROW_COPY: TraceabilityRowCopy = {
   missingSourceUseCaseOrEventFlow: "缺少来源用例或事件流",
   sourceUseCase: (label) => `来源用例：${label}`,
   sourceUseCaseMissing: "来源用例：未找到",
-  endpointDerived: "由端点映射推导",
-  mappingDescription: (note) => `映射说明：${note}`,
   sourceUseCaseRealization: (modelLabel, elementLabel) =>
     `来源用例实现设计：${modelLabel} / ${elementLabel}`,
   requirementElement: (groupLabel, elementLabel) => `需求元素：${groupLabel} / ${elementLabel}`,
@@ -242,16 +236,6 @@ function compactString(value: unknown) {
   return typeof value === "string" || typeof value === "number"
     ? String(value).trim()
     : "";
-}
-
-function hasInteractiveReviewText(text: string) {
-  return /未找到明确(?:上游)?来源|请在跟踪矩阵|采纳|忽略|确认是否采纳/u.test(text);
-}
-
-function traceabilityDisplayNote(value: string | undefined, fallback: string) {
-  const text = value?.trim();
-  if (!text || hasInteractiveReviewText(text)) return fallback;
-  return text;
 }
 
 function ensureArray(value: unknown): unknown[] {
@@ -300,7 +284,6 @@ function refsForRequirementModels(
       isBusinessTraceabilityKind(item.kind),
     );
     const businessIds = new Set(items.map((item) => item.id));
-    if (model.diagramKind === "activity") for (const node of (model as Extract<DiagramModelSpec, { diagramKind: "activity" }>).nodes) if (node.type === "activity") for (const pin of [...node.inputPins ?? [], ...node.outputPins ?? []]) businessIds.add(pin.id);
     const relationships = detail.relationships.filter(
       (relationship) =>
         diagram !== "activity" ||
@@ -506,13 +489,11 @@ export function buildRequirementRows(
     string,
     Array<{
       rule: RequirementRule;
-      mappingSource?: string;
-      rationale?: string;
     }>
   >();
   for (const entry of traceability) {
     const rule = rulesById.get(entry.ruleId.toLowerCase());
-    if (!rule || !requirementTypeAppliesToModel(rule.type, entry.target.diagramKind as DiagramKind)) continue;
+    if (!rule) continue;
     const candidates = currentRefs.filter(ref => ref.diagramKind === entry.target.diagramKind &&
       ref.elementId.toLowerCase() === entry.target.elementId.toLowerCase() &&
       (!entry.target.modelId || (ref.modelId ?? ref.diagramKind).toLowerCase() === entry.target.modelId.toLowerCase()));
@@ -522,8 +503,6 @@ export function buildRequirementRows(
       ...(traceByTarget.get(key) ?? []),
       {
         rule,
-        mappingSource: entry.mappingSource,
-              rationale: entry.rationale,
       },
     ]);
   }
@@ -582,9 +561,9 @@ export function buildDesignRows(
         .map((target) => requirementRefMap.get(refKey(target)) ?? target),
       refKey,
     );
-    const isDesignTarget = (target: ModelElementRef) => designRefKeys.has(refKey(target));
+    const isDesignTarget = (target: ModelElementRef) => designRefKeys.has(refKey(target)) || !Object.hasOwn(DIAGRAM_META, target.diagramKind);
     const upstreamDesignElements = uniqueBy<ModelElementRef>(
-      [...traceEntry?.upstreamDesignRefs ?? [], ...targets.filter(isDesignTarget)], refKey,
+      targets.filter(isDesignTarget), refKey,
     );
     return {
       id: refKey(ref),
@@ -595,21 +574,16 @@ export function buildDesignRows(
       groupLabel: designGroupLabel(ref.diagramKind, copy),
       scopeKey: ref.modelId ?? ref.diagramKind,
       status: targets.length > 0 ? "mapped" : "unmapped",
-      mappingNote: traceEntry?.mappingSource === "derived-from-endpoints"
-            ? traceabilityDisplayNote(traceEntry.rationale, copy.endpointDerived)
-            : null,
+      mappingNote: null,
       requirementRules: [],
       requirementElements: targets.filter(target => !isDesignTarget(target)),
       upstreamDesignElements,
       detailLines: [
-        ...(traceEntry?.mappingSource === "derived-from-endpoints"
-          ? [copy.mappingDescription(traceabilityDisplayNote(traceEntry.rationale, copy.endpointDerived))]
-          : []),
         ...upstreamDesignElements.map(
           (target) =>
             copy.sourceUseCaseRealization(target.modelId ?? designGroupLabel(target.diagramKind, copy), target.label),
         ),
-        ...targets.map(
+        ...targets.filter(target => !isDesignTarget(target)).map(
           (target) =>
             copy.requirementElement(requirementGroupLabel(target.diagramKind, copy), target.label),
         ),

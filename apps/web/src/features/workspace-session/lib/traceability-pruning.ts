@@ -23,8 +23,6 @@ function activityNodeTraceabilityKind(nodeType: unknown) {
   switch (nodeType) {
     case "decision":
       return "decision-node";
-    case "object": return "object-node";
-    case "flow_final": return "flow-final-node";
     case "start":
       return "start-node";
     case "end":
@@ -102,7 +100,6 @@ function collectTraceableRefKeys(
       ["tables", "table"],
     ];
     const businessElementIds = new Set<string>();
-    if (model.diagramKind === "activity") for (const node of model.nodes) if (node.type === "activity") for (const pin of [...node.inputPins ?? [], ...node.outputPins ?? []]) businessElementIds.add(pin.id);
 
     for (const [key, defaultKind] of listKeys) {
       const items = Array.isArray(record[key]) ? record[key] : [];
@@ -165,10 +162,12 @@ function refExists(keys: Set<string>, ref: ModelElementRef) {
 
 export function pruneTraceabilityForRequirementModels(input: {
   models: WorkspaceRecord["models"];
+  designModels: WorkspaceRecord["designModels"];
   requirementModelTraceability: RequirementModelTraceabilityEntry[];
   designModelTraceability: DesignModelTraceabilityEntry[];
 }) {
   const requirementRefs = collectTraceableRefKeys(Object.values(input.models));
+  const designRefs = collectTraceableRefKeys(Object.values(input.designModels));
   const requirementModelTraceability =
     input.requirementModelTraceability.filter((entry) =>
       refExists(requirementRefs, entry.target),
@@ -177,7 +176,7 @@ export function pruneTraceabilityForRequirementModels(input: {
     .map((entry) => ({
       ...entry,
       targets: entry.targets.filter((target) =>
-        refExists(requirementRefs, target),
+        refExists(requirementRefs, target) || refExists(designRefs, target),
       ),
     }))
     .filter((entry) => entry.targets.length > 0);
@@ -193,19 +192,12 @@ export function pruneTraceabilityForDesignModels(input: {
   const requirementRefs = collectTraceableRefKeys(Object.values(input.models));
   return input.designModelTraceability
     .filter((entry) => refExists(designRefs, entry.source))
-    .map((entry) => {
-      const upstreamDesignRefs = entry.upstreamDesignRefs?.filter((ref) =>
-        refExists(designRefs, ref),
-      );
-      return {
-        ...entry,
-        targets: entry.targets.filter((target) =>
-          refExists(requirementRefs, target),
-        ),
-        ...(upstreamDesignRefs && upstreamDesignRefs.length > 0
-          ? { upstreamDesignRefs }
-          : { upstreamDesignRefs: undefined }),
-      };
-    })
+    .map((entry) => ({
+      ...entry,
+      // One target collection carries both requirement and design dependencies.
+      targets: entry.targets.filter((target) =>
+        refExists(requirementRefs, target) || refExists(designRefs, target),
+      ),
+    }))
     .filter((entry) => entry.targets.length > 0);
 }

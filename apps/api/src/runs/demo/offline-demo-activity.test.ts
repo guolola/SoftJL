@@ -48,6 +48,11 @@ test("demo generation preserves ordinary output and labels fixture reasoning for
   assert.ok(events.every(event => event.operation !== "structure_check"));
   assert.ok(events.every((event) => event.operation !== "visual_check" && event.operation !== "render_repair" && !event.inputImages?.length));
   assert.equal(run.snapshot.visualReviews.usecase.checkOutcome, "differences");
+  if (!("plantUml" in run.snapshot) || !("svgArtifacts" in run.snapshot)) throw new Error("fixture");
+  const flow = run.snapshot.plantUml.find(artifact => artifact.diagramKind === "activity")!;
+  assert.equal(flow.renderMapping?.mode, "native");
+  assert.doesNotMatch(flow.source, /allowmixing|<<partition>>/);
+  assert.match(run.snapshot.svgArtifacts.find(artifact => artifact.diagramKind === "activity")!.svg, /data-diagram-type="ACTIVITY"/);
   assert.equal(run.snapshot.visualReviews.usecase.repairAttempts, 1);
   assert.equal(run.snapshot.visualReviews.usecase.repairHistory?.[0].status, "rejected");
   assert.deepEqual(run.snapshot.visualReviews.usecase.findings?.map((finding) => finding.category), ["model_structure", "business_constraint"]);

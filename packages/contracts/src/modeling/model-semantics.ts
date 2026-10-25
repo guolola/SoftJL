@@ -3,7 +3,7 @@ import { validateSequenceLifecycle } from "./sequence-lifecycle.js";
 import { contractFieldSchema, unknownContractFields } from "./model-json-schema.js";
 import { useCaseParticipationGaps } from "./usecase-participation.js";
 import {
-  diagramModelSpecSchema, designDiagramModelSpecSchema, feasibilityActivityDiagramSpecSchema, contextDiagramSpecSchema,
+  diagramModelSpecSchema, designDiagramModelSpecSchema, activityDiagramSpecSchema, contextDiagramSpecSchema,
   type DiagramModelSpec, type DesignDiagramModelSpec, type TableDiagramSpec,
 } from "./models.js";
 
@@ -25,7 +25,7 @@ export interface ModelDiagnostic {
 export interface ModelGraphElement { id: string; kind: string; name: string; path: string; ownerId?: string; dataType?: string }
 
 export function getStageModelSchemas(stage: ModelingStage) {
-  if (stage === "feasibility") return [contextDiagramSpecSchema, feasibilityActivityDiagramSpecSchema];
+  if (stage === "feasibility") return [contextDiagramSpecSchema, activityDiagramSpecSchema];
   return stage === "design" ? designDiagramModelSpecSchema.options : diagramModelSpecSchema.options;
 }
 
@@ -46,14 +46,6 @@ export function getModelGraphElements(model: AnyDiagramModel): ModelGraphElement
     case "class": add(model.classes, "classes", "class"); add(model.interfaces, "interfaces", "interface"); add(model.enums, "enums", "enum"); break;
     case "activity":
       add(model.nodes, "nodes", (node) => node.type);
-      model.nodes.forEach((node, i) => {
-        if (node.type !== "activity") return;
-        for (const key of ["inputPins", "outputPins"] as const) (node[key] ?? []).forEach((pin, j) => result.push({ ...pin, kind: key === "inputPins" ? "input-pin" : "output-pin", ownerId: node.id, path: `nodes.${i}.${key}.${j}` }));
-      });
-      for (const element of result) {
-        const node = model.nodes.find((candidate) => candidate.id === element.id);
-        if (node?.type === "object") element.dataType = node.dataType;
-      }
       break;
     case "analysis": case "sequence": add(model.participants, "participants", (node) => node.participantType); break;
     case "prototype": case "navigation": add(model.nodes, "nodes", (node) => node.nodeType); break;
@@ -79,8 +71,7 @@ export function isModelRelationshipAllowed(kind: string, type: string, source: s
       return ["association", "aggregation", "composition"].includes(type) && both(["class", "interface"]);
     case "activity": {
       const controls = ["decision", "merge", "fork", "join"];
-      if (type === "control_flow") return ["start", "activity", ...controls].includes(source) && ["activity", "end", "flow_final", ...controls].includes(target);
-      return type === "object_flow" && ["output-pin", "object", ...controls].includes(source) && ["input-pin", "object", "end", "flow_final", ...controls].includes(target);
+      return type === "control_flow" && ["start", "activity", ...controls].includes(source) && ["activity", "end", ...controls].includes(target);
     }
     case "analysis": case "sequence": return ["sync", "async", "return", "create", "destroy"].includes(type);
     case "prototype": case "navigation":
@@ -239,43 +230,22 @@ export function validateModelSemantics(model: AnyDiagramModel, stage: ModelingSt
       const lanes = new Set(model.swimlanes.map((item) => item.id));
       const initial = model.nodes.filter((node) => node.type === "start");
       if (!initial.length || (stage === "feasibility" && initial.length !== 1)) report("activity-initial", "nodes", stage === "feasibility" ? "可行性业务流程约定恰有一个起点" : "活动需要起点");
-      if (!model.nodes.some((node) => node.type === "end" || node.type === "flow_final")) report("activity-final", "nodes", "当前流程模型需要显式终止节点");
+      if (!model.nodes.some((node) => node.type === "end")) report("activity-final", "nodes", "当前流程模型需要显式终止节点");
       model.nodes.forEach((node, i) => {
         ref(node.actorOrLane, lanes, `nodes.${i}.actorOrLane`);
         const incoming = model.relationships.filter((edge) => edge.targetId === node.id), outgoing = model.relationships.filter((edge) => edge.sourceId === node.id);
         if (node.type === "start" && incoming.length) report("initial-incoming", `nodes.${i}`, "起点不能有入边", node.id);
-        if (["end", "flow_final"].includes(node.type) && outgoing.length) report("final-outgoing", `nodes.${i}`, "终止节点不能有出边", node.id);
+        if (node.type === "end" && outgoing.length) report("final-outgoing", `nodes.${i}`, "终止节点不能有出边", node.id);
         if (["decision", "fork"].includes(node.type) && (incoming.length !== 1 || outgoing.length < 2)) report("split-degree", `nodes.${i}`, "判断或分叉需要一个输入和至少两个输出", node.id);
         if (["merge", "join"].includes(node.type) && (incoming.length < 2 || outgoing.length !== 1)) report("join-degree", `nodes.${i}`, "合并或汇合需要至少两个输入和一个输出", node.id);
-        if (["decision", "merge", "fork", "join"].includes(node.type) && new Set([...incoming, ...outgoing].map((edge) => edge.type)).size > 1) report("mixed-control-node", `nodes.${i}`, "本建模子集的控制节点不能混接控制流与对象流", node.id);
       });
-      model.relationships.forEach((edge, i) => {
-        if (edge.type !== "object_flow") return;
-        const source = byId.get(edge.sourceId), target = byId.get(edge.targetId);
-        if (source?.dataType && target?.dataType && source.dataType !== target.dataType) report("object-type", `relationships.${i}`, `对象流类型不一致：${source.dataType} → ${target.dataType}`, edge.id);
-      });
-      // Propagate object types through routing nodes; fork/join/decision/merge cannot hide a type mismatch.
-      for (const origin of elements.filter((item) => item.dataType)) {
-        const visited = new Set<string>();
-        const follow = (id: string) => {
-          if (visited.has(id)) return; visited.add(id);
-          for (const edge of model.relationships.filter((item) => item.type === "object_flow" && item.sourceId === id)) {
-            const target = byId.get(edge.targetId);
-            if (target?.dataType && target.dataType !== origin.dataType) report("object-type", "relationships", `对象流传递的类型不一致：${origin.dataType} → ${target.dataType}`, edge.id);
-            if (target && ["fork", "join", "decision", "merge"].includes(target.kind)) follow(target.id);
-          }
-        };
-        follow(origin.id);
-      }
-      // Pins participate in reachability through their owning action, never as invented control edges.
       const reachable = new Set(initial.map((node) => node.id));
       let changed = true;
       while (changed) {
         changed = false;
-        for (const element of elements) if (element.ownerId && reachable.has(element.ownerId) && !reachable.has(element.id)) { reachable.add(element.id); changed = true; }
-        for (const edge of model.relationships) if (reachable.has(edge.sourceId) && !reachable.has(edge.targetId)) { reachable.add(edge.targetId); const owner = byId.get(edge.targetId)?.ownerId; if (owner) reachable.add(owner); changed = true; }
+        for (const edge of model.relationships) if (reachable.has(edge.sourceId) && !reachable.has(edge.targetId)) { reachable.add(edge.targetId); changed = true; }
       }
-      for (const node of model.nodes) if (node.type !== "object" && !reachable.has(node.id)) report("unreachable-node", "nodes", "节点不能从起点到达", node.id);
+      for (const node of model.nodes) if (!reachable.has(node.id)) report("unreachable-node", "nodes", "节点不能从起点到达", node.id);
       break;
     }
     case "analysis": case "sequence": {
@@ -429,7 +399,8 @@ export function assertValidModel(model: AnyDiagramModel, stage: ModelingStage): 
   if (diagnostics.some((issue) => issue.severity === "error")) throw new ModelSemanticError(diagnostics);
 }
 
-export function validateModelInput(value: unknown, stage: ModelingStage): ModelDiagnostic[] {
+/** Schema-only boundary for generation and its saved upstream inputs. */
+export function validateModelStructure(value: unknown, stage: ModelingStage): ModelDiagnostic[] {
   const kind = value && typeof value === "object" && "diagramKind" in value ? String(value.diagramKind) : "unknown";
   const modelId = value && typeof value === "object" && "modelId" in value && typeof value.modelId === "string" ? value.modelId : kind;
   const ownerId = (path: string) => {
@@ -445,5 +416,12 @@ export function validateModelInput(value: unknown, stage: ModelingStage): ModelD
   const parsed = schema?.safeParse(value);
   if (!parsed?.success) return (parsed?.error.issues ?? [{ path: ["diagramKind"], message: "当前阶段不支持此模型" }]).map((issue) => ({ modelId, diagramKind: kind, code: "contract", path: issue.path.join("."), elementId: ownerId(issue.path.join(".")), message: issue.message, severity: "error", expectedSchema: schema ? contractFieldSchema(schema, value, issue.path.join(".")) : { type: "string", enum: getStageModelSchemas(stage).map(item => item.shape.diagramKind.value) } }));
   const unknown = schema ? unknownContractFields(schema, value).map((path): ModelDiagnostic => ({ modelId, diagramKind: kind, code: "unsupported-field", path, elementId: ownerId(path), message: "此阶段模型不支持该字段", severity: "error" })) : [];
-  return [...unknown, ...validateModelSemantics(parsed.data as AnyDiagramModel, stage)];
+  return unknown;
+}
+
+export function validateModelInput(value: unknown, stage: ModelingStage): ModelDiagnostic[] {
+  const diagnostics = validateModelStructure(value, stage);
+  const kind = value && typeof value === "object" && "diagramKind" in value ? String(value.diagramKind) : "unknown";
+  const parsed = getStageModelSchema(stage, kind)?.safeParse(value);
+  return parsed?.success ? [...diagnostics, ...validateModelSemantics(parsed.data as AnyDiagramModel, stage)] : diagnostics;
 }

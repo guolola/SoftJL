@@ -21,7 +21,7 @@ test("createEmptySnapshot produces a RequirementBaseline for requirements runs",
 
   assert.equal(snapshot.requirementBaseline?.runId, "run-1");
   assert.equal(snapshot.requirementBaseline?.rules?.[0]?.text, rule.text);
-  assert.equal(snapshot.requirementBaseline?.qualityReport.status, "passed");
+  assert.equal("qualityReport" in snapshot.requirementBaseline!, false);
 });
 
 test("requirement modeling snapshots reuse the source baseline without sharing mutable data", () => {
@@ -58,7 +58,6 @@ test("model commands reject old baseline storage without migrating it", () => {
   delete baseline.schemaVersion;
   delete baseline.rules;
   baseline.requirements = [{ id: "REQ-001", sourceRuleId: rule.id, sourceFragment: rule.text, type: "business-rule" as const, actor: null, subject: null, action: null, object: null, condition: null, outcome: null, confidence: 0.8, status: "accepted", criticality: "high", acceptanceCriteria: [], fieldProvenance: {} }];
-  baseline.qualityReport.summary = "历史质量检查记录";
   assert.throws(() => createEmptySnapshot("new-model", rule.text, ["usecase"], [rule], { requirementBaseline: baseline }));
 });
 
@@ -88,5 +87,5 @@ test("createEmptyDocumentSnapshot preserves an empty baseline placeholder", () =
   });
 
   assert.equal(snapshot.requirementBaseline?.rules.length, 0);
-  assert.equal(snapshot.requirementBaseline?.qualityReport.status, "passed");
+  assert.equal("qualityReport" in snapshot.requirementBaseline!, false);
 });

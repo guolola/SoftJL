@@ -1,6 +1,6 @@
 // Supplies complex legal model cases shared by semantic and real-renderer review regressions.
 import { deriveTableModel, getStageModelSchema, type AnyDiagramModel, type ModelingStage } from "../modeling/model-semantics.js";
-import { modelFixture, objectActivityFixture, parallelObjectActivityFixture } from "./model-fixtures.js";
+import { modelFixture, parallelActivityFixture } from "./model-fixtures.js";
 
 export function modelReviewFixtures(stage: ModelingStage, kind: string): Array<{ name: string; model: AnyDiagramModel }> {
   let basic = modelFixture(stage, kind);
@@ -19,10 +19,7 @@ export function modelReviewFixtures(stage: ModelingStage, kind: string): Array<{
       { id: "merge-end", type: "control_flow", sourceId: "merge", targetId: "end" },
     ];
     add("判断与合并菱形及泳道", rich);
-    if (stage === "requirements") {
-      add("对象流与两类终止", objectActivityFixture());
-      add("并发、跨泳道与多个引脚", parallelObjectActivityFixture());
-    }
+    add("并发、跨泳道与输入输出说明", parallelActivityFixture());
   }
   if (kind === "usecase") {
     rich.actors.push({ ...rich.actors[0], id: "specialist", name: "会员" });

@@ -33,7 +33,6 @@ export interface EvalCaseResult {
   semanticFactsTotal: number;
   semanticFactsPreserved: number;
   semanticAccuracyRate: number | null;
-  harmfulRepairCount: number;
   unfoundedAdditionCount: number;
   effectiveTraceCovered: number;
   effectiveTraceTotal: number;
@@ -76,7 +75,6 @@ export interface EvalReport {
     semanticFactsTotal: number;
     semanticFactsPreserved: number;
     semanticAccuracyRate: number | null;
-    harmfulRepairCount: number;
     unfoundedAdditionCount: number;
     effectiveTraceCovered: number;
     effectiveTraceTotal: number;
@@ -225,10 +223,6 @@ function summarizeQuality(fixture: EvalFixture, snapshot: RunSnapshot) {
   const effectiveTraceCovered = coverageRows.filter(
     (row) => row.status === "covered",
   ).length;
-  const harmfulRepairCount =
-    snapshot.requirementBaseline?.qualityReport.issues.filter(
-      (issue) => issue.code === "semantic-loss",
-    ).length ?? 0;
   const unfoundedAdditionCount = unsupportedRequirementFacts(
     fixture.requirementText,
     semanticCarrier(actualText),
@@ -246,7 +240,6 @@ function summarizeQuality(fixture: EvalFixture, snapshot: RunSnapshot) {
       uniqueExpectedFacts.length > 0
         ? semanticFactsPreserved / uniqueExpectedFacts.length
         : null,
-    harmfulRepairCount,
     unfoundedAdditionCount,
     effectiveTraceCovered,
     effectiveTraceTotal,
@@ -278,7 +271,7 @@ function summarizeSnapshot(
   const hardGatesPassed = snapshot.status === "completed" &&
     quality.terminalStateConsistent && Object.keys(snapshot.diagramErrors).length === 0 &&
     snapshot.svgArtifacts.length >= fixture.selectedDiagrams.length &&
-    quality.harmfulRepairCount === 0 && quality.unfoundedAdditionCount === 0;
+    quality.unfoundedAdditionCount === 0;
   return {
     fixtureId: fixture.id,
     taskType: fixture.taskType,
@@ -354,7 +347,6 @@ export async function runEval(env: NodeJS.ProcessEnv = process.env): Promise<Eva
             semanticFactsTotal: 0,
             semanticFactsPreserved: 0,
             semanticAccuracyRate: null,
-            harmfulRepairCount: 0,
             unfoundedAdditionCount: 0,
             effectiveTraceCovered: 0,
             effectiveTraceTotal: 0,
@@ -415,10 +407,6 @@ export async function runEval(env: NodeJS.ProcessEnv = process.env): Promise<Eva
       semanticFactsPreserved,
       semanticAccuracyRate:
         semanticFactsTotal > 0 ? semanticFactsPreserved / semanticFactsTotal : null,
-      harmfulRepairCount: results.reduce(
-        (sum, item) => sum + item.harmfulRepairCount,
-        0,
-      ),
       unfoundedAdditionCount: results.reduce(
         (sum, item) => sum + item.unfoundedAdditionCount,
         0,
@@ -461,7 +449,6 @@ export function renderMarkdownReport(report: EvalReport) {
         : `${(report.totals.semanticAccuracyRate * 100).toFixed(1)}%`
     }`,
   );
-  lines.push(`- 有害修复数: ${report.totals.harmfulRepairCount}`);
   lines.push(`- 无依据新增数: ${report.totals.unfoundedAdditionCount}`);
   lines.push(
     `- 有效追踪覆盖率: ${
@@ -472,8 +459,8 @@ export function renderMarkdownReport(report: EvalReport) {
   );
   lines.push(`- 终态矛盾数: ${report.totals.terminalInconsistencyCount}`);
   lines.push("");
-  lines.push("| Fixture | Attempt | Verdict | Quality | Status | Semantics | Harmful Repairs | Unfounded | Trace | Terminal | Duration | Error |");
-  lines.push("| --- | ---: | --- | ---: | --- | ---: | ---: | ---: | ---: | --- | ---: | --- |");
+  lines.push("| Fixture | Attempt | Verdict | Quality | Status | Semantics | Unfounded | Trace | Terminal | Duration | Error |");
+  lines.push("| --- | ---: | --- | ---: | --- | ---: | ---: | ---: | --- | ---: | --- |");
   for (const result of report.results) {
     lines.push(
       [
@@ -485,7 +472,6 @@ export function renderMarkdownReport(report: EvalReport) {
         result.semanticAccuracyRate === null
           ? "N/A"
           : `${(result.semanticAccuracyRate * 100).toFixed(1)}%`,
-        result.harmfulRepairCount,
         result.unfoundedAdditionCount,
         result.effectiveTraceCoverageRate === null
           ? "N/A"

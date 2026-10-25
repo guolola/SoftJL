@@ -1,11 +1,6 @@
 // Coordinates single-server LLM concurrency so model-level parallelism cannot overload the API process.
 import type { RunStage } from "@uml-platform/contracts";
-import type {
-  ChatCompletionResponseFormat,
-  ChatMessage,
-  LlmTransport,
-  StreamChatCompletionInput,
-} from "./llm-transport.js";
+import type { LlmTransport, StreamChatCompletionInput } from "./llm-transport.js";
 import { ProviderHttpError } from "./llm-transport.js";
 import {
   newTelemetryId,
@@ -391,13 +386,9 @@ export function createScheduledLlmTransport({
         requestContext,
         async function* () {
           const providerStream = transport.streamChatCompletion({
-            runContext: input.runContext,
-            providerSettings: input.providerSettings,
-            reasoning: input.reasoning,
-            messages: input.messages as ChatMessage[],
-            responseFormat:
-              input.responseFormat as ChatCompletionResponseFormat | null | undefined,
-            abortSignal: input.abortSignal,
+            // Preserve native tool definitions, callbacks and output reservations
+            // while adding scheduler-owned telemetry observers.
+            ...input,
             onRequestRetry(event) {
               requestRetryCount += 1;
               input.onRequestRetry?.(event);
@@ -405,6 +396,14 @@ export function createScheduledLlmTransport({
             onResponseFormatFallback(event) {
               formatFallbackCount += 1;
               input.onResponseFormatFallback?.(event);
+            },
+            onToolStrictFallback() {
+              formatFallbackCount += 1;
+              input.onToolStrictFallback?.();
+            },
+            onToolChoiceFallback() {
+              formatFallbackCount += 1;
+              input.onToolChoiceFallback?.();
             },
             onTokenUsage(value) {
               usage = { ...value };

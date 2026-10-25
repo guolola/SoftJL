@@ -3,6 +3,7 @@ import { createRequirementBaselineSnapshot } from "@uml-platform/contracts";
 import { describe, expect, it } from "vitest";
 import {
   documentRunCompletionDialog,
+  designRunCompletionDialog,
   failedRunResultDialog,
   requirementRunCompletionDialog,
 } from "./generation-dialog-actions";
@@ -14,6 +15,19 @@ import {
 } from "../../../shared/lib/app-navigation";
 
 describe("documentRunCompletionDialog", () => {
+  it("reports a successful design run without a quality hint or warning", () => {
+    const dialog = designRunCompletionDialog({ diagramFailureCount: 0, runId: "design" });
+    expect(dialog.tone).toBe("success");
+    expect(dialog.message).toBe("生成完成。");
+  });
+
+  it("retains actual design failures in completion feedback", () => {
+    const dialog = designRunCompletionDialog({ diagramFailureCount: 2, runId: "design" });
+    expect(dialog.tone).toBe("warning");
+    expect(dialog.message).toContain("2 个模型生成失败");
+    expect(dialog.message).not.toContain("质量提示");
+  });
+
   it("reports skipped input when requirement extraction completes", () => {
     const dialog = requirementRunCompletionDialog({
       diagramFailureCount: 0,

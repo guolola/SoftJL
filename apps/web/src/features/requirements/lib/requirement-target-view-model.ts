@@ -55,7 +55,7 @@ export function requirementTargetBlockReason(input: {
   }
   const ruleDiagram = diagram === "analysis" ? "usecase" : diagram;
   if (candidateRulesForDiagram(rules, ruleDiagram).length === 0) {
-    return `${DIAGRAM_META[ruleDiagram].label}没有对应类型的需求，请先添加或生成需求规则。`;
+    return `${DIAGRAM_META[ruleDiagram].label}缺少上游需求规则，请先添加或生成需求规则。`;
   }
   // A selected target or a historical receipt cannot replace an actual saved upstream model.
   if (diagram === "analysis" && !Object.values(input.models).some(model => model?.diagramKind === "usecase")) {

@@ -115,6 +115,27 @@ test("persisted history remains complete without a process-wide snapshot/log cac
     const summary = (await store.listRecords!(["visible"])).find(record => record.snapshot.runId === "large")!;
     assert.deepEqual(summarizeRunRecord(summary).derivedRunIds, ["derived"]);
   });
+  await t.test("tool lifecycles persist and survive compact history and cursor restoration", async () => {
+    const live: RunRecord = { snapshot: createEmptySnapshot("tool-progress", "private upstream", []), events: [], listeners: new Set(), terminal: false };
+    store.set("tool-progress", live);
+    const metadata = { eventId: "provider", createdAt: "2026-10-25T00:00:00Z", runId: "tool-progress", stage: "generate_models" as const, callId: "provider", modelId: "usecase", subtaskId: "usecase" };
+    emitEvent(live, { ...metadata, type: "run_activity", phase: "started", format: "technical" });
+    const tool = { ...metadata, type: "run_tool" as const, toolCallId: "validation", toolName: "validate_model" as const };
+    emitEvent(live, { ...tool, eventId: "tool-start", phase: "started" });
+    emitEvent(live, { ...tool, eventId: "tool-end", phase: "failed", errorCount: 2 });
+    emitEvent(live, { ...metadata, eventId: "provider-end", type: "run_activity", phase: "completed", format: "technical" });
+    live.snapshot.status = "cancelled";
+    emitEvent(live, { type: "cancelled", message: "停止" });
+    await store.flush();
+    store.release?.("tool-progress");
+    const progress = (await store.refreshRun("tool-progress", { events: "progress" }))!;
+    assert.deepEqual(progress.events.filter(event => event.type === "run_tool").map(event => [event.toolName, event.phase, event.errorCount]),
+      [["validate_model", "started", undefined], ["validate_model", "failed", 2]]);
+    const resumed = (await store.refreshRun("tool-progress", { events: "progress", afterSequence: 2 }))!;
+    assert.equal(resumed.events[0]?.type, "run_tool");
+    assert.equal(resumed.events[0]?.eventId, "tool-end");
+    assert.doesNotMatch(JSON.stringify(progress.events), /private upstream/);
+  });
   await t.test("live local pipelines retain identity and completed writes release execution memory", async () => {
     const live: RunRecord = { snapshot: createEmptySnapshot("local", "需求", []), events: [], listeners: new Set(), terminal: false, executionActive: true };
     store.set("local", live);

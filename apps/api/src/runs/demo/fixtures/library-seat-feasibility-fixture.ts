@@ -11,7 +11,7 @@ export const librarySeatFeasibilityInputs = feasibilityInputsSchema.parse({
 export const librarySeatFeasibilityContext = contextDiagramSpecSchema.parse({
   diagramKind: "context", modelId: "context", title: "图书馆座位预约系统环境图", summary: "学生与管理员通过目标系统完成预约和座位管理。",
   notes: ["需求仅约定站内通知，不假设支付、短信或外部身份平台。"],
-  system: { id: "system", name: "图书馆座位预约系统", sourceRequirementIds: [] },
+  system: { id: "system", name: "图书馆座位预约系统", sourceRequirementIds: ["r1"] },
   people: [
     { id: "student", name: "学生", sourceRequirementIds: ["r1", "r5", "r11"] },
     { id: "admin", name: "图书馆管理员", sourceRequirementIds: ["r6", "r7", "r8", "r9"] },
@@ -51,6 +51,9 @@ export const librarySeatFeasibilityFlow = feasibilityBusinessFlowSchema.parse({
     ],
   },
   traceability: [
+    { requirementId: "r1", targetKind: "swimlane", targetId: "system" },
+    ...["start", "end"].map(targetId => ({ requirementId: "r1", targetKind: "node", targetId })),
+    ...["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"].map(targetId => ({ requirementId: "r1", targetKind: "relationship", targetId })),
     { requirementId: "r1", targetKind: "swimlane", targetId: "student" },
     { requirementId: "r1", targetKind: "node", targetId: "submit" },
     ...["r2", "r3", "r4"].flatMap((requirementId) => ["validate", "valid", "reject"].map((targetId) => ({ requirementId, targetKind: "node", targetId }))),
@@ -80,10 +83,14 @@ export const librarySeatFeasibilityPlan = completeFeasibilityImplementationPlanS
         { id: "notice", name: "站内通知", responsibility: "预约成功或取消后保存并展示站内通知。", sourceRequirementIds: ["r5"], provenance: "ai-estimate" },
       ] },
       dataStrategy: { summary: "保存学生、座位、预约和通知；用事务与唯一约束控制同一学生同一时段的重复预约，保留取消原因和操作时间。", sourceRequirementIds: ["r3", "r4", "r5", "r10"], provenance: "ai-estimate" },
+      deploymentAndOperations: { ...candidate.implementation.deploymentAndOperations, sourceRequirementIds: ["r11"] },
+      securityAndCompliance: { ...candidate.implementation.securityAndCompliance, sourceRequirementIds: ["r1"] },
       integrationRationale: "系统环境图没有已确认的外部系统；通知通过系统内部实现。",
       milestones: candidate.implementation.milestones.map((milestone) => ({ ...milestone, name: "预约闭环与管理验收", timeframe: index === 0 ? "第 1–10 周" : "第 1–12 周",
         deliverables: ["预约核心流程", "管理工作台", "移动端页面", "站内通知"],
         acceptanceCriteria: ["未登录、座位不可用和重复预约均进入失败分支", "有效请求保存预约记录并产生站内通知", "管理员取消预约后记录原因与时间", "手机端可查看预约"], sourceRequirementIds: ["r1", "r2", "r3", "r4", "r5", "r8", "r9", "r10", "r11"] })),
+      costEstimates: candidate.implementation.costEstimates.map(item => ({ ...item, sourceRequirementIds: ["r11"] })),
+      benefitEstimates: candidate.implementation.benefitEstimates.map(item => ({ ...item, sourceRequirementIds: ["r5"] })),
       risks: candidate.implementation.risks.map((risk, riskIndex) => ({ ...risk,
         risk: ["并发请求导致重复占座", "通知与预约状态不同步", "移动端预约操作不便"][riskIndex] ?? risk.risk,
         mitigation: ["增加事务、唯一约束和并发预约测试", "事务提交后补偿发送通知并记录发送状态", "在手机尺寸验证查询和预约交互"][riskIndex] ?? risk.mitigation,

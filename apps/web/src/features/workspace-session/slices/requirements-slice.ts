@@ -18,7 +18,6 @@ type RequirementRuleCommitMetadata = Pick<
   RequirementRulesUpdateMetadata,
   | "requirementBaseline"
   | "requirementModelTraceability"
-  | "requirementQualityReport"
 >;
 
 export type RequirementRuleCommitInput = Partial<RequirementRuleCommitMetadata> |

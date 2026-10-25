@@ -57,8 +57,19 @@ function createContextWorkspace() {
 }
 
 function createImplementationWorkspace() {
+  const template = structuredClone(FEASIBILITY_IMPLEMENTATION_EXAMPLE.candidates[0]!.implementation);
+  // The schema example's R1 is a placeholder; this workspace binds the real rule r1.
+  const bindSources = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(bindSources); return; }
+    if (!value || typeof value !== "object") return;
+    for (const [key, item] of Object.entries(value)) {
+      if (key === "sourceRequirementIds") (value as Record<string, unknown>)[key] = ["r1"];
+      else bindSources(item);
+    }
+  };
+  bindSources(template);
   const baseImplementation = {
-    ...structuredClone(FEASIBILITY_IMPLEMENTATION_EXAMPLE.candidates[0]!.implementation),
+    ...template,
     provenance: "ai-estimate" as const,
     architecture: { summary: "以模块化单体承载核心业务。", modules: [
       { id: "orders", name: "预约工单", responsibility: "创建和管理维修工单", sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const },
@@ -69,7 +80,7 @@ function createImplementationWorkspace() {
     deploymentAndOperations: { summary: "容器化部署并接入监控。", sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const },
     securityAndCompliance: { summary: "最小权限与审计日志。", sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const },
     milestones: [{ id: "m1", name: "核心开发", timeframe: "第1-4周", deliverables: ["工单模块"], roles: ["开发"], dependencies: ["测试环境"], acceptanceCriteria: ["核心流程通过"], sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const }],
-    risks: [...structuredClone(FEASIBILITY_IMPLEMENTATION_EXAMPLE.candidates[0]!.implementation.risks.slice(1)), { id: "risk-1", risk: "库存接口延期", probability: "medium" as const, impact: "high" as const, mitigation: "准备 Mock 服务", owner: "项目经理", sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const }],
+    risks: [...structuredClone(template.risks.slice(1)), { id: "risk-1", risk: "库存接口延期", probability: "medium" as const, impact: "high" as const, mitigation: "准备 Mock 服务", owner: "项目经理", sourceRequirementIds: ["r1"], provenance: "ai-estimate" as const }],
     verdicts: [
       { category: "technical" as const, verdict: "feasible" as const, rationale: "技术栈成熟", provenance: "ai-estimate" as const },
       { category: "operational" as const, verdict: "feasible" as const, rationale: "流程可落地", provenance: "ai-estimate" as const },

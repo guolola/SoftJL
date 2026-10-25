@@ -572,7 +572,8 @@ export const runActivityEventSchema = z.object({
   stage: runStageSchema,
   callId: z.string().min(1),
   modelId: z.string().optional(),
-  operation: z.enum(["structure_check", "visual_check", "model_repair", "render_repair"]).optional(),
+  operation: z.enum(["structure_check", "visual_check", "model_repair", "render_repair", "model_compile"]).optional(),
+  artifactKind: z.enum(["model", "requirement-rules"]).optional(),
   round: z.number().int().min(0).max(MAX_GENERATION_REPAIR_ATTEMPTS).optional(),
   subtaskId: z.string().optional(),
   subtaskLabel: z.string().optional(),
@@ -584,9 +585,35 @@ export const runActivityEventSchema = z.object({
 });
 export type RunActivityEvent = z.infer<typeof runActivityEventSchema>;
 
+// Tool execution is nested under its real provider call and survives progress-only replay.
+export const runToolEventSchema = z.object({
+  type: z.literal("run_tool"),
+  eventId: z.string().min(1),
+  createdAt: z.string().datetime(),
+  runId: z.string().min(1),
+  stage: runStageSchema,
+  callId: z.string().min(1),
+  toolCallId: z.string().min(1),
+  toolName: z.enum(["get_upstream_artifact", "validate_model", "validate_requirement_rules", "submit_requirement_rules"]),
+  phase: z.enum(["started", "completed", "failed"]),
+  modelId: z.string().optional(),
+  diagramKind: z.string().optional(),
+  subtaskId: z.string().optional(),
+  subtaskLabel: z.string().optional(),
+  source: z.object({
+    sourceType: z.enum(["requirement_rules", "requirement_baseline", "model", "feasibility_inputs", "business_flow", "requirement_source"]),
+    sourceId: z.string().min(1),
+    label: z.string().min(1).max(160).optional(),
+  }).optional(),
+  errorCount: z.number().int().nonnegative().optional(),
+  warningCount: z.number().int().nonnegative().optional(),
+});
+export type RunToolEvent = z.infer<typeof runToolEventSchema>;
+
 // Pipelines supply new event inputs; publication assigns the required replay identity once.
 export type RunEventInput = { eventId?: string; createdAt?: string; sequence?: number } & (
   | RunActivityEvent
+  | RunToolEvent
   | z.infer<typeof queuedRunEventSchema>
   | z.infer<typeof stageStartedRunEventSchema>
   | z.infer<typeof stageFinishedRunEventSchema>
@@ -607,6 +634,7 @@ export type RunEvent = RunEventInput & z.infer<typeof runEventMetadataSchema>;
 
 export const runEventSchema: z.ZodType<RunEvent, z.ZodTypeDef, unknown> = z.discriminatedUnion("type", [
   runActivityEventSchema,
+  runToolEventSchema,
   queuedRunEventSchema,
   stageStartedRunEventSchema,
   stageFinishedRunEventSchema,

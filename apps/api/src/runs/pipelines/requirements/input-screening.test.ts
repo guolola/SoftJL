@@ -1,10 +1,11 @@
 // Verifies untrusted text is classified by source unit without adopting model-authored content.
+import { splitRequirementInput } from "../../../normalizers/requirements/requirement-source-units.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProviderSettings } from "@uml-platform/contracts";
 import { strictTestModelCapability } from "../../../../tests/fixtures/providers/model-capability.js";
 import type { LlmTransport } from "../../../adapters/llm/llm-transport.js";
-import { screenRequirementInput, splitRequirementInput } from "./input-screening.js";
+import { screenRequirementInput } from "./input-screening.js";
 
 const providerSettings: ProviderSettings = { apiBaseUrl: "https://example.test", apiKey: "test", model: "test-model",
   modelCapability: strictTestModelCapability("test-model") };
@@ -26,6 +27,15 @@ test("keeps only relevant source units and reports skipped source offsets", asyn
   assert.equal(result.acceptedText, "学生可以预约空闲座位。\n管理员可以释放超时预约。");
   assert.equal(source.slice(result.ignoredSpans[0]?.startOffset, result.ignoredSpans[0]?.endOffset), "今天天气很好。");
   assert.equal(result.hasRequirement, true);
+  assert.deepEqual(result.acceptedUnits.map(unit => [unit.id, unit.category, source.slice(unit.startOffset, unit.endOffset)]),
+    [["u1", "requirement", "学生可以预约空闲座位。"], ["u3", "requirement", "管理员可以释放超时预约。"]]);
+});
+
+test("pending-only input never becomes a confirmed extraction task", async () => {
+  const source = "[PENDING-P1] 学生可以在线支付。管理员可以退款。";
+  const result = await screenRequirementInput(source, providerSettings, transportFor(["requirement", "requirement"]));
+  assert.equal(result.hasRequirement, false);
+  assert.ok(result.acceptedUnits.every(unit => unit.pending));
 });
 
 test("marks direct role and instruction overrides unsafe even if model says irrelevant", async () => {

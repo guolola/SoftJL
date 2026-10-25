@@ -172,14 +172,6 @@ async updateRequirementRules(
                   metadata.requirementBaseline,
                 ) as WorkspaceRecord["requirementBaseline"])
             : workspace.requirementBaseline,
-        requirementQualityReport:
-          "requirementBaseline" in (metadata ?? {})
-            ? (metadata?.requirementQualityReport ??
-              metadata?.requirementBaseline?.qualityReport ??
-              null)
-            : "requirementQualityReport" in (metadata ?? {})
-              ? (metadata?.requirementQualityReport ?? null)
-              : workspace.requirementQualityReport,
         requirementModelTraceability:
           "requirementModelTraceability" in (metadata ?? {})
             ? (structuredClone(

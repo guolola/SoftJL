@@ -203,7 +203,7 @@ describe("TextRequirementView", () => {
   function createBaselineRule(
     overrides: Partial<RequirementBaseline["rules"][number]> = {},
   ): RequirementBaseline["rules"][number] {
-    return { requirementId: "REQ-001", id: "r1", text: "系统应允许用户提交订单。", sourceFragment: "系统应允许用户提交订单。", type: "functional" as const, ...overrides, origin: "generated" as const };
+    return { requirementId: "REQ-001", id: "r1", text: "系统应允许用户提交订单。", sourceFragment: "系统应允许用户提交订单。", type: "functional" as const, ...overrides };
   }
 
   function createRequirementBaseline(
@@ -215,34 +215,10 @@ describe("TextRequirementView", () => {
       version: 1,
       sourceInputFingerprint: "test-source-input",
       runId: "run-baseline",
-      sourceDocumentId: "inline-requirement",
       createdAt: "2026-05-27T00:00:00.000Z",
       schemaVersion: 3 as const,
 
       rules: (requirements),
-      assumptions: [],
-      conflicts: [],
-      qualityReport: {
-        runId: "run-baseline",
-        status: "pending-review",
-        summary: "存在待确认字段。",
-        issues: requirements[0]
-          ? [
-              {
-                id: "issue-actor",
-                requirementId: requirements[0].requirementId,
-                severity: "warning",
-                code: "missing-actor",
-                message: "缺少参与者。",
-                blocksDownstream: true,
-              },
-            ]
-          : [],
-        blockingIssueIds: ["issue-actor"],
-        reviewRequiredRequirementIds: requirements[0]
-          ? [requirements[0].requirementId]
-          : [],
-      },
       ...overrides,
     };
   }
@@ -257,7 +233,6 @@ describe("TextRequirementView", () => {
     const repository = createBaseRepository({
       loadWorkspace: vi.fn(async () => createCurrentWorkspaceRecord({
         rules, rulesVersion: 1, requirementBaseline: baseline,
-        requirementQualityReport: baseline.qualityReport,
       })),
     });
     act(() => requestOpenRequirementRule("r2"));
@@ -339,7 +314,7 @@ describe("TextRequirementView", () => {
     await screen.findByText("目标模型");
     expect(screen.queryByText(/将自动补齐：需求规则/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "查看领域概念模型自动补齐说明" })).not.toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "领域概念模型没有对应类型的需求，请先添加或生成需求规则。" })).toBeVisible();
+    expect(screen.getByRole("img", { name: "领域概念模型缺少上游需求规则，请先添加或生成需求规则。" })).toBeVisible();
     expect(screen.getByRole("checkbox", { name: "领域概念模型" })).toHaveAttribute("aria-disabled", "true");
   });
 
@@ -731,7 +706,7 @@ describe("TextRequirementView", () => {
     await userEvent.click(classDiagramCheckbox);
     expect(classDiagramCheckbox).toBeChecked();
     expect(screen.queryByRole("button", { name: "查看领域概念模型自动补齐说明" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: "领域概念模型没有对应类型的需求，请先添加或生成需求规则。" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "领域概念模型缺少上游需求规则，请先添加或生成需求规则。" })).not.toBeInTheDocument();
     expect(screen.getByText("1/7")).toBeInTheDocument();
   });
 
@@ -958,22 +933,11 @@ describe("TextRequirementView", () => {
       version: 1,
       sourceInputFingerprint: "test-source-input",
             runId: "run-clean-rule",
-            sourceDocumentId: "inline-requirement",
             createdAt: "2026-05-24T00:00:00.000Z",
-            assumptions: [],
-            conflicts: [],
-            qualityReport: {
-              runId: "run-clean-rule",
-              status: "passed",
-              summary: "需求质量检查通过。",
-              issues: [],
-              blockingIssueIds: [],
-              reviewRequiredRequirementIds: [],
-            },
             schemaVersion: 3 as const,
 
       rules: ([
-              { requirementId: "REQ-001", id: "r1", text: "系统应提供订单提交能力。", sourceFragment: "系统应提供订单提交能力。", type: "functional" as const, origin: "generated" as const },
+              { requirementId: "REQ-001", id: "r1", text: "系统应提供订单提交能力。", sourceFragment: "系统应提供订单提交能力。", type: "functional" as const },
             ]),
           },
         }),
@@ -1198,7 +1162,7 @@ describe("TextRequirementView", () => {
       expect(classDiagramCheckbox).not.toHaveAttribute("aria-disabled", "true");
     });
     expect(screen.queryByRole("button", { name: "查看领域概念模型自动补齐说明" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: "领域概念模型没有对应类型的需求，请先添加或生成需求规则。" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "领域概念模型缺少上游需求规则，请先添加或生成需求规则。" })).not.toBeInTheDocument();
   });
 
   it("shows the rule table immediately after first extraction from an unpersisted empty project", async () => {
@@ -1310,7 +1274,6 @@ describe("TextRequirementView", () => {
           rules: [originalRule],
           rulesVersion: 1,
           requirementBaseline: baseline,
-          requirementQualityReport: baseline.qualityReport,
 
           selectedDiagramTypes: ["usecase"],
         }),
@@ -1374,7 +1337,7 @@ describe("TextRequirementView", () => {
             sourceInputFingerprint: expect.stringMatching(/^fp:v3:/),
 
             schemaVersion: 3,
-            rules: [expect.objectContaining({ id: originalRule.id, text: "游客可以查看公开活动列表。", origin: "manual-edited" })],
+            rules: [expect.objectContaining({ id: originalRule.id, text: "游客可以查看公开活动列表。" })],
           }),
 
           rulesBasedOnTextVersion: 0,
@@ -1631,22 +1594,11 @@ withWorkspaceProviders(<TextRequirementView />,repository)
       version: 1,
       sourceInputFingerprint: "test-source-input",
             runId: "run-compact-rule-row",
-            sourceDocumentId: "inline-requirement",
             createdAt: "2026-05-24T00:00:00.000Z",
-            assumptions: [],
-            conflicts: [],
-            qualityReport: {
-              runId: "run-compact-rule-row",
-              status: "passed",
-              summary: "系统已补齐结构化字段。",
-              issues: [],
-              blockingIssueIds: [],
-              reviewRequiredRequirementIds: [],
-            },
             schemaVersion: 3 as const,
 
       rules: ([
-              { requirementId: "REQ-010", id: "r10", text: "普通读者只能使用查找自己已借出书目的功能。", sourceFragment: "普通读者只能使用查找自己已借出书目的功能。", type: "functional" as const, origin: "generated" as const },
+              { requirementId: "REQ-010", id: "r10", text: "普通读者只能使用查找自己已借出书目的功能。", sourceFragment: "普通读者只能使用查找自己已借出书目的功能。", type: "functional" as const },
             ]),
           },
         }),

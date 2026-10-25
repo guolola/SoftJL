@@ -31,7 +31,7 @@ export function GenerateRulesHarness() {
 export function createBaselineRule(
   overrides: Partial<RequirementBaseline["rules"][number]> = {},
 ): RequirementBaseline["rules"][number] {
-  return { requirementId: "REQ-001", id: "r1", text: "用户可以提交订单。", sourceFragment: "用户可以提交订单。", type: "functional" as const, ...overrides, origin: "generated" as const };
+  return { requirementId: "REQ-001", id: "r1", text: "用户可以提交订单。", sourceFragment: "用户可以提交订单。", type: "functional" as const, ...overrides };
 }
 
 export function createRequirementBaseline(
@@ -43,21 +43,10 @@ export function createRequirementBaseline(
       version: 1,
       sourceInputFingerprint: "test-source-input",
     runId: "run-baseline",
-    sourceDocumentId: "inline-requirement",
     createdAt: "2026-05-27T00:00:00.000Z",
-    assumptions: [],
-    conflicts: [],
     schemaVersion: 3 as const,
 
       rules: (requirements),
-    qualityReport: {
-      runId: "run-baseline",
-      status: "passed",
-      summary: "需求规则已确认。",
-      issues: [],
-      blockingIssueIds: [],
-      reviewRequiredRequirementIds: [],
-    },
     ...overrides,
   };
 }

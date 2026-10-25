@@ -18,6 +18,7 @@ import { runStagePipeline } from "../pipelines/requirements-pipeline.js";
 import { getRunError } from "../pipelines/shared/errors.js";
 import type { DiagramModelSpec, RequirementRule, ProviderSettings } from "@uml-platform/contracts";
 
+
 const rule: RequirementRule = {
   id: "R1",
   type: "functional" as const,

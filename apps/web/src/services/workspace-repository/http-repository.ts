@@ -206,8 +206,6 @@ async function readProjectRuns(options?: { maxAgeMs?: number }) {
       workspace.requirementText = localRequirementText;
       workspace.rules = [...localRequirementRules];
       workspace.requirementBaseline = localRequirementBaseline;
-      workspace.requirementQualityReport =
-        localRequirementBaseline?.qualityReport ?? null;
       workspace.requirementModelTraceability = [
         ...localRequirementModelTraceability,
       ];
@@ -237,13 +235,6 @@ async updateRequirementRules(
           if ("requirementBaseline" in (metadata ?? {})) {
             workspace.requirementBaseline =
               metadata?.requirementBaseline ?? null;
-            workspace.requirementQualityReport =
-              metadata?.requirementQualityReport ??
-              metadata?.requirementBaseline?.qualityReport ??
-              null;
-          } else if ("requirementQualityReport" in (metadata ?? {})) {
-            workspace.requirementQualityReport =
-              metadata?.requirementQualityReport ?? null;
           }
           if ("requirementModelTraceability" in (metadata ?? {})) {
             workspace.requirementModelTraceability =

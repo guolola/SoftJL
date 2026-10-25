@@ -93,10 +93,6 @@ export const HEALTHCHECK_RESPONSE_FORMAT = strictResponseFormat(
   },
 );
 
-export function getExtractRequirementRulesResponseFormat(model: ModelCapabilitySource) {
-  return responseFormatIfSupported(model, EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT);
-}
-
 export function getDocumentContentResponseFormat(model: ModelCapabilitySource) {
   return responseFormatIfSupported(model, DOCUMENT_CONTENT_RESPONSE_FORMAT);
 }

@@ -75,7 +75,7 @@ function createRule(id: string, text = `${id} 需求规则。`): RequirementRule
 function createBaselineRule(
   overrides: Partial<RequirementBaseline["rules"][number]> = {},
 ): RequirementBaseline["rules"][number] {
-  return { requirementId: "REQ-001", id: "r1", text: "用户通过邮箱注册账号。", type: "business-rule" as const, ...overrides, origin: "generated" as const };
+  return { requirementId: "REQ-001", id: "r1", text: "用户通过邮箱注册账号。", type: "business-rule" as const, ...overrides };
 }
 
 function createBaseline(
@@ -87,21 +87,10 @@ function createBaseline(
       version: 1,
       sourceInputFingerprint: "test-source-input",
     runId: "run-baseline",
-    sourceDocumentId: "inline-requirement",
     createdAt: "2026-06-18T00:00:00.000Z",
-    assumptions: [],
-    conflicts: [],
     schemaVersion: 3 as const,
 
       rules: (requirements),
-    qualityReport: {
-      runId: "run-baseline",
-      status: "passed",
-      summary: "需求规则已确认。",
-      issues: [],
-      blockingIssueIds: [],
-      reviewRequiredRequirementIds: [],
-    },
     ...overrides,
   };
 }
@@ -110,11 +99,11 @@ it("retains baseline metadata when an older model result has the same requiremen
   const rule = createRule("r1", "用户通过邮箱注册账号。");
   const baseline = createBaseline([createBaselineRule()]);
   const workspace = { ...createEmptyWorkspace(), requirementText: rule.text, rules: [rule], requirementBaseline: baseline };
-  const incoming = { ...baseline, runId: "model-task", createdAt: "2026-10-17T00:00:00Z", qualityReport: { ...baseline.qualityReport, runId: "model-task" } };
+  const incoming = { ...baseline, runId: "model-task", createdAt: "2026-10-17T00:00:00Z" };
   const snapshot = createRunSnapshot({ runId: "model-task", requirementText: rule.text, rules: [rule], selectedDiagrams: ["usecase"], requirementBaseline: incoming });
   const next = applySnapshotToWorkspace(workspace, snapshot);
   expect(next.requirementBaseline).toEqual(baseline);
-  expect(next.requirementQualityReport).toEqual(baseline.qualityReport);
+  expect(next).not.toHaveProperty("requirementQualityReport");
 });
 
 function createUseCaseModel(): DiagramModelSpec {
@@ -350,23 +339,6 @@ describe("applySnapshotToWorkspace", () => {
     const pendingRequirement = createBaselineRule({ requirementId: "REQ-006", id: "r6", text: "联系方式在认领通过前隐藏。" });
     const pendingBaseline = createBaseline([createBaselineRule(), pendingRequirement], {
       runId: "run-pending-baseline",
-      qualityReport: {
-        runId: "run-pending-baseline",
-        status: "pending-review",
-        summary: "发现 1 个需求质量提示。",
-        issues: [
-          {
-            id: "ISS-006",
-            code: "missing-actor",
-            message: "REQ-006 缺少明确角色/执行者。",
-            severity: "warning",
-            requirementId: "REQ-006",
-            blocksDownstream: false,
-          },
-        ],
-        blockingIssueIds: [],
-        reviewRequiredRequirementIds: ["REQ-006"],
-      },
     });
     const workspace = {
       ...createEmptyWorkspace(),
@@ -376,7 +348,6 @@ describe("applySnapshotToWorkspace", () => {
         createBaselineRule(),
         createBaselineRule({ requirementId: "REQ-006", id: "r6", text: "联系方式在认领通过前隐藏。" }),
       ]),
-      requirementQualityReport: createBaseline([]).qualityReport,
 
     };
 
@@ -390,15 +361,11 @@ describe("applySnapshotToWorkspace", () => {
       }),
     );
 
-    expect(merged.requirementBaseline?.qualityReport.status).toBe(
-      "pending-review",
-    );
-    expect(
-      merged.requirementBaseline?.qualityReport.reviewRequiredRequirementIds,
-    ).toEqual(["REQ-006"]);
+    expect(merged.requirementBaseline?.rules.map(rule => rule.requirementId)).toEqual(["REQ-001", "REQ-006"]);
+    expect(merged.requirementBaseline).not.toHaveProperty("qualityReport");
   });
 
-  it("applies the explicit baseline and its quality report", () => {
+  it("applies the explicit baseline rule facts", () => {
     const requirementText = "用户通过邮箱注册账号，联系方式在认领通过前隐藏。";
     const rules = [
       createRule("r1", "用户通过邮箱注册账号。"),
@@ -407,23 +374,6 @@ describe("applySnapshotToWorkspace", () => {
     const pendingRequirement = createBaselineRule({ requirementId: "REQ-006", id: "r6", text: "联系方式在认领通过前隐藏。" });
     const pendingBaseline = createBaseline([createBaselineRule(), pendingRequirement], {
       runId: "run-pending-baseline",
-      qualityReport: {
-        runId: "run-pending-baseline",
-        status: "pending-review",
-        summary: "发现 1 个需求质量提示。",
-        issues: [
-          {
-            id: "ISS-006",
-            code: "missing-actor",
-            message: "REQ-006 缺少明确角色/执行者。",
-            severity: "warning",
-            requirementId: "REQ-006",
-            blocksDownstream: false,
-          },
-        ],
-        blockingIssueIds: [],
-        reviewRequiredRequirementIds: ["REQ-006"],
-      },
     });
 
     const merged = applySnapshotToWorkspace(
@@ -441,16 +391,13 @@ describe("applySnapshotToWorkspace", () => {
       }),
     );
 
-    expect(merged.requirementBaseline?.rules[0]?.origin).toBe("generated");
+    expect(merged.requirementBaseline?.rules[0]).not.toHaveProperty("origin");
     expect(merged.requirementBaseline?.rules[0]?.type).toBe("business-rule");
     expect(merged.requirementBaseline?.rules.map(rule => rule.text)).toEqual(rules.map(rule => rule.text));
-    expect(merged.requirementBaseline?.qualityReport).toEqual(pendingBaseline.qualityReport);
-    expect(
-      merged.requirementBaseline?.qualityReport.reviewRequiredRequirementIds,
-    ).toEqual(["REQ-006"]);
+    expect(merged.requirementBaseline).not.toHaveProperty("qualityReport");
   });
 
-  it("replaces the pending baseline with a passed baseline", () => {
+  it("reuses the saved baseline for unchanged rules", () => {
     const requirementText = "用户通过邮箱注册账号。";
     const rules = [createRule("r1", "用户通过邮箱注册账号。")];
     const requirement = createBaselineRule({ requirementId: "REQ-001", id: "r1" });
@@ -462,7 +409,6 @@ describe("applySnapshotToWorkspace", () => {
       requirementBaseline: createBaseline([
         { ...requirement },
       ]),
-      requirementQualityReport: createBaseline([]).qualityReport,
 
     };
 
@@ -475,7 +421,7 @@ describe("applySnapshotToWorkspace", () => {
       }),
     );
 
-    expect(merged.requirementBaseline?.qualityReport.status).toBe("passed");
+    expect(merged.requirementBaseline).toEqual(passedBaseline);
   });
 
   it("restores missing requirement text without replacing existing rules", () => {

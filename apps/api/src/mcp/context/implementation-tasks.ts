@@ -155,9 +155,20 @@ export function buildImplementationTasks(input: SourceArtifact[], scope?: McpSco
       for (const trace of list(source.payload.traceability).map(record)) {
         if (source.stage === "analysis" && trace.target) validateRef(trace.target, "analysis", source.id);
         if (source.stage === "design") {
-          // Validate the design source in its owning model; targets are private upstream requirement provenance.
+          // Private requirement-model targets are represented by their saved version hashes;
+          // design targets remain available and must resolve to real model elements.
           validateRef(trace.source, "design", source.id, source);
-          for (const ref of list(trace.upstreamDesignRefs)) validateRef(ref, "design", source.id);
+          for (const raw of list(trace.targets)) {
+            const ref = record(raw);
+            const privateAnalysis = list(source.payload.upstreamVersions).some((version) => {
+              const id = record(version).artifactId;
+              return typeof id === "string" && (ref.modelId ? id === `analysis:${ref.modelId}` : id.startsWith("analysis:"));
+            });
+            const analysis = artifacts.some((artifact) => artifact.stage === "analysis" &&
+              record(artifact.payload.model).diagramKind === ref.diagramKind &&
+              (!ref.modelId || record(artifact.payload.model).modelId === ref.modelId));
+            if (!privateAnalysis && !analysis) validateRef(raw, "design", source.id);
+          }
         }
       }
     }

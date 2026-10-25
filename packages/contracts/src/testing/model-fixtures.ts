@@ -22,14 +22,14 @@ export function modelFixture(stage: ModelingStage, kind: string): AnyDiagramMode
   return getStageModelSchema(stage, kind)!.parse({ ...base, ...fields[kind] }) as AnyDiagramModel;
 }
 
-export function objectActivityFixture() {
-  const model = modelFixture("requirements", "activity");
-  if (model.diagramKind !== "activity") throw new Error("fixture");
+// Deliberately obsolete input for boundary rejection tests; never a supported model fixture.
+export function objectActivityFixture(): any {
+  const model: any = modelFixture("requirements", "activity");
   model.nodes.splice(2, 0,
     { id: "data", type: "object", name: "订单", dataType: "Order", state: "已校验" },
     { id: "consume", type: "activity", name: "处理", actorOrLane: "system", input: [], output: [], inputPins: [{ id: "in", name: "订单", dataType: "Order" }] },
     { id: "branchEnd", type: "flow_final", name: "分支结束" });
-  const work = model.nodes.find((node) => node.id === "work")!;
+  const work = model.nodes.find((node: any) => node.id === "work")!;
   if (work.type === "activity") work.outputPins = [{ id: "out", name: "订单", dataType: "Order" }];
   model.relationships.push(
     { id: "data1", type: "object_flow", sourceId: "out", targetId: "data" },
@@ -39,28 +39,20 @@ export function objectActivityFixture() {
   return model;
 }
 
-export function parallelObjectActivityFixture() {
-  const model = objectActivityFixture();
+export function parallelActivityFixture() {
+  const model = modelFixture("requirements", "activity");
+  if (model.diagramKind !== "activity") throw new Error("fixture");
   model.swimlanes.push({ id: "delivery", name: "履约" }, { id: "billing", name: "结算" });
-  const produce = model.nodes.find((node) => node.id === "work")!;
-  const consume = model.nodes.find((node) => node.id === "consume")!;
-  if (produce.type !== "activity" || consume.type !== "activity") throw new Error("fixture");
-  produce.outputPins!.push({ id: "invoiceOut", name: "发票", dataType: "Invoice" });
-  consume.actorOrLane = "delivery";
-  consume.outputPins = [{ id: "deliveryOut", name: "履约订单", dataType: "Order" }];
   model.nodes.push(
-    { id: "fork", type: "fork" }, { id: "join", type: "join" },
-    { id: "settle", type: "activity", name: "结算", actorOrLane: "billing", input: [], output: [], inputPins: [
-      { id: "invoiceIn", name: "发票", dataType: "Invoice" }, { id: "deliveryIn", name: "履约订单", dataType: "Order" },
-    ] },
+    { id: "fork", type: "fork", actorOrLane: "system" }, { id: "join", type: "join", actorOrLane: "system" },
+    { id: "consume", type: "activity", name: "履约", actorOrLane: "delivery", input: ["订单"], output: ["履约结果"] },
+    { id: "settle", type: "activity", name: "结算", actorOrLane: "billing", input: ["订单"], output: ["结算结果"] },
   );
-  model.relationships = model.relationships.filter((edge) => ["r1", "data1", "data2"].includes(edge.id));
+  model.relationships = model.relationships.filter((edge) => edge.id === "r1");
   model.relationships.push(...[
-    ["split", "control_flow", "work", "fork"], ["left", "control_flow", "fork", "consume"],
-    ["right", "control_flow", "fork", "settle"], ["leftDone", "control_flow", "consume", "join"],
-    ["rightDone", "control_flow", "settle", "join"], ["complete", "control_flow", "join", "end"],
-    ["invoice", "object_flow", "invoiceOut", "invoiceIn"], ["deliveryData", "object_flow", "deliveryOut", "deliveryIn"],
-    ["branchComplete", "control_flow", "settle", "branchEnd"],
-  ].map(([id, type, sourceId, targetId]) => ({ id: id!, type: type as "control_flow" | "object_flow", sourceId: sourceId!, targetId: targetId! })));
+    ["split", "work", "fork"], ["left", "fork", "consume"],
+    ["right", "fork", "settle"], ["leftDone", "consume", "join"],
+    ["rightDone", "settle", "join"], ["complete", "join", "end"],
+  ].map(([id, sourceId, targetId]) => ({ id: id!, type: "control_flow" as const, sourceId: sourceId!, targetId: targetId! })));
   return model;
 }

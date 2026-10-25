@@ -1,10 +1,12 @@
-// Runs model-backed feasibility stages with capability routing and section-scoped repair.
-import { candidateRulesForDiagram, MAX_GENERATION_REPAIR_ATTEMPTS, contextDiagramSpecSchema, feasibilityBusinessFlowSchema, completeFeasibilityImplementationPlanSchema } from "@uml-platform/contracts";
-import { GenerationRepairSession } from "./shared/generation-repair.js";
-import { ModelGenerationConversation } from "./shared/model-generation-conversation.js";
+// Runs feasibility stages through scoped upstream queries and validation before backend rendering and persistence.
+import { contractResponseSchema, contextDiagramSpecSchema, feasibilityBusinessFlowSchema, completeFeasibilityImplementationPlanSchema } from "@uml-platform/contracts";
+import { generateWithModelConversation } from "./shared/model-generation-session.js";
+import { assertFeasibilityCandidate } from "../../normalizers/modeling/model-candidate-validation.js";
+import { normalizeContractNulls } from "../../normalizers/structured-output/contract-nulls.js";
 import { repairDiagnostics } from "../../normalizers/structured-output/repair-diagnostics.js";
-import { createRunLlmChunkHandlers } from "./shared/llm-chunk-events.js";
-import { readDiagramReviewCounters } from "../records/diagram-review-record.js";
+import { generatePlantUmlArtifacts } from "../../adapters/plantuml/model-renderer.js";
+
+
 import { withRunReasoning } from "./shared/run-reasoning.js";
 import {
   artifactReadyRunEventSchema,
@@ -29,28 +31,19 @@ import {
   buildGenerateFeasibilityBusinessFlowPrompt,
   buildGenerateFeasibilityImplementationPrompt,
 } from "@uml-platform/prompts";
-import type {
-  ChatCompletionResponseFormat,
-  LlmTransport,
-  ResponseFormatFallbackEvent,
-} from "../../adapters/llm/llm-transport.js";
+import type { LlmTransport } from "../../adapters/llm/llm-transport.js";
 import type { RenderClient } from "../../adapters/render/render-client.js";
 import {
   GENERATE_FEASIBILITY_CONTEXT_RESPONSE_FORMAT,
   GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT,
 } from "../../adapters/llm/response-formats/index.js";
 import { getModelCapability } from "../../adapters/llm/model-capabilities.js";
-import { normalizeContextDiagram } from "../../normalizers/feasibility/context-normalizer.js";
-import { normalizeFeasibilityBusinessFlow } from "../../normalizers/feasibility/business-flow-normalizer.js";
 import { GENERATE_FEASIBILITY_BUSINESS_FLOW_RESPONSE_FORMAT } from "../../adapters/llm/response-formats/feasibility-response-formats.js";
-import {
-  normalizeFeasibilityImplementationDetailed,
-} from "../../normalizers/feasibility/implementation-normalizer.js";
-import { formatParseError, parseJson } from "../../normalizers/json/parse-json.js";
+import { formatParseError } from "../../normalizers/json/parse-json.js";
 
 import { emitEvent, type RunRecord } from "../records/run-record-store.js";
 import { isRunCancelled, throwIfRunCancelled } from "../records/run-cancellation.js";
-import { collectTextResult, logFailedStructuredOutput } from "./shared/structured-output.js";
+
 import { stageProgressValue } from "./shared/pipeline-events.js";
 import { createRunError, throwRunError } from "./shared/errors.js";
 
@@ -144,80 +137,59 @@ function validationIssuesFromError(
   });
 }
 
-function responseFormatFor(
-  stage: "context" | "business-flow" | "implementation",
-  diagnostics: FeasibilityGenerationDiagnostics,
-): ChatCompletionResponseFormat | null {
-  if (diagnostics.effectiveMode === "compatible") return null;
-  if (diagnostics.effectiveMode === "json_object") return { type: "json_object" };
-  if (stage === "business-flow") return GENERATE_FEASIBILITY_BUSINESS_FLOW_RESPONSE_FORMAT;
-  return stage === "context"
-    ? GENERATE_FEASIBILITY_CONTEXT_RESPONSE_FORMAT
-    : GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT;
-}
-
 async function generateFeasibilityJson<T>(input: {
-  record: RunRecord;
-  stage: RunStage;
-  promptStage: "context" | "business-flow" | "implementation";
-  prompt: string;
-  providerSettings: ProviderSettings;
-  llmTransport: LlmTransport;
-  diagnostics: FeasibilityGenerationDiagnostics;
+  record: RunRecord; stage: RunStage; promptStage: "context" | "business-flow" | "implementation";
+  providerSettings: ProviderSettings; llmTransport: LlmTransport; diagnostics: FeasibilityGenerationDiagnostics;
   parse: (value: unknown) => { value: T; normalizationActions?: string[] };
-  onConversation?: (conversation: ModelGenerationConversation) => void;
 }) {
-  let prompt = input.prompt;
+  const snapshot = input.record.snapshot as FeasibilityRunSnapshot;
+  const rules = structuredClone(snapshot.rules);
+  const inputs = structuredClone(snapshot.inputs);
+  const contextModel = input.promptStage === "implementation" ? structuredClone(snapshot.contextModel) : null;
+  const storedFlow = input.promptStage === "implementation" ? readFeasibilityBusinessFlowArtifact(snapshot.businessFlow) : null;
+  const businessFlow = storedFlow ? structuredClone({ model: storedFlow.model, traceability: storedFlow.traceability }) : null;
   const targetId = input.promptStage === "business-flow" ? "activity" : input.promptStage;
-  const sourceMarker = "\n输入：\n";
-  const sourceStart = input.prompt.lastIndexOf(sourceMarker);
-  const facts = sourceStart >= 0 ? input.prompt.slice(sourceStart + sourceMarker.length) : input.record.snapshot.requirementBaseline;
   const schema = input.promptStage === "context" ? contextDiagramSpecSchema : input.promptStage === "business-flow" ? feasibilityBusinessFlowSchema : completeFeasibilityImplementationPlanSchema;
-  const repair = new GenerationRepairSession(targetId, facts, [], MAX_GENERATION_REPAIR_ATTEMPTS, input.prompt, schema);
-  // Model artifacts retain their generation turns; implementation plans keep the existing section repair protocol.
-  const conversation = input.promptStage === "implementation" ? undefined : new ModelGenerationConversation(targetId, [
-    { role: "system", content: "你是严谨的软件可行性分析师，只能基于给定事实输出契约要求的 JSON。" },
-    { role: "user", content: input.prompt },
-  ]);
-  let lastIssues: FeasibilityValidationIssue[] = [];
-  for (let attempt = 0; attempt <= MAX_GENERATION_REPAIR_ATTEMPTS; attempt++) {
-    throwIfRunCancelled(input.record);
-    const used = readDiagramReviewCounters(input.record, targetId, targetId).repairAttempts;
-    if (attempt > 0 && used >= MAX_GENERATION_REPAIR_ATTEMPTS) break;
-    const fallback = (event: ResponseFormatFallbackEvent) => {
-      input.diagnostics.effectiveMode = "json_object";
-      input.diagnostics.downgradeReasons.push(`HTTP ${event.status}: ${event.reason}`);
-    };
-    const raw = await collectTextResult(input.llmTransport, input.providerSettings,
-      conversation?.messages ?? [{ role: "system", content: "你是严谨的软件可行性分析师，只能基于给定事实输出契约要求的 JSON。" }, { role: "user", content: prompt }],
-      createRunLlmChunkHandlers({ record: input.record, stage: input.stage, modelId: targetId, subtaskId: targetId, subtaskLabel: input.promptStage === "business-flow" ? "业务流程图" : undefined,
-        operation: attempt > 0 ? "model_repair" : undefined, round: attempt > 0 ? attempt : undefined }),
-      !conversation && repair.repairing ? { type: "json_object" } : responseFormatFor(input.promptStage, input.diagnostics), undefined, fallback);
-    try {
-      const parsedValue = parseJson(conversation ? conversation.accept(raw) : repair.accept(raw));
-      const result = input.parse(parsedValue);
-      input.diagnostics.normalizationActions.push(...(result.normalizationActions ?? []));
-      input.diagnostics.normalizationActions = [...new Set(input.diagnostics.normalizationActions)];
-      for (const entry of input.diagnostics.repairs) if (entry.stage === input.promptStage) entry.succeeded = true;
-      if (conversation) input.onConversation?.(conversation);
-      return result.value;
-    } catch (error) {
-      logFailedStructuredOutput(input.stage, input.providerSettings.model, error, raw, attempt + 1);
-      lastIssues = validationIssuesFromError(error, input.promptStage);
-      if (attempt >= MAX_GENERATION_REPAIR_ATTEMPTS) break;
-      const groups = new Map(lastIssues.map(issue => [`${issue.candidateIndex}:${issue.section}`, issue]));
-      for (const issue of groups.values()) input.diagnostics.repairs.push({ stage: input.promptStage, candidateIndex: issue.candidateIndex, section: issue.section, round: attempt + 1, succeeded: false });
-      const paths = lastIssues.map(issue => issue.path).filter(path => path && path !== "<root>");
-      const instruction = [...groups.values()].map(issue => issue.candidateIndex === null ? issue.reason : `仅修复候选方案索引 ${issue.candidateIndex} 的 ${issue.section} 章节；${issue.reason}`).join("；");
-      emitEvent(input.record, stageProgressRunEventSchema.parse({ type: "stage_progress", stage: input.stage,
-        progress: stageProgressValue(input.stage), subtaskId: targetId, modelId: targetId, subtaskStatus: "repairing",
-        message: `正在定点修复（${attempt + 1}/${MAX_GENERATION_REPAIR_ATTEMPTS}）：${instruction}` }));
-      if (conversation) conversation.prepare(error);
-      else prompt = repair.prepare(error, { paths, instruction, sourceFacts: facts });
-    }
+  const contractSchema = contractResponseSchema(schema);
+  const format = input.promptStage === "context" ? GENERATE_FEASIBILITY_CONTEXT_RESPONSE_FORMAT : input.promptStage === "business-flow" ? GENERATE_FEASIBILITY_BUSINESS_FLOW_RESPONSE_FORMAT : GENERATE_FEASIBILITY_IMPLEMENTATION_RESPONSE_FORMAT;
+  if (input.promptStage === "implementation" && (!contextModel || !businessFlow)) throw new Error("实现方案缺少绑定的系统环境图或业务流程图");
+  // Build prompt, upstream sources and validation from the same immutable task binding.
+  const prompt = input.promptStage === "implementation"
+    ? buildGenerateFeasibilityImplementationPrompt({ rules, inputs, contextModel: contextModel!, businessFlow: businessFlow! })
+    : input.promptStage === "context" ? buildGenerateFeasibilityContextPrompt({ rules, inputs })
+      : buildGenerateFeasibilityBusinessFlowPrompt({ rules, inputs });
+  try {
+    return await generateWithModelConversation<T>({
+      record: input.record, providerSettings: input.providerSettings, transport: input.llmTransport, stage: input.stage,
+      targetId, diagramKind: input.promptStage === "business-flow" ? "activity" : input.promptStage === "context" ? "context" : undefined,
+      label: input.promptStage === "business-flow" ? "业务流程图" : input.promptStage === "context" ? "系统环境图" : "实现方案",
+      prompt, schema: format,
+      compile: input.promptStage === "implementation" ? undefined : candidate => {
+        const model = input.promptStage === "business-flow" ? (candidate as { model: import("@uml-platform/contracts").ActivityDiagramSpec }).model : candidate as ContextDiagramSpec;
+        generatePlantUmlArtifacts([model], "feasibility", "schema");
+      },
+      validate: raw => {
+        const value = normalizeContractNulls(JSON.parse(raw), contractSchema);
+        assertFeasibilityCandidate(value, { schema, kind: input.promptStage, rules, upstream: contextModel ? [contextModel] : [] });
+        return input.parse(value).value;
+      },
+      onCandidate: (raw, attempt, error) => {
+        if (error) {
+          const issues = validationIssuesFromError(error, input.promptStage);
+          const groups = new Map(issues.map(issue => [`${issue.candidateIndex}:${issue.section}`, issue]));
+          for (const issue of groups.values()) input.diagnostics.repairs.push({ stage: input.promptStage, candidateIndex: issue.candidateIndex, section: issue.section, round: attempt, succeeded: false });
+        } else {
+          const result = input.parse(normalizeContractNulls(JSON.parse(raw), contractSchema));
+          input.diagnostics.normalizationActions = [...new Set([...input.diagnostics.normalizationActions, ...result.normalizationActions ?? []])];
+          for (const entry of input.diagnostics.repairs) if (entry.stage === input.promptStage) entry.succeeded = true;
+        }
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof Error) || !/structured output failed/.test(error.message)) throw error;
+    const label = input.promptStage === "business-flow" ? "业务流程图" : input.promptStage === "context" ? "上下文模型" : "实现方案";
+    throwRunError(createRunError("RUN_STRUCTURED_OUTPUT_INVALID", `${label}结构化输出在共享 5 次修复后仍未通过：${error.message}`));
   }
-  const label = input.promptStage === "business-flow" ? "业务流程图" : input.promptStage === "context" ? "上下文模型" : "实现方案";
-  throwRunError(createRunError("RUN_STRUCTURED_OUTPUT_INVALID", `${label}结构化输出在共享 5 次修复后仍未通过：${lastIssues.map(issue => issue.reason).join("；")}`));
 }
 
 export async function runFeasibilityStagePipeline(
@@ -282,33 +254,24 @@ export async function runFeasibilityStagePipeline(
   const generateContext = async () => {
     if (!snapshot.selectedArtifacts.includes("context")) return;
     updateStage("generate_context", "正在使用所选模型生成系统上下文");
-    let conversation!: ModelGenerationConversation;
     let contextModel = await generateFeasibilityJson({
       record,
       stage: "generate_context",
       promptStage: "context",
-      prompt: buildGenerateFeasibilityContextPrompt(snapshot),
       providerSettings,
       llmTransport,
       diagnostics,
-      onConversation: value => { conversation = value; },
       parse: (value) => ({
-        value: normalizeContextDiagram(value),
+        value: contextDiagramSpecSchema.parse(value),
       }),
     });
     finishStage("generate_context");
     updateStage("render_context", "正在核对并渲染系统环境图");
     const checked = await reviewCandidate({ record, providerSettings, llmTransport, renderClient,
-      model: contextModel, mutable: true,
-      basis: { stage: "feasibility", baseline: snapshot.requirementBaseline, rules: candidateRulesForDiagram(snapshot.rules, "context"), traceability: traceabilityFromContext(contextModel) },
-      validateModel: (model) => { normalizeContextDiagram(model); },
-      generationRepair: {
-        conversation,
-        parse: raw => {
-          const model = normalizeContextDiagram(parseJson(raw));
-          return { model, traceability: traceabilityFromContext(model) };
-        },
-      },
+      model: contextModel, mutable: false,
+      basis: { stage: "feasibility", baseline: snapshot.requirementBaseline, rules: snapshot.rules, traceability: traceabilityFromContext(contextModel) },
+
+
     });
     throwIfRunCancelled(record);
     contextModel = checked.model as typeof contextModel;
@@ -339,28 +302,22 @@ export async function runFeasibilityStagePipeline(
   const generateBusinessFlow = async () => {
     if (!snapshot.selectedArtifacts.includes("business-flow")) return;
     updateStage("generate_business_flow", "正在根据需求规则生成业务流程图");
-    let conversation!: ModelGenerationConversation;
     const result = await generateFeasibilityJson({
       record,
       stage: "generate_business_flow",
       promptStage: "business-flow",
-      prompt: buildGenerateFeasibilityBusinessFlowPrompt({ rules: snapshot.rules, requirementBaseline: snapshot.requirementBaseline }),
       providerSettings,
       llmTransport,
       diagnostics,
-      onConversation: value => { conversation = value; },
-      parse: (value) => ({ value: normalizeFeasibilityBusinessFlow(value) }),
+      parse: (value) => ({ value: feasibilityBusinessFlowSchema.parse(value) }),
     });
     finishStage("generate_business_flow");
     updateStage("render_business_flow", "正在渲染业务流程图");
     const checked = await reviewCandidate({ record, providerSettings, llmTransport, renderClient,
-      model: result.model, mutable: true,
+      model: result.model, mutable: false,
       basis: { stage: "feasibility", baseline: snapshot.requirementBaseline, rules: snapshot.rules, traceability: result.traceability },
-      validateTraceability: (model, traceability) => { normalizeFeasibilityBusinessFlow({ model, traceability }); },
-      generationRepair: {
-        conversation,
-        parse: raw => normalizeFeasibilityBusinessFlow(parseJson(raw)),
-      },
+      validateTraceability: (model, traceability) => assertFeasibilityCandidate({ model, traceability }, { schema: feasibilityBusinessFlowSchema, kind: "business-flow", rules: snapshot.rules }),
+
     });
     throwIfRunCancelled(record);
     const artifact = checked.rendered.artifact;
@@ -406,34 +363,14 @@ export async function runFeasibilityStagePipeline(
       throwRunError(createRunError("RUN_DEPENDENCY_MISSING", "请先生成最新有效的业务流程图。"));
     }
     updateStage("generate_implementation", "正在使用所选模型生成实现方案");
-    const contextExternalSystems = snapshot.contextModel.externalSystems.map(({ id, name }) => ({
-      id,
-      name,
-    }));
     snapshot.implementationPlan = await generateFeasibilityJson({
       record,
       stage: "generate_implementation",
       promptStage: "implementation",
-      prompt: buildGenerateFeasibilityImplementationPrompt({
-        rules: snapshot.rules,
-        requirementBaseline: snapshot.requirementBaseline,
-        inputs: snapshot.inputs,
-        contextModel: snapshot.contextModel,
-        businessFlow: { model: businessFlow.model, traceability: businessFlow.traceability },
-      }),
       providerSettings,
       llmTransport,
       diagnostics,
-      parse: (value) => {
-        const normalized = normalizeFeasibilityImplementationDetailed(
-          value,
-          contextExternalSystems,
-        );
-        return {
-          value: normalized.plan,
-          normalizationActions: normalized.actions,
-        };
-      },
+      parse: (value) => ({ value: completeFeasibilityImplementationPlanSchema.parse(value) }),
     });
     snapshot.implementationFingerprint = buildFeasibilityImplementationFingerprint({
       rules: snapshot.rules,

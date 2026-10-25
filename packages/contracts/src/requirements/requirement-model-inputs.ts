@@ -1,7 +1,6 @@
-// Routes model inputs using the same fixed type mapping used by the UI.
+// Every real task rule is available as upstream provenance, regardless of its classification.
 import type { DiagramKind, RequirementRule } from "./requirements.js";
-import { requirementTypeAppliesToModel } from "./requirement-rule-types.js";
 
-export function candidateRulesForDiagram(rules: readonly RequirementRule[], diagram: DiagramKind): RequirementRule[] {
-  return rules.filter(rule => requirementTypeAppliesToModel(rule.type, diagram));
+export function candidateRulesForDiagram(rules: readonly RequirementRule[], _diagram: DiagramKind): RequirementRule[] {
+  return [...rules];
 }

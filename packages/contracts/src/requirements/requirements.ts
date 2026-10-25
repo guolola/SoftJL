@@ -80,69 +80,8 @@ export type RequirementRulesResult = z.infer<typeof requirementRulesResultSchema
 
 // Extracted rules must carry real source evidence; manual rules may omit it.
 export const extractedRequirementsSchema = z.object({
-  rules: z.array(requirementRuleSchema.extend({ sourceFragment: z.string().min(1) })),
+  rules: z.array(requirementRuleSchema.extend({ sourceFragment: z.string().min(1) })).min(1),
 }).strict();
-
-export const requirementCriticalitySchema = z.enum([
-  "critical",
-  "high",
-  "medium",
-  "low",
-]);
-export type RequirementCriticality = z.infer<typeof requirementCriticalitySchema>;
-
-export const requirementAssumptionSchema = z.object({
-  id: z.string().min(1),
-  requirementId: z.string().min(1).optional(),
-  text: z.string().min(1),
-  rationale: z.string().min(1),
-  confidence: z.number().min(0).max(1),
-  status: z.enum(["accepted", "pending-review", "rejected", "derived"]),
-});
-export type RequirementAssumption = z.infer<typeof requirementAssumptionSchema>;
-
-export const requirementConflictSchema = z.object({
-  id: z.string().min(1),
-  requirementIds: z.array(z.string().min(1)).min(2),
-  description: z.string().min(1),
-  severity: requirementCriticalitySchema,
-  status: z.enum(["conflict", "pending-review", "resolved"]),
-});
-export type RequirementConflict = z.infer<typeof requirementConflictSchema>;
-
-export const requirementQualityIssueSchema = z.object({
-  id: z.string().min(1),
-  requirementId: z.string().min(1).optional(),
-  severity: z.enum(["info", "warning", "error", "critical"]),
-  code: z.enum([
-    "ambiguity",
-    "conflict",
-    "missing-actor",
-    "missing-object",
-    "missing-boundary",
-    "non-verifiable",
-    "low-confidence",
-    "derived-assumption",
-    "semantic-loss",
-  ]),
-  message: z.string().min(1),
-  blocksDownstream: z.boolean(),
-});
-export type RequirementQualityIssue = z.infer<
-  typeof requirementQualityIssueSchema
->;
-
-export const requirementQualityReportSchema = z.object({
-  runId: z.string().min(1),
-  status: z.enum(["passed", "pending-review", "blocked"]),
-  summary: z.string().min(1),
-  issues: z.array(requirementQualityIssueSchema),
-  blockingIssueIds: z.array(z.string().min(1)),
-  reviewRequiredRequirementIds: z.array(z.string().min(1)),
-});
-export type RequirementQualityReport = z.infer<
-  typeof requirementQualityReportSchema
->;
 
 export const requirementBaselineSchema = z.object({
   // Reject previous classified snapshots rather than silently upgrading their semantics.
@@ -151,15 +90,10 @@ export const requirementBaselineSchema = z.object({
   version: z.number().int().positive(),
   rules: z.array(requirementRuleSchema.extend({
     requirementId: z.string().min(1),
-    origin: z.enum(["generated", "manual-added", "manual-edited"]),
-  })),
+  }).strict()),
   runId: z.string().min(1),
   // Identifies requirement content independently of the task that consumes it.
   sourceInputFingerprint: z.string().min(1),
-  sourceDocumentId: z.string().min(1),
-  assumptions: z.array(requirementAssumptionSchema),
-  conflicts: z.array(requirementConflictSchema),
-  qualityReport: requirementQualityReportSchema,
   createdAt: z.string().min(1),
 }).strict();
 export type RequirementBaseline = z.infer<typeof requirementBaselineSchema>;

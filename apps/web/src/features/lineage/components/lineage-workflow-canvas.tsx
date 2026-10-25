@@ -60,6 +60,8 @@ const WorkflowNode = ({ data, selected }: NodeProps<Node<WorkflowNodeData>>) => 
   }
 
   const hideToolbarWithDelay = () => {
+    // The card and its portaled toolbar can both leave; retain only one timer for unmount cleanup.
+    clearTimeout(hideTimeoutRef.current)
     hideTimeoutRef.current = setTimeout(() => setIsHovered(false), 300)
   }
 

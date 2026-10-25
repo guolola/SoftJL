@@ -4,7 +4,7 @@ const AI_PROVENANCE = "ai-estimate" as const;
 
 function sourceRef(assumption: string) {
   return {
-    sourceRequirementIds: [],
+    sourceRequirementIds: ["R1"],
     assumption,
     provenance: AI_PROVENANCE,
   };

@@ -13,6 +13,17 @@ import { createRequirementBaseline, createRunSnapshot } from "../../../../tests/
 import { designGenerationSubtasks, requirementGenerationSubtasks } from "./generation-planning";
 
 describe("workspace-session generation task helpers", () => {
+  it("retains tool history without treating validation rejection as artifact failure", () => {
+    const task = createGenerationTask({ clientTaskId: "tool", kind: "requirements", title: "生成模型", providerModel: null,
+      startedAt: "now", message: "生成中", subtasks: [{ id: "generate_models:usecase", label: "用例图", status: "running", message: null, errorMessage: null }] });
+    const event: RunEventInput = { type: "run_tool", eventId: "tool", createdAt: "2026-10-25T00:00:00Z", runId: "run", stage: "generate_models",
+      callId: "provider", toolCallId: "validation", toolName: "validate_model", phase: "failed", errorCount: 2, subtaskId: "usecase" };
+    const updated = updateTaskFromEvent(task, event, { queued: "排队中", completed: "完成" });
+    expect(updated.subtasks).toEqual(task.subtasks);
+    expect(updated.status).not.toBe("failed");
+    expect(updated.diagnostics.transcript).toContainEqual(event);
+    expect(updated.diagnostics.events).toEqual([]);
+  });
   it("uses business labels for failures recovered without a planned task", () => {
     const task = createGenerationTask({ clientTaskId: "unplanned-failure", kind: "design", title: "生成设计模型",
       providerModel: null, startedAt: "now", message: "生成中" });
@@ -40,13 +51,14 @@ describe("workspace-session generation task helpers", () => {
     expect(task.subtasks.some((subtask) => subtask.id.includes("domain-class-custom"))).toBe(false);
   });
 
-  it("fails downstream placeholders when a custom model ID fails generation", () => {
+  it("leaves unexecuted downstream tasks queued when a custom model ID fails generation", () => {
     const task = createGenerationTask({ clientTaskId: "custom-failure", kind: "requirements", title: "生成模型",
       providerModel: null, startedAt: "now", message: "生成中", subtasks: requirementGenerationSubtasks(["usecase", "class"], {}) });
     const failed = updateTaskFromEvent(task, { type: "stage_progress", stage: "generate_models", progress: 65,
       diagramKind: "usecase", subtaskId: "uc_custom", subtaskStatus: "failed", message: "结构校验失败" },
     { queued: "排队中", completed: "完成" });
-    expect(failed.subtasks.filter((subtask) => subtask.id.endsWith(":usecase")).every((subtask) => subtask.status === "failed")).toBe(true);
+    expect(failed.subtasks.find(subtask => subtask.id === "generate_models:usecase")?.status).toBe("failed");
+    expect(failed.subtasks.filter(subtask => subtask.id.endsWith(":usecase") && subtask.id !== "generate_models:usecase").every(subtask => subtask.status === "queued")).toBe(true);
     expect(failed.subtasks.filter((subtask) => subtask.id.endsWith(":class")).every((subtask) => subtask.status === "queued")).toBe(true);
   });
 
@@ -345,7 +357,7 @@ describe("workspace-session generation task helpers", () => {
                   label: "借书",
                 },
               ],
-              mappingSource: "llm",
+
             },
           ],
           plantUml: [],
@@ -899,7 +911,7 @@ describe("workspace-session generation task helpers", () => {
     ]);
   });
 
-  it("marks downstream diagram source and render subtasks failed when model generation fails", () => {
+  it("keeps downstream source and render tasks unexecuted when model generation fails", () => {
     const task = createGenerationTask({
       clientTaskId: "design-activity-failure",
       kind: "design",
@@ -958,13 +970,13 @@ describe("workspace-session generation task helpers", () => {
       }),
       expect.objectContaining({
         id: "generate_plantuml:activity",
-        status: "failed",
-        message: "前置模型生成失败，未执行",
+        status: "queued",
+        message: "等待执行",
       }),
       expect.objectContaining({
         id: "render_svg:activity",
-        status: "failed",
-        message: "前置模型生成失败，未执行",
+        status: "queued",
+        message: "等待执行",
       }),
     ]);
   });

@@ -1,11 +1,10 @@
 // Verifies prompt builders preserve stage responsibilities, output constraints, and traceability instructions.
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { RequirementBaseline, RequirementRule } from "@uml-platform/contracts";
-import { createRequirementBaselineSnapshot } from "@uml-platform/contracts";
+import type { RequirementRule } from "@uml-platform/contracts";
 import { modelFixture } from "@uml-platform/contracts/testing";
 import { expandPromptData } from "./prompt-data.js";
-import { buildExtractRulesPrompt, buildRepairExtractedRulesPrompt, buildGenerateDesignSequencePrompt, buildGenerateDocumentContentPrompt, buildGenerateDesignModelsPrompt, buildGenerateModelsPrompt, buildGenerateRequirementAnalysisPrompt } from "./index.js";
+import { buildExtractRulesPrompt, buildGenerateDesignSequencePrompt, buildGenerateDocumentContentPrompt, buildGenerateDesignModelsPrompt, buildGenerateModelsPrompt, buildGenerateRequirementAnalysisPrompt } from "./index.js";
 
 const sampleRules: RequirementRule[] = [
   {
@@ -18,34 +17,31 @@ const sampleRules: RequirementRule[] = [
 
 test("design context uses compact JSON without losing upstream model fields", () => {
   const models = [modelFixture("requirements", "function")];
-  const baseline = createRequirementBaselineSnapshot({ runId: "compact", requirementText: "需求", rules: sampleRules });
-  const prompt = buildGenerateDesignModelsPrompt(baseline, models, [], ["architecture"]);
+  const prompt = buildGenerateDesignModelsPrompt(models, [], ["architecture"]);
   assert.deepEqual(expandPromptData(JSON.parse(prompt.split("需求阶段来源模型：\n")[1].split("\n")[0])), models);
   assert.ok(!prompt.includes(JSON.stringify(models, null, 2)));
 });
 
-test("rule snapshot prompts do not repeat rules or truncate design constraints", () => {
+test("generation prompts retain bound facts without importing backend baseline constraints", () => {
   const rules: RequirementRule[] = Array.from({ length: 60 }, (_, index) => ({
     id: `r${index + 1}`, type: "functional" as const, text: `需求${index + 1}：${"保留完整约束。".repeat(80)}`,
 
   }));
   rules[59] = { ...rules[59]!, type: "operations" as const, text: "最后一条约束：服务只能部署在校内网络。" };
-  const baseline = createRequirementBaselineSnapshot({ runId: "large", requirementText: "原始需求", rules });
-  const requirements = buildGenerateModelsPrompt(rules, baseline, ["usecase"]);
+  const requirements = buildGenerateModelsPrompt(rules, ["usecase"]);
   assert.equal(requirements.split(rules[0]!.text).length - 1, 1);
   assert.doesNotMatch(requirements, /必须以 RequirementBaseline 中 accepted/);
-  const design = buildGenerateDesignModelsPrompt(baseline, [], [], ["architecture"]);
-  assert.match(design, /最后一条约束：服务只能部署在校内网络。/);
+  const design = buildGenerateDesignModelsPrompt([], [], ["architecture"]);
+  assert.doesNotMatch(design, /最后一条约束：服务只能部署在校内网络。|RequirementBaseline/);
   assert.doesNotMatch(design, /内容已截断|fieldProvenance|系统满足该需求/);
 });
 
-test("fixed routing retains allowed quality constraints without creating artificial nodes", () => {
+test("requirement prompts use the exact bound rules without restoring omitted baseline rules", () => {
   const functional: RequirementRule = { id: "r1", type: "functional" as const, text: "用户查询订单",  };
   const accessibility: RequirementRule = { id: "r2", type: "quality" as const, text: "页面必须支持键盘操作",  };
-  const baseline = createRequirementBaselineSnapshot({ runId: "constraints", requirementText: "订单需求", rules: [functional, accessibility] });
-  const prompt = buildGenerateModelsPrompt([functional], baseline, ["prototype"]);
-  assert.ok(prompt.includes(accessibility.text));
-  assert.match(prompt, /需求类型到模型的关联已由程序固定/);
+  const prompt = buildGenerateModelsPrompt([functional], ["prototype"]);
+  assert.ok(!prompt.includes(accessibility.text));
+  assert.match(prompt, /绑定的规则范围由后端确定/);
   assert.match(prompt, /禁止为凑覆盖率虚构节点/);
   assert.match(prompt, /非功能需求是跨模型约束/);
 });
@@ -58,13 +54,6 @@ function promptModelSchema(prompt: string, kind: string) {
   return JSON.parse(line.slice(prefix.length));
 }
 
-const sampleBaseline: RequirementBaseline = createRequirementBaselineSnapshot({
-  runId: "run-1",
-  requirementText: "用户可以提交需求",
-  rules: sampleRules,
-  createdAt: "2026-01-01T00:00:00.000Z",
-});
-
 test("rule extraction prompt separates readable text from source fragments", () => {
   const prompt = buildExtractRulesPrompt("一个小型图书馆管理系统需完成：(1)借书。");
 
@@ -75,22 +64,16 @@ test("rule extraction prompt separates readable text from source fragments", () 
   assert.match(prompt, /只包含 rules|格式必须是.*rules/);
 });
 
-test("rule extraction repair carries full source and draft beyond the former history limit", () => {
+test("rule extraction includes complete source and requests plain JSON for backend validation", () => {
   const source = "需求".repeat(25000) + "SOURCE_TAIL";
-  const draft = "输出".repeat(25000) + "DRAFT_TAIL";
-  const prompt = buildRepairExtractedRulesPrompt('rules: Expected array, received undefined', source, draft);
+  const prompt = buildExtractRulesPrompt(source);
   assert.ok(prompt.includes(source));
-  assert.ok(prompt.includes(draft));
-  assert.match(prompt, /上一条需求规则抽取 JSON/);
-  assert.match(prompt, /只修改错误涉及的字段/);
-  assert.match(prompt, /保留其他规则和已有业务含义/);
-  assert.match(prompt, /rules: Expected array, received undefined/);
-  assert.match(prompt, /只包含 rules|格式必须是.*rules/);
-  assert.doesNotMatch(prompt, /原始需求：/);
+  assert.match(prompt, /直接返回完整候选 JSON，由后端校验/);
+  assert.doesNotMatch(prompt, /validate_requirement_rules|submit_requirement_rules|get_upstream_artifact/);
 });
 
 test("requirement model prompts include requirement-stage responsibilities", () => {
-  const prompt = buildGenerateModelsPrompt(sampleRules, sampleBaseline, [
+  const prompt = buildGenerateModelsPrompt(sampleRules, [
     "function",
     "usecase",
     "class",
@@ -107,7 +90,7 @@ test("requirement model prompts include requirement-stage responsibilities", () 
   const classSchema = promptModelSchema(prompt, "class");
   assert.equal(classSchema.properties.classes.items.properties.operations.maxItems, 0);
   assert.match(prompt, /总体业务流程\(activity\): 描述跨角色的业务活动/);
-  assert.match(prompt, /允许不同位置同名动作、合法循环、并行、多起点/);
+  assert.match(prompt, /统一使用竖向泳道和控制流，允许不同位置同名动作、明确判断控制的循环与并行/);
   assert.doesNotMatch(prompt, /重复业务步骤必须合并/);
   assert.match(prompt, /部署需求模型\(deployment\): 描述需求阶段可识别的部署约束/);
   assert.match(prompt, /JSON 必须完整合法/);
@@ -118,7 +101,8 @@ test("requirement model prompts include requirement-stage responsibilities", () 
   assert.match(prompt, /不能截断或以省略号替代/);
   assert.match(prompt, /每个业务元素和业务关系必须同时有至少一条真实规则来源/);
   assert.match(prompt, /本模型实际采用的规则/);
-  assert.match(prompt, /RequirementBaseline（结构化需求事实和约束）/);
+  assert.match(prompt, /本次绑定的需求规则（唯一需求来源）/);
+  assert.doesNotMatch(prompt, /RequirementBaseline/);
   assert.match(prompt, /达到\/至少\/不低于\/以上必须保持为 >=/);
   assert.match(prompt, /正好等于阈值的路径/);
   assert.doesNotMatch(prompt, /原始需求：/);
@@ -153,7 +137,7 @@ test("design sequence prompt requires one sequence per use case", () => {
     systemBoundaries: [],
     relationships: [],
   };
-  const prompt = buildGenerateDesignSequencePrompt(sampleBaseline, useCaseModel);
+  const prompt = buildGenerateDesignSequencePrompt(useCaseModel);
 
   assert.match(prompt, /每个 useCase 必须生成一个独立用例实现设计/);
   assert.match(prompt, /models\.length 必须等于 useCases\.length/);
@@ -165,7 +149,7 @@ test("design sequence prompt requires one sequence per use case", () => {
   assert.match(prompt, /不能原样复用参与者和消息/);
   assert.match(prompt, /首次生成必须同时返回 models 和完整 designModelTraceability/);
   assert.doesNotMatch(prompt, /系统会在模型结构解析成功后按元素清单确定性补齐可追踪关系/);
-  assert.match(prompt, /每个设计业务元素和 relationship 必须在首次生成时至少声明一个直接上游元素/);
+  assert.match(prompt, /每个设计模型元素.*必须在首次生成时至少声明一个直接上游元素/);
   assert.match(prompt, /"id":\s*"uc_view"/);
   assert.match(prompt, /"id":\s*"uc_create"/);
   assert.doesNotMatch(prompt, /原始需求：/);
@@ -225,7 +209,7 @@ test("requirement analysis prompt scopes one sequence to one use case event flow
   assert.doesNotMatch(prompt, /客户预约自习室座位/);
   assert.doesNotMatch(prompt, /已确认需求项：/);
   assert.doesNotMatch(prompt, /RequirementBaseline（/);
-  assert.match(prompt, /禁止使用原始需求文本、需求规则或 RequirementBaseline/);
+  assert.match(prompt, /禁止使用原始需求文本、独立需求规则或未绑定的其他模型/);
 });
 
 test("document content prompt forbids unprovided school and personal names", () => {

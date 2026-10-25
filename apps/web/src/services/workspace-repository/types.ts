@@ -12,7 +12,6 @@ export interface RequirementRulesUpdateMetadata {
   requirementBaseline?: WorkspaceRecord["requirementBaseline"];
   requirementInputFingerprint?: string | null;
   requirementModelTraceability?: WorkspaceRecord["requirementModelTraceability"];
-  requirementQualityReport?: WorkspaceRecord["requirementQualityReport"];
 
   rulesBasedOnTextVersion?: number | null;
   rulesVersion?: number;

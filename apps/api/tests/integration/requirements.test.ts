@@ -104,7 +104,7 @@ test("api preserves explicit semantic classifications without category mappings"
     method: "POST",
     url: "/api/runs",
     payload: {
-      requirementText: "共享自习室座位预约系统支持微信登录、查座、预约和签到。",
+      requirementText: "共享自习室座位预约系统支持微信登录、查座、预约和签到。\n接口请求做合法性校验，防止恶意预约。\n系统支持至少100人同时在线使用，页面加载速度小于2秒。",
       selectedDiagrams: ["usecase"],
       providerSettings: managedProviderSettings("gpt-5.4"),
     },
@@ -272,11 +272,11 @@ test("api repairs generate_models output when element traceability is missing", 
   assert.equal(snapshot.status, "completed");
   assert.equal(modelAttempts, 2);
   assert.equal(traceabilityAttempts, 0);
-  assert.equal(snapshot.requirementModelTraceability.length, 3);
+  assert.equal(snapshot.requirementModelTraceability.length, 4);
   assert.ok(
-    snapshot.requirementModelTraceability.every(
+    snapshot.requirementModelTraceability.some(
       (entry: { target: { elementId: string } }) =>
-        entry.target.elementId !== "boundary_platform",
+        entry.target.elementId === "boundary_platform",
     ),
   );
   assert.ok(
@@ -284,7 +284,7 @@ test("api repairs generate_models output when element traceability is missing", 
       (entry: { attempt: number; kind: string; errorMessage?: string }) =>
         entry.attempt === 1 &&
         entry.kind === "parse_error" &&
-        /requirementModelTraceability/.test(entry.errorMessage ?? ""),
+        /requirementModelTraceability|mapping-coverage-missing/.test(entry.errorMessage ?? ""),
     ),
   );
 

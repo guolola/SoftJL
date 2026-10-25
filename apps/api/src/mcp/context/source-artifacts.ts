@@ -106,7 +106,7 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
   const designTrace = parsedItems(
     designModelTraceabilityEntrySchema,
     state.designModelTraceability,
-  ).map(({ source, targets, upstreamDesignRefs }) => ({ source, targets, ...(upstreamDesignRefs ? { upstreamDesignRefs } : {}) }));
+  ).map(({ source, targets }) => ({ source, targets }));
   if (
     typeof state.requirementText === "string" &&
     state.requirementText.trim()
@@ -269,13 +269,11 @@ export function extractSourceArtifacts(state: Record<string, unknown>) {
     }
   }
   for (const trace of designTrace) {
-    // The contract points from a design source to requirement-model targets, plus optional upstream designs.
-    const upstream = [
-      ...trace.targets.flatMap((ref) => resolve(ref, "analysis")),
-      ...(trace.upstreamDesignRefs ?? []).flatMap((ref) =>
-        resolve(ref, "design"),
-      ),
-    ];
+    // Targets identify either requirement models or upstream designs in the same dependency chain.
+    const upstream = trace.targets.flatMap((ref) => {
+      const requirement = resolve(ref, "analysis");
+      return requirement.length ? requirement : resolve(ref, "design");
+    });
     for (const source of resolve(trace.source, "design")) {
       source.dependencies.push(...upstream.map((a) => a.id));
       (source.payload.traceability as unknown[]).push(trace);

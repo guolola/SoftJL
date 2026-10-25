@@ -40,7 +40,7 @@ test("stage variants retain their different class and deployment contracts", () 
   assert.doesNotMatch(getModelReviewProfile("design", "deployment").structure.join("\n"), /components／artifacts 为空/);
   assert.throws(() => getModelReviewProfile("requirements", "table"), /不支持/);
   assert.match(getModelReviewProfile("feasibility", "activity").structure.join("\n"), /只使用.*control_flow/);
-  assert.match(getModelReviewProfile("requirements", "activity").structure.join("\n"), /flow_final 只终止所在分支/);
+  assert.match(getModelReviewProfile("requirements", "activity").structure.join("\n"), /竖向泳道.*只使用.*control_flow/);
   assert.doesNotMatch(getModelReviewProfile("feasibility", "activity").image.join("\n"), /两类终止/);
 });
 test("class multiplicities reject reversed intervals while recursive type composition remains legal", () => {

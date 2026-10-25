@@ -3,12 +3,28 @@ import type {
   DesignDiagramModelSpec,
   DiagramModelSpec,
 } from "@uml-platform/contracts";
+import { collectModelRefs } from "@uml-platform/contracts";
+import { modelFixture } from "@uml-platform/contracts/testing";
 import {
   pruneTraceabilityForDesignModels,
   pruneTraceabilityForRequirementModels,
 } from "./traceability-pruning";
 
 describe("traceability pruning", () => {
+  it("retains direct design targets across requirement and design edits while removing deleted targets", () => {
+    const upstream = modelFixture("design", "class") as DesignDiagramModelSpec;
+    const model = modelFixture("design", "component") as DesignDiagramModelSpec;
+    const source = collectModelRefs([model], true).refs[0]!;
+    const target = collectModelRefs([upstream], true).refs[0]!;
+    const entry = { source, targets: [target, { ...target, elementId: "deleted" }] };
+    const input = { models: {}, designModels: { class: upstream, component: model }, designModelTraceability: [entry] };
+    const before = structuredClone(input);
+    const expected = [{ source, targets: [target] }];
+    expect(pruneTraceabilityForRequirementModels({ ...input, requirementModelTraceability: [] }).designModelTraceability).toEqual(expected);
+    expect(pruneTraceabilityForDesignModels(input)).toEqual(expected);
+    expect(input).toEqual(before);
+  });
+
   it("removes requirement and design mappings that point to deleted requirement elements", () => {
     const classModel = {
       diagramKind: "class",
@@ -19,6 +35,7 @@ describe("traceability pruning", () => {
     } as unknown as DiagramModelSpec;
     const result = pruneTraceabilityForRequirementModels({
       models: { class: classModel },
+      designModels: {},
       requirementModelTraceability: [
         {
           ruleId: "REQ-1",
@@ -129,29 +146,24 @@ describe("traceability pruning", () => {
             elementKind: "class",
             label: "OrderService",
           },
-          targets: [
-            {
+          targets: [{
               diagramKind: "class",
               elementId: "order",
               elementKind: "class",
               label: "Order",
-            },
-            {
+            }, {
               diagramKind: "class",
               elementId: "customer",
               elementKind: "class",
               label: "Customer",
-            },
-          ],
-          upstreamDesignRefs: [
-            {
+            }, {
               diagramKind: "class",
               modelId: "design-class",
               elementId: "deleted-helper",
               elementKind: "class",
               label: "DeletedHelper",
-            },
-          ],
+            }],
+
         },
         {
           source: {
@@ -178,6 +190,6 @@ describe("traceability pruning", () => {
     expect(result[0].targets).toEqual([
       expect.objectContaining({ elementId: "order" }),
     ]);
-    expect(result[0].upstreamDesignRefs).toBeUndefined();
+    expect(result[0].targets.some(ref => ref.elementId === "deleted-helper")).toBe(false);
   });
 });

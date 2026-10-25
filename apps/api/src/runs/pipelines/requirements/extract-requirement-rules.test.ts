@@ -8,6 +8,7 @@ import type { RunRecord } from "../../records/run-record-store.js";
 import { extractRequirementRulesWithRepair } from "./extract-requirement-rules.js";
 import { createContextualLlmTransport } from "../shared/conversation-context.js";
 
+
 const providerSettings = { modelCapability: strictTestModelCapability("test"), apiBaseUrl: "https://example.test", apiKey: "test", model: "test" };
 const rule = (sourceFragment: string) => ({ id: "r1", type: "functional" as const, text: "用户提交预约", sourceFragment,  });
 function record(text: string): RunRecord {
@@ -36,10 +37,10 @@ test("source mismatch repairs with complete long input and draft", async () => {
     calls.push(input);
     yield calls.length === 1 ? draft : JSON.stringify({ rules: [rule("用户提交预约。")] });
   } };
-  const result = await extractRequirementRulesWithRepair({ record: record(source), requirementText: source, providerSettings, llmTransport: createContextualLlmTransport(transport) });
+  const result = await extractRequirementRulesWithRepair({ record: record(source), requirementText: source, sourceUnits: [{ id: "background", text: source.slice(0, 50000), startOffset: 0, endOffset: 50000, category: "context" }, { id: "tail", text: source.slice(50000), startOffset: 50000, endOffset: source.length, category: "requirement" }], providerSettings, llmTransport: createContextualLlmTransport(transport) });
   assert.equal(calls.length, 2);
-  assert.ok(String(calls[1]!.messages.at(-1)!.content).includes(source));
-  assert.ok(String(calls[1]!.messages.at(-1)!.content).includes(draft));
+  assert.ok(calls[1]!.messages.some(message => typeof message.content === "string" && message.content.includes(source)));
+  assert.ok(calls[1]!.messages.some(message => message.role === "assistant" && message.content === draft));
   assert.equal(result.rules.length, 1);
 });
 
@@ -73,4 +74,39 @@ test("obsolete metadata triggers repair instead of being silently converted", as
   });
   assert.equal(calls, 2);
   assert.deepEqual(result.rules[0], rule(source));
+});
+
+test("extraction validates each text candidate once and repairs changed boundaries in the same conversation", async () => {
+  const source = "报销总额达到5000元时由经理审批。";
+  const run = record(source);
+  const candidate = { rules: [{ id: "r1", type: "business-rule", text: source, sourceFragment: source }] };
+  const wrong = { rules: [{ ...candidate.rules[0]!, text: "报销总额超过5000元时由经理审批。" }] };
+  let calls = 0;
+  const result = await extractRequirementRulesWithRepair({ record: run, requirementText: source, providerSettings,
+    llmTransport: { async *streamChatCompletion(input) {
+      assert.equal(input.tools, undefined); assert.equal(input.onToolCall, undefined);
+      assert.match(String(input.messages[1]!.content), /5000/);
+      if (++calls > 1) {
+        const feedback = JSON.parse(String(input.messages.at(-1)!.content));
+        assert.ok(feedback.errors.some((issue: any) => issue.code === "source-fact-changed" && issue.path === "rules.0.text"));
+        assert.equal(input.messages.at(-2)!.content, JSON.stringify(wrong));
+      }
+      yield JSON.stringify(calls === 1 ? wrong : candidate);
+    } },
+  });
+  assert.deepEqual(result.rules, candidate.rules); assert.equal(calls, 2);
+  assert.deepEqual(run.snapshot.rules, []);
+  assert.equal(run.events.some(event => event.type === "run_tool"), false);
+});
+
+test("a source change during generation prevents accepting its result", async () => {
+  const source = "95%的查询在2秒内完成。", run = record(source);
+  let calls = 0;
+  await assert.rejects(extractRequirementRulesWithRepair({ record: run, requirementText: source, providerSettings,
+    llmTransport: { async *streamChatCompletion() {
+      calls++; run.snapshot.requirementText = "来源已修改";
+      yield JSON.stringify({ rules: [{ ...rule(source), text: source }] });
+    } },
+  }), /需求来源已变化/);
+  assert.deepEqual(run.snapshot.rules, []); assert.equal(calls, 1);
 });

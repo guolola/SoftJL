@@ -1,21 +1,23 @@
-// Renders deterministic model source; compiler failures never authorize LLM graph rewrites.
+// Renders deterministic model source; typed compiler failures return to the owning pipeline without unchanged retries.
 import { renderSvgResponseSchema, type ModelingStage, type DesignDiagramModelSpec, type DiagramModelSpec, type DesignSvgArtifact, type SvgArtifact } from "@uml-platform/contracts";
 import type { AnyPlantUmlArtifact, RenderClient } from "../../../adapters/render/render-client.js";
 import type { RunRecord } from "../../records/run-record-store.js";
 import { generateDesignPlantUmlArtifacts, generatePlantUmlArtifacts } from "../../../adapters/plantuml/model-renderer.js";
 import { appendDesignTrace, appendRequirementTrace, designDiagramKindFromArtifact, requirementDiagramKindFromArtifact } from "../shared/trace-events.js";
 import { isRunCancelledError, throwIfRunCancelled } from "../../records/run-cancellation.js";
+import { ModelCompilationError } from "../../../adapters/plantuml/model-compilation-error.js";
 
 export async function renderArtifactWithRepair(
   record: RunRecord,
   renderClient: RenderClient, model: DiagramModelSpec | DesignDiagramModelSpec, artifact: AnyPlantUmlArtifact, stage?: ModelingStage, abortSignal?: AbortSignal,
+  validation: "schema" | "semantic" = "semantic",
 ): Promise<{ status: "success"; artifact: AnyPlantUmlArtifact; svgArtifact: SvgArtifact | DesignSvgArtifact } | { status: "failed"; artifact: AnyPlantUmlArtifact; errorMessage: string }> {
   try {
     // The model is authoritative, including on manual redraw and retry entry points.
     throwIfRunCancelled(record);
     const canonical = stage === "design" || (!stage && "designTrace" in record.snapshot)
-      ? generateDesignPlantUmlArtifacts([model as DesignDiagramModelSpec])[0]!
-      : generatePlantUmlArtifacts([model as DiagramModelSpec], stage === "feasibility" || (!stage && "selectedArtifacts" in record.snapshot) ? "feasibility" : "requirements")[0]!;
+      ? generateDesignPlantUmlArtifacts([model as DesignDiagramModelSpec], validation)[0]!
+      : generatePlantUmlArtifacts([model as DiagramModelSpec], stage === "feasibility" || (!stage && "selectedArtifacts" in record.snapshot) ? "feasibility" : "requirements", validation)[0]!;
     artifact = canonical;
     const rendered = renderSvgResponseSchema.parse(await renderClient(canonical, abortSignal));
     // Graphviz failures can return exit code zero and a valid SVG error picture; never publish that as a model.
@@ -25,6 +27,7 @@ export async function renderArtifactWithRepair(
   } catch (error) {
     throwIfRunCancelled(record);
     if (isRunCancelledError(error)) throw error;
+    if (error instanceof ModelCompilationError) throw error;
     const errorMessage = error instanceof Error ? error.message : String(error);
     appendDesignTrace(record, { stage: "render_svg", attempt: 1, kind: "render_error", diagramKind: designDiagramKindFromArtifact(artifact), plantUmlSource: artifact.source, errorMessage });
     appendRequirementTrace(record, { stage: "render_svg", attempt: 1, kind: "render_error", diagramKind: requirementDiagramKindFromArtifact(artifact), plantUmlSource: artifact.source, errorMessage });

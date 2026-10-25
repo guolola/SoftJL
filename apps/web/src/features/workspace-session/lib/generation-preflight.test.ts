@@ -110,7 +110,7 @@ describe("analyzeDesignGenerationPreflight", () => {
     const model = modelFixture("requirements", "usecase");
     if (model.diagramKind !== "usecase") throw new Error("fixture");
     model.useCases[0]!.primaryActorId = "actor";
-    model.relationships = [];
+    model.title = "";
     const preflight = analyzeDesignGenerationPreflight({ ...basePreflightInput(), models: { usecase: model } });
     expect(preflight.status).toBe("blocked");
     if (preflight.status === "blocked") expect(preflight.block.message).toContain("结构错误");
@@ -120,7 +120,7 @@ describe("analyzeDesignGenerationPreflight", () => {
     const input = basePreflightInput();
     const classModel = input.designModels["class:model"]!;
     if (classModel.diagramKind !== "class") throw new Error("fixture");
-    classModel.relationships[0]!.targetId = "unknown";
+    classModel.title = "";
     expect(analyzeDesignGenerationPreflight({ ...input, only: ["class"] }).status).toBe("ready");
     expect(analyzeDesignGenerationPreflight({ ...input, only: ["table"] }).status).toBe("blocked");
   });
@@ -233,17 +233,14 @@ describe("candidate requirement inputs", () => {
     expect(rules).toEqual(original);
   });
 
-  it("blocks design auto-generation when its upstream model has no mapped requirement types", () => {
+  it("uses actual upstream dependencies rather than requirement type restrictions", () => {
     const result = analyzeDesignGenerationPreflight({ ...basePreflightInput(), selectedDesignDiagrams: ["architecture"], rules: [createRule({ type: "interaction" as const,  })] });
-    expect(result.status).toBe("blocked");
-    if (result.status === "blocked") expect(result.block.message).toContain("功能需求");
+    expect(result.status).toBe("ready");
   });
 });
 
-it("guards direct generation actions with the same type matrix as model selection", () => {
+it("direct generation actions accept all real rule types", () => {
   const input = { ...basePreflightInput(), selectedDiagrams: ["class" as const], rules: [createRule({ type: "functional" })] };
-  const blocked = analyzeRequirementGenerationPreflight(input);
-  expect(blocked.status).toBe("blocked");
-  if (blocked.status === "blocked") expect(blocked.block.message).toContain("数据需求、业务规则");
+  expect(analyzeRequirementGenerationPreflight(input).status).toBe("ready");
   expect(analyzeRequirementGenerationPreflight({ ...input, rules: [createRule({ type: "data" })] }).status).toBe("ready");
 });

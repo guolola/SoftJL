@@ -33,3 +33,9 @@ test("document completion preserves download metadata without its body", () => {
   assert.equal(event.snapshot.documentId, "document"); assert.equal(event.snapshot.byteLength, 123); assert.deepEqual(event.snapshot.sections, []);
   assert.equal(runEventSchema.safeParse(event).success, true); assert.equal(snapshot.sections.length, 1);
 });
+
+test("tool receipts survive live progress projection and history schema parsing", () => {
+  const event: RunEvent = { type: "run_tool", eventId: "tool", createdAt: "2026-10-25T00:00:00Z", runId: "run", stage: "generate_models",
+    callId: "provider-call", toolCallId: "validation", toolName: "validate_model", phase: "failed", errorCount: 2 };
+  assert.deepEqual(projectRunProgressEvents([event]).map(value => runEventSchema.parse(value)), [event]);
+});

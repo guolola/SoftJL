@@ -1,6 +1,6 @@
 // Verifies model-level generation keeps failures and retries scoped to the affected diagram.
 import { strictTestModelCapability } from "../../../tests/fixtures/providers/model-capability.js";
-import { assertCurrentRunSnapshot, createRequirementBaselineSnapshot, validateModelInput } from "@uml-platform/contracts";
+import { assertCurrentRunSnapshot, createRequirementBaselineSnapshot, validateModelInput, collectModelRefs } from "@uml-platform/contracts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
@@ -27,20 +27,9 @@ import { collectTextResult } from "./shared/structured-output.js";
 import { getRunError } from "./shared/errors.js";
 import { createQueuedRunFromSource } from "../records/run-actions.js";
 
-// Generation-count tests exclude the new independent review operation; its calls have dedicated coverage.
-function withStructureReview(transport: LlmTransport): LlmTransport {
-  return { async *streamChatCompletion(input) {
-    const prompt = input.messages.at(-1)?.content;
-    if (typeof prompt === "string" && /^核对 (?:feasibility|requirements|design)\.[a-z]+ 的结构与业务内容。/.test(prompt)) yield '{"passed":true,"issues":[],"findings":[]}';
-    else yield* transport.streamChatCompletion(input);
-  } };
-}
-const runStagePipeline = (...args: Parameters<typeof runRequirementsWithChecks>) => {
-  args[2] = withStructureReview(args[2]);
-  args[4] = async () => { throw new Error("unexpected PNG render during requirement model generation"); };
-  return runRequirementsWithChecks(...args);
-};
-const runDesignStagePipeline = (...args: Parameters<typeof runDesignWithChecks>) => { args[2] = withStructureReview(args[2]); return runDesignWithChecks(...args); };
+
+const runStagePipeline = runRequirementsWithChecks;
+const runDesignStagePipeline = runDesignWithChecks;
 
 const LIBRARY_REQUIREMENT_TEXT = `一个小型图书馆管理系统，需完成以下工作：
 (1)借书、还书；
@@ -240,56 +229,7 @@ function outputForKind(kind: DiagramKind) {
   const ruleId =
     kind === "class" ? "r2" : kind === "deployment" ? "r3" : "r1";
   const model = modelForKind(kind);
-  const targets =
-    kind === "function"
-      ? [
-          { elementId: "fn_library", elementKind: "function", label: "图书馆管理" },
-          { elementId: "fn_borrow", elementKind: "function", label: "借还书" },
-          {
-            elementId: "rel_fn_borrow",
-            elementKind: "relationship",
-            label: "图书馆管理 -> 借还书",
-          },
-        ]
-      : kind === "usecase"
-      ? [
-          { elementId: "actor_librarian", elementKind: "actor", label: "图书管理员" },
-          { elementId: "uc_borrow", elementKind: "usecase", label: "借书" },
-          {
-            elementId: "rel_librarian_borrow",
-            elementKind: "relationship",
-            label: "图书管理员 -> 借书",
-          },
-        ]
-      : kind === "class"
-        ? [{ elementId: "class_book", elementKind: "class", label: "图书" }]
-        : kind === "activity"
-          ? [
-              { elementId: "act_borrow", elementKind: "activity", label: "办理借书" },
-              {
-                elementId: "flow_borrow",
-                elementKind: "relationship",
-                label: "开始 -> 办理借书",
-              },
-              {
-                elementId: "flow_end",
-                elementKind: "relationship",
-                label: "办理借书 -> 结束",
-              },
-            ]
-          : [
-              {
-                elementId: "node_app",
-                elementKind: "deployment-node",
-                label: "图书馆管理服务",
-              },
-              { elementId: "db_library", elementKind: "database", label: "图书馆数据库" },
-              {
-                elementId: "rel_app_db",
-                elementKind: "relationship",
-                label: "图书馆管理服务 -> 图书馆数据库",
-              },
-            ];
+  const targets = collectModelRefs([model], true).refs;
   return JSON.stringify({
     models: [model],
     requirementModelTraceability: targets.map((target) => ({
@@ -635,7 +575,7 @@ test("requirement pipeline calls the LLM once per selected model and keeps succe
   }
 });
 
-test("requirement pipeline rejects actor-link repairs whose source mappings remain absent", async () => {
+test("requirement pipeline does not synthesize extra associations for a fully mapped supporting actor", async () => {
   const generated = JSON.parse(outputForKind("usecase"));
   generated.models[0].modelId = "custom-usecase";
   generated.models[0].actors.push({ ...generated.models[0].actors[0], id: "actor_panel", name: "控制面板", actorType: "external" });
@@ -643,14 +583,10 @@ test("requirement pipeline rejects actor-link repairs whose source mappings rema
   generated.requirementModelTraceability.push({ ruleId: "r1",
     target: { diagramKind: "usecase", elementId: "actor_panel", elementKind: "actor", label: "控制面板" } });
   const snapshot = createEmptySnapshot("actor-repair", LIBRARY_REQUIREMENT_TEXT, ["usecase"], libraryRules);
+  let calls = 0;
   const record: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false };
-  await assert.rejects(runStagePipeline(record, providerSettings, {
-    async *streamChatCompletion() { yield JSON.stringify(generated); },
-  }, async (artifact) => ({ svg: "<svg></svg>", renderMeta: {
-    engine: "test", generatedAt: new Date().toISOString(), sourceLength: artifact.source.length, durationMs: 1,
-  } })), /映射仍缺少/);
-  assert.equal(snapshot.models.length, 0);
-  assert.equal(snapshot.svgArtifacts.length, 0);
+  await runStagePipeline(record, providerSettings, { async *streamChatCompletion() { calls++; yield JSON.stringify(generated); } }, async artifact => ({ svg: "<svg/>", renderMeta: { engine: "test", generatedAt: new Date().toISOString(), sourceLength: artifact.source.length, durationMs: 0 } }));
+  assert.equal(calls, 1); assert.equal(snapshot.status, "completed");
   assert.equal(snapshot.requirementModelTraceability.some((entry) => entry.target.elementId === "association:actor_panel:uc_borrow"), false);
   assert.deepEqual(snapshot.rules, libraryRules);
 });
@@ -688,7 +624,7 @@ test("requirement pipeline rejects absent sources after five repairs without inv
     terminal: false,
   };
 
-  await assert.rejects(runStagePipeline(record, providerSettings, transport, renderClient), /requirementModelTraceability.*共享 5 次/);
+  await assert.rejects(runStagePipeline(record, providerSettings, transport, renderClient), /mapping-coverage-missing[\s\S]*共享 5 次/);
 
   const completed = record.snapshot as RunSnapshot;
   assert.equal(llmCalls, 6);
@@ -722,7 +658,7 @@ test("requirement pipeline retries activity with a compact prompt after provider
       assert.match(prompt, /人工验收补充/);
       yield JSON.stringify({
         models: [modelForKind("activity")],
-        requirementModelTraceability: [{ ruleId: "r1", target: { diagramKind: "activity", elementId: "act_borrow", elementKind: "activity", label: "办理借书" } }],
+        requirementModelTraceability: JSON.parse(outputForKind("activity")).requirementModelTraceability,
       });
     },
   };
@@ -920,24 +856,7 @@ test("requirement pipeline reuses contextual use case event flows for analysis-o
             fragments: [],
           },
         ],
-        requirementModelTraceability: [
-          ...[
-            ["actor_librarian", "participant", "图书管理员"],
-            ["boundary_borrow", "participant", "借书界面"],
-            ["control_borrow", "participant", "借书控制"],
-            ["msg_submit", "message", "提交借书信息"],
-            ["msg_validate", "message", "校验可借"],
-          ].map(([elementId, elementKind, label]) => ({
-            ruleId: "r-analysis",
-            target: {
-              diagramKind: "analysis",
-              modelId: "analysis:uc_borrow",
-              elementId,
-              elementKind,
-              label,
-            },
-          })),
-        ],
+        requirementModelTraceability: [],
       });
     },
   };
@@ -1050,7 +969,9 @@ test("requirement pipeline records implicit usecase dependency for analysis-only
               })),
             },
           ],
-          requirementModelTraceability: JSON.parse(outputForKind("usecase")).requirementModelTraceability.map((entry: RequirementModelTraceabilityEntry) => ({ ...entry, ruleId: "r-usecase" })),
+          requirementModelTraceability: [...JSON.parse(outputForKind("usecase")).requirementModelTraceability,
+            { ruleId: "r-usecase", target: { diagramKind: "usecase", elementId: "uc_borrow.flow_borrow_main", elementKind: "eventFlow", label: "借书主成功场景" } },
+          ].map((entry: RequirementModelTraceabilityEntry) => ({ ...entry, ruleId: "r-usecase" })),
         });
         return;
       }
@@ -1684,14 +1605,14 @@ test("requirement pipeline retries empty coverage five times without guessing as
       "run-autofill-empty-traceability",
       LIBRARY_REQUIREMENT_TEXT,
       ["usecase"],
-      [],
+      libraryRules,
     ),
     events: [],
     listeners: new Set(),
     terminal: false,
   };
 
-  await assert.rejects(runStagePipeline(record, providerSettings, transport, renderClient), /requirementModelTraceability.*共享 5 次/);
+  await assert.rejects(runStagePipeline(record, providerSettings, transport, renderClient), /mapping-coverage-missing[\s\S]*共享 5 次/);
 
   const completed = record.snapshot as RunSnapshot;
   assert.notEqual(completed.status, "completed");
@@ -1711,22 +1632,15 @@ test("requirement pipeline retries empty coverage five times without guessing as
 
 test("requirement pipeline repairs complete provenance in the original model conversation", async () => {
   let traceabilityPromptCount = 0;
-  const repairedTargets = [
-    { elementId: "actor_librarian", elementKind: "actor", label: "图书管理员" },
-    { elementId: "uc_borrow", elementKind: "usecase", label: "借书" },
-    {
-      elementId: "rel_librarian_borrow",
-      elementKind: "relationship",
-      label: "图书管理员 -> 借书",
-    },
-  ];
+  const repairedTargets = collectModelRefs([modelForKind("usecase")], true).refs;
   const transport: LlmTransport = {
     async *streamChatCompletion(input: StreamChatCompletionInput) {
       const prompt = String(input.messages.at(-1)?.content ?? "");
-      if (prompt.includes("请基于本对话中上一版完整模型")) {
+      if (input.messages.length > 2 && JSON.parse(String(input.messages.at(-1)!.content)).valid === false) {
         traceabilityPromptCount += 1;
         assert.deepEqual(input.messages.map(message => message.role), ["system", "user", "assistant", "user"]);
-        assert.match(prompt, /完整模型/);
+        assert.match(String(input.messages[0]!.content), /完整候选/);
+        assert.doesNotMatch(prompt, /legalSources|candidates|repairHint/);
         yield JSON.stringify({
           models: [modelForKind("usecase")],
           requirementModelTraceability: repairedTargets.map((target) => ({
@@ -1773,11 +1687,11 @@ test("requirement pipeline repairs complete provenance in the original model con
   assert.equal(completed.status, "completed");
   assert.equal(completed.diagramErrors.usecase, undefined);
   assert.equal(traceabilityPromptCount, 1);
-  assert.equal(completed.requirementModelTraceability.length, 3);
+  assert.equal(completed.requirementModelTraceability.length, 4);
   assert.ok(
     completed.requirementModelTraceability.every(
       (entry) =>
-        entry.mappingSource === "llm" && entry.target.diagramKind === "usecase" &&
+        entry.target.diagramKind === "usecase" &&
         entry.target.modelId === "usecase",
     ),
   );
@@ -1800,7 +1714,7 @@ test("obsolete source diagram aliases are rejected instead of upgraded", async (
   const transport: LlmTransport = { async *streamChatCompletion() {
     yield JSON.stringify({ models: [modelForKind("usecase")], requirementModelTraceability: invalidReferences });
   } };
-  await assert.rejects(generateModelsWithRepair(record, providerSettings, transport, rules, snapshot.requirementBaseline!, ["usecase"]));
+  await assert.rejects(generateModelsWithRepair(record, providerSettings, transport, rules, ["usecase"]));
   assert.deepEqual(snapshot.requirementModelTraceability, []);
   assert.equal(
     snapshot.requirementTrace.some((entry) =>
@@ -2352,7 +2266,7 @@ test("design sequence aborts the LLM stream when the run is cancelled", async ()
   });
 });
 
-test("design sequence retries when generated output is too similar to requirement analysis", async () => {
+test("design sequence accepts complete real provenance without semantic similarity rejection", async () => {
   const useCaseModel: DiagramModelSpec = {
     diagramKind: "usecase",
     title: "报名用例模型",
@@ -2500,12 +2414,12 @@ test("design sequence retries when generated output is too similar to requiremen
 
   await runDesignStagePipeline(record, providerSettings, transport, renderClient);
 
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
   assert.equal(snapshot.status, "completed");
   const sequence = snapshot.models.find((model) => model.diagramKind === "sequence");
   assert.equal(sequence?.diagramKind, "sequence");
   if (sequence?.diagramKind === "sequence") {
-    assert.ok(sequence.participants.some((participant) => participant.participantType === "service"));
+    assert.ok(sequence.participants.every((participant) => participant.participantType !== "service"));
   }
 });
 
@@ -2744,7 +2658,7 @@ test("design pipeline rejects downstream output without sources instead of auto-
     terminal: false,
   };
 
-  await assert.rejects(runDesignStagePipeline(record, providerSettings, transport, renderClient), /designModelTraceability.*共享 5 次/);
+  await assert.rejects(runDesignStagePipeline(record, providerSettings, transport, renderClient), /mapping-coverage-missing[\s\S]*共享 5 次/);
 
   const designSnapshot = record.snapshot as DesignRunSnapshot;
   assert.equal(llmCalls, 6);
@@ -3076,20 +2990,7 @@ for (const persistentFailure of [false, true]) test(`requirement analysis record
           fragments: [],
         },
       ],
-      requirementModelTraceability: [
-        [`actor_${useCaseId}`, "participant", useCaseName === "检索图书" ? "读者" : "图书管理员"],
-        [`boundary_${useCaseId}`, "participant", `${useCaseName}界面`],
-        [`msg_${useCaseId}`, "message", useCaseName],
-      ].map(([elementId, elementKind, label]) => ({
-        ruleId: useCaseRule.id,
-        target: {
-          diagramKind: "analysis",
-          modelId: `analysis:${useCaseId}`,
-          elementId,
-          elementKind,
-          label,
-        },
-      })),
+      requirementModelTraceability: [],
     });
   const transport: LlmTransport = {
     async *streamChatCompletion(input: StreamChatCompletionInput) {
@@ -3332,14 +3233,13 @@ test("requirement pipeline supplements only targeted missing analysis use cases"
   assert.equal(renderedModelIds.includes("analysis:uc_borrow"), false);
 });
 
-test("a selected model with no mapped rule types fails before calling the provider", async () => {
+test("a selected model can map to any real rule type", async () => {
   const rules: RequirementRule[] = [{ id: "r1", type: "interaction", text: "预约页面显示日期选择器" }];
-  const snapshot = createEmptySnapshot("fixed-type-guard", "预约系统", ["class"], rules);
-  const record: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false };
-  let calls = 0;
-  const transport: LlmTransport = { async *streamChatCompletion() { calls++; yield "{}"; } };
-  const renderClient: RenderClient = async () => { throw new Error("must not render"); };
-  await assert.rejects(runStagePipeline(record, providerSettings, transport, renderClient));
-  assert.equal(calls, 0);
-  assert.match((record.snapshot as RunSnapshot).diagramErrors.class?.error.message ?? "", /没有对应类型/);
+  const snapshot = createEmptySnapshot("all-real-types", "预约系统", ["class"], rules);
+  const record: RunRecord = { snapshot, events: [], listeners: new Set(), terminal: false }; let calls = 0;
+  const model = modelForKind("class");
+  await runStagePipeline(record, providerSettings, { async *streamChatCompletion() {
+    calls++; yield JSON.stringify({ models: [model], requirementModelTraceability: collectModelRefs([model], true).refs.map(target => ({ ruleId: "r1", target })) });
+  } }, async artifact => ({ svg: "<svg/>", renderMeta: { engine: "test", generatedAt: new Date().toISOString(), sourceLength: artifact.source.length, durationMs: 0 } }));
+  assert.equal(calls, 1); assert.equal(snapshot.status, "completed");
 });

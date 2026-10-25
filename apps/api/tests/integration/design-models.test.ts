@@ -149,7 +149,8 @@ test("api rejects malformed design fields after five structured repair attempts"
       async *streamChatCompletion({messages, responseFormat, runContext }) {
         const prompt = lastPromptText(messages);
         assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
-        assert.match(prompt, /设计阶段顺序图|用例实现设计|请基于本对话/);
+        if (runContext?.operation === "model_repair") assert.ok(JSON.parse(prompt).errors.length > 0);
+        else assert.match(prompt, /设计阶段顺序图|用例实现设计/);
         yield JSON.stringify({
           models: [
             {

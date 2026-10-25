@@ -28,6 +28,9 @@ export function contractFieldSchema(schema: z.ZodTypeAny, value: unknown, path: 
 }
 
 export function contractResponseSchema(schema: z.ZodTypeAny): Record<string, any> {
+  // Refinements constrain values rather than structure; the server runs them on
+  // every validation and submission. Transform/preprocess effects remain unsupported.
+  if (schema instanceof z.ZodEffects && schema._def.effect.type === "refinement") return contractResponseSchema(schema.innerType());
   if (schema instanceof z.ZodOptional) return contractResponseSchema(schema.unwrap());
   if (schema instanceof z.ZodNullable) return { anyOf: [contractResponseSchema(schema.unwrap()), { type: "null" }] };
   if (schema instanceof z.ZodDefault) return contractResponseSchema(schema.removeDefault());
@@ -36,7 +39,8 @@ export function contractResponseSchema(schema: z.ZodTypeAny): Record<string, any
     return { type: "object", additionalProperties: false, properties: Object.fromEntries(entries.map(([key, value]) => [key, contractResponseSchema(value)])), required: entries.filter(([, value]) => !value.isOptional()).map(([key]) => key) };
   }
   if (schema instanceof z.ZodArray) {
-    return { type: "array", items: contractResponseSchema(schema.element), ...(schema._def.minLength ? { minItems: schema._def.minLength.value } : {}), ...(schema._def.maxLength ? { maxItems: schema._def.maxLength.value } : {}) };
+    return { type: "array", items: contractResponseSchema(schema.element), ...(schema._def.minLength ? { minItems: schema._def.minLength.value } : {}), ...(schema._def.maxLength ? { maxItems: schema._def.maxLength.value } : {}),
+      ...(schema._def.exactLength ? { minItems: schema._def.exactLength.value, maxItems: schema._def.exactLength.value } : {}) };
   }
   if (schema instanceof z.ZodDiscriminatedUnion || schema instanceof z.ZodUnion) return { anyOf: schema.options.map(contractResponseSchema) };
   if (schema instanceof z.ZodEnum) return { type: "string", enum: schema.options };
@@ -48,7 +52,7 @@ export function contractResponseSchema(schema: z.ZodTypeAny): Record<string, any
       if (check.kind === "min") result.minLength = check.value;
       else if (check.kind === "max") result.maxLength = check.value;
       else if (check.kind === "regex") result.pattern = check.regex.source;
-      else throw new Error(`Unsupported model string check: ${check.kind}`);
+      else if (check.kind !== "trim") throw new Error(`Unsupported model string check: ${check.kind}`);
     }
     return result;
   }
@@ -88,10 +92,22 @@ export function unknownContractFields(schema: z.ZodTypeAny, value: unknown, path
   return [];
 }
 
-/** Generation omits only documented derived views; prompts and provider schemas share this projection. */
+/** Generation reflects existing acceptance requirements and omits documented derived views. */
 export function generationResponseSchema(schema: z.ZodTypeAny): Record<string, any> {
   const result = contractResponseSchema(schema);
+  const requireElementSources = (node: Record<string, any>, field: string) => {
+    if (node.properties?.id && node.properties[field]) {
+      node.required = [...new Set([...(node.required ?? []), field])];
+      node.properties[field].minItems = Math.max(1, node.properties[field].minItems ?? 0);
+    }
+    for (const child of Object.values(node.properties ?? {})) requireElementSources(child as Record<string, any>, field);
+    if (node.items) requireElementSources(node.items, field);
+    for (const child of node.anyOf ?? []) requireElementSources(child, field);
+  };
   const visit = (node: Record<string, any>) => {
+    // Analysis provenance is embedded on each identified element, including nested branches.
+    if (node.properties?.diagramKind?.enum?.[0] === "analysis") requireElementSources(node, "sourceElementIds");
+    if (node.properties?.diagramKind?.enum?.[0] === "context") requireElementSources(node, "sourceRequirementIds");
     if (node.properties?.diagramKind?.enum?.[0] === "table") {
       delete node.properties.relationships;
       node.required = node.required.filter((key: string) => key !== "relationships");

@@ -60,23 +60,6 @@ function blockedDocumentInput(): StartDocumentRunRequest {
       },
     ],
   });
-  requirementBaseline.qualityReport = {
-    ...requirementBaseline.qualityReport,
-    status: "blocked",
-    summary: "需求基线存在阻断型质量问题。",
-    issues: [
-      {
-        id: "ISS-001",
-        requirementId: "REQ-001",
-        severity: "critical",
-        code: "conflict",
-        message: "公开活动日历查看规则互相冲突。",
-        blocksDownstream: true,
-      },
-    ],
-    blockingIssueIds: ["ISS-001"],
-    reviewRequiredRequirementIds: ["REQ-001"],
-  };
   return {
     documentKind: "requirementsSpec",
     requirementText: "用户可以查看公开活动日历。",

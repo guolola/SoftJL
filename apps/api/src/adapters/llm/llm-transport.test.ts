@@ -1,8 +1,8 @@
 // Verifies LLM transport request shaping, provider settings handling, and response parsing helpers.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createRealLlmTransport, listOpenAiCompatibleModels, normalizeStreamTokenUsage, ProviderHttpError, resolveOpenAiBaseUrl } from "./llm-transport.js";
-import type { ChatMessage, OpenAiCompatibleClientFactory } from "./llm-transport.js";
+import { createRealLlmTransport, listOpenAiCompatibleModels, normalizeStreamTokenUsage, ProviderHttpError, ProviderOutputTruncatedError, resolveOpenAiBaseUrl } from "./llm-transport.js";
+import type { ChatMessage, ChatToolCall, ChatTool, OpenAiCompatibleClientFactory } from "./llm-transport.js";
 import type { ProviderRequestRetryEvent } from "./request-retry.js";
 
 const resolvePublicHostname = async () => ["8.8.8.8"];
@@ -12,6 +12,125 @@ const retryTestInput = {
   messages: [{ role: "user" as const, content: "generate model" }],
 };
 const flushRetries = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+const modelTool: ChatTool = { type: "function", function: { name: "validate_model", description: "Validate candidate", strict: true,
+  parameters: { type: "object", additionalProperties: false, properties: { models: { type: "array", items: { type: "object" } } }, required: ["models"] } } };
+
+test("native tool arguments aggregate after completion and preserve tool history and usage", async () => {
+  const calls: ChatToolCall[] = [], usages: unknown[] = [];
+  const messages: ChatMessage[] = [
+    { role: "system", content: "Use tools" },
+    { role: "assistant", content: "", reasoningContent: "previous-provider-reasoning", toolCalls: [{ id: "previous", type: "function", function: { name: "get_upstream_artifact", arguments: "{}" } }] },
+    { role: "tool", toolCallId: "previous", content: '{"rules":[]}' },
+  ];
+  const clientFactory: OpenAiCompatibleClientFactory = () => ({ chat: { completions: { create: async body => {
+    assert.equal(body.tool_choice, "required");
+    assert.equal(body.parallel_tool_calls, false);
+    assert.equal(body.response_format, undefined);
+    assert.deepEqual((body.messages[1] as any).tool_calls, messages[1]!.toolCalls);
+    assert.equal((body.messages[2] as any).tool_call_id, "previous");
+    assert.equal((body.messages[1] as any).reasoning_content, "previous-provider-reasoning");
+    assert.ok(!("toolCalls" in body.messages[1]!));
+    return (async function* () {
+      yield { choices: [{ delta: { tool_calls: [{ index: 0, id: "candidate", type: "function", function: { name: "validate_model", arguments: '{"mod' } }] } }] };
+      assert.equal(calls.length, 0);
+      yield { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'els":[]}' } }] } }] };
+      yield { choices: [], usage: { prompt_tokens: 20, completion_tokens: 10 } };
+    })() as never;
+  } } }, models: { list: async () => ({ data: [] }) } });
+  const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+  const chunks = await drain(transport.streamChatCompletion({ ...retryTestInput, messages, tools: [modelTool], toolChoice: "required",
+    onToolCall: call => calls.push(call), onTokenUsage: usage => usages.push(usage) }));
+  assert.equal(chunks.join(""), '{"models":[]}');
+  assert.deepEqual(calls, [{ id: "candidate", type: "function", function: { name: "validate_model", arguments: '{"models":[]}' } }]);
+  assert.equal(usages.length, 1);
+});
+
+test("opted-in query batches preserve separately interleaved tool arguments", async () => {
+  const expected: ChatToolCall[] = ["requirements:rules", "requirements:baseline", "feasibility:inputs"].map((sourceId, index) => ({
+    id: `query-${index}`, type: "function", function: { name: "get_upstream_artifact", arguments: JSON.stringify({ sourceId }) },
+  }));
+  const calls: ChatToolCall[] = [];
+  const queryTool: ChatTool = { ...modelTool, function: { ...modelTool.function, name: "get_upstream_artifact",
+    parameters: { type: "object", additionalProperties: false, properties: { sourceId: { type: "string" } }, required: ["sourceId"] } } };
+  const clientFactory: OpenAiCompatibleClientFactory = () => ({ chat: { completions: { create: async body => {
+    assert.equal(body.parallel_tool_calls, true);
+    return (async function* () {
+      yield { choices: [{ delta: { tool_calls: expected.map((call, index) => ({ ...call, index, function: { ...call.function, arguments: call.function.arguments.slice(0, 7) } })) } }] };
+      assert.equal(calls.length, 0);
+      yield { choices: [{ delta: { tool_calls: [...expected].reverse().map(call => ({ index: expected.indexOf(call), function: { arguments: call.function.arguments.slice(7) } })) } }] };
+      yield { choices: [{ delta: {}, finish_reason: "tool_calls" }] };
+    })() as never;
+  } } }, models: { list: async () => ({ data: [] }) } });
+  const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+  await drain(transport.streamChatCompletion({ ...retryTestInput, tools: [queryTool], parallelToolCalls: true, onToolCall: call => calls.push(call) }));
+  assert.deepEqual(calls, expected);
+});
+
+test("a failed partial tool stream never delivers an executable call", async () => {
+  const calls: ChatToolCall[] = [];
+  const clientFactory: OpenAiCompatibleClientFactory = () => ({ chat: { completions: { create: async () => (async function* () {
+    yield { choices: [{ delta: { tool_calls: [{ index: 0, id: "partial", type: "function", function: { name: "validate_model", arguments: '{"models":' } }] } }] };
+    throw new Error("connection interrupted");
+  })() as never } }, models: { list: async () => ({ data: [] }) } });
+  const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+  await assert.rejects(drain(transport.streamChatCompletion({ ...retryTestInput, tools: [modelTool], onToolCall: call => calls.push(call) })), /connection interrupted/);
+  assert.deepEqual(calls, []);
+});
+
+test("strict tools downgrade only on explicit unsupported strict, never to text mode", async () => {
+  let count = 0;
+  const clientFactory: OpenAiCompatibleClientFactory = () => ({ chat: { completions: { create: async body => {
+    count++;
+    assert.equal((body.tools![0] as any).function.strict, count === 1);
+    assert.equal(body.tool_choice, "required");
+    if (count === 1) throw new ProviderHttpError({ status: 400, detail: "strict is not supported", message: "strict is not supported" });
+    return (async function* () { yield { choices: [{ delta: { tool_calls: [{ index: 0, id: "ok", type: "function", function: { name: "validate_model", arguments: "{}" } }] } }] }; })() as never;
+  } } }, models: { list: async () => ({ data: [] }) } });
+  await drain(createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname }).streamChatCompletion({ ...retryTestInput, tools: [modelTool] }));
+  assert.equal(count, 2);
+});
+
+test("explicit tool-choice rejection retries native auto choice and caches that endpoint capability", async () => {
+  let count = 0, fallbacks = 0;
+  const clientFactory: OpenAiCompatibleClientFactory = () => ({ chat: { completions: { create: async body => {
+    count++;
+    if (count === 1) throw new ProviderHttpError({ status: 400, detail: "tool_choice required is not supported in thinking mode", message: "unsupported tool_choice" });
+    assert.equal(body.tool_choice, undefined);
+    assert.equal(body.tools?.length, 1);
+    return (async function* () { yield { choices: [{ delta: { tool_calls: [{ index: 0, id: `ok-${count}`, type: "function", function: { name: "validate_model", arguments: "{}" } }] } }] }; })() as never;
+  } } }, models: { list: async () => ({ data: [] }) } });
+  const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+  for (let call = 0; call < 2; call++) await drain(transport.streamChatCompletion({ ...retryTestInput, tools: [modelTool], toolChoice: "required", onToolChoiceFallback: () => { fallbacks++; } }));
+  assert.equal(count, 3); assert.equal(fallbacks, 1);
+});
+
+test("length truncation rejects tools, prose and reasoning-only replies after recording final usage", async () => {
+  for (const kind of ["tool", "prose", "reasoning"]) {
+    const calls: ChatToolCall[] = [], usages: unknown[] = [];
+    const clientFactory: OpenAiCompatibleClientFactory = () => ({ chat: { completions: { create: async () => (async function* () {
+      const delta = kind === "tool" ? { tool_calls: [{ index: 0, id: "partial", type: "function", function: { name: "validate_model", arguments: "{}" } }] }
+        : kind === "prose" ? { content: "{}" } : { reasoning_content: "仍在思考" };
+      yield { choices: [{ delta }] };
+      yield { choices: [{ delta: {}, finish_reason: "length" }] };
+      yield { choices: [], usage: { prompt_tokens: 20, completion_tokens: 10 } };
+    })() as never } }, models: { list: async () => ({ data: [] }) } });
+    const transport = createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname });
+    await assert.rejects(drain(transport.streamChatCompletion({ ...retryTestInput, tools: [modelTool], onToolCall: call => calls.push(call), onTokenUsage: usage => usages.push(usage) })), ProviderOutputTruncatedError);
+    assert.deepEqual(calls, []);
+    assert.equal(usages.length, 1, "The final usage frame must survive truncation");
+  }
+});
+
+test("content-filtered tool calls remain fatal and cannot be mistaken for length truncation", async () => {
+  const calls: ChatToolCall[] = [];
+  const clientFactory: OpenAiCompatibleClientFactory = () => ({ chat: { completions: { create: async () => (async function* () {
+    yield { choices: [{ delta: { tool_calls: [{ index: 0, id: "filtered", type: "function", function: { name: "validate_model", arguments: "{}" } }] } }] };
+    yield { choices: [{ delta: {}, finish_reason: "content_filter" }] };
+  })() as never } }, models: { list: async () => ({ data: [] }) } });
+  await assert.rejects(drain(createRealLlmTransport({ clientFactory, resolveHostname: resolvePublicHostname }).streamChatCompletion({ ...retryTestInput, tools: [modelTool], onToolCall: call => calls.push(call) })), error => !(error instanceof ProviderOutputTruncatedError) && /content_filter/.test(String(error)));
+  assert.deepEqual(calls, []);
+});
 
 async function drain(stream: AsyncIterable<string>) {
   const chunks: string[] = [];

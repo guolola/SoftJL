@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { ActivityDiagramSpec, ActivityNode, ActivityRelationship } from "@uml-platform/contracts";
 import { generatePlantUmlArtifacts } from "./model-renderer.js";
 import { umlAlias } from "./plantuml-text.js";
+import { branchedRetryActivity, parallelRetryActivity } from "../../../tests/fixtures/complex-activity.js";
 
 const root = fileURLToPath(new URL("../../../../../", import.meta.url));
 const java = process.env.JAVA_HOME ? resolve(process.env.JAVA_HOME, "bin", process.platform === "win32" ? "java.exe" : "java") : process.platform === "win32" ? "C:/Program Files/Eclipse Adoptium/jdk-21.0.12.101-hotspot/bin/java.exe" : "java";
@@ -138,11 +139,93 @@ test("independent start nodes share a downstream activity without losing a branc
   compile(artifact.source);
 });
 
-test("unstructured legal cycles retain explicit graph edges instead of using ineffective native goto", () => {
+test("non-local cycles use paired native connectors while keeping every control flow", () => {
   const input = model([start, action("a", "处理资料", "user"), action("b", "接收资料"), end],
     [flow("start", "a"), flow("a", "b"), flow("b", "a", "继续处理"), flow("b", "end", "完成")]);
-  const artifact = generatePlantUmlArtifacts([input])[0]!;
-  assert.equal(artifact.renderMapping?.mode, "explicit-graph");
-  for (const edge of input.relationships) assert.ok(artifact.source.includes(`${umlAlias(edge.sourceId)} --> ${umlAlias(edge.targetId)}`));
-  compile(artifact.source, "CLASS");
+  for (const stage of ["requirements", "feasibility"] as const) {
+    const artifact = generatePlantUmlArtifacts([input], stage)[0]!;
+    assert.match(artifact.source, /@return-entry/);
+    assert.equal(artifact.renderMapping?.relationships.length, input.relationships.length);
+    const svg = visible(compile(artifact.source));
+    assert.match(svg, /继续处理/);
+    assert.match(svg, /完成/);
+  }
+  assert.equal(input.relationships.length, 4, "Rendering must not drop a business edge to fit the layout");
+});
+
+for (const stage of ["feasibility", "requirements"] as const) for (const fixture of [branchedRetryActivity, parallelRetryActivity]) {
+  test(`${stage}: ${fixture.name} preserves complex returns, labels and vertical lanes in real SVG`, () => {
+    const input = fixture(), before = structuredClone(input);
+    const artifact = generatePlantUmlArtifacts([input], stage)[0]!;
+    assert.equal(artifact.renderMapping?.mode, "native");
+    assert.deepEqual(input, before, "Rendering cannot rewrite the model to fit native syntax");
+    assert.deepEqual(new Set(artifact.renderMapping?.elements.map(item => item.elementId)), new Set(input.nodes.map(node => node.id)));
+    assert.deepEqual(new Set(artifact.renderMapping?.relationships.map(item => `${item.relationshipId}:${item.sourceId}:${item.targetId}`)),
+      new Set(input.relationships.map(item => `${item.id}:${item.sourceId}:${item.targetId}`)));
+    assert.doesNotMatch(artifact.source, /goto |allowmixing|rectangle |@repeat-element/);
+    const connectors = artifact.renderMapping!.auxiliary!.filter(item => item.kind === "flow-connector");
+    assert.deepEqual(connectors.map(item => item.elementId), fixture === branchedRetryActivity ? ["log"] : ["log", "configure"]);
+    for (const connector of connectors) {
+      assert.equal(artifact.source.split(`(${connector.label})`).length - 1, 2, "Each return has both an exit and an entry");
+      assert.match(artifact.source, new RegExp(`' @return-to ${umlAlias(connector.elementId!)}\\n\\(${connector.label}\\)\\ndetach`));
+      const target = input.nodes.find(node => node.id === connector.elementId)!;
+      assert.ok(artifact.source.includes(`' @return-entry ${umlAlias(target.id)}\n(${connector.label})\n' @element ${umlAlias(target.id)}\n:${target.type === "activity" ? target.name : ""};`));
+      assert.equal(connector.ownerId, target.actorOrLane);
+    }
+    assert.match(artifact.source, /审核退回 \/ 点评次数不足 \/ 管理员确认/);
+    assert.match(artifact.source, /repeat while \(是否修改评价？\)/);
+    if (fixture === parallelRetryActivity) {
+      assert.equal(artifact.source.match(/^fork$/gm)?.length, 2);
+      assert.equal(artifact.source.match(/^end fork$/gm)?.length, 2);
+    }
+    const svg = visible(compile(artifact.source));
+    for (const node of input.nodes) if (node.type === "activity") assert.ok(svg.includes(node.name), `SVG omitted ${node.id}`);
+    for (const wording of ["审核退回", "点评次数不足", "管理员确认", "审核通过", "需要修改", "无需修改"]) assert.ok(svg.includes(wording), `SVG omitted ${wording}`);
+    // PlantUML renders spot letters as vector paths, rather than SVG text nodes.
+    const spots = [...svg.matchAll(/<ellipse[^>]*fill="#F1F1F1"[^>]*rx="10"[^>]*ry="10"[^>]*\/><path /g)];
+    assert.equal(spots.length, connectors.length * 2, "The SVG must contain both ends of every connector");
+    const borders = [...svg.matchAll(/<line style="stroke:#000000;stroke-width:1\.5;" x1="([\d.]+)" x2="\1" y1="([\d.]+)" y2="([\d.]+)"/g)];
+    assert.equal(borders.length, input.swimlanes.length + 1);
+    assert.equal(new Set(borders.map(line => `${line[2]}:${line[3]}`)).size, 1, "All lanes span the full diagram height");
+    assert.deepEqual(artifact, generatePlantUmlArtifacts([input], stage)[0], "Repeated renders are deterministic");
+  });
+}
+
+test("separate return branches share the entry connector of their original target", () => {
+  const input = branchedRetryActivity();
+  input.nodes.push({ id: "followup", type: "decision", actorOrLane: "system", question: "是否需要追加复核？" });
+  input.relationships.find(edge => edge.sourceId === "complete" && edge.targetId === "compose")!.targetId = "followup";
+  input.relationships.push(flow("followup", "log", "追加复核退回"), flow("followup", "compose", "复核通过"));
+  const artifact = generatePlantUmlArtifacts([input], "requirements")[0]!;
+  const connectors = artifact.renderMapping!.auxiliary!.filter(item => item.kind === "flow-connector");
+  assert.deepEqual(connectors.map(item => item.elementId), ["log"]);
+  assert.equal(artifact.source.match(/@return-entry/g)?.length, 1);
+  assert.equal(artifact.source.match(/@return-to/g)?.length, 2);
+  assert.equal(artifact.source.match(/\(A\)/g)?.length, 3);
+  const svg = visible(compile(artifact.source));
+  assert.match(svg, /追加复核退回/);
+  assert.match(svg, /复核通过/);
+  assert.equal([...svg.matchAll(/<ellipse[^>]*fill="#F1F1F1"[^>]*rx="10"[^>]*ry="10"[^>]*\/><path /g)].length, 3);
+});
+
+test("missing lanes fail before emitting an unpartitioned diagram", () => {
+  const input = model([start, action("work", "办理业务"), end], [flow("start", "work"), flow("work", "end")]);
+  input.swimlanes = [];
+  assert.throws(() => generatePlantUmlArtifacts([input], "requirements", "schema"), /至少需要一条泳道/);
+});
+
+test("shared downstream actions across non-joining branches remain vertical with complete identities", () => {
+  const input = model([start, { id: "choice", type: "decision", question: "是否处理？", actorOrLane: "system" },
+    action("work", "办理业务", "user"), end],
+    [flow("start", "choice"), flow("start", "work"), flow("choice", "work", "是"), flow("choice", "end", "否"), flow("work", "end")]);
+  const before = structuredClone(input);
+  const first = generatePlantUmlArtifacts([input], "requirements")[0]!;
+  const second = generatePlantUmlArtifacts([input], "feasibility")[0]!;
+  assert.equal(first.source, second.source);
+  assert.equal(first.renderMapping?.mode, "native");
+  assert.equal(first.renderMapping?.elements.length, input.nodes.length);
+  assert.equal(first.renderMapping?.relationships.length, input.relationships.length);
+  assert.match(first.source, /@repeat-element/);
+  compile(first.source);
+  assert.deepEqual(input, before);
 });

@@ -13,6 +13,7 @@ import { getRunError } from "../shared/errors.js";
 import { createContextualLlmTransport } from "../shared/conversation-context.js";
 import { runStagePipeline } from "../requirements-pipeline.js";
 
+
 const providerSettings = { modelCapability: strictTestModelCapability("test-model"), apiBaseUrl: "https://llm.test", apiKey: "test-key", model: "test-model" } as ProviderSettings;
 const renderClient: RenderClient = async () => { throw new Error("unexpected render"); };
 
@@ -59,6 +60,19 @@ test("re-extraction persists reconciled rule identities in both rules and baseli
   assert.deepEqual(snapshot.rules.map(rule => rule.id), ["r2", "r1"]);
   assert.deepEqual(snapshot.requirementBaseline?.rules?.map(rule => rule.requirementId), ["REQ-002", "REQ-001"]);
   assert.equal(snapshot.requirementBaseline?.version, 2);
+});
+
+test("accepted extraction publishes only rule facts and baseline identity", async () => {
+  const text = "95%的查询在2秒内完成。", record = recordFor(text);
+  await runStagePipeline(record, providerSettings, transportFor({ classifications: ["requirement"], rules: [
+    { id: "r1", type: "functional", text, sourceFragment: text },
+  ] }), renderClient);
+  const snapshot = record.snapshot as RunSnapshot;
+  assert.equal(snapshot.status, "completed");
+  assert.equal(snapshot.rules[0]!.type, "functional");
+  assert.equal("qualityReport" in snapshot.requirementBaseline!, false);
+  assert.equal("origin" in snapshot.requirementBaseline!.rules[0]!, false);
+  assert.equal(record.events.some(event => event.type === "run_tool"), false);
 });
 
 test("persisted requirement runs reject obsolete baselines before invoking the provider", async () => {
@@ -114,10 +128,10 @@ test("screened extraction repairs a units response with explicit source and draf
         assert.deepEqual(request.messages.map((message) => message.role), ["system", "user"]);
         yield JSON.stringify({ units: [rule] });
       } else {
-        assert.deepEqual(request.messages.map((message) => message.role), ["system", "user"]);
-        assert.match(String(request.messages.at(-1)?.content), /学生可以预约空闲座位/);
-        assert.match(String(request.messages.at(-1)?.content), /"units"/);
-        assert.match(String(request.messages.at(-1)?.content), /"rules"/);
+        assert.deepEqual(request.messages.map((message) => message.role), ["system", "user", "assistant", "user"]);
+        assert.match(JSON.stringify(request.messages), /学生可以预约空闲座位/);
+        assert.match(String(request.messages.at(-2)!.content), /"units"/);
+        assert.match(String(request.messages.at(-1)?.content), /rules/);
         yield JSON.stringify({  rules: [{ ...rule, type: "functional" as const }] });
       }
     },
@@ -129,7 +143,7 @@ test("screened extraction repairs a units response with explicit source and draf
   assert.equal(snapshot.rules.length, 1);
   assert.equal(snapshot.requirementBaseline?.rules?.length, 1);
   assert.equal("requirements" in snapshot.requirementBaseline!, false);
-  assert.ok(record.events.some((event) => event.type === "stage_progress" && event.message.includes("正在修复（1/5）")));
+  assert.ok(record.events.some((event) => event.type === "stage_progress" && event.message.includes("正在统一修复（1/5）")));
 });
 
 test("unsafe input stops before extraction and identifies the source line", async () => {

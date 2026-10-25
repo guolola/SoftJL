@@ -39,3 +39,15 @@ test("nullable union fields remain nullable after strict conversion", () => {
   const converted = toOpenAiStrictJsonSchema({ type: "object", properties: { branch: { anyOf: [{ type: "string" }, { type: "object", properties: {} }] } }, required: [] }) as any;
   assert.ok(converted.properties.branch.anyOf.some((variant: any) => variant.type === "null"));
 });
+
+test("strict provider mappings contain only the canonical source and target fields", () => {
+  for (const [format, field, keys] of [
+    [GENERATE_MODELS_RESPONSE_FORMAT, "requirementModelTraceability", ["ruleId", "target"]],
+    [GENERATE_DESIGN_MODELS_RESPONSE_FORMAT, "designModelTraceability", ["source", "targets"]],
+  ] as const) {
+    const item = (format.json_schema.schema as any).properties[field].items;
+    assert.deepEqual(Object.keys(item.properties).sort(), [...keys].sort());
+    assert.deepEqual([...item.required].sort(), [...keys].sort());
+    assert.equal(item.additionalProperties, false);
+  }
+});

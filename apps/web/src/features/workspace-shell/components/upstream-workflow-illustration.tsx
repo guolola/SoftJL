@@ -1,7 +1,6 @@
 // Shows how a card's direct upstream inputs converge through the platform logo into its target artifact.
 import type { CSSProperties } from "react";
-import { REQUIREMENT_MODEL_RULE_TYPES, type RequirementRule } from "@uml-platform/contracts";
-import type { DiagramType } from "../../../entities/diagram/model";
+import { type RequirementRule } from "@uml-platform/contracts";
 import type { LucideIcon } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import { useTranslation } from "react-i18next";
@@ -76,9 +75,7 @@ export function UpstreamWorkflowIllustration<S extends UpstreamStage>({
   const nodes = directUpstreamInputs(stage, target).filter(input => input.kind !== "baseline").flatMap((input) => {
     const state = resolveState(input);
     const optional = input.kind === "supplementary";
-    const mappedTypes = stage === "requirement" && input.kind === "rules" && input.relevant
-      ? REQUIREMENT_MODEL_RULE_TYPES[target as DiagramType] : [];
-    const ruleNodes = input.kind === "rules" ? upstreamRuleNodes(rules ?? [], mappedTypes) : [];
+    const ruleNodes = input.kind === "rules" ? upstreamRuleNodes(rules ?? []) : [];
     const sources = ruleNodes.length ? ruleNodes : [undefined];
     return sources.map((source) => {
       const rule = source?.rule;
@@ -88,7 +85,7 @@ export function UpstreamWorkflowIllustration<S extends UpstreamStage>({
         ? t("requirementSemantics.missingType", { type: t(`requirementSemantics.kinds.${kind}`) })
         : rule ? `${t(`requirementSemantics.kinds.${kind}`)} ${source!.ordinal}`
         : upstreamInputLabel(input, t, rules);
-      // An available rule of another type cannot make an absent mapped type ready.
+      // Rule classification is display metadata, not a source acceptance constraint.
       const nodeState = missingType ? "missing" : state;
       return {
         key: rule ? `${upstreamInputKey(input)}:${rule.id}` : missingType ? `${upstreamInputKey(input)}:missing:${kind}` : upstreamInputKey(input),

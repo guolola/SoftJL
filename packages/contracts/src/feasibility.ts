@@ -1,7 +1,7 @@
 // Defines editable feasibility facts, context traceability, implementation plans, and run snapshots.
 import { z } from "zod";
 import { runOutputFields } from "./runs/run-outputs.js";
-import { feasibilityActivityDiagramSpecSchema, contextDiagramSpecSchema, plantUmlArtifactSchema, svgArtifactSchema } from "./modeling/models.js";
+import { activityDiagramSpecSchema, contextDiagramSpecSchema, plantUmlArtifactSchema, svgArtifactSchema } from "./modeling/models.js";
 import { requirementBaselineSchema, requirementRulesSchema, requirementRuleFacts } from "./requirements/requirements.js";
 import { providerSettingsSchema } from "./provider-configs.js";
 import { snapshotInputFingerprint } from "./fingerprints.js";
@@ -15,7 +15,7 @@ export type FeasibilityArtifactKind = z.infer<typeof feasibilityArtifactKindSche
 
 // Feasibility activities have their own source mappings and never replace requirement models.
 export const feasibilityBusinessFlowSchema = z.object({
-  model: feasibilityActivityDiagramSpecSchema,
+  model: activityDiagramSpecSchema,
   traceability: z.array(z.object({
     requirementId: z.string().min(1),
     targetId: z.string().min(1),
@@ -68,8 +68,7 @@ export function buildAcceptedRequirementSnapshot(
       throw new Error("Requirement baseline does not match the current rules");
     }
   }
-  // Every successfully extracted (or user-added) rule counts as generated, so all rules
-  // flow downstream; quality hints in the baseline no longer filter rules out.
+  // Every successfully extracted or user-added rule remains a downstream source.
   const acceptedRules = rules;
   return {
     rules: acceptedRules,

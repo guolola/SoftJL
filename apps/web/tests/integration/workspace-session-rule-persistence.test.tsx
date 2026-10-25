@@ -314,32 +314,14 @@ it("prunes requirement model traceability when rules-only generation replaces ru
     );
   });
 
-it("drops only the edited rule's baseline entry when a user edits requirement rules", async () => {
+it("preserves the edited rule's identity while updating its baseline facts", async () => {
     const rule = createRule({
       id: "r1",
       text: "用户可以提交订单。",
 
     });
     const requirement = createBaselineRule({ requirementId: "REQ-001", id: "r1" });
-    const baseline = createRequirementBaseline([requirement], {
-      qualityReport: {
-        runId: "run-rules",
-        status: "pending-review",
-        summary: "旧规则存在待确认字段。",
-        issues: [
-          {
-            id: "issue-old-rule",
-            requirementId: "REQ-001",
-            severity: "warning",
-            code: "missing-actor",
-            message: "缺少参与者。",
-            blocksDownstream: true,
-          },
-        ],
-        blockingIssueIds: ["issue-old-rule"],
-        reviewRequiredRequirementIds: ["REQ-001"],
-      },
-    });
+    const baseline = createRequirementBaseline([requirement]);
     const updateRequirementRules = vi.fn(async () => {});
     const repository: WorkspaceRepository = {
       loadWorkspace: vi.fn(async () =>
@@ -349,7 +331,6 @@ it("drops only the edited rule's baseline entry when a user edits requirement ru
           rulesVersion: 1,
           rulesBasedOnTextVersion: 0,
           requirementBaseline: baseline,
-          requirementQualityReport: baseline.qualityReport,
 
         }),
       ),
@@ -374,9 +355,7 @@ it("drops only the edited rule's baseline entry when a user edits requirement ru
       expect(result.current.workspaceInitialized).toBe(true);
     });
     expect(result.current.requirementBaseline).toEqual((await repository.loadWorkspace()).requirementBaseline);
-    expect(result.current.requirementBaseline?.qualityReport).toEqual(
-      baseline.qualityReport,
-    );
+    expect(result.current.requirementBaseline).not.toHaveProperty("qualityReport");
 
     act(() => {
       result.current.updateRequirementRule("r1", {
@@ -385,7 +364,7 @@ it("drops only the edited rule's baseline entry when a user edits requirement ru
     });
 
     expect(result.current.requirementBaseline?.rules[0]?.text).toBe("用户可以提交订单并接收库存校验结果。");
-    expect(result.current.requirementBaseline?.qualityReport?.issues).toEqual([]);
+    expect(result.current.requirementBaseline?.rules[0]?.requirementId).toBe("REQ-001");
     expect(updateRequirementRules).toHaveBeenCalledWith(
       [
         expect.objectContaining({

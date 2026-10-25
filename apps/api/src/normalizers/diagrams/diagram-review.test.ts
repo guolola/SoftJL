@@ -16,7 +16,7 @@ function comparatorFixture() {
     { id: "done", type: "control_flow", sourceId: "work", targetId: "end" },
   ];
   const baseline = createRequirementBaselineSnapshot({ runId: "compare", requirementText: "数量至少10时允许提交。", rules: [{ id: "R1", text: "数量至少10时允许提交。", type: "business-rule" as const }] });
-  const basis: DiagramReviewBasis = { stage: "requirements", baseline, traceability: [{ ruleId: "R1", mappingSource: "llm", target: { modelId: "activity", diagramKind: "activity", elementId: "yes" } }] };
+  const basis: DiagramReviewBasis = { stage: "requirements", baseline, traceability: [{ ruleId: "R1",  target: { modelId: "activity", diagramKind: "activity", elementId: "yes" } }] };
   return { model, basis };
 }
 
@@ -70,7 +70,7 @@ test("v2 boundary checks require an unambiguous literal predicate and trusted tr
 test("design boundary findings follow the two-hop requirement trace and match upstream IDs", () => {
   const { model, basis } = ruleSnapshotFixture();
   basis.stage = "design";
-  basis.requirementTraceability = [{ ruleId: "R1", mappingSource: "llm", target: { modelId: "uc-model", diagramKind: "usecase", elementId: "uc" } }];
+  basis.requirementTraceability = [{ ruleId: "R1",  target: { modelId: "uc-model", diagramKind: "usecase", elementId: "uc" } }];
   basis.traceability = [{ source: { modelId: model.modelId, diagramKind: model.diagramKind, elementId: "yes" }, targets: [{ modelId: "uc-model", diagramKind: "usecase", elementId: "uc" }] }];
   assert.equal(deriveAuthorizedRepairs(model, basis).findings.length, 2);
   (basis.requirementTraceability as any[])[0].target.elementId = "missing";

@@ -17,6 +17,7 @@ import { stageProgressValue } from "../shared/pipeline-events.js";
 import { withModelTaskTimeout } from "../shared/model-task-timeout.js";
 import { renderArtifactWithRepair } from "./render-artifact-with-repair.js";
 import { ModelGenerationConversation } from "../shared/model-generation-conversation.js";
+import { ModelCompilationError } from "../../../adapters/plantuml/model-compilation-error.js";
 
 type Rendered = Extract<Awaited<ReturnType<typeof renderArtifactWithRepair>>, { status: "success" }>;
 type CheckStatus = NonNullable<DiagramVisualReview["structureStatus"]>;
@@ -28,12 +29,9 @@ export async function reviewRenderedArtifact(input: {
   model: ReviewModel; rendered?: Rendered; basis?: DiagramReviewBasis; mutable?: boolean; validateModel?: (model: ReviewModel) => void;
   reconcileTraceability?: (model: ReviewModel) => unknown; timeoutMs?: number;
   validateTraceability?: (model: ReviewModel, traceability: unknown) => void;
-  generationRepair?: {
-    conversation: ModelGenerationConversation;
-    parse: (raw: string, current: ReviewModel) => { model: ReviewModel; traceability: unknown };
-  };
 }): Promise<{ model: ReviewModel; rendered: Rendered; review: DiagramVisualReview; traceability?: unknown }> {
   const { record, providerSettings, llmTransport } = input;
+  const validation = input.mutable === false ? "schema" : "semantic";
   const basis = input.basis ? structuredClone(input.basis) : undefined;
   const stage = basis?.stage ?? ("designTrace" in record.snapshot ? "design" : "selectedArtifacts" in record.snapshot ? "feasibility" : "requirements");
   let model = structuredClone(input.model), rendered = input.rendered;
@@ -41,7 +39,7 @@ export async function reviewRenderedArtifact(input: {
   const previous = readDiagramReviewCounters(record, modelId, model.diagramKind);
   const checks = previous.attempts;
   let repairs = previous.repairAttempts;
-  let correction = input.generationRepair?.conversation;
+  let correction: ModelGenerationConversation | undefined;
   let correctionError: unknown;
   const saved = "visualReviews" in record.snapshot ? record.snapshot.visualReviews?.[modelId] : undefined;
   const repairHistory: NonNullable<DiagramVisualReview["repairHistory"]> = previous.repairAttempts ? structuredClone(saved?.repairHistory ?? []) : [];
@@ -57,7 +55,7 @@ export async function reviewRenderedArtifact(input: {
     return diagramVisualReviewSchema.parse({
       status: failed ? "failed" : incomplete ? "not_completed" : pending ? "pending_review" : "passed",
       checkOutcome: failed ? "differences" : incomplete ? findings.some((item) => item.verification === "inconclusive") ? "inconclusive" : "not_completed" : pending ? "differences" : "verified",
-      reason: failed ? "程序结构校验或绘制失败，当前结果未发布" : incomplete ? "程序校验未完成，请查看执行问题" : pending ? "程序校验发现待处理问题，请查看依据" : "程序结构校验与绘制通过；业务自检在模型生成时完成，未另行调用 LLM 复核",
+      reason: failed ? "程序结构校验或绘制失败，当前结果未发布" : incomplete ? "程序校验未完成，请查看执行问题" : pending ? "程序校验发现待处理问题，请查看依据" : "程序结构校验与绘制通过",
       issues: allIssues, findings, repairHistory, structureStatus, renderStatus, imageStatus: "skipped", profileId: `${stage}.${model.diagramKind}`,
       attempts: checks, repairAttempts: repairs, structureAttempts: 0, checkedAt: new Date().toISOString(), inputFingerprint: fingerprint(), stopReason: stopReason || undefined, reviewVersion: CURRENT_DIAGRAM_REVIEW_VERSION,
     });
@@ -72,8 +70,8 @@ export async function reviewRenderedArtifact(input: {
     return collectStructuredResult(llmTransport, providerSettings, messages, "verify_diagram_visual", handlers, parse, { type: "json_object" }, history.round, signal);
   });
   const render = async (candidate: ReviewModel): Promise<Rendered> => {
-    const artifact = stage === "design" ? generateDesignPlantUmlArtifacts([candidate as Parameters<typeof generateDesignPlantUmlArtifacts>[0][number]])[0]! : generatePlantUmlArtifacts([candidate as Parameters<typeof generatePlantUmlArtifacts>[0][number]], stage === "feasibility" ? "feasibility" : "requirements")[0]!;
-    const value = await bounded((signal) => renderArtifactWithRepair(record, input.renderClient, candidate, artifact, stage, signal));
+    const artifact = stage === "design" ? generateDesignPlantUmlArtifacts([candidate as Parameters<typeof generateDesignPlantUmlArtifacts>[0][number]], validation)[0]! : generatePlantUmlArtifacts([candidate as Parameters<typeof generatePlantUmlArtifacts>[0][number]], stage === "feasibility" ? "feasibility" : "requirements", validation)[0]!;
+    const value = await bounded((signal) => renderArtifactWithRepair(record, input.renderClient, candidate, artifact, stage, signal, validation));
     throwIfRunCancelled(record); if (value.status !== "success") throw new Error(value.errorMessage); return value;
   };
   const fail = (message: string): never => { stopReason = message; const review = result(); progress(review.reason, "failed"); throw new DiagramReviewRenderError(message, review); };
@@ -82,7 +80,7 @@ export async function reviewRenderedArtifact(input: {
     evidence: [{ source: "stage-contract", reference: `${stage}.${model.diagramKind}:${item.code}`, detail: item.message }], observation: item.message, verification: "verified", repairable: true,
   }));
   const hardRepair = async (target: "model" | "render", proofs: DiagramReviewFinding[], candidate: ReviewModel, changes: string[]) => {
-    if (!input.mutable || repairs >= MAX_GENERATION_REPAIR_ATTEMPTS) return false;
+    if ((target === "model" && !input.mutable) || repairs >= MAX_GENERATION_REPAIR_ATTEMPTS) return false;
     const history: typeof repairHistory[number] = { round: repairs + 1, target, method: "hard_rule", issueIds: proofs.map((item) => item.id), beforeFingerprint: fingerprint(), status: "failed", changes: [], reason: "程序修复未完成" };
     const activity = createCallActivity({ record, stage: "verify_diagram_visual", modelId, subtaskId: modelId, subtaskLabel: model.title, operation: target === "model" ? "model_repair" : "render_repair", round: history.round });
     history.callId = activity.callId; repairs++; repairHistory.push(history); activity.onStart(); progress(`正在进行第 ${history.round} 轮${target === "model" ? "结构修复" : "图形重建"}`, "repairing");
@@ -100,17 +98,15 @@ export async function reviewRenderedArtifact(input: {
   for (;;) {
     issues = []; findings = []; structureStatus = "passed";
     progress("正在执行程序结构校验与绘制", "running");
-    const authorized = basis ? deriveAuthorizedRepairs(model, basis) : undefined;
-    const diagnostics = diagnosticFindings();
+    const authorized = basis && validation === "semantic" ? deriveAuthorizedRepairs(model, basis) : undefined;
+    const diagnostics = validation === "semantic" ? diagnosticFindings() : [];
     try { input.validateTraceability?.(model, basis?.traceability); } catch (error) { correctionError = error; }
     findings.push(...authorized?.findings ?? [], ...diagnostics.filter((item) => !authorized?.findings.some((proof) => proof.code === item.code)));
     if (authorized?.changes.length) {
       if (await hardRepair("model", authorized.findings.filter((item) => item.repairable), acceptRepairCandidate(authorized.expectedModel, model, authorized, basis!), authorized.changes)) continue;
-      if (!input.generationRepair || !input.mutable || repairs >= MAX_GENERATION_REPAIR_ATTEMPTS) {
-        if (input.mutable && repairs < MAX_GENERATION_REPAIR_ATTEMPTS) continue;
-        structureStatus = "failed";
-        fail(stopReason || (input.mutable ? "已达到共享 5 次修复上限，结构问题仍未修复" : "当前模型需要结构修复"));
-      }
+      if (input.mutable && repairs < MAX_GENERATION_REPAIR_ATTEMPTS) continue;
+      structureStatus = "failed";
+      fail(stopReason || (input.mutable ? "已达到共享 5 次修复上限，结构问题仍未修复" : "当前模型需要结构修复"));
     }
     if (diagnostics.length || correctionError) {
       structureStatus = "failed";
@@ -118,19 +114,20 @@ export async function reviewRenderedArtifact(input: {
         const history: typeof repairHistory[number] = { round: repairs + 1, target: "model", method: "llm", issueIds: diagnostics.map((item) => item.id), beforeFingerprint: fingerprint(), status: "failed", changes: [], reason: "候选未通过" };
         try {
           if (!correction) {
+            // Retain baseline metadata for backend review fingerprints only.
+            const { baseline: _baseline, ...sourceBasis } = basis;
             correction = new ModelGenerationConversation(modelId, [
               { role: "system", content: JSON_ONLY_SYSTEM_PROMPT },
-              { role: "user", content: `修正当前 ${stage} 阶段模型。返回完整模型 JSON，保持其身份和已有业务语义，引用必须来自给定依据。\n来源依据：${JSON.stringify(basis)}` },
+              { role: "user", content: `修正当前 ${stage} 阶段模型。返回完整模型 JSON，保持其身份和已有业务语义，引用必须来自给定依据。\n来源依据：${JSON.stringify(sourceBasis)}` },
             ], MAX_GENERATION_REPAIR_ATTEMPTS - repairs);
             correction.accept(JSON.stringify(model));
           }
-          // Generated artifacts keep the exact original turns and append feedback;
-          // standalone redraws can start from their current saved artifact.
-          correction.prepare(correctionError ?? new ModelSemanticError(validateModelInput(model, stage)), input.generationRepair
-            ? `当前修复对象为 ${model.modelId ?? model.diagramKind}。保持首次生成的完整输出结构，同时返回该模型及其全部来源映射。当前模型：${JSON.stringify(model)}` : undefined);
+          // Standalone mutable redraws repair their saved artifact; submitted generation
+          // candidates are immutable and finish all model repair inside their generation conversation.
+          correction.prepare(correctionError ?? new ModelSemanticError(validateModelInput(model, stage)));
           const candidate = await correctModel(correction.messages, (raw) => {
             const content = correction!.accept(raw);
-            return input.generationRepair?.parse(content, model) ?? { model: parseJson(content) as ReviewModel, traceability: basis.traceability };
+            return { model: parseJson(content) as ReviewModel, traceability: basis.traceability };
           }, history);
           const accepted = authorized?.changes.length
             ? acceptRepairCandidate(candidate.model, model, authorized, basis, input.validateModel)
@@ -139,7 +136,7 @@ export async function reviewRenderedArtifact(input: {
               if (reviewFingerprint(candidate.model) !== reviewFingerprint(model)) throw new Error("来源修复不得改写没有结构错误的模型");
               return structuredClone(candidate.model);
             })();
-          const trace = input.generationRepair ? candidate.traceability : input.reconcileTraceability?.(accepted) ?? basis.traceability;
+          const trace = input.reconcileTraceability?.(accepted) ?? basis.traceability;
           input.validateTraceability?.(accepted, trace);
           const nextRender = await render(accepted); model = accepted; rendered = nextRender; basis.traceability = trace;
           correctionError = undefined;
@@ -152,9 +149,11 @@ export async function reviewRenderedArtifact(input: {
     // Business self-check belongs to generation. A valid artifact reaches rendering without another LLM request.
     try { rendered ??= await render(model); } catch (error) {
       cancelOrReport(error); renderStatus = "failed"; issues.push(`绘制失败：${String(error)}`);
+      // Recompiling an unchanged model cannot recover a deterministic compiler error.
+      if (error instanceof ModelCompilationError) fail(error.message);
       let recovered = false;
       // Every rebuild consumes the same budget; do not hide extra render retries between recorded rounds.
-      while (input.mutable && repairs < MAX_GENERATION_REPAIR_ATTEMPTS) {
+      while (repairs < MAX_GENERATION_REPAIR_ATTEMPTS) {
         if (await hardRepair("render", [], model, ["重新生成 PlantUML 和图形"])) { recovered = true; break; }
       }
       if (recovered) continue;

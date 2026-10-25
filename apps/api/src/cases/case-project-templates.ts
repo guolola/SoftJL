@@ -525,7 +525,7 @@ function buildRequirementBaseline(
   runId: string,
   rules: RequirementRule[],
 ): RequirementBaseline {
-  return { ...createRequirementBaselineSnapshot({ runId, requirementText: seed.description, rules, createdAt: generatedAt }), sourceDocumentId: `${seed.id}-source` };
+  return createRequirementBaselineSnapshot({ runId, requirementText: seed.description, rules, createdAt: generatedAt });
 }
 
 function buildRequirementModels(seed: CaseSeed): DiagramModelSpec[] {
@@ -639,20 +639,20 @@ function buildRequirementTraceability(seed: CaseSeed) {
     {
       ruleId: `${seed.id}-R1`,
       target: { diagramKind: "usecase", elementId: "uc-main", elementKind: "useCase", label: seed.primaryAction },
-      mappingSource: "llm",
-      rationale: "核心提交动作映射到主用例。",
+
+
     },
     {
       ruleId: `${seed.id}-R2`,
       target: { modelId: "class:requirement", diagramKind: "class", elementId: "enum-status", elementKind: "enum", label: `${seed.statusEntity}状态` },
-      mappingSource: "llm",
-      rationale: "状态规则映射到领域枚举。",
+
+
     },
     {
       ruleId: `${seed.id}-R4`,
       target: { modelId: "activity:requirement", diagramKind: "activity", elementId: "act-notify", elementKind: "activity", label: seed.notificationRule },
-      mappingSource: "llm",
-      rationale: "外部通知规则映射到通知活动。",
+
+
     },
   ];
 }
@@ -761,8 +761,8 @@ function buildDesignTraceability(seed: CaseSeed) {
     {
       source: { diagramKind: "usecase", elementId: "uc-main", elementKind: "useCase", label: seed.primaryAction },
       targets: [{ modelId: "sequence-main", diagramKind: "sequence", elementId: "msg-1", elementKind: "message", label: seed.primaryAction }],
-      mappingSource: "llm",
-      rationale: "主用例落到时序入口消息。",
+
+
     },
     {
       source: { modelId: "class:requirement", diagramKind: "class", elementId: "enum-status", elementKind: "enum", label: `${seed.statusEntity}状态` },
@@ -770,14 +770,14 @@ function buildDesignTraceability(seed: CaseSeed) {
         { modelId: "class-design", diagramKind: "class", elementId: "d-status", elementKind: "enum", label: `${seed.statusEntity}Status` },
         { modelId: "table-design", diagramKind: "table", elementId: "tbl-request", elementKind: "table", label: seed.statusEntity },
       ],
-      mappingSource: "llm",
-      rationale: "领域状态进入设计类和数据表。",
+
+
     },
     {
       source: { modelId: "activity:requirement", diagramKind: "activity", elementId: "act-notify", elementKind: "activity", label: seed.notificationRule },
       targets: [{ modelId: "architecture-main", diagramKind: "architecture", elementId: "cmp-external", elementKind: "component", label: seed.externalSystem }],
-      mappingSource: "llm",
-      rationale: "通知活动映射到外部系统适配组件。",
+
+
     },
   ];
 }

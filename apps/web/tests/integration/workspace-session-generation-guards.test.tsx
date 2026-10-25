@@ -104,25 +104,7 @@ it("completes rules generation without a repair phase and never blocks downstrea
 
     });
     const beforeRequirement = createBaselineRule({ requirementId: "REQ-001", id: "r1" });
-    const baseline = createRequirementBaseline([beforeRequirement], {
-      qualityReport: {
-        runId: "run-rules",
-        status: "pending-review",
-        summary: "存在待确认字段。",
-        issues: [
-          {
-            id: "issue-actor",
-            requirementId: "REQ-001",
-            severity: "warning",
-            code: "missing-actor",
-            message: "缺少参与者。",
-            blocksDownstream: true,
-          },
-        ],
-        blockingIssueIds: ["issue-actor"],
-        reviewRequiredRequirementIds: ["REQ-001"],
-      },
-    });
+    const baseline = createRequirementBaseline([beforeRequirement]);
     const ruleSnapshot = createRunSnapshot({
       runId: "run-rules",
       requirementText: "订单需求",
@@ -227,32 +209,14 @@ it("completes rules generation without a repair phase and never blocks downstrea
     );
   });
 
-it("does not block diagram generation for non-blocking requirement quality hints", async () => {
+it("generates diagrams from a baseline containing only saved requirement facts", async () => {
     const rule = createRule({
       id: "r1",
       text: "系统应允许用户提交订单。",
 
     });
     const requirement = createBaselineRule({ requirementId: "REQ-001", id: "r1" });
-    const baseline = createRequirementBaseline([requirement], {
-      qualityReport: {
-        runId: "run-rules",
-        status: "pending-review",
-        summary: "发现非阻断质量提示，可继续生成。",
-        issues: [
-          {
-            id: "issue-hint",
-            requirementId: "REQ-001",
-            severity: "warning",
-            code: "non-verifiable",
-            message: "包含非阻断质量提示。",
-            blocksDownstream: false,
-          },
-        ],
-        blockingIssueIds: [],
-        reviewRequiredRequirementIds: [],
-      },
-    });
+    const baseline = createRequirementBaseline([requirement]);
     const diagramSnapshot = createRunSnapshot({
       runId: "run-usecase",
       requirementText: "订单需求",
@@ -279,7 +243,6 @@ it("does not block diagram generation for non-blocking requirement quality hints
           requirementText: "订单需求",
           rules: [rule],
           requirementBaseline: baseline,
-          requirementQualityReport: baseline.qualityReport,
         }),
       ),
 

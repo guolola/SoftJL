@@ -13,16 +13,16 @@ function project(input: RequirementStageInput, design?: DesignStageInput): Trust
   const origins = new Map<string, Set<string>>();
   const artifacts = new Map<string, { type: "requirements-model" | "design-model"; id: string }>();
   const edges: Array<{ from: string; to: string }> = [];
-  const connect = (fromType: TraceabilityArtifactType, from: string, toType: TraceabilityArtifactType, to: string, rationale?: string) => {
-    links.push({ fromArtifactType: fromType, fromArtifactId: from, toArtifactType: toType, toArtifactId: to, linkType: toType === "design-model" ? "refines" : "satisfies", confidence: 1, rationale: rationale || "首次生成声明的元素来源" });
-    links.push({ fromArtifactType: toType, fromArtifactId: to, toArtifactType: fromType, toArtifactId: from, linkType: "derives-from", confidence: 1, rationale: rationale || "首次生成声明的直接上游" });
+  const connect = (fromType: TraceabilityArtifactType, from: string, toType: TraceabilityArtifactType, to: string) => {
+    links.push({ fromArtifactType: fromType, fromArtifactId: from, toArtifactType: toType, toArtifactId: to, linkType: toType === "design-model" ? "refines" : "satisfies", confidence: 1, rationale: "首次生成声明的元素来源" });
+    links.push({ fromArtifactType: toType, fromArtifactId: to, toArtifactType: fromType, toArtifactId: from, linkType: "derives-from", confidence: 1, rationale: "首次生成声明的直接上游" });
     edges.push({ from: key(fromType, from), to: key(toType, to) });
     if (toType === "requirements-model" || toType === "design-model") artifacts.set(key(toType, to), { type: toType, id: to });
   };
   for (const entry of input.requirementModelTraceability) {
     const ruleId = rules.get(entry.ruleId) ?? entry.ruleId;
     origins.set(key("requirement", ruleId), new Set([ruleId]));
-    connect("requirement", ruleId, "requirements-model", refId(entry.target), entry.rationale);
+    connect("requirement", ruleId, "requirements-model", refId(entry.target));
   }
   for (const model of input.models) {
     if (model.diagramKind !== "analysis") continue;
@@ -35,9 +35,8 @@ function project(input: RequirementStageInput, design?: DesignStageInput): Trust
   for (const entry of design?.designModelTraceability ?? []) {
     for (const target of entry.targets) {
       const designTarget = design!.designModels.some(model => model.diagramKind === target.diagramKind && model.modelId === target.modelId);
-      connect(designTarget ? "design-model" : "requirements-model", refId(target), "design-model", refId(entry.source), entry.rationale);
+      connect(designTarget ? "design-model" : "requirements-model", refId(target), "design-model", refId(entry.source));
     }
-    for (const target of entry.upstreamDesignRefs ?? []) connect("design-model", refId(target), "design-model", refId(entry.source), entry.rationale);
   }
   // Follow only declared edges, including design -> design chains; no missing links are invented.
   let changed = true;

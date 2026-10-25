@@ -175,7 +175,7 @@ describe("upstream workflow illustrations", () => {
     }
   });
 
-  it("shows only fixed mapped types before generation", async () => {
+  it("shows every real rule type before generation", async () => {
     const user = userEvent.setup();
     const repository = createCurrentMockWorkspaceRepository({
       requirementText: "项目需求",
@@ -190,20 +190,20 @@ describe("upstream workflow illustrations", () => {
     expect(within(workflow()).getByText("功能需求 1")).toBeInTheDocument();
 
     await user.hover(screen.getByRole("button", { name: "选择部署需求模型" }));
-    expect(inputKeys()).toEqual(["rules:relevant:r5", "rules:relevant:r8", "rules:relevant:missing:interface"]);
+    expect(inputKeys()).toEqual(["rules:relevant:r2", "rules:relevant:r5", "rules:relevant:r8"]);
     const ruleNodes = within(workflow()).getAllByRole("listitem");
-    expect(ruleNodes[0]).toHaveTextContent("质量需求 1");
-    expect(ruleNodes[0]).toHaveAttribute("title", "质量需求 1: 支持浏览器访问");
-    expect(ruleNodes[1]).toHaveTextContent("部署运行 1");
-    expect(inputStates()).toEqual(["ready", "ready", "missing"]);
+    expect(ruleNodes[0]).toHaveTextContent("功能需求 1");
+    expect(ruleNodes[1]).toHaveAttribute("title", "质量需求 1: 支持浏览器访问");
+    expect(ruleNodes[2]).toHaveTextContent("部署运行 1");
+    expect(inputStates()).toEqual(["ready", "ready", "ready"]);
     await user.hover(screen.getByRole("button", { name: "选择领域概念模型" }));
-    expect(inputKeys()).toEqual(["rules:relevant:missing:business-rule", "rules:relevant:missing:data"]);
-    expect(within(workflow()).getByText("缺少业务规则")).toBeInTheDocument();
-    expect(within(workflow()).getByText("缺少数据需求")).toBeInTheDocument();
-    expect(within(workflow()).getByText("按需求类型固定关联；生成后的具体元素另行追踪")).toBeInTheDocument();
+    expect(inputKeys()).toEqual(["rules:relevant:r2", "rules:relevant:r5", "rules:relevant:r8"]);
+    expect(within(workflow()).queryByText("缺少业务规则")).not.toBeInTheDocument();
+    expect(within(workflow()).queryByText("缺少数据需求")).not.toBeInTheDocument();
+    expect(within(workflow()).getByText("每个模型元素至少关联一条真实的上游来源")).toBeInTheDocument();
   });
 
-  it("shows the specific missing types for the overall business workflow alongside existing functional rules", async () => {
+  it("allows business workflow sources without requiring extra rule types", async () => {
     const user = userEvent.setup();
     const repository = createCurrentMockWorkspaceRepository({
       requirementText: "用户提交申请",
@@ -213,16 +213,16 @@ describe("upstream workflow illustrations", () => {
     await screen.findByRole("figure", { name: "功能结构图的上游输入" });
     await user.hover(screen.getByRole("button", { name: "选择总体业务流程" }));
     expect(inputKeys()).toEqual([
-      "rules:relevant:r2", "rules:relevant:missing:business-rule", "rules:relevant:missing:interface", "rules:relevant:missing:exception",
+      "rules:relevant:r2",
     ]);
-    expect(inputStates()).toEqual(["ready", "missing", "missing", "missing"]);
-    expect(within(workflow()).getByText("缺少业务规则")).toBeInTheDocument();
-    expect(within(workflow()).getByText("缺少外部接口")).toBeInTheDocument();
-    expect(within(workflow()).getByText("缺少异常处理")).toBeInTheDocument();
+    expect(inputStates()).toEqual(["ready"]);
+    expect(within(workflow()).queryByText("缺少业务规则")).not.toBeInTheDocument();
+    expect(within(workflow()).queryByText("缺少外部接口")).not.toBeInTheDocument();
+    expect(within(workflow()).queryByText("缺少异常处理")).not.toBeInTheDocument();
     expect(within(workflow()).queryByText("暂无该模型对应类型的需求")).not.toBeInTheDocument();
   });
 
-  it("excludes business and exception types from prototype workflow inputs", async () => {
+  it("includes business and exception sources for prototype generation", async () => {
     const user = userEvent.setup();
     const repository = createCurrentMockWorkspaceRepository({
       requirementText: "页面权限与失败返回",
@@ -235,11 +235,11 @@ describe("upstream workflow illustrations", () => {
     render(withWorkspaceProviders(<TextRequirementView view="models" />, repository));
     await screen.findByRole("figure", { name: "功能结构图的上游输入" });
     await user.hover(screen.getByRole("button", { name: "选择原型界面关系" }));
-    expect(inputKeys()).toEqual(["rules:relevant:r3", "rules:relevant:missing:functional", "rules:relevant:missing:quality"]);
+    expect(inputKeys()).toEqual(["rules:relevant:r5", "rules:relevant:r3", "rules:relevant:r9"]);
     expect(within(workflow()).getByText("界面交互 1")).toBeInTheDocument();
-    expect(within(workflow()).queryByText("业务规则 1")).not.toBeInTheDocument();
-    expect(within(workflow()).queryByText("异常处理 1")).not.toBeInTheDocument();
-    expect(inputStates()).toEqual(["ready", "missing", "missing"]);
+    expect(within(workflow()).getByText("业务规则 1")).toBeInTheDocument();
+    expect(within(workflow()).getByText("异常处理 1")).toBeInTheDocument();
+    expect(inputStates()).toEqual(["ready", "ready", "ready"]);
   });
 
   it("does not require every category before selecting a use-case model", async () => {
@@ -253,7 +253,7 @@ describe("upstream workflow illustrations", () => {
     await user.hover(screen.getByRole("button", { name: "选择用例模型" }));
     expect(within(workflow()).getByText("功能需求 1").closest("li")).toHaveAttribute("data-state", "ready");
     for (const category of ["业务规则", "数据需求", "外部接口", "异常处理", "质量需求"]) {
-      expect(within(workflow()).getByText(`缺少${category}`).closest("li")).toHaveAttribute("data-state", "missing");
+      expect(within(workflow()).queryByText(`缺少${category}`)).not.toBeInTheDocument();
     }
     await user.click(screen.getByRole("button", { name: "选择用例模型" }));
     expect(screen.getByRole("checkbox", { name: "用例模型" })).toBeChecked();

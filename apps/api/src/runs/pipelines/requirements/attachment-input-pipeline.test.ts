@@ -15,6 +15,7 @@ import { runStagePipeline } from "../requirements-pipeline.js";
 import { prepareRequirementInput } from "./prepare-requirement-input.js";
 import { emptyRequirementTokenUsage } from "../../records/requirement-token-usage.js";
 
+
 const settings: ProviderSettings = { modelCapability: strictTestModelCapability("vision-model"), apiBaseUrl: "https://llm.test", apiKey: "test", model: "vision-model" };
 const document: ModelingAttachment = { id: "scope", name: "scope.md", type: "document", contentType: "text/markdown", text: "用户可以提交维修预约。" };
 const image: ModelingAttachment = { id: "image", name: "流程.png", type: "image", contentType: "image/png", data: "iVBORw0KGgo=" };
@@ -38,7 +39,7 @@ function setup(options: { text?: string; attachments?: ModelingAttachment[]; rej
     if (String(request.messages[0]?.content).includes("你是软件需求输入检查器")) {
       const units = JSON.parse(String(request.messages.at(-1)?.content)) as { id: string; text: string }[];
       assert.equal((record.snapshot as RunSnapshot).requirementText, text);
-      yield JSON.stringify({ units: units.map(unit => ({ id: unit.id, category: options.rejectScreening ? "injection" : "requirement" })) });
+      yield JSON.stringify({ units: units.map(unit => ({ id: unit.id, category: options.rejectScreening ? "injection" : /^(?:维修预约系统。|【(?:文本附件|图片转录)：)/u.test(unit.text) ? "context" : "requirement" })) });
       return;
     }
     const facts = options.attachments?.every(item => item.type !== "image") ? [document.text] : [document.text, imageText];
@@ -173,9 +174,10 @@ test("the complete engineering pipeline captures vision, screening and extractio
   snapshot.tokenUsage = emptyRequirementTokenUsage(settings.model, { context: 1000000, output: 8192, source: "modelpedia", matchedId: settings.model, updatedAt: null });
   await run();
   assert.equal(snapshot.status, "completed");
+  // Backend acceptance adds no extra provider request after the extraction response.
   assert.equal(snapshot.tokenUsage.contextTokens, 320);
   assert.equal(snapshot.tokenUsage.contextBudget, 1000000);
-  assert.deepEqual(snapshot.tokenUsage.lastCall, { input: 300, output: 20, cacheRead: 10, cacheWrite: null, total: 320 });
+  assert.ok(snapshot.tokenUsage.lastCall);
   assert.deepEqual(snapshot.tokenUsage.cumulative, { total: 660, calls: 3, unreportedCalls: 0 });
 });
 

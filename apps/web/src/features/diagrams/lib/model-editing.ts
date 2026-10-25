@@ -218,7 +218,6 @@ export function draftGraphElements(model: Record<string, unknown>): Array<{ id: 
   if (model.diagramKind === "context" && model.system) { const item = model.system as Record<string, unknown>; result.push({ id: stringValue(item.id), kind: "system", name: stringValue(item.name) }); }
   for (const [key, value] of Object.entries(model)) if (Array.isArray(value) && (key in kinds || ["nodes", "participants"].includes(key))) for (const item of value) {
     result.push({ id: stringValue(item.id), name: stringValue(item.name ?? item.question ?? item.id), kind: kinds[key] ?? (model.diagramKind === "function" ? "function" : stringValue(item.type ?? item.nodeType ?? item.participantType)) });
-    for (const pins of ["inputPins", "outputPins"]) for (const pin of Array.isArray(item[pins]) ? item[pins] : []) result.push({ id: stringValue(pin.id), name: `${stringValue(item.name)} / ${stringValue(pin.name)}`, kind: pins === "inputPins" ? "input-pin" : "output-pin" });
   }
   return result;
 }

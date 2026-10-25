@@ -27,7 +27,7 @@ export const CLASSIFIED_RULES_JSON = JSON.stringify({
     {
       id: "r1",
       type: "functional" as const,
-      text: "用户选择目标日期、时间段与座位，提交预约请求。",
+      text: "用户通过微信登录、查座、预约和签到。",
       sourceFragment: "共享自习室座位预约系统支持微信登录、查座、预约和签到。",
 
     },
@@ -35,14 +35,14 @@ export const CLASSIFIED_RULES_JSON = JSON.stringify({
       id: "r2",
       type: "quality" as const,
       text: "接口请求做合法性校验，防止恶意预约。",
-      sourceFragment: "共享自习室座位预约系统支持微信登录、查座、预约和签到。",
+      sourceFragment: "接口请求做合法性校验，防止恶意预约。",
 
     },
     {
       id: "r3",
       type: "quality" as const,
       text: "系统支持至少100人同时在线使用，页面加载速度小于2秒。",
-      sourceFragment: "共享自习室座位预约系统支持微信登录、查座、预约和签到。",
+      sourceFragment: "系统支持至少100人同时在线使用，页面加载速度小于2秒。",
 
     },
   ],
@@ -103,6 +103,7 @@ export const USECASE_MODEL_JSON = JSON.stringify({
     },
   ],
   requirementModelTraceability: [
+    { ruleId: "r1", target: { diagramKind: "usecase", elementId: "boundary_platform", elementKind: "system-boundary", label: "实验平台" } },
     {
       ruleId: "r1",
       target: {
@@ -270,12 +271,15 @@ export const MULTI_MODEL_JSON = JSON.stringify({
   models: [JSON.parse(USECASE_MODEL_JSON).models[0], ACTIVITY_MODEL],
   requirementModelTraceability: [
     ...JSON.parse(USECASE_MODEL_JSON).requirementModelTraceability,
+    ...["lane_user", "lane_system", "start", "end", "flow_start", "flow_generate"].map(elementId => ({
+      ruleId: "r1", target: { diagramKind: "activity", elementId, elementKind: "element", label: elementId },
+    })),
     {
       ruleId: "r1",
       target: {
         diagramKind: "activity",
         elementId: "submit",
-        elementKind: "activity-node",
+        elementKind: "activity",
         label: "提交需求",
       },
     },
@@ -284,7 +288,7 @@ export const MULTI_MODEL_JSON = JSON.stringify({
       target: {
         diagramKind: "activity",
         elementId: "generate",
-        elementKind: "activity-node",
+        elementKind: "activity",
         label: "生成模型",
       },
     },
@@ -583,6 +587,10 @@ export const DESIGN_CLASS_AND_TABLE_JSON = JSON.stringify({
     },
   ],
   designModelTraceability: [
+    ...["user", "order"].map(elementId => ({
+      source: { diagramKind: "table", elementId: `${elementId}.pk_${elementId}`, elementKind: "relational-constraint", label: `pk_${elementId}` },
+      targets: [{ diagramKind: "class", elementId, elementKind: "class", label: elementId }],
+    })),
     {
       source: {
         diagramKind: "class",

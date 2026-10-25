@@ -1,89 +1,48 @@
-// Repairs rule extraction with complete source, draft and exact-source validation.
-import { MAX_GENERATION_REPAIR_ATTEMPTS } from "@uml-platform/contracts";
-import {
-  stageProgressRunEventSchema,
-  type ProviderSettings,
-  type RequirementRulesResult,
-} from "@uml-platform/contracts";
-import { buildExtractRulesPrompt, buildRepairExtractedRulesPrompt } from "@uml-platform/prompts";
+// Extracts rule candidates with backend validation against one immutable source snapshot.
+import { snapshotInputFingerprint, type ProviderSettings } from "@uml-platform/contracts";
+import { buildExtractRulesPrompt } from "@uml-platform/prompts";
 import type { LlmTransport } from "../../../adapters/llm/llm-transport.js";
-import { getExtractRequirementRulesResponseFormat } from "../../../adapters/llm/response-formats/index.js";
-import { formatParseError, parseJson } from "../../../normalizers/json/parse-json.js";
-import { normalizeRequirementRulesResult } from "../../../normalizers/requirements/requirement-rule-normalizer.js";
-import { throwIfRunCancelled } from "../../records/run-cancellation.js";
-import { emitEvent, type RunRecord } from "../../records/run-record-store.js";
-
-import { createRunLlmChunkHandlers } from "../shared/llm-chunk-events.js";
-import { createMessages } from "../shared/llm-messages.js";
+import { EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT } from "../../../adapters/llm/response-formats/index.js";
+import { validateRequirementRules, type ValidatedRequirementRules } from "../../../normalizers/requirements/requirement-rule-normalizer.js";
+import { splitRequirementInput, type RequirementSourceUnit } from "../../../normalizers/requirements/requirement-source-units.js";
+import type { RunRecord } from "../../records/run-record-store.js";
 import type { ModelTaskActivity } from "../shared/model-task-timeout.js";
-import { stageProgressValue } from "../shared/pipeline-events.js";
-import { collectStructuredResult } from "../shared/structured-output.js";
-
-const MAX_RULE_REPAIR_ATTEMPTS = MAX_GENERATION_REPAIR_ATTEMPTS;
+import { generateWithModelConversation } from "../shared/model-generation-session.js";
+import { repairDiagnostics } from "../../../normalizers/structured-output/repair-diagnostics.js";
+import { createRunError, throwRunError } from "../shared/errors.js";
 
 export async function extractRequirementRulesWithRepair(input: {
   record: RunRecord;
   requirementText: string;
+  sourceText?: string;
+  sourceUnits?: RequirementSourceUnit[];
   providerSettings: ProviderSettings;
   llmTransport: LlmTransport;
   onActivity?: ModelTaskActivity;
   onBlankActivity?: ModelTaskActivity;
   abortSignal?: AbortSignal;
-}): Promise<RequirementRulesResult> {
-  // Keep extraction repairs local to the complete current source and latest draft.
-  let prompt = buildExtractRulesPrompt(input.requirementText);
-  let previousOutput = "";
-  const responseFormat = getExtractRequirementRulesResponseFormat(input.providerSettings);
-  for (let attempt = 0; ; attempt += 1) {
-    throwIfRunCancelled(input.record);
-    input.abortSignal?.throwIfAborted();
-    let validationFailed = false;
-    try {
-      return await collectStructuredResult(
-        input.llmTransport,
-        input.providerSettings,
-        createMessages(prompt),
-        "extract_rules",
-        createRunLlmChunkHandlers({
-          record: input.record,
-          stage: "extract_rules",
-          onActivity: input.onActivity,
-          onBlankActivity: input.onBlankActivity,
-          subtaskId: "requirement-rules",
-          subtaskLabel: attempt ? "需求规则格式修复" : "需求规则抽取",
-          operation: attempt ? "model_repair" : undefined,
-          round: attempt ? attempt : undefined,
-        }),
-        (text) => {
-          previousOutput = text;
-          try {
-            const result = normalizeRequirementRulesResult(parseJson(text), input.requirementText);
-            const invalid = result.rules.filter(rule => !rule.sourceFragment || !input.requirementText.includes(rule.sourceFragment));
-            if (invalid.length) throw new Error(`sourceFragment 必须逐字引用原始需求，以下规则来源无效：${invalid.map(rule => rule.id).join(", ")}`);
-            return result;
-          } catch (error) {
-            validationFailed = true;
-            throw error;
-          }
-        },
-        responseFormat,
-        attempt + 1,
-        input.abortSignal,
-      );
-    } catch (error) {
-      throwIfRunCancelled(input.record);
-      input.abortSignal?.throwIfAborted();
-      // Transport failures keep their provider error; only returned JSON enters the repair loop.
-      if (!validationFailed || attempt === MAX_RULE_REPAIR_ATTEMPTS) throw error;
-      emitEvent(input.record, stageProgressRunEventSchema.parse({
-        type: "stage_progress",
-        stage: "extract_rules",
-        progress: stageProgressValue("extract_rules"),
-        message: `需求规则结构、分类或来源校验未通过，正在修复（${attempt + 1}/${MAX_RULE_REPAIR_ATTEMPTS}）`,
-      }));
-      input.onActivity?.();
-      prompt = buildRepairExtractedRulesPrompt(formatParseError(error), input.requirementText, previousOutput);
+}): Promise<ValidatedRequirementRules> {
+  const sourceText = input.sourceText ?? input.requirementText;
+  const units = structuredClone(input.sourceUnits ?? splitRequirementInput(sourceText));
+  const snapshotSource = () => {
+    const snapshot = input.record.snapshot;
+    return snapshotInputFingerprint({ requirementText: "requirementText" in snapshot ? snapshot.requirementText : undefined,
+      submittedRequirementText: "submittedRequirementText" in snapshot ? snapshot.submittedRequirementText : undefined,
+      attachments: "attachments" in snapshot ? snapshot.attachments : undefined,
+      baseline: "requirementBaseline" in snapshot ? snapshot.requirementBaseline : undefined });
+  };
+  const initialSource = snapshotSource();
+  try { return await generateWithModelConversation({
+    record: input.record, providerSettings: input.providerSettings, transport: input.llmTransport,
+    stage: "extract_rules", targetId: "requirement-rules", label: "需求规则抽取", artifactKind: "requirement-rules",
+    prompt: buildExtractRulesPrompt(input.requirementText), schema: EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT,
+    validate: raw => validateRequirementRules(JSON.parse(raw), { sourceText, units }),
+    assertSourceCurrent: () => { if (snapshotSource() !== initialSource) throw new Error("需求来源已变化，请重新发起抽取"); },
+    onActivity: input.onActivity, onBlankActivity: input.onBlankActivity, abortSignal: input.abortSignal,
+  }); } catch (error) {
+    if (error instanceof Error && error.message.includes("structured output failed") && repairDiagnostics(error).some(issue => issue.code === "rules-empty")) {
+      throwRunError(createRunError("RUN_REQUIREMENT_RULES_EMPTY", error.message));
     }
+    throw error;
   }
-
 }

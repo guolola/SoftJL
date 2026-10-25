@@ -314,19 +314,17 @@ export function createWorkspaceState() {
           elementKind: "class",
           label: "SeatReservationService",
         },
-        upstreamDesignRefs: [{
-          diagramKind: "sequence", modelId: "sequence:uc-3", elementId: "send-reservation-request",
-          elementKind: "message", label: "发送预约请求",
-        }],
-        targets: [
-          {
+
+        targets: [{
             diagramKind: "usecase",
             modelId: "usecase",
             elementId: "uc-3",
             elementKind: "usecase",
             label: "预约座位",
-          },
-        ],
+          }, {
+          diagramKind: "sequence", modelId: "sequence:uc-3", elementId: "send-reservation-request",
+          elementKind: "message", label: "发送预约请求",
+        }],
       },
     ],
     designPlantUml: {},

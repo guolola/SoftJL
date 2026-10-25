@@ -33,4 +33,21 @@ test("run activity supports reasoning content and thinking markers", () => {
   const thinking = { ...base, phase: "thinking" };
   assert.deepEqual(runEventSchema.parse(reasoning), reasoning);
   assert.deepEqual(runEventSchema.parse(thinking), thinking);
+  const compilation = { ...base, operation: "model_compile", phase: "failed" };
+  assert.deepEqual(runEventSchema.parse(compilation), compilation);
+});
+
+test("tool receipts carry typed lifecycle and parent identity without argument contents", () => {
+  const event = { type: "run_tool", eventId: "tool-event", createdAt: "2026-10-25T00:00:00Z", runId: "run", stage: "generate_models",
+    callId: "provider-call", toolCallId: "tool-call", toolName: "validate_model", phase: "failed", errorCount: 2 };
+  assert.deepEqual(runEventSchema.parse(event), event);
+  for (const invalid of [{ toolName: "arbitrary_tool" }, { callId: "" }, { errorCount: -1 }]) {
+    assert.equal(runEventSchema.safeParse({ ...event, ...invalid }).success, false);
+  }
+  assert.deepEqual(runEventSchema.parse({ ...event, arguments: "private-model", result: "private-errors" }), event);
+  for (const toolName of ["get_upstream_artifact", "validate_model", "validate_requirement_rules", "submit_requirement_rules"]) {
+    assert.equal(runEventSchema.safeParse({ ...event, toolName }).success, true);
+  }
+  const source = { sourceType: "requirement_source", sourceId: "requirements:source", label: "需求原文与附件转录" };
+  assert.deepEqual(runEventSchema.parse({ ...event, source, warningCount: 1 }), { ...event, source, warningCount: 1 });
 });

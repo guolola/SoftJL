@@ -95,10 +95,8 @@ test("coding context keeps full designs and engineering constraints without upst
 test("acceptance projection retains test evidence and IDs without review state or provenance", () => {
   const state = { ...fixture(), requirementBaseline: {
           schemaVersion: 3, id: "baseline-test", version: 1, sourceInputFingerprint: "test-source-input",
-          runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
-           assumptions: [], conflicts: [],
-          qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
-          rules: [{ id: "BORROW", requirementId: ("BORROW-ATOMIC"), text: (["第5本可借，第6本拒绝"]).join("；"), sourceFragment: ("private-original-fragment"), origin: "generated", type: "functional" as const }],
+          runId: "test", createdAt: "2026-01-01T00:00:00Z",
+          rules: [{ id: "BORROW", requirementId: "BORROW-ATOMIC", text: "第5本可借，第6本拒绝", sourceFragment: "private-original-fragment", type: "functional" as const }],
         } };
   state.rules = state.requirementBaseline.rules.map(rule => requirementRuleFacts(rule));
   const context = buildContext(state, whole);
@@ -157,10 +155,8 @@ test("historical design reviews stay private while saved model/source edits rema
 test("repaired and unresolved review records cannot alter MCP payloads, tasks or versions", () => {
   const state = { ...fixture(), requirementBaseline: {
           schemaVersion: 3, id: "baseline-test", version: 1, sourceInputFingerprint: "test-source-input",
-          runId: "test", sourceDocumentId: "inline-requirement", createdAt: "2026-01-01T00:00:00Z",
-           assumptions: [], conflicts: [],
-          qualityReport: { runId: "test", status: "passed", summary: "test", issues: [], blockingIssueIds: [], reviewRequiredRequirementIds: [] },
-          rules: [{ id: "BORROW", requirementId: ("BORROW-ATOMIC"), text: (["第5本可借，第6本拒绝"]).join("；"), sourceFragment: ("借阅"), origin: "generated", type: "functional" as const }],
+          runId: "test", createdAt: "2026-01-01T00:00:00Z",
+          rules: [{ id: "BORROW", requirementId: "BORROW-ATOMIC", text: "第5本可借，第6本拒绝", sourceFragment: "借阅", type: "functional" as const }],
         } };
   state.rules = state.requirementBaseline.rules.map(rule => requirementRuleFacts(rule));
   const initial = withImplementationArtifacts(buildContext(state, whole), "project");
@@ -170,10 +166,6 @@ test("repaired and unresolved review records cannot alter MCP payloads, tasks or
       visualReviews: { "design:loan": { status: "pending_review", issues: ["private-review-opinion"],
         findings: [{ observation: "private-finding" }], repairAttempts: status === "confirmed" ? 1 : 0,
         repairHistory: [{ status, reason: "private-repair-reason" }], confirmedAt: "private-confirmation" } },
-      requirementQualityReport: { summary: "private-quality-opinion" },
-      designModelTraceability: state.designModelTraceability.map((trace) => ({ ...trace,
-        mappingSource: "llm", rationale: "private-trace-opinion",
-      })),
     };
     const before = structuredClone(withReviews);
     const context = withImplementationArtifacts(buildContext(withReviews, whole), "project");
@@ -192,8 +184,8 @@ test("design dependency cycles terminate without exporting analysis bodies", () 
   const ref = (id: string) => ({ diagramKind: "class", modelId: id, elementId: id, elementKind: "class", label: id });
   const source = { diagramKind: "usecase", elementId: "borrow", elementKind: "usecase", label: "borrow" };
   state.designModelTraceability = [
-    { source: ref("loan"), targets: [source], upstreamDesignRefs: [ref("second")] },
-    { source: ref("second"), targets: [source], upstreamDesignRefs: [ref("loan")] },
+    { source: ref("loan"), targets: [source, ref("second")],  },
+    { source: ref("second"), targets: [source, ref("loan")],  },
   ] as typeof state.designModelTraceability;
   const context = buildContext(state, { requirementIds: [], artifactIds: ["design:loan"] });
   assert.ok(context.artifacts.some((artifact) => artifact.id === "design:second"));
