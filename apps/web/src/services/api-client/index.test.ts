@@ -141,20 +141,20 @@ describe("api-client", () => {
   });
 
   it("downloads blobs and reads utf-8 filenames", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        new Response("doc", {
-          status: 200,
-          headers: {
-            "Content-Disposition": "attachment; filename*=UTF-8''%E8%AF%B4%E6%98%8E%E4%B9%A6.docx",
-          },
-        }),
-      ),
-    );
+    const payload = new Blob(["doc"]);
+    const response = new Response(null, {
+      status: 200,
+      headers: {
+        "Content-Disposition": "attachment; filename*=UTF-8''%E8%AF%B4%E6%98%8E%E4%B9%A6.docx",
+      },
+    });
+    // Node releases differ in whether Response.blob uses the browser realm's Blob.
+    vi.spyOn(response, "blob").mockResolvedValue(payload);
+    vi.stubGlobal("fetch", vi.fn(async () => response));
 
     const result = await downloadBlob("/api/document-runs/run/download");
     expect(result.fileName).toBe("说明书.docx");
+    expect(result.blob).toBe(payload);
     // FileReader is implemented by both browsers and jsdom's Blob implementation.
     const contents = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
