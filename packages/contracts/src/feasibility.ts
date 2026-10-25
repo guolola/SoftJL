@@ -552,7 +552,7 @@ export const feasibilityRunSnapshotSchema = z.object({
   contextTraceability: z.array(contextTraceRowSchema).default([]),
   contextPlantUml: plantUmlArtifactSchema.nullable(),
   contextSvg: svgArtifactSchema.nullable(),
-  visualReviews: z.record(z.string().min(1), diagramVisualReviewSchema).default({}),
+  visualReviews: z.record(z.string().min(1), diagramVisualReviewSchema).prefault({}),
   implementationPlan: feasibilityImplementationPlanSchema.nullable(),
   contextFingerprint: z.string().nullable(),
   implementationFingerprint: z.string().nullable(),

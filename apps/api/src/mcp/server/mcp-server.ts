@@ -1,6 +1,5 @@
-// Registers SDK v2 tools using JSON Schema adapters, retaining the repository's existing Zod version.
+// Registers SDK v2 tools using native Zod JSON Schema projections and scoped access checks.
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { z } from "zod";
 import {
   mcpListProjectsInputSchema,
@@ -29,7 +28,7 @@ export function createPlatformMcpServer(
     { supportedProtocolVersions: [platformMcpProtocolVersion], instructions: `先调用 list_projects，按 projectMode 区分普通版与专业版，再遵守 get_implementation_context 返回的 instructions。普通版读取已保存需求、方案、图表和测试即可实施，不要求专业版实施报告或链路验证器。以下流程仅适用于专业版：\n${agentInstructions}` },
   );
   const service = createMcpToolService(access, principal);
-  function register<T extends z.ZodTypeAny>(
+  function register<T extends z.ZodType<Record<string, unknown>>>(
     name: keyof typeof service,
     schema: T,
     description: string,
@@ -40,13 +39,13 @@ export function createPlatformMcpServer(
       {
         description,
         inputSchema: fromJsonSchema<z.infer<T>>(
-          zodToJsonSchema(schema, { $refStrategy: "none" }) as Parameters<
+          z.toJSONSchema(schema, { io: "input", reused: "inline", target: "draft-07" }) as Parameters<
             typeof fromJsonSchema
           >[0],
         ),
         outputSchema: fromJsonSchema(
-          zodToJsonSchema(mcpToolResultSchema, {
-            $refStrategy: "none",
+          z.toJSONSchema(mcpToolResultSchema, {
+            io: "input", reused: "inline", target: "draft-07",
           }) as Parameters<typeof fromJsonSchema>[0],
         ),
         annotations: {
@@ -62,7 +61,7 @@ export function createPlatformMcpServer(
         let outcome: "success" | "failure" = "failure";
         try {
           const input = schema.parse(raw);
-          projectId = "projectId" in input ? input.projectId : null;
+          projectId = typeof input.projectId === "string" ? input.projectId : null;
           await access.refresh(principal);
           if (
             !(await access.store.takeRateLimit(

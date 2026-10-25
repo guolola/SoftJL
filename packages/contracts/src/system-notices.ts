@@ -101,7 +101,7 @@ export const systemNoticeReadRequestSchema = z
     noticeIds: z.array(z.string().min(1)).optional(),
   })
   .strict()
-  .default({});
+  .prefault({});
 export type SystemNoticeReadRequest = z.infer<
   typeof systemNoticeReadRequestSchema
 >;

@@ -136,7 +136,7 @@ export const startDocumentRunRequestSchema = z.object({
   designPlantUml: z.array(designPlantUmlArtifactSchema).default([]),
   designSvgArtifacts: z.array(designSvgArtifactSchema).default([]),
   feasibilityImplementationPlan: feasibilityImplementationPlanSchema.nullable().default(null),
-  feasibilityInputs: feasibilityInputsSchema.default({}),
+  feasibilityInputs: feasibilityInputsSchema.prefault({}),
   providerSettings: providerSettingsSchema.optional(),
   useAiText: z.boolean().default(true),
   documentStyle: documentStyleSettingsSchema.optional(),
@@ -305,7 +305,7 @@ export type RequirementInputScreening = z.infer<typeof requirementInputScreening
 const standardRunRecordSchema = z.object({
   operation: z.string().min(1),
   providerConfigId: z.string().min(1), model: z.string().min(1),
-  baseline: z.record(z.string()),
+  baseline: z.record(z.string(), z.string()),
   artifacts: z.array(z.object({
     id: z.string(), type: z.string(), title: z.string(),
     diagramKind: z.string().optional(), modelId: z.string().optional(),
@@ -337,9 +337,9 @@ export const runSnapshotSchema = z.object({
   requirementModelTraceability: z.array(requirementModelTraceabilityEntrySchema),
   plantUml: z.array(plantUmlArtifactSchema),
   svgArtifacts: z.array(svgArtifactSchema),
-  visualReviews: z.record(z.string().min(1), diagramVisualReviewSchema).default({}),
+  visualReviews: z.record(z.string().min(1), diagramVisualReviewSchema).prefault({}),
   // Analysis generation records failures by current model ID, including analysis:<use-case-id>.
-  diagramErrors: z.record(z.string().min(1), diagramErrorSchema).default({}),
+  diagramErrors: z.record(z.string().min(1), diagramErrorSchema).prefault({}),
   requirementTrace: z.array(requirementTraceEntrySchema).default([]),
   currentStage: runStageSchema.nullable(),
   status: runStatusSchema,
@@ -351,7 +351,7 @@ export const designRunSnapshotSchema = z.object({
   sequenceTargetUseCaseIds: z.array(z.string().min(1)).optional(),
   ...runOutputFields,
   reasoning: z.boolean().optional(),
-  generationBaseDesignFingerprints: z.record(z.string()).optional(),
+  generationBaseDesignFingerprints: z.record(z.string(), z.string()).optional(),
   runId: z.string().min(1),
   requirementText: z.string(),
   selectedDiagrams: z.array(designDiagramKindSchema),
@@ -366,8 +366,8 @@ export const designRunSnapshotSchema = z.object({
   designModelTraceability: z.array(designModelTraceabilityEntrySchema),
   plantUml: z.array(designPlantUmlArtifactSchema),
   svgArtifacts: z.array(designSvgArtifactSchema),
-  visualReviews: z.record(z.string().min(1), diagramVisualReviewSchema).default({}),
-  diagramErrors: z.record(z.string().min(1), diagramErrorSchema).default({}),
+  visualReviews: z.record(z.string().min(1), diagramVisualReviewSchema).prefault({}),
+  diagramErrors: z.record(z.string().min(1), diagramErrorSchema).prefault({}),
   designTrace: z.array(designTraceEntrySchema).default([]),
   currentStage: runStageSchema.nullable(),
   status: runStatusSchema,
@@ -388,7 +388,7 @@ export const documentRunSnapshotSchema = z.object({
   coverageMatrix: coverageMatrixSchema.nullable().default(null),
   traceabilityMatrix: traceabilityMatrixSchema.nullable().default(null),
   feasibilityImplementationPlan: feasibilityImplementationPlanSchema.nullable().default(null),
-  feasibilityInputs: feasibilityInputsSchema.default({}),
+  feasibilityInputs: feasibilityInputsSchema.prefault({}),
   documentId: z.string().min(1).nullable().default(null),
   sections: z.array(documentSectionSchema).default([]),
   fileName: z.string().min(1).nullable(),
@@ -558,7 +558,7 @@ export const runInputMetricsSchema = z.object({
   unit: z.literal("utf16-characters"),
   messages: z.number().int().nonnegative(),
   responseFormat: z.number().int().nonnegative(),
-  sections: z.record(z.number().int().nonnegative()),
+  sections: z.record(z.string(), z.number().int().nonnegative()),
   repair: z.object({ targetId: z.string(), mode: z.string(), baseFingerprint: z.string(), paths: z.array(z.string()), round: z.number().int().min(1).max(MAX_GENERATION_REPAIR_ATTEMPTS), reason: z.string().optional() }).optional(),
 });
 export type RunInputMetrics = z.infer<typeof runInputMetricsSchema>;
@@ -632,7 +632,7 @@ export const runEventMetadataSchema = z.object({
 });
 export type RunEvent = RunEventInput & z.infer<typeof runEventMetadataSchema>;
 
-export const runEventSchema: z.ZodType<RunEvent, z.ZodTypeDef, unknown> = z.discriminatedUnion("type", [
+export const runEventSchema: z.ZodType<RunEvent, unknown> = z.discriminatedUnion("type", [
   runActivityEventSchema,
   runToolEventSchema,
   queuedRunEventSchema,

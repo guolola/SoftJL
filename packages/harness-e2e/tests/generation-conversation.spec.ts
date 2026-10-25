@@ -99,8 +99,9 @@ for (const width of [1440, 390]) {
       const transcript = page.getByTestId("generation-transcript");
       const viewport = transcript.locator('[data-slot="scroll-area-viewport"]').first();
       await emit({ type: "stage_started", stage: "render_svg" });
-      await expect(transcript.getByTestId("generation-task-step")).toHaveCount(2);
-      await expect(transcript.getByRole("heading", { name: "生成图形预览", exact: true })).toBeVisible();
+      // A stage announcement alone must not fabricate another artifact's rendering task.
+      await expect(transcript.getByTestId("generation-task-step")).toHaveCount(1);
+      await expect(transcript.getByRole("heading", { name: "生成图形预览", exact: true })).toHaveCount(0);
       // Legitimate parallel tasks make the timeline scroll; provider prose stays off this surface.
       for (let index = 0; index < 24; index++) await emit({ ...base, callId: `parallel-${index}`, subtaskId: `parallel-${index}`, subtaskLabel: `并行模型 ${index}`, phase: "started" });
       await expect.poll(() => transcript.getByTestId("generation-task-step").count()).toBeGreaterThan(24);
@@ -177,7 +178,7 @@ for (const width of [1440, 390]) {
       const chain = transcript.locator('[data-slot="chain-of-thought"]');
       await expect(chain).toHaveCount(1);
       await expect(chain.getByTestId("generation-task-step")).toHaveCount(3);
-      await expect(chain.locator("h3")).toHaveText(["生成系统环境图", "渲染系统环境图", "模型结构检查"]);
+      await expect(chain.locator("h3")).toHaveText(["生成系统环境图", "绘制并保存", "绘制并保存"]);
       await expect(chain.locator('[data-slot="transcript-prose"]')).toHaveCount(0);
       const review = chain.getByTestId("generation-task-step").last();
       const image = review.getByRole("img", { name: "系统环境图使用的图片 1" });

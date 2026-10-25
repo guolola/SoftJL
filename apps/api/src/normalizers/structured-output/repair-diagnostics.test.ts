@@ -2,6 +2,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { repairDiagnostics } from "./repair-diagnostics.js";
+import { z } from "zod";
+
+test("current union validation preserves nested field paths and specific error codes", () => {
+  const schema = z.object({ payload: z.union([z.object({ count: z.number() }), z.object({ label: z.string() })]) });
+  const parsed = schema.safeParse({ payload: { count: "wrong", label: 42 } });
+  assert.equal(parsed.success, false);
+  const issues = repairDiagnostics(parsed.error);
+  assert.deepEqual(issues.map(issue => issue.path), ["payload.count", "payload.label"]);
+  assert.ok(issues.every(issue => issue.code === "invalid_type"));
+});
 
 test("mapping evidence survives cause wrapping and response-path qualification", () => {
   const actual = { reference: { modelId: "analysis:renew", diagramKind: "sequence", elementId: "reader" }, models: [{ modelId: "analysis:renew", diagramKind: "analysis", elementExists: true }] };

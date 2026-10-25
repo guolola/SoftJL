@@ -25,10 +25,14 @@ export function repairDiagnostics(error: unknown): RepairDiagnostic[] {
       relatedPaths: issue.relatedPaths?.map((path: string) => `${prefix}${path}`) };
   });
   if (Array.isArray(value?.issues)) {
-    const flatten = (issues: Array<Record<string, any>>): RepairDiagnostic[] => issues.flatMap(issue => issue.unionErrors?.length
-      ? issue.unionErrors.flatMap((branch: { issues: Array<Record<string, any>> }) => flatten(branch.issues))
-      : [{ path: (issue.path ?? []).join("."), code: issue.code, message: issue.message,
-        expectedSchema: issue.expected && issue.expected !== "undefined" ? { type: issue.expected } : undefined }]);
+    // Union branch locations are relative to their parent in the current Zod error contract.
+    const flatten = (issues: Array<Record<string, any>>, prefix: PropertyKey[] = []): RepairDiagnostic[] => issues.flatMap(issue => {
+      const path = [...prefix, ...(issue.path ?? [])];
+      return issue.code === "invalid_union" && issue.errors?.length
+        ? issue.errors.flatMap((branch: Array<Record<string, any>>) => flatten(branch, path))
+        : [{ path: path.join("."), code: issue.code, message: issue.message,
+          expectedSchema: issue.expected && issue.expected !== "undefined" ? { type: issue.expected } : undefined }];
+    });
     return flatten(value.issues);
   }
   if (value?.cause) return repairDiagnostics(value.cause);

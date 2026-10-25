@@ -1,4 +1,5 @@
 // Packages a version-bound implementation snapshot, report template and portable local verifier.
+import { z } from "zod";
 import {
   mcpExpandedImplementationSnapshotSchema,
   mcpExpandedImplementationReportSchema,
@@ -7,14 +8,13 @@ import {
   compactImplementationReport,
   type McpImplementationReport,
 } from "@uml-platform/contracts";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { buildImplementationTasks } from "./implementation-tasks.js";
 import { buildContext, agentInstructions } from "./implementation-context.js";
 import { contentHash, type SourceArtifact } from "./source-artifacts.js";
 import { verifierDownload } from "../verification/verifier-distribution.js";
 
 // The report contract and generic file metadata do not depend on a project; avoid rebuilding the schema per chunk.
-const reportSchema = zodToJsonSchema(mcpImplementationReportWireSchema, { $refStrategy: "root" });
+const reportSchema = z.toJSONSchema(mcpImplementationReportWireSchema, { io: "input", target: "draft-07" });
 
 export function withImplementationArtifacts(context: ReturnType<typeof buildContext>, projectId: string, origin?: string) {
   const tasks = buildImplementationTasks(context.artifacts, context.scope);

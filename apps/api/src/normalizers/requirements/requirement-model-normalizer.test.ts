@@ -18,11 +18,11 @@ test("Schema rejects unsupported methods and relationships while retaining class
   delete model.classes[0].stereotype; model.classes[0].operations.push({ name: "save", visibility: "public", parameters: [] });
   assert.throws(() => parse(model), /operations/);
   model.classes[0].operations = []; model.relationships[0].type = "dependency";
-  assert.throws(() => parse(model), /invalid_enum_value/);
+  assert.throws(() => parse(model), /invalid_value/);
 });
 test("function dependencies and conflicting parentId are rejected", () => {
   const model = modelFixture("requirements", "function") as any;
-  model.relationships[0].type = "dependency"; assert.throws(() => parse(model), /invalid_enum_value/);
+  model.relationships[0].type = "dependency"; assert.throws(() => parse(model), /invalid_value/);
   model.relationships[0].type = "decomposition"; model.nodes[1].parentId = "wrong";
   assert.throws(() => parse(model), /unsupported-field/);
 });

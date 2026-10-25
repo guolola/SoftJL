@@ -203,7 +203,7 @@ export type McpImplementationReport = z.infer<typeof mcpExpandedImplementationRe
 const refs = z.array(z.number().int().min(0).max(99999)).max(10000).superRefine((values, context) => {
   unique(values, String, context, []);
 });
-const taskObject = mcpImplementationTaskSchema.innerType();
+const taskObject = z.object(mcpImplementationTaskSchema.shape).strict();
 const compactSnapshot = z.object({
   version: z.literal(2), projectId: id, scope: mcpScopeSchema, contextVersion: id,
   manifest: sourceVersions,
@@ -234,7 +234,7 @@ const compactReport = z.object({
   version: z.literal(2), projectId: id, scope: mcpScopeSchema, contextVersion: id,
   // Versions belong to the report itself, never to the refreshed snapshot. Keep distinct historical versions.
   sourceVersions: z.array(sourceVersion).max(100000),
-  entries: z.array(reportEntry.innerType().omit({ sourceVersions: true }).extend({ sourceVersionRefs: refs }).strict()).max(10000),
+  entries: z.array(z.object(reportEntry.shape).strict().omit({ sourceVersions: true }).extend({ sourceVersionRefs: refs }).strict()).max(10000),
 }).strict().superRefine((report, context) => {
   report.entries.forEach((entry, index) => entry.sourceVersionRefs.forEach((ref, position) => {
     if (ref >= report.sourceVersions.length) context.addIssue({ code: z.ZodIssueCode.custom,
@@ -242,7 +242,7 @@ const compactReport = z.object({
   }));
 });
 
-export const mcpImplementationSnapshotSchema = compactSnapshot.transform(({ shared, tasks, ...snapshot }) => ({
+export const mcpImplementationSnapshotSchema = compactSnapshot.transform(({ shared, tasks, ...snapshot }): z.input<typeof mcpExpandedImplementationSnapshotSchema> => ({
   ...snapshot,
   tasks: tasks.map(({ sourceRefs, designRefs, issueRefs, guidanceRefs, ...task }) => ({
     ...task, sourceArtifactIds: sourceRefs.map((ref) => shared.sourceArtifactIds[ref]),
@@ -251,7 +251,7 @@ export const mcpImplementationSnapshotSchema = compactSnapshot.transform(({ shar
   })),
 })).pipe(mcpExpandedImplementationSnapshotSchema);
 
-export const mcpImplementationReportSchema = compactReport.transform(({ sourceVersions, entries, ...report }) => ({
+export const mcpImplementationReportSchema = compactReport.transform(({ sourceVersions, entries, ...report }): z.input<typeof mcpExpandedImplementationReportSchema> => ({
   ...report, entries: entries.map(({ sourceVersionRefs, ...entry }) => ({
     ...entry, sourceVersions: sourceVersionRefs.map((ref) => sourceVersions[ref]),
   })),

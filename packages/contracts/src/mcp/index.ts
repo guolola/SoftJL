@@ -27,7 +27,7 @@ export const mcpListProjectsInputSchema = z
 export const mcpContextInputSchema = z
   .object({
     projectId: id,
-    scope: mcpScopeSchema.default({}),
+    scope: mcpScopeSchema.prefault({}),
     expectedContextVersion: z.string().max(128).optional(),
     cursor: z.string().max(4096).optional(),
     limit: z.number().int().min(1).max(50).default(20),
@@ -56,7 +56,7 @@ export const mcpUpdatesInputSchema = z
 export const mcpToolResultSchema = z.object({
   status: z.enum(["ok", "refresh_required", "selection_required", "error"]),
   summary: z.string(),
-  data: z.record(z.unknown()),
+  data: z.record(z.string(), z.unknown()),
 });
 export type McpToolResult = z.infer<typeof mcpToolResultSchema>;
 // An empty selection never implies account-wide permission.

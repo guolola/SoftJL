@@ -2,7 +2,6 @@
 import { randomUUID } from "node:crypto";
 import { Type } from "typebox";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { standardOutlineSchema, standardQuestionSchema, standardModelSchema, standardDiagramTasks, type StandardProjectState } from "@uml-platform/contracts";
 import { projectFacts, renderStandardDiagram, runStandardProject, type StandardPipelineDependencies } from "./standard-project-pipeline.js";
@@ -33,7 +32,7 @@ export function createStandardAgentTools(deps: StandardPipelineDependencies, cur
         await deps.save(state => { recordUnsupportedDiagramRequest(state, models, messageId, language); });
         return result({ supported: false, message: unsupportedDiagramNotice(models, language), alternativeRequiresAsk: true });
       } }),
-    defineTool({ name: "ask_questions", label: "询问用户", description: "展示交互式询问。模型选择使用purpose=generation_scope，模型题必须提供scopeChoices，每项包含稳定id、label、kinds和recommended；拒绝生成用kinds=[]。不支持模型的替代方案只能使用一题，明确受支持的类型并包含不生成选项，调用后等待用户通过组件确认。options由scopeChoices确定。业务澄清使用business。最多3题，每题最多8项。", parameters: Type.Unsafe<{ questions: z.infer<typeof standardQuestionSchema>[]; purpose?: "generation_scope" | "business" }>(zodToJsonSchema(z.object({ purpose: z.enum(["generation_scope", "business"]).optional(), questions: z.array(standardQuestionSchema).min(1).max(3) }), { $refStrategy: "none" })),
+    defineTool({ name: "ask_questions", label: "询问用户", description: "展示交互式询问。模型选择使用purpose=generation_scope，模型题必须提供scopeChoices，每项包含稳定id、label、kinds和recommended；拒绝生成用kinds=[]。不支持模型的替代方案只能使用一题，明确受支持的类型并包含不生成选项，调用后等待用户通过组件确认。options由scopeChoices确定。业务澄清使用business。最多3题，每题最多8项。", parameters: Type.Unsafe<{ questions: z.infer<typeof standardQuestionSchema>[]; purpose?: "generation_scope" | "business" }>(z.toJSONSchema(z.object({ purpose: z.enum(["generation_scope", "business"]).optional(), questions: z.array(standardQuestionSchema).min(1).max(3) }), { io: "input", reused: "inline", target: "draft-07" })),
       async execute(_, input) {
         const unsupported = current().unsupportedDiagramRequest;
         if (useRecommendations && !unsupported) throw new Error("用户已选择推荐方案，不再追问，请采用推荐并记录假设");
@@ -58,7 +57,7 @@ export function createStandardAgentTools(deps: StandardPipelineDependencies, cur
         }); awaitingAnswer = true;
         return result({ status: "waiting_for_user", questions }, true);
       } }),
-    defineTool({ name: "save_outline", label: "保存共享方案", description: "首次生成前保存从描述识别出的全部业务、角色、实体和约束。后续仅在需求改变时更新；保存不会触发其他产物重生成。", parameters: Type.Object({ description: Type.String({ minLength: 1, maxLength: 60000 }), outline: Type.Unsafe<z.infer<typeof standardOutlineSchema>>(zodToJsonSchema(standardOutlineSchema, { $refStrategy: "none" })) }),
+    defineTool({ name: "save_outline", label: "保存共享方案", description: "首次生成前保存从描述识别出的全部业务、角色、实体和约束。后续仅在需求改变时更新；保存不会触发其他产物重生成。", parameters: Type.Object({ description: Type.String({ minLength: 1, maxLength: 60000 }), outline: Type.Unsafe<z.infer<typeof standardOutlineSchema>>(z.toJSONSchema(standardOutlineSchema, { io: "input", reused: "inline", target: "draft-07" })) }),
       async execute(_, input) {
         const outline = standardOutlineSchema.parse(input.outline);
         for (const group of [outline.roles, outline.businesses, outline.entities]) if (new Set(group.map(item => item.id)).size !== group.length) throw new Error("方案标识重复");
@@ -81,7 +80,7 @@ export function createStandardAgentTools(deps: StandardPipelineDependencies, cur
         await runStandardProject({ operation: "generate", targetIds: input.ids, instruction: input.instruction }, state, deps);
         return result(Object.values(current().diagrams).filter(diagram => !input.ids || input.ids.includes(diagram.id)).map(({ id, title, status, error }) => ({ id, title, status, error })));
       } }),
-    defineTool({ name: "save_diagram", label: "修改单张图", description: "先读取图后修改其结构数据并保存。只校验和渲染这一张图，不联动其他图。", parameters: Type.Object({ id: Type.String(), model: Type.Unsafe<z.infer<typeof standardModelSchema>>(zodToJsonSchema(standardModelSchema, { $refStrategy: "none" })) }),
+    defineTool({ name: "save_diagram", label: "修改单张图", description: "先读取图后修改其结构数据并保存。只校验和渲染这一张图，不联动其他图。", parameters: Type.Object({ id: Type.String(), model: Type.Unsafe<z.infer<typeof standardModelSchema>>(z.toJSONSchema(standardModelSchema, { io: "input", reused: "inline", target: "draft-07" })) }),
       async execute(_, input, signal) {
         signal?.throwIfAborted(); assertStandardDiagramSubstitutionAllowed(current());
         const original = current().diagrams[input.id]; if (!original) throw new Error("图不存在");

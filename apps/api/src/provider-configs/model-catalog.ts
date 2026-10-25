@@ -10,7 +10,7 @@ const rowSchema = z.object({ provider: z.string(), api: z.string(), id: z.string
   input: z.array(z.string()).optional(), vision: z.boolean().optional(), reasoning: z.boolean().optional(), toolCall: z.boolean().optional() });
 type Row = z.infer<typeof rowSchema>;
 const snapshotSchema = z.object({ version: z.literal(3), source: z.literal("modelpedia"), syncedAt: z.string().datetime(), rows: z.array(rowSchema).min(1) });
-const supplementSchema = z.record(z.object({ context: z.number().int().positive(), output: z.number().int().positive(), updatedAt: z.string().datetime() }));
+const supplementSchema = z.record(z.string(), z.object({ context: z.number().int().positive(), output: z.number().int().positive(), updatedAt: z.string().datetime() }));
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const host = (url: string) => { try { return new URL(url).hostname.toLowerCase(); } catch { return ""; } };
 const unknownCapacity = (): ModelCapacity => ({ context: null, output: null, source: "unknown", matchedId: null, updatedAt: null });

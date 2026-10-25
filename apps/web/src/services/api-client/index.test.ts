@@ -155,7 +155,14 @@ describe("api-client", () => {
 
     const result = await downloadBlob("/api/document-runs/run/download");
     expect(result.fileName).toBe("说明书.docx");
-    expect(await result.blob.text()).toBe("doc");
+    // FileReader is implemented by both browsers and jsdom's Blob implementation.
+    const contents = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(result.blob);
+    });
+    expect(contents).toBe("doc");
   });
 
   it.each([

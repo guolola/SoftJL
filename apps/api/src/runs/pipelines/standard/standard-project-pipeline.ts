@@ -9,7 +9,6 @@ import type { LlmTransport } from "../../../adapters/llm/llm-transport.js";
 import { createLlmSchedulerLimitsFromEnv } from "../../../adapters/llm/llm-scheduler.js";
 import type { RenderClient } from "../../../adapters/render/render-client.js";
 import { buildStandardDiagram } from "../../../normalizers/standard/diagram-source.js";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { getStructuredResponseFormat } from "../../../adapters/llm/model-capabilities.js";
 import { toOpenAiStrictJsonSchema } from "../../../adapters/llm/response-formats/openai-strict-schema.js";
 import { parseJson } from "../../../normalizers/json/parse-json.js";
@@ -45,7 +44,7 @@ export async function standardJsonCall(deps: StandardPipelineDependencies, instr
   // A root object also supports discriminated unions under strict provider schemas.
   const responseFormat = getStructuredResponseFormat(deps.settings, { type: "json_schema", json_schema: {
     name: "standard_project_result", strict: true,
-    schema: toOpenAiStrictJsonSchema(zodToJsonSchema(z.object({ result: schema }), { $refStrategy: "none" })),
+    schema: toOpenAiStrictJsonSchema(z.toJSONSchema(z.object({ result: schema }), { io: "input", reused: "inline", target: "draft-07" })),
   } });
   const wrapped = responseFormat?.type === "json_schema";
   // Independent model calls receive the same authored skill files as Pi, narrowed to this task.

@@ -55,7 +55,7 @@ const standardModelStructureSchema = z.discriminatedUnion("diagramKind", [
   architectureDiagramSpecSchema, standardErModelSchema, classDiagramSpecSchema, sequenceDiagramSpecSchema, tableDiagramSpecSchema,
 ]);
 export type StandardModel = z.infer<typeof standardModelStructureSchema>;
-function currentModelSchema(schema: z.ZodType<StandardModel, z.ZodTypeDef, unknown>) {
+function currentModelSchema(schema: z.ZodType<StandardModel, unknown>) {
   return z.preprocess((value, ctx) => {
     for (const path of unknownContractFields(schema, value)) ctx.addIssue({ code: "custom", path: path.split("."), message: "不支持的模型字段，不能静默丢弃" });
     return value;
@@ -162,7 +162,7 @@ export const standardProjectStateSchema = z.object({
   conversation: z.array(standardConversationMessageSchema).optional(), memory: z.array(text).optional(),
   contextStatus: z.enum(["ready", "compacting"]).optional(), compactionCount: z.number().int().nonnegative().optional(),
   description: z.string(), rounds: z.array(z.object({ questions: z.array(standardQuestionSchema), answers: z.array(standardAnswerSchema), purpose: z.enum(["generation_scope", "business"]).optional() })),
-  outline: standardOutlineSchema.optional(), diagrams: z.record(standardDiagramSchema), tests: standardTestsSchema.optional(),
+  outline: standardOutlineSchema.optional(), diagrams: z.record(z.string(), standardDiagramSchema), tests: standardTestsSchema.optional(),
   documents: z.object({
     requirementsSpec: z.object({ title: text, markdown: z.string(), generatedAt: z.string(), documentId: z.string().optional(), documentStyle: documentStyleSettingsSchema.optional(), diagrams: z.array(standardDiagramSchema).optional() }).optional(),
     softwareDesignSpec: z.object({ title: text, markdown: z.string(), generatedAt: z.string(), documentId: z.string().optional(), documentStyle: documentStyleSettingsSchema.optional(), diagrams: z.array(standardDiagramSchema).optional() }).optional(),

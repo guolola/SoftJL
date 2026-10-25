@@ -111,7 +111,7 @@ export const providerConfigDtoSchema = z
     baseUrl: z.string().url(),
     defaultModel: z.string().trim().min(1),
     allowedModels: z.array(z.string().trim().min(1)),
-    modelCapabilities: providerModelCapabilityMapSchema.default({}),
+    modelCapabilities: providerModelCapabilityMapSchema.prefault({}),
     maskedKey: z.string().trim().min(1),
     status: providerConfigStatusSchema,
     riskState: providerRiskStateSchema,

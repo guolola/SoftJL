@@ -155,7 +155,7 @@ test("schema repairs report empty targets without repeating upstream design sour
     if (calls === 2) {
       const [issue] = JSON.parse(String(input.messages.at(-1)?.content ?? "")).errors;
       assert.equal(issue.path, "designModelTraceability.0.targets");
-      assert.match(issue.reason, /at least 1 element/);
+      assert.equal(issue.code, "too_small");
       assert.equal(issue.expected, undefined);
     }
     yield JSON.stringify({ models: [model], designModelTraceability: calls === 1

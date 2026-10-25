@@ -49,8 +49,14 @@ function sourceSchemaDiagnostics<T>(read: () => T, raw: unknown, models: SourceM
 function sourceEntries(raw: unknown, field: string) {
   const message = `${field} 必须随首次生成返回`;
   // Keep the absolute envelope path so a new missing field replaces the previous repair diagnosis.
-  return z.array(z.unknown(), { required_error: message, invalid_type_error: message })
-    .parse(raw, { path: [field] });
+  return parseSourceField(z.array(z.unknown(), { error: message }), raw, field);
+}
+
+// Keep envelope-relative locations after parsing a field with the current Zod API.
+function parseSourceField<T extends z.ZodTypeAny>(schema: T, raw: unknown, field: string): z.output<T> {
+  const result = schema.safeParse(raw);
+  if (result.success) return result.data;
+  throw new z.ZodError(result.error.issues.map(issue => ({ ...issue, path: [field, ...issue.path] })));
 }
 
 function reference(value: unknown, models: Array<DiagramModelSpec | DesignDiagramModelSpec>) {
@@ -69,15 +75,15 @@ function reference(value: unknown, models: Array<DiagramModelSpec | DesignDiagra
 export function readGeneratedRequirementSources(raw: unknown, models: DiagramModelSpec[], rules?: RequirementRule[]) {
   return sourceSchemaDiagnostics(() => {
     const entries = sourceEntries(raw, "requirementModelTraceability");
-    return z.array(requirementModelTraceabilityEntrySchema).parse(entries.map(entry => isPlainRecord(entry)
-      ? { ...entry, target: reference(entry.target, models) } : entry), { path: ["requirementModelTraceability"] });
+    return parseSourceField(z.array(requirementModelTraceabilityEntrySchema), entries.map(entry => isPlainRecord(entry)
+      ? { ...entry, target: reference(entry.target, models) } : entry), "requirementModelTraceability");
   }, raw, models, undefined, rules);
 }
 
 export function readGeneratedDesignSources(raw: unknown, models: DesignDiagramModelSpec[], upstream: SourceModel[]) {
   return sourceSchemaDiagnostics(() => {
     const entries = sourceEntries(raw, "designModelTraceability");
-    return z.array(designModelTraceabilityEntrySchema).parse(entries.map(entry => isPlainRecord(entry)
-      ? { ...entry, source: reference(entry.source, models), targets: Array.isArray(entry.targets) ? entry.targets.map(target => reference(target, upstream)) : entry.targets } : entry), { path: ["designModelTraceability"] });
+    return parseSourceField(z.array(designModelTraceabilityEntrySchema), entries.map(entry => isPlainRecord(entry)
+      ? { ...entry, source: reference(entry.source, models), targets: Array.isArray(entry.targets) ? entry.targets.map(target => reference(target, upstream)) : entry.targets } : entry), "designModelTraceability");
   }, raw, models, upstream);
 }

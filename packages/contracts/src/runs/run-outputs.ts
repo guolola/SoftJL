@@ -33,7 +33,7 @@ export type RunOutputReference = z.infer<typeof runOutputReferenceSchema>;
 export const runOutputFields = {
   modelCapacity: modelCapacitySchema.optional(),
   // Fingerprints of relevant saved inputs and write targets at original start.
-  workspaceGuard: z.object({ version: z.literal(1), inputs: z.record(z.string()), targets: z.record(z.string()) }).optional(),
+  workspaceGuard: z.object({ version: z.literal(1), inputs: z.record(z.string(), z.string()), targets: z.record(z.string(), z.string()) }).optional(),
   publicationSkipped: z.string().optional(),
   operationType: runOperationTypeSchema,
   outputManifest: z.array(runOutputReferenceSchema),
