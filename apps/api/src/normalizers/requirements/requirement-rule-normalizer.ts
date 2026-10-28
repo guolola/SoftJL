@@ -82,6 +82,16 @@ export function validateRequirementRules(raw: unknown, input: { sourceText: stri
       issue("source-pending", `${path}.sourceFragment`, "待确认内容不能作为已明确需求提交", { sourceUnitId: sourceUnits[0]!.id });
       return;
     }
+    if (sourceUnits.some(unit => unit.imageAttachmentIndex !== undefined)) {
+      if (sourceUnits.length !== 1 || sourceUnits[0]!.text !== rule.sourceFragment) {
+        issue("source-image-reference-invalid", `${path}.sourceFragment`, "图片需求必须完整引用单个图片来源标记，不能与文本来源混合或只引用文件名");
+        return;
+      }
+      // Image facts are read by the vision model; text fact checks cannot validate pixels or file names.
+      const unit = sourceUnits[0]!;
+      coverage.set(unit.id, [...coverage.get(unit.id) ?? [], { rule, index }]);
+      return;
+    }
     for (const unit of sourceUnits) coverage.set(unit.id, [...coverage.get(unit.id) ?? [], { rule, index }]);
     const supported = new Set(sourceUnits.flatMap(unit => facts(unit.text)).map(fact => fact.key));
     for (const fact of facts(rule.text)) if (!supported.has(fact.key)) issue("source-fact-changed", `${path}.text`, `规则加入或改写了原文未支持的关键事实：${fact.label}`, {
@@ -96,6 +106,7 @@ export function validateRequirementRules(raw: unknown, input: { sourceText: stri
       issue("source-unit-missing", "rules", `遗漏明确需求来源 ${unit.id}：${unit.text}`, { sourceUnitId: unit.id, expected: { legalSources: [unit] }, repairHint: "补齐该来源中的需求，保留其他已抽取规则，不得删除来源来规避遗漏。" });
       continue;
     }
+    if (unit.imageAttachmentIndex !== undefined) continue;
     const actual = new Set(cited.flatMap(({ rule }) => facts(rule.text)).map(fact => fact.key));
     const missing = facts(unit.text).filter(fact => !actual.has(fact.key));
     if (missing.length) issue("source-facts-missing", `rules.${cited[0]!.index}.text`, `来源 ${unit.id} 的关键事实未被规则集合完整保留：${missing.map(fact => fact.label).join("、")}`, {

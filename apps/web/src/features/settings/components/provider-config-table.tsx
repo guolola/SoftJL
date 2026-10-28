@@ -1,6 +1,6 @@
 // Presents provider selection and owner-only actions without exposing connection credentials.
 import { useTranslation } from "react-i18next";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
 import { Badge } from "../../../shared/ui/badge";
 import { Button } from "../../../shared/ui/button";
 import { Switch } from "../../../shared/ui/switch";
@@ -17,10 +17,11 @@ type Props = {
   busy: boolean;
   onEnable: (config: PlatformProviderConfig) => void;
   onEdit: (config: PlatformProviderConfig) => void;
+  onEditModels: (config: PlatformProviderConfig) => void;
   onDelete: (config: PlatformProviderConfig) => void;
 };
 
-export function ProviderConfigTable({ configs, currentUserId, selectedId, selectedModel, loading, busy, onEnable, onEdit, onDelete }: Props) {
+export function ProviderConfigTable({ configs, currentUserId, selectedId, selectedModel, loading, busy, onEnable, onEdit, onEditModels, onDelete }: Props) {
   const { t, i18n } = useTranslation();
   const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage === "en" ? "en" : "zh-CN", { dateStyle: "medium", timeStyle: "short" });
 
@@ -71,6 +72,9 @@ export function ProviderConfigTable({ configs, currentUserId, selectedId, select
                 <TableCell className="px-3">
                   {owned ? (
                     <div className="flex items-center gap-1">
+                      <Button size="icon-sm" variant="ghost" aria-label={t("providerSettings.modelSettings.editNamed", { name: config.name })} title={t("providerSettings.modelSettings.title")} disabled={busy || !usable} onClick={() => onEditModels(config)}>
+                        <SlidersHorizontal className="size-4" />
+                      </Button>
                       <Button size="icon-sm" variant="ghost" aria-label={t("providerSettings.editNamedProvider", { name: config.name })} disabled={busy} onClick={() => onEdit(config)}>
                         <Pencil className="size-4" />
                       </Button>

@@ -36,7 +36,7 @@ test("api exposes health under root and /api for reverse proxy checks", async ()
   await app.close();
 });
 
-test("api exposes version details under root and /api for deployment checks", async () => {
+test("api exposes current deployment details only at /api/version", async () => {
   const app = await createTestApiServer({
     llmTransport: createMockLlmTransport(),
     renderClient: async () => ({
@@ -59,17 +59,16 @@ test("api exposes version details under root and /api for deployment checks", as
     url: "/api/version",
   });
 
-  assert.equal(rootVersion.statusCode, 200);
+  assert.equal(rootVersion.statusCode, 404);
   assert.equal(apiVersion.statusCode, 200);
 
-  for (const payload of [rootVersion.json(), apiVersion.json()]) {
-    assert.equal(payload.status, "ok");
-    assert.equal(payload.renderServiceBaseUrl, "http://127.0.0.1:4002");
-    assert.equal(payload.features.supportsDesignTableDiagram, true);
-    assert.equal(typeof payload.runtimeCwd, "string");
-    assert.ok(payload.runtimeCwd.length > 0);
-    assert.equal(typeof payload.startedAt, "string");
-  }
+  const payload = apiVersion.json();
+  assert.equal(payload.status, "ok");
+  assert.equal(payload.renderServiceBaseUrl, "http://127.0.0.1:4002");
+  assert.equal("features" in payload, false);
+  assert.equal(typeof payload.runtimeCwd, "string");
+  assert.ok(payload.runtimeCwd.length > 0);
+  assert.equal(typeof payload.startedAt, "string");
 
   await app.close();
 });

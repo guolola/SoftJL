@@ -179,6 +179,20 @@ describe("Provider creation block34", () => {
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "保存供应商" })).toBeEnabled());
   });
 
+  it("skips models discovered earlier in the same dialog on subsequent updates", async () => {
+    const { user, dialog } = await fillAndDiscover();
+    vi.mocked(platformApi.discoverProviderModelsStream).mockImplementationOnce(async (_input, onEvent) => {
+      onEvent({ type: "completed", result: { models: [], fetchedAt: provider.updatedAt, sourceBaseUrl: provider.baseUrl } });
+    });
+    await user.click(within(dialog).getByRole("button", { name: "获取模型列表" }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "保存供应商" })).toBeEnabled());
+    expect(platformApi.discoverProviderModelsStream).toHaveBeenLastCalledWith(
+      expect.objectContaining({ existingModelIds: ["chat-a", "chat-b"] }), expect.any(Function),
+    );
+    expect(within(dialog).getByText("已获取 2 个模型")).toBeInTheDocument();
+    expect(floatingAlert.error).not.toHaveBeenCalled();
+  });
+
   it("guards duplicate saves and keeps backend connection failures recoverable", async () => {
     const { dialog } = await fillAndDiscover();
     let rejectSave: (reason: Error) => void;
@@ -244,6 +258,17 @@ describe("Provider configuration table", () => {
     expect(within(table).getAllByRole("switch").filter(toggle => toggle.getAttribute("aria-checked") === "true")).toHaveLength(1);
   });
 
+  it("opens personal model settings independently of connection editing", async () => {
+    vi.spyOn(platformApi, "getProviderCapacities").mockResolvedValue({ syncedAt: null, stale: false, error: null, models: [] });
+    const { user, table } = await openTable();
+    expect(within(table).getByRole("button", { name: "编辑模型 My provider" })).toBeEnabled();
+    expect(within(table).queryByRole("button", { name: "编辑模型 Official provider" })).not.toBeInTheDocument();
+    await user.click(within(table).getByRole("button", { name: "编辑模型 My provider" }));
+    expect(await screen.findByRole("dialog", { name: "供应商模型设置" })).toBeInTheDocument();
+    expect(platformApi.getProviderCapacities).toHaveBeenCalledWith(provider.id);
+    expect(platformApi.discoverProviderModelsStream).not.toHaveBeenCalled();
+  });
+
   it("reuses the creation dialog to edit an inactive row without changing the enabled provider", async () => {
     const updated = { ...provider, defaultModel: "chat-a" };
     vi.spyOn(platformApi, "updateProviderConfig").mockResolvedValue(updated);
@@ -283,6 +308,35 @@ describe("Provider configuration table", () => {
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "保存供应商" })).toBeEnabled());
     await user.click(within(dialog).getByRole("button", { name: "保存供应商" }));
     await waitFor(() => expect(platformApi.updateProviderConfig).toHaveBeenCalledWith(provider.id, expect.objectContaining({ baseUrl: "https://new.example.test/v1", apiKey: "replacement-key", defaultModel: "chat-b", allowedModels: ["chat-a", "chat-b"] })));
+  });
+
+  it.each([true, false])("incremental updates preserve saved models and capabilities when new models exist: %s", async hasNew => {
+    const capability = { ...discoveredModel("chat-a"), warning: "管理员保留配置", probeReason: "saved reason" };
+    const configured = { ...provider, modelCapabilities: { "chat-a": capability } };
+    const update = vi.spyOn(platformApi, "updateProviderConfig").mockResolvedValue(configured);
+    vi.mocked(platformApi.discoverProviderModelsStream).mockImplementation(async (_input, onEvent) => {
+      onEvent({ type: "completed", result: {
+        // Even an unexpected duplicate must not replace the saved capability record.
+        models: hasNew ? [discoveredModel("chat-a"), discoveredModel("chat-new")] : [],
+        fetchedAt: provider.updatedAt, sourceBaseUrl: provider.baseUrl,
+      } });
+    });
+    const { user } = await openTable([system, configured]);
+    await user.click(screen.getByRole("button", { name: "编辑 My provider" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑供应商" });
+    await user.type(within(dialog).getByLabelText("API Key"), "verified-key");
+    await user.click(within(dialog).getByRole("button", { name: "获取模型列表" }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "保存供应商" })).toBeEnabled());
+    expect(platformApi.discoverProviderModelsStream).toHaveBeenLastCalledWith(
+      expect.objectContaining({ existingModelIds: ["chat-a", "chat-b"] }), expect.any(Function),
+    );
+    expect(within(dialog).getByRole("combobox", { name: "供应商默认模型" })).toHaveValue("chat-b");
+    await user.click(within(dialog).getByRole("button", { name: "保存供应商" }));
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    const payload = update.mock.calls[0][1];
+    expect(payload.allowedModels).toEqual(["chat-a", "chat-b", ...(hasNew ? ["chat-new"] : [])]);
+    expect(payload.modelCapabilities).toEqual({ "chat-a": capability, ...(hasNew ? { "chat-new": discoveredModel("chat-new") } : {}) });
+    expect(floatingAlert.error).not.toHaveBeenCalled();
   });
 
   it("disables unavailable rows and leaves the enabled provider selected when another row is deleted", async () => {

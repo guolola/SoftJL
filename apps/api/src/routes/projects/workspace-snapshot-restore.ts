@@ -90,7 +90,7 @@ function preserveUntargetedInstances(before: WorkspaceState, next: WorkspaceStat
     const id = key.replace(/^(?:requirements|design):/, "");
     const model = recordValue(catalog[id] ?? value);
     const related = model.diagramKind === kind || id === kind || id.startsWith(`${kind}:`);
-    const useCaseId = typeof model.sourceUseCaseId === "string" ? model.sourceUseCaseId : id.startsWith(`${kind}:`) ? id.slice(kind.length + 1) : "";
+    const useCaseId = typeof model.sourceUseCaseId === "string" ? model.sourceUseCaseId : "";
     return { related, targeted: targets.has(useCaseId) };
   };
   for (const field of [modelField, design ? "designPlantUml" : "plantUml", design ? "designSvgArtifacts" : "svgArtifacts", design ? "designDiagramErrors" : "diagramErrors", design ? "designInputFingerprints" : "diagramInputFingerprints", "visualReviews"]) {

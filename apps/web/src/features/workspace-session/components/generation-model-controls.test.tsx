@@ -1,5 +1,5 @@
 // Verifies shared page controls retain single-model visibility, capability guards and synchronized preferences.
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18nextProvider } from "react-i18next";
@@ -63,4 +63,21 @@ it("resolves ordinary document capabilities from the ordinary project endpoint",
   render(<Harness ordinary />);
   await screen.findByRole("switch", { name: "推理" });
   expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/projects/project-1/model-context?"), expect.anything());
+});
+
+it("labels unselected engineering models with their own confirmed abilities without probing them", async () => {
+  patchUserSettings({ providerModelOptions: ["model-a", "model-b", "unknown"] });
+  const vision = context("model-b", false);
+  vision.capacity.capabilities.vision = true;
+  vi.mocked(fetch).mockImplementation(async input => new Response(JSON.stringify(String(input).includes("/model-contexts?")
+    ? { models: [context("model-a"), vision] } : context("model-a")), { status: 200 }));
+  render(<Harness />);
+  await screen.findByRole("switch", { name: "推理" });
+  await userEvent.click(screen.getByRole("combobox", { name: "选择模型" }));
+  expect(await within(screen.getByRole("option", { name: /model-b/ })).findByText("视觉")).toBeVisible();
+  expect(within(screen.getByRole("option", { name: /model-b/ })).queryByText("推理")).not.toBeInTheDocument();
+  expect(within(screen.getByRole("option", { name: /model-a/ })).getByText("推理")).toBeVisible();
+  expect(within(screen.getByRole("option", { name: "unknown" })).queryByText("视觉")).not.toBeInTheDocument();
+  expect(loadUserSettings().defaultModel).toBe("model-a");
+  expect(vi.mocked(fetch).mock.calls.every(([url]) => String(url).includes("/model-context"))).toBe(true);
 });

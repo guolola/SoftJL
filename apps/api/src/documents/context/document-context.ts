@@ -1,7 +1,6 @@
 // Owns document context shaping and section normalization before DOCX rendering.
 import {
   completeFeasibilityImplementationPlanSchema,
-  requirementModelSources,
   documentContentResultSchema,
   type DesignDiagramKind,
   type DesignDiagramModelSpec,
@@ -200,14 +199,9 @@ function requirementUseCases(input: StartDocumentRunRequest): UseCaseDiagramSpec
   const useCases = useCaseModels(input).flatMap((model) => model.useCases);
   if (useCases.length > 0) return useCases;
   const sequenceUseCases = designModels(input, "sequence")
-    .filter((model) => model.sourceUseCaseId || model.modelId)
-    .map((model, index) => {
-      const sourceUseCaseId =
-        model.sourceUseCaseId ??
-        model.modelId?.replace(/^sequence:/u, "") ??
-        `UC-${index + 1}`;
+    .map((model) => {
       return {
-        id: sourceUseCaseId,
+        id: model.sourceUseCaseId,
         name: model.sourceUseCaseName ?? model.title,
         goal: model.summary,
         description: model.summary,
@@ -316,10 +310,6 @@ function requirementRulesBody(input: StartDocumentRunRequest) {
   return input.rules.map((rule) => `${rule.id}（${({ "business-rule": "业务规则", functional: "功能需求", data: "数据需求", interaction: "界面交互", interface: "外部接口", exception: "异常处理", quality: "质量需求", operations: "部署运行" })[rule.type]}）：${rule.text}`);
 }
 
-function rulesForDiagram(input: StartDocumentRunRequest, diagramKind: DiagramKind) {
-  return requirementModelSources({ diagram: diagramKind, rules: input.rules, models: input.requirementModels, traceability: input.requirementModelTraceability }).rules;
-}
-
 function formatTraceRuleId(ruleId: string) {
   const text = ruleId.trim();
   return /^r\d+$/iu.test(text) ? text.toUpperCase() : text;
@@ -400,16 +390,17 @@ function requirementTraceRows(
   }
 
   if (diagramKind === "analysis") {
+    const sourceUseCaseId = requirementModels(input, "analysis").find((model) => model.modelId === modelId)?.sourceUseCaseId;
     return [[
       "1",
       "无直接规则映射",
-      modelId
-        ? `由 ${modelId.replace(/^analysis:/u, "")} 的已确认用例事件流派生`
-        : "由已确认用例事件流派生",
+      sourceUseCaseId
+        ? `由 ${sourceUseCaseId} 的用例事件流派生`
+        : "当前模型未提供用例来源",
     ]];
   }
 
-  const relatedRules = rulesForDiagram(input, diagramKind);
+  const relatedRules = input.rules;
   if (relatedRules.length > 0) {
     return relatedRules.map((rule, index) => [
       String(index + 1),
@@ -474,7 +465,7 @@ function designTables(input: StartDocumentRunRequest) {
 function functionStructureBody(input: StartDocumentRunRequest) {
   const model = requirementModel(input, "function");
   if (!model || model.nodes.length === 0) {
-    return rulesForDiagram(input, "function").map(
+    return input.rules.map(
       (rule) => `功能项 ${rule.id}：${rule.text}`,
     );
   }
@@ -598,8 +589,7 @@ function sequenceModelForUseCase(
 ) {
   return designModels(input, "sequence").find(
     (model) =>
-      model.sourceUseCaseId === useCase.id ||
-      model.modelId === sequenceModelIdForUseCaseId(useCase.id),
+      model.sourceUseCaseId === useCase.id,
   );
 }
 
@@ -609,8 +599,7 @@ function analysisModelForUseCase(
 ) {
   return requirementModels(input, "analysis").find(
     (model) =>
-      model.sourceUseCaseId === useCase.id ||
-      model.modelId === analysisModelIdForUseCaseId(useCase.id),
+      model.sourceUseCaseId === useCase.id,
   );
 }
 

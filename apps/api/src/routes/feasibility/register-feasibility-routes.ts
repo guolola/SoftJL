@@ -54,7 +54,7 @@ function existingContextFromWorkspace(
     ? state.feasibilityContextFingerprint
     : null;
   if (!context.success || !source || !svg || fingerprint !== expectedFingerprint) return null;
-  const generatedArtifact = generatePlantUmlArtifacts([context.data])[0];
+  const generatedArtifact = generatePlantUmlArtifacts([context.data], "feasibility", "schema")[0];
   if (!generatedArtifact) return null;
   const traceability = contextTraceRowSchema.array().safeParse(state.feasibilityContextTraceability ?? []);
   return {

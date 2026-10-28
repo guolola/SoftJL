@@ -17,11 +17,14 @@ import { selectedStandardTasks } from "./standard-generation-scope.js";
 import { assertStandardDiagramSubstitutionAllowed } from "./standard-diagram-support.js";
 import { withRunReasoning } from "../shared/run-reasoning.js";
 import { standardTaskGuidance, type StandardGuidanceTask } from "./standard-modeling-knowledge.js";
+import { standardPrompt } from "../../../prompt-runtime/standard-runtime.js";
+import type { PublishedSnapshot } from "../../../prompt-runtime/store.js";
 
 export type StandardCommand = { operation: StandardOperation; requestId?: string; answers?: StandardAnswer[]; useRecommendations?: boolean; diagramId?: string; message?: string; targetIds?: string[]; instruction?: string; documentStyle?: DocumentStyleSettings;
   reasoning?: boolean; attachments?: StandardAttachment[]; quote?: { text: string; messageId?: string };
   messageId?: string; expectedHeadId?: string; language?: "zh-CN" | "en" };
 export type StandardPipelineDependencies = { transport: LlmTransport; settings: ProviderSettings; render: RenderClient;
+  promptVersions?: PublishedSnapshot;
   publishDocument?: (state: StandardProjectState, kind: "requirementsSpec" | "softwareDesignSpec") => Promise<string>;
   save: (update: (state: StandardProjectState) => void) => Promise<StandardProjectState> };
 
@@ -48,7 +51,7 @@ export async function standardJsonCall(deps: StandardPipelineDependencies, instr
   } });
   const wrapped = responseFormat?.type === "json_schema";
   // Independent model calls receive the same authored skill files as Pi, narrowed to this task.
-  const guidance = guidanceTask ? await standardTaskGuidance(guidanceTask) : "";
+  const guidance = guidanceTask ? await standardTaskGuidance(guidanceTask, deps.promptVersions) : "";
   let result = "";
   for await (const chunk of deps.transport.streamChatCompletion({ providerSettings: deps.settings,
     responseFormat, messages: [
@@ -124,7 +127,7 @@ export async function runStandardProject(command: StandardCommand, initial: Stan
                     return `本图必须使用 UML 泳道活动图，model.swimlanes 必须包含以下泳道：${JSON.stringify(lanes)}。每个 activity 节点都必须设置 actorOrLane；目标系统自动处理归属 system，人员操作归属对应 role_<角色ID>。每条泳道至少要有一个 activity，不要把所有动作都放入同一泳道；start/end 可不指定泳道。`;
                   })()
                 : "";
-              raw = await standardJsonCall(deps, `根据共享方案生成 ${task.title}。${activityLaneRules}\n${modelGuide}`, {
+              raw = await standardJsonCall(deps, `${standardPrompt(`standard.model.${task.kind}`, deps.promptVersions)}\n本次目标：${task.title}。${activityLaneRules}\n${modelGuide}`, {
                 outline, description: initial.description, task, ...facts,
                 ...(command.instruction ? { revisionInstruction: command.instruction, existingModel: initial.diagrams[task.id]?.model } : {}),
                 ...(failure ? { previous: raw, structuralError: failure, instruction: "仅修复结构错误" } : {}),
@@ -156,14 +159,14 @@ export async function runStandardProject(command: StandardCommand, initial: Stan
   if (!models.length) throw new Error("请先生成图，再生成测试或说明书");
   if (command.operation === "tests") {
     const response = z.object({ tests: standardTestsSchema }).parse(await standardJsonCall(deps,
-      '根据全部业务和已保存模型生成测试用例，覆盖正常、异常和边界。返回 {"tests":[{"id":"test1","businessId":"业务ID","title":"名称","scenarioType":"normal","priority":"P2","preconditions":[],"steps":["操作"],"expected":"预期结果"}]}。scenarioType 必须根据场景填 normal/alternative/exception/boundary/decision-table，priority 为 P0/P1/P2/P3。', { outline, models, ...facts }, z.object({ tests: standardTestsSchema }), "tests"));
+      standardPrompt("standard.tests", deps.promptVersions) + '返回 {"tests":[{"id":"test1","businessId":"业务ID","title":"名称","scenarioType":"normal","priority":"P2","preconditions":[],"steps":["操作"],"expected":"预期结果"}]}。scenarioType 必须根据场景填 normal/alternative/exception/boundary/decision-table，priority 为 P0/P1/P2/P3。', { outline, models, ...facts }, z.object({ tests: standardTestsSchema }), "tests"));
     if (outline.businesses.some(business => !response.tests.some(test => test.businessId === business.id)) || response.tests.some(test => !outline.businesses.some(business => business.id === test.businessId))) throw new Error("测试用例业务范围不完整，请重试");
     await deps.save(state => { state.tests = response.tests; });
     return;
   }
   const title = command.operation === "requirementsSpec" ? "需求规格说明书" : "软件设计说明书";
   const response = z.object({ markdown: z.string().min(1).max(200000) }).parse(await standardJsonCall(deps,
-    `根据已保存资料编写${title}，返回 {"markdown":"完整 Markdown 正文"}。图片将由系统附入。`,
+    `${standardPrompt(`standard.${command.operation}`, deps.promptVersions)}\n返回 {"markdown":"完整 Markdown 正文"}。图片将由系统附入。`,
     { description: initial.description, outline, models, ...facts, tests: initial.tests ?? [] }, z.object({ markdown: z.string().min(1).max(200000) }), command.operation as "requirementsSpec" | "softwareDesignSpec"));
   const documentKinds = command.operation === "requirementsSpec" ? ["function", "usecase", "activity"] : ["architecture", "er", "class", "sequence", "table"];
   const diagrams = Object.values(initial.diagrams).filter(diagram => diagram.status === "completed" && documentKinds.includes(diagram.kind));

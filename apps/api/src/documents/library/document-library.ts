@@ -1,6 +1,6 @@
 // Persists generated DOCX files for project-scoped preview, download, and version management.
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   documentLibraryItemSchema,
@@ -128,8 +128,9 @@ async function readDocumentMetadata(
     const item = documentLibraryItemSchema.parse(JSON.parse(raw));
     if (!options?.includeDeleted && item.status === "deleted") return null;
     return item;
-  } catch {
-    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
 }
 
@@ -153,7 +154,7 @@ function versionItemFromDocument(
 async function writeDocumentMetadata(rootDir: string, item: DocumentLibraryItem) {
   const folder = documentFolder(rootDir, item.workspaceId, item.id);
   await mkdir(folder, { recursive: true });
-  await writeFile(
+  await publishMetadata(
     metadataPath(rootDir, item.workspaceId, item.id),
     JSON.stringify(item, null, 2),
   );
@@ -162,10 +163,23 @@ async function writeDocumentMetadata(rootDir: string, item: DocumentLibraryItem)
 async function writeDocumentVersion(rootDir: string, item: DocumentLibraryItem) {
   const folder = versionsFolder(rootDir, item.workspaceId, item.id);
   await mkdir(folder, { recursive: true });
-  await writeFile(
+  await publishMetadata(
     versionMetadataPath(rootDir, item.workspaceId, item.id, item.version),
     JSON.stringify(versionItemFromDocument(item), null, 2),
   );
+}
+
+async function publishMetadata(path: string, content: string) {
+  // Readers see one complete JSON revision. Temporary files stay beside the target for
+  // atomic replacement and use a non-JSON suffix so version listings cannot expose them.
+  const temporaryPath = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, content);
+    await rename(temporaryPath, path);
+  } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function writeDocument(
@@ -221,7 +235,8 @@ export function createFileDocumentLibrary(rootDir: string): DocumentLibrary {
     const nested = await Promise.all(
       workspaces
         .filter((entry) => entry.isDirectory())
-        .map((entry) => listDocuments(entry.name, options).catch(() => [])),
+        .filter((entry) => safePathSegment(entry.name))
+        .map((entry) => listDocuments(entry.name, options)),
     );
     return nested
       .flat()
@@ -351,32 +366,24 @@ export function createFileDocumentLibrary(rootDir: string): DocumentLibrary {
       includeDeleted: true,
     });
     if (!document) return [];
-    try {
-      const entries = await readdir(versionsFolder(rootDir, workspaceId, documentId), {
-        withFileTypes: true,
-      });
-      const versions = await Promise.all(
-        entries
-          .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-          .map(async (entry) => {
-            try {
-              const raw = await readFile(
-                join(versionsFolder(rootDir, workspaceId, documentId), entry.name),
-                "utf8",
-              );
-              return documentLibraryVersionItemSchema.parse(JSON.parse(raw));
-            } catch {
-              return null;
-            }
-          }),
-      );
-      const parsed = versions.filter(
-        (version): version is DocumentLibraryVersionItem => Boolean(version),
-      );
-      return parsed.sort((left, right) => right.version - left.version);
-    } catch {
-      return [];
-    }
+    const entries = await readdir(versionsFolder(rootDir, workspaceId, documentId), {
+      withFileTypes: true,
+    }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    const versions = await Promise.all(
+      entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+        .map(async (entry) => {
+          const raw = await readFile(
+            join(versionsFolder(rootDir, workspaceId, documentId), entry.name),
+            "utf8",
+          );
+          return documentLibraryVersionItemSchema.parse(JSON.parse(raw));
+        }),
+    );
+    return versions.sort((left, right) => right.version - left.version);
   }
 
   return {

@@ -41,6 +41,6 @@ export function StandardModelEditPanel(props: StandardModelEditProps) {
     {!readOnly && disabled && <p className="text-sm text-muted-foreground">{t("standardProject.generationBlocked")}</p>}
     <ModelEditPanel draft={draft} setDraft={setDraft} onCommitDraft={commit} onSelectElement={onSelectElement} showSourceReferences={false} retainEditorsOnFailure commitError={error}
       selectedElement={selectedElement} saving={saving || (!readOnly && disabled)} readOnly={readOnly}
-      stage={standardModelStage(diagram.model.diagramKind)} visibleSection={section === "relations" ? "relationships" : section} />
+      stage={standardModelStage(diagram.model.diagramKind)} modelingScope="standard" visibleSection={section === "relations" ? "relationships" : section} />
   </div>;
 }

@@ -6,6 +6,8 @@ export interface RequirementSourceUnit {
   endOffset: number;
   category?: "requirement" | "context";
   pending?: boolean;
+  // Set only by attachment preparation, never inferred from user-authored source labels.
+  imageAttachmentIndex?: number;
 }
 
 export function splitRequirementInput(source: string): RequirementSourceUnit[] {

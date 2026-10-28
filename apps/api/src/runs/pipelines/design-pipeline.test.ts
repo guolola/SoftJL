@@ -45,7 +45,15 @@ test("a singleton response with optional model identity keeps its declared trace
   }, useCase);
   assert.deepEqual(result.designModelTraceability.map((entry) => entry.source.elementId), ["config-service", "missing"]);
   assert.equal(result.designModelTraceability[0].source.modelId, "sequence:UC-001");
-  assert.throws(() => coerceSequenceModelForUseCase({ models: [], designModelTraceability: [] }, useCase), /生成结果为空/);
+  assert.throws(() => coerceSequenceModelForUseCase({ models: [], designModelTraceability: [] }, useCase), /缺少对应的用例来源/);
+});
+
+test("sequence selection never infers provenance from a matching model ID or the first result", () => {
+  for (const modelId of ["sequence:UC-001", "unrelated"]) {
+    const candidate = model(modelId, "UC-other", "service");
+    assert.throws(() => coerceSequenceModelForUseCase({ models: [candidate], designModelTraceability: [] }, useCase), /缺少对应的用例来源/);
+    assert.equal(candidate.sourceUseCaseId, "UC-other");
+  }
 });
 
 test("ID-free traces shared by sibling models cannot be assigned to the selected use case", () => {
@@ -54,6 +62,35 @@ test("ID-free traces shared by sibling models cannot be assigned to the selected
     designModelTraceability: [trace(undefined, "user"), trace(undefined, "call"), trace(undefined, "config-service")],
   }, useCase);
   assert.deepEqual(result.designModelTraceability.map((entry) => entry.source.elementId), ["config-service"]);
+});
+
+test("scoped sequence retries replace traces by explicit use-case source even with custom model IDs", async () => {
+  const { modelFixture } = await import("@uml-platform/contracts/testing");
+  const { collectModelRefs } = await import("@uml-platform/contracts");
+  const { createEmptyDesignSnapshot, createEmptySnapshot } = await import("../records/snapshots.js");
+  const { runDesignStagePipeline } = await import("./design-pipeline.js");
+  const { strictTestModelCapability } = await import("../../../tests/fixtures/providers/model-capability.js");
+  const upstream = modelFixture("requirements", "usecase");
+  if (upstream.diagramKind !== "usecase") throw new Error("fixture");
+  upstream.useCases.push({ ...upstream.useCases[0]!, id: "sibling", name: "保留用例" });
+  const generated = { ...modelFixture("design", "sequence"), modelId: "sequence:case", sourceUseCaseId: "case" };
+  const old = { ...generated, modelId: "custom-old" };
+  const sibling = { ...generated, modelId: "custom-sibling", sourceUseCaseId: "sibling" };
+  const traces = (candidate: typeof generated) => collectModelRefs([candidate], true).refs.map(source => ({ source,
+    targets: [{ diagramKind: "usecase" as const, modelId: upstream.modelId, elementId: candidate.sourceUseCaseId, elementKind: "usecase", label: candidate.sourceUseCaseId }],
+  }));
+  const baseline = createEmptySnapshot("source", "订单需求", ["usecase"], [{ id: "r1", type: "functional", text: "创建订单" }]).requirementBaseline!;
+  const snapshot = createEmptyDesignSnapshot("retry-custom", { selectedDiagrams: ["sequence"], sequenceTargetUseCaseIds: ["case"],
+    requirementBaseline: baseline, requirementModels: [upstream], requirementModelTraceability: [],
+    existingDesignModels: [old, sibling], existingDesignModelTraceability: [...traces(old), ...traces(sibling)] });
+  const run = { snapshot, events: [], listeners: new Set(), terminal: false } as import("../records/run-record-store.js").RunRecord;
+  await runDesignStagePipeline(run, { apiBaseUrl: "https://llm.test", apiKey: "test", model: "test", modelCapability: strictTestModelCapability("test") },
+    { async *streamChatCompletion() { yield JSON.stringify({ models: [generated], designModelTraceability: traces(generated) }); } },
+    async artifact => ({ svg: "<svg/>", renderMeta: { engine: "test", generatedAt: new Date().toISOString(), sourceLength: artifact.source.length, durationMs: 1 } }));
+  assert.equal(snapshot.status, "completed");
+  assert.ok(snapshot.designModelTraceability.some(entry => entry.source.modelId === "sequence:case"));
+  assert.ok(snapshot.designModelTraceability.some(entry => entry.source.modelId === "custom-sibling"));
+  assert.ok(snapshot.designModelTraceability.every(entry => entry.source.modelId !== "custom-old"));
 });
 
 

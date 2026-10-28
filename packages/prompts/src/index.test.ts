@@ -72,6 +72,34 @@ test("rule extraction includes complete source and requests plain JSON for backe
   assert.doesNotMatch(prompt, /validate_requirement_rules|submit_requirement_rules|get_upstream_artifact/);
 });
 
+test("text rule extraction identifies its source and checks completeness without changing evidence", () => {
+  const source = "报销总额达到5000元（含5000元）时由经理审批；拒绝时保留原记录。";
+  const prompt = buildExtractRulesPrompt(source);
+  assert.match(prompt.split("\n")[0]!, /从下方本次提供的需求资料中抽取/);
+  assert.doesNotMatch(prompt, /下面的软件工程实践平台需求/);
+  assert.match(prompt, /下方原始需求文本是本次抽取的全部资料/);
+  assert.match(prompt, /分类示例.*不是本次业务事实/);
+  assert.match(prompt, /文本规则的 sourceFragment 必须逐字来自本次原文/);
+  assert.match(prompt, /扩大逐字引用范围以区分来源/);
+  assert.match(prompt, /规则抽取自检.*不得遗漏未带编号的明确要求/);
+  assert.match(prompt, /规则集合必须共同保留.*包含边界、否定、顺序、备选和异常语义/);
+  assert.match(prompt, /只输出最终规则 JSON，不输出自检过程/);
+  assert.equal(prompt.split("原始需求：\n")[1], source);
+  assert.doesNotMatch(prompt, /图片规则的 text|每条规则.*sourceFragment 必须逐字来自原文/);
+});
+
+test("image rule extraction separates image labels from literal text citations", () => {
+  const source = '用户提交预约。\n【图片附件 1："业务流程.png"】';
+  const prompt = buildExtractRulesPrompt(source, { hasImages: true });
+  assert.match(prompt, /原始需求文本及本次实际绑定的原图.*全部资料/);
+  assert.match(prompt, /文本规则的 sourceFragment 必须逐字来自本次原文/);
+  assert.match(prompt, /图片规则的 text.*原图中清晰可见的业务要求/);
+  assert.match(prompt, /sourceFragment 必须完整引用对应的单个【图片附件 …】来源标记/);
+  assert.match(prompt, /不能只写文件名或与文本来源混在同一个 sourceFragment 中/);
+  assert.doesNotMatch(prompt, /每条规则.*sourceFragment 必须逐字来自原文/);
+  assert.equal(prompt.split("原始需求：\n")[1], source);
+});
+
 test("requirement model prompts include requirement-stage responsibilities", () => {
   const prompt = buildGenerateModelsPrompt(sampleRules, [
     "function",
@@ -144,9 +172,9 @@ test("design sequence prompt requires one sequence per use case", () => {
   assert.match(prompt, /modelId = sequence:<useCaseId>/);
   assert.match(prompt, /sourceUseCaseId/);
   assert.match(prompt, /sourceUseCaseName/);
-  assert.match(prompt, /boundary\/controller\/service\/entity\/database/);
+  assert.match(prompt, /界面、控制、业务处理、实体及必要的持久化协作对象/);
   assert.match(prompt, /方法调用/);
-  assert.match(prompt, /不能原样复用参与者和消息/);
+  assert.match(prompt, /不能原样复制业务步骤作为全部设计内容/);
   assert.match(prompt, /首次生成必须同时返回 models 和完整 designModelTraceability/);
   assert.doesNotMatch(prompt, /系统会在模型结构解析成功后按元素清单确定性补齐可追踪关系/);
   assert.match(prompt, /每个设计模型元素.*必须在首次生成时至少声明一个直接上游元素/);
@@ -156,7 +184,7 @@ test("design sequence prompt requires one sequence per use case", () => {
   assert.doesNotMatch(prompt, /活动日历/);
 });
 
-test("requirement analysis prompt scopes one sequence to one use case event flow", () => {
+test("requirement analysis prompt scopes one sequence to the complete target use case", () => {
   const useCaseModel = {
     diagramKind: "usecase" as const,
     title: "用例模型",
@@ -196,7 +224,7 @@ test("requirement analysis prompt scopes one sequence to one use case event flow
   assert.match(prompt, /models 只包含 diagramKind 为 analysis 的需求分析模型/);
   assert.match(prompt, /你必须且只能为本次目标用例输出一个 analysis 模型/);
   assert.match(prompt, /modelId 必须是 analysis:<sourceUseCaseId>/);
-  assert.match(prompt, /必须来自该 useCase\.eventFlows/);
+  assert.match(prompt, /分析范围包括目标用例的目标、参与者、系统边界、前后置条件、主事件流、备选流和异常流/);
   assert.match(prompt, /需求语义短语/);
   assert.match(prompt, /禁止使用 deleteEvent\(eventId\)、remove\(\)、save\(\) 等方法调用写法/);
   assert.match(prompt, /禁止加入设计阶段类名、Service、DAO、Repository、Controller、数据库/);
@@ -209,7 +237,46 @@ test("requirement analysis prompt scopes one sequence to one use case event flow
   assert.doesNotMatch(prompt, /客户预约自习室座位/);
   assert.doesNotMatch(prompt, /已确认需求项：/);
   assert.doesNotMatch(prompt, /RequirementBaseline（/);
-  assert.match(prompt, /禁止使用原始需求文本、独立需求规则或未绑定的其他模型/);
+  assert.match(prompt, /不直接引用原始需求文本、独立需求规则或未提供的模型/);
+  assert.match(prompt, /所有 sourceElementIds 的唯一引用范围/);
+  assert.match(prompt, /步骤没有独立 id 时，引用所属事件流 id/);
+  assert.match(prompt, /不得把 order 顺序号、名称或数组位置当作元素 id/);
+  const upstream = JSON.parse(prompt.split("单用例需求阶段用例模型（唯一分析来源）：\n")[1]!);
+  assert.deepEqual(upstream, useCaseModel);
+});
+
+test("model tasks name their output and keep business and trace scopes aligned", () => {
+  const prompt = buildGenerateModelsPrompt(sampleRules, ["usecase"]);
+  assert.match(prompt.split("\n")[0]!, /分析谁使用系统、要完成什么业务.*用例模型/);
+  assert.doesNotMatch(prompt, /需求阶段 UML 结构化模型|本次是用例模型生成|只生成功能结构图|部署需求模型只展开/);
+  assert.match(prompt, /唯一业务依据.*requirementModelTraceability.ruleId 的唯一引用范围/);
+  assert.match(prompt, /JSON Schema、结构规则及示例只规定表达方式/);
+  const upstream = JSON.parse(prompt.split("本次绑定的需求规则（唯一需求来源）：\n")[1]!);
+  assert.deepEqual(upstream, sampleRules);
+  for (const kind of ["architecture", "class", "navigation", "component", "deployment", "table"] as const) {
+    const design = buildGenerateDesignModelsPrompt([], [], [kind]);
+    assert.doesNotMatch(design.split("\n")[0]!, /UML 结构化模型/);
+    assert.match(design, /全部直接上游；designModelTraceability.targets 只能引用这些输入中的真实元素/);
+    assert.match(design, /输入为空的模型类别没有可引用元素/);
+  }
+});
+
+test("sequence design distinguishes analysis refinement from generation without analysis", () => {
+  const usecase = modelFixture("requirements", "usecase");
+  const analysis = modelFixture("requirements", "analysis");
+  const without = buildGenerateDesignSequencePrompt(usecase, []);
+  const withAnalysis = buildGenerateDesignSequencePrompt(usecase, [analysis]);
+  assert.match(without, /本次未提供需求分析模型.*来源映射只能引用用例模型/);
+  assert.doesNotMatch(without, /已提供对应需求分析模型：/);
+  assert.match(withAnalysis, /已提供对应需求分析模型：以其业务消息和组合片段为细化起点/);
+  assert.doesNotMatch(withAnalysis, /本次未提供需求分析模型：/);
+  assert.deepEqual(JSON.parse(withAnalysis.split("需求阶段需求分析模型（可为空）：\n")[1]!), [analysis]);
+  for (const prompt of [without, withAnalysis]) {
+    assert.match(prompt, /业务依据与来源映射必须使用同一范围/);
+    assert.match(prompt, /不能把它们当成两个独立流程重复实现/);
+    assert.match(prompt, /不能串成一条无条件执行路径/);
+    assert.match(prompt, /不为凑分层强行增加服务、数据库对象或技术设施/);
+  }
 });
 
 test("document content prompt forbids unprovided school and personal names", () => {

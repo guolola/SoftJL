@@ -2,8 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { requirementRuleSchema, extractedRequirementsSchema, requirementBaselineSchema } from "./requirements.js";
-import { requirementModelsForType, REQUIREMENT_MODEL_RULE_TYPES, requirementRuleTypeSchema } from "./requirement-rule-types.js";
-import { candidateRulesForDiagram } from "./requirement-model-inputs.js";
+import { requirementModelsForType, requirementRuleTypeSchema } from "./requirement-rule-types.js";
 import { createRequirementBaselineSnapshot } from "./requirement-baseline-snapshot.js";
 
 const rule = { id: "r1", type: "data" as const, text: "预约记录包含学生和座位编号" };
@@ -32,10 +31,6 @@ test("all eight types route to the agreed model sets, independently of rule word
   };
   for (const type of requirementRuleTypeSchema.options) {
     assert.deepEqual(requirementModelsForType(type), expected[type]);
-    for (const diagram of Object.keys(REQUIREMENT_MODEL_RULE_TYPES) as (keyof typeof REQUIREMENT_MODEL_RULE_TYPES)[]) {
-      const input = [{ ...rule, type, text: "文案不决定模型归属" }];
-      assert.equal(candidateRulesForDiagram(input, diagram).length, 1, `${type}/${diagram}`);
-    }
   }
 });
 

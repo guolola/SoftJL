@@ -3,11 +3,13 @@ import { useEffect, useState } from "react";
 import { modelContextSettingsSchema, type ModelContextSettings } from "@uml-platform/contracts";
 import { requestJson } from "../api-client/index";
 import { loadUserSettings, USER_SETTINGS_CHANGED_EVENT, USER_SETTINGS_STORAGE_KEY } from "../../shared/lib/user-settings";
+import { useProviderModelContexts, useProviderModelMetadataRevision } from "./use-provider-model-contexts";
 
 export function useModelingModelContext(projectId: string | null) {
   const [settings, setSettings] = useState(loadUserSettings);
   const [resolved, setResolved] = useState<{ identity: string; context: ModelContextSettings }>();
-  const identity = JSON.stringify([projectId, settings.providerConfigId, settings.defaultModel]);
+  const revision = useProviderModelMetadataRevision(settings.providerConfigId);
+  const identity = JSON.stringify([projectId, settings.providerConfigId, settings.defaultModel, revision]);
   useEffect(() => {
     const sync = () => setSettings(loadUserSettings());
     const onStorage = (event: StorageEvent) => {
@@ -35,5 +37,6 @@ export function useModelingModelContext(projectId: string | null) {
     }
     return () => { active = false; };
   }, [identity, projectId, settings.defaultModel, settings.providerConfigId]);
-  return { settings, modelContext: resolved?.identity === identity ? resolved.context : undefined };
+  const modelContexts = useProviderModelContexts(projectId, settings.providerConfigId);
+  return { settings, modelContext: resolved?.identity === identity ? resolved.context : undefined, modelContexts };
 }

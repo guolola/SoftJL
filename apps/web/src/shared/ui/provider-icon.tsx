@@ -7,6 +7,12 @@ import geminiUrl from "@lobehub/icons-static-svg/icons/gemini-color.svg?url";
 import hunyuanUrl from "@lobehub/icons-static-svg/icons/hunyuan-color.svg?url";
 import kimiUrl from "@lobehub/icons-static-svg/icons/kimi-color.svg?url";
 import minimaxUrl from "@lobehub/icons-static-svg/icons/minimax-color.svg?url";
+import mimoUrl from "@lobehub/icons-static-svg/icons/xiaomimimo.svg?url";
+import groqUrl from "@lobehub/icons-static-svg/icons/groq.svg?url";
+import metaUrl from "@lobehub/icons-static-svg/icons/meta-color.svg?url";
+import mistralUrl from "@lobehub/icons-static-svg/icons/mistral-color.svg?url";
+import openrouterUrl from "@lobehub/icons-static-svg/icons/openrouter.svg?url";
+import xaiUrl from "@lobehub/icons-static-svg/icons/xai.svg?url";
 import openaiUrl from "@lobehub/icons-static-svg/icons/openai.svg?url";
 import qwenUrl from "@lobehub/icons-static-svg/icons/qwen-color.svg?url";
 import sparkUrl from "@lobehub/icons-static-svg/icons/spark-color.svg?url";
@@ -24,25 +30,37 @@ const providerIconUrls: Record<string, string> = {
   hunyuan: hunyuanUrl,
   kimi: kimiUrl,
   minimax: minimaxUrl,
+  meta: metaUrl,
+  mistral: mistralUrl,
   qwen: qwenUrl,
   step: stepfunUrl,
   xunfei: sparkUrl,
   zhipu: zhipuUrl,
 };
 
+// Monochrome marks inherit the foreground color so both themes remain readable.
+const monochromeIconUrls: Record<string, string> = {
+  openai: openaiUrl,
+  groq: groqUrl,
+  mimo: mimoUrl,
+  openrouter: openrouterUrl,
+  xai: xaiUrl,
+};
+
 export function ProviderIcon({ providerId, className }: { providerId: string; className?: string }) {
-  if (providerId === "openai") {
+  const monochromeUrl = monochromeIconUrls[providerId];
+  if (monochromeUrl) {
     return (
       <span
         aria-hidden="true"
-        data-testid="provider-icon-openai"
+        data-testid={`provider-icon-${providerId}`}
         className={cn("size-4 shrink-0 bg-foreground", className)}
         style={{
-          maskImage: `url(${openaiUrl})`,
+          maskImage: `url(${monochromeUrl})`,
           maskPosition: "center",
           maskRepeat: "no-repeat",
           maskSize: "contain",
-          WebkitMaskImage: `url(${openaiUrl})`,
+          WebkitMaskImage: `url(${monochromeUrl})`,
           WebkitMaskPosition: "center",
           WebkitMaskRepeat: "no-repeat",
           WebkitMaskSize: "contain",

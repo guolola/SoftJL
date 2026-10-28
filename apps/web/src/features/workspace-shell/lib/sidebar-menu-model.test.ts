@@ -1,6 +1,7 @@
 // Verifies model completion receipts override coarse batch status without hiding regeneration.
 import { describe, expect, it } from "vitest";
-import type { RunEventInput } from "@uml-platform/contracts";
+import type { DesignDiagramModelSpec, DiagramModelSpec, RunEventInput } from "@uml-platform/contracts";
+import { modelFixture } from "@uml-platform/contracts/testing";
 import { createGenerationTask, updateTaskFromEvent } from "../../workspace-session/lib/generation-tasks";
 import { designGenerationSubtasks, requirementGenerationSubtasks } from "../../workspace-session/lib/generation-planning";
 import { createRenderMeta } from "../../../../tests/fixtures/contract-fixtures";
@@ -8,6 +9,19 @@ import { deriveSidebarDiagramState } from "./sidebar-menu-model";
 import { activeDesignProjectDiagramStatuses, activeRequirementProjectDiagramStatuses } from "./project-run-projections";
 
 describe("sidebar model generation status", () => {
+  it("requires explicit sources on saved scoped models", () => {
+    const usecase = modelFixture("requirements", "usecase") as DiagramModelSpec;
+    const analysis = { ...modelFixture("requirements", "analysis"), modelId: "analysis:case", sourceUseCaseId: undefined } as unknown as DiagramModelSpec;
+    const sequence = { ...modelFixture("design", "sequence"), modelId: "sequence:case", sourceUseCaseId: undefined } as unknown as DesignDiagramModelSpec;
+    const state = deriveSidebarDiagramState({
+      models: { usecase, [analysis.modelId]: analysis }, designModels: { [sequence.modelId]: sequence },
+      svgArtifacts: {}, designSvgArtifacts: {}, diagramErrors: {}, designDiagramErrors: {},
+      generatedDiagrams: [], generatedDesignDiagrams: [], staleDiagrams: [], staleDesignDiagrams: [], staleDesignModelIds: [], generationTasks: [],
+    });
+    expect(state.requirementModelsByDiagram.analysis).toEqual([]);
+    expect(state.designModelsByDiagram.sequence).toEqual([]);
+  });
+
   it("does not guess diagram targets when an active run has no recorded selection", () => {
     const requirement = { operationType: "requirement_modeling" as const, runId: "requirements", runKind: "requirements" as const, status: "running" as const,
       stage: "generate_models", selectedDiagrams: [] };

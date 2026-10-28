@@ -39,7 +39,7 @@ test("every design kind inherits saved acceptance through canonical traces witho
     { ...base, modelId: "navigation", diagramKind: "navigation", nodes: [{ id: "service", name: "借阅页", nodeType: "screen" }] },
     { ...base, modelId: "components", diagramKind: "component", components: [{ id: "service", name: "LoanService" }], interfaces: [] },
     { ...base, modelId: "deployment", diagramKind: "deployment", nodes: [{ id: "service", name: "API", nodeType: "node" }], databases: [], components: [], artifacts: [], externalSystems: [] },
-    { ...base, modelId: "sequence:UC-001", diagramKind: "sequence", participants: [{ id: "service", name: "LoanService", participantType: "service" }], messages: [], fragments: [] },
+    { ...base, modelId: "sequence:UC-001", diagramKind: "sequence", sourceUseCaseId: "UC-001", participants: [{ id: "service", name: "LoanService", participantType: "service" }], messages: [], fragments: [] },
     { ...base, modelId: "tables", diagramKind: "table", tables: [{ id: "loans", name: "loans", columns: [{ id: "id", name: "id", dataType: "uuid" }] }] },
   ].map((model) => designDiagramModelSpecSchema.parse(model));
   const state = {

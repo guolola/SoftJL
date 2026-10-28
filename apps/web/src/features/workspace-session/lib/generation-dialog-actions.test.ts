@@ -1,10 +1,11 @@
 import { createRequirementBaselineSnapshot } from "@uml-platform/contracts";
 // Verifies generation result dialog copy for document completion edge cases.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   documentRunCompletionDialog,
   designRunCompletionDialog,
   failedRunResultDialog,
+  partialRunResultDialog,
   requirementRunCompletionDialog,
 } from "./generation-dialog-actions";
 import { operationFailureForCode } from "./operation-failure";
@@ -15,6 +16,17 @@ import {
 } from "../../../shared/lib/app-navigation";
 
 describe("documentRunCompletionDialog", () => {
+  it("offers a failed-only retry and confirmation with named partial results", async () => {
+    const onRetry = vi.fn();
+    const dialog = partialRunResultDialog({ runId: "partial", stageLabel: "需求模型",
+      succeeded: ["用例模型"], failed: ["领域概念模型"], onRetry });
+    expect(dialog).toMatchObject({ tone: "warning", title: "部分生成成功", dismissLabel: "确认" });
+    expect(dialog?.message).toBe("生成成功：用例模型。\n生成失败：领域概念模型。");
+    expect(dialog?.primaryAction?.label).toBe("重试失败模型");
+    await dialog?.primaryAction?.onSelect();
+    expect(onRetry).toHaveBeenCalledOnce();
+    expect(partialRunResultDialog({ runId: "failed", stageLabel: "需求模型", succeeded: [], failed: ["用例模型"] })).toBeNull();
+  });
   it("reports a successful design run without a quality hint or warning", () => {
     const dialog = designRunCompletionDialog({ diagramFailureCount: 0, runId: "design" });
     expect(dialog.tone).toBe("success");

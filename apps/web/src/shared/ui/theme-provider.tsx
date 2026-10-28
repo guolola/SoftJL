@@ -17,6 +17,7 @@ import {
 import { themePresets, type ThemePresetKey } from "./theme-presets";
 
 const THEME_PRESET_STORAGE_KEY = "admincn-ui-theme-preset";
+const inversePaletteKeys = ['primary', 'primary-foreground', 'background', 'foreground'] as const;
 const themePresetKeys = new Set<ThemePresetKey>([
   "default",
   ...(Object.keys(themePresets) as Array<keyof typeof themePresets>),
@@ -57,11 +58,17 @@ function WorkspaceThemeController({ children }: { children: ReactNode }) {
   useEffect(() => {
     const root = document.documentElement;
     presetCssVariables.forEach((key) => root.style.removeProperty(`--${key}`));
+    inversePaletteKeys.forEach((key) => root.style.removeProperty(`--inverse-${key}`));
     if (themePreset === "default") return;
 
     const preset = themePresets[themePreset];
     Object.entries(preset.styles[theme]).forEach(([key, value]) => {
       root.style.setProperty(`--${key}`, value);
+    });
+    // Inverse controls reuse the chosen preset's complete opposite-mode palette.
+    const oppositeStyles = preset.styles[theme === 'dark' ? 'light' : 'dark'];
+    inversePaletteKeys.forEach((key) => {
+      root.style.setProperty(`--inverse-${key}`, oppositeStyles[key]);
     });
   }, [theme, themePreset]);
 

@@ -17,7 +17,7 @@ test("engineering model context returns only capacity and capabilities after pro
   const providerConfigs = createProviderConfigStore({ secret: "test" });
   const provider = providerConfigs.create({ name: "provider", baseUrl: "https://llm.test", apiKey: "test", defaultModel: "model", allowedModels: ["model"], createdBy: "test" });
   const catalog = new ModelCatalog("unused.json");
-  const capacity = { context: 1000000, output: 8192, source: "modelpedia" as const, matchedId: "model", updatedAt: null };
+  const capacity = { context: 1000000, output: 8192, source: "models.dev" as const, matchedId: "model", updatedAt: null };
   catalog.resolve = () => capacity;
   registerProjectModelContextRoutes({ app, authStore, providerConfigs, modelCatalog: catalog });
   const url = `/api/projects/${project.id}/model-context?${new URLSearchParams({ providerConfigId: provider.id, model: "model" })}`;
@@ -27,4 +27,17 @@ test("engineering model context returns only capacity and capabilities after pro
   assert.equal(response.json().tokenUsage, undefined);
   assert.equal((await app.inject({ url })).statusCode, 401);
   assert.equal((await app.inject({ url: url.replace("/model-context?", "/standard/model-context?"), headers: { cookie } })).statusCode, 404);
+  const choicesUrl = `/api/projects/${project.id}/model-contexts?${new URLSearchParams({ providerConfigId: provider.id })}`;
+  const choices = await app.inject({ url: choicesUrl, headers: { cookie } });
+  assert.equal(choices.statusCode, 200); assert.deepEqual(choices.json(), { models: [{ model: "model", capacity, contextBudget: 1000000 }] });
+  assert.equal((await app.inject({ url: choicesUrl })).statusCode, 401);
+  const stranger = authStore.createUser({ username: "stranger", displayName: "Other", passwordHash: "test" })!;
+  const strangerCookie = `uml_session=${authStore.createSession({ userId: stranger.id, ipAddress: "127.0.0.1", userAgent: "test" }).id}`;
+  assert.equal((await app.inject({ url: choicesUrl, headers: { cookie: strangerCookie } })).statusCode, 403);
+  for (const scopeType of ["user", "project"] as const) {
+    const privateProvider = providerConfigs.create({ name: "private", baseUrl: "https://llm.test", apiKey: "test", defaultModel: "secret-model", allowedModels: ["secret-model"], createdBy: "test", scopeType, scopeId: "other-scope" });
+    assert.equal((await app.inject({ url: choicesUrl.replace(provider.id, privateProvider.id), headers: { cookie } })).statusCode, 404);
+  }
+  providerConfigs.disable(provider.id, "test");
+  assert.equal((await app.inject({ url: choicesUrl, headers: { cookie } })).statusCode, 404);
 });

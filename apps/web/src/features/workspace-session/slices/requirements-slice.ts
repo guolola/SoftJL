@@ -4,9 +4,8 @@ import {
   useState,
   type SetStateAction,
 } from "react";
-import type { DiagramType } from "../../../entities/diagram/model";
 import type { RequirementInputScreening } from "@uml-platform/contracts";
-import { candidateRulesForDiagram, snapshotInputFingerprint } from "@uml-platform/contracts";
+import { snapshotInputFingerprint } from "@uml-platform/contracts";
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type {
   RequirementRulesUpdateMetadata,
@@ -178,12 +177,6 @@ export function useRequirementsSlice(repository: WorkspaceRepository) {
     [commitRequirementRules, rules],
   );
 
-const rulesForDiagram = useCallback(
-    (diagram: DiagramType) =>
-      candidateRulesForDiagram(rules, diagram),
-    [rules],
-  );
-
   return {
     requirementText,
     committedRequirementText,
@@ -210,7 +203,5 @@ const rulesForDiagram = useCallback(
     createRequirementRule,
     updateRequirementRule,
     deleteRequirementRule,
-
-    rulesForDiagram,
   };
 }

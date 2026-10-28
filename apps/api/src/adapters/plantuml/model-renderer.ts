@@ -1,6 +1,6 @@
 // Deterministically renders validated models, preserving graph identity and recording emitted connections.
 import {
-  assertValidModel, getStageModelSchema, deriveTableModel, getModelGraphElements,
+  assertValidModel, getStageModelSchema, deriveTableModel, getModelGraphElements, sequenceDiagramSpecSchema,
   type AnyDiagramModel, type ModelingStage, type DiagramModelSpec, type DesignDiagramModelSpec,
   type PlantUmlArtifact, type DesignPlantUmlArtifact, type ClassAttribute, type ClassOperation,
   type SequenceDiagramSpec, type AnalysisSequenceDiagramSpec,
@@ -20,11 +20,11 @@ function operationText(item: ClassOperation) {
   return `${item.isStatic ? "{static} " : ""}${item.isAbstract ? "{abstract} " : ""}${symbols[item.visibility]}${text(item.name)}(${item.parameters.map((parameter) => `${parameter.direction ? `${parameter.direction} ` : ""}${text(parameter.name)}: ${text(parameter.type)}${parameter.required === false ? "?" : ""}`).join(", ")})${item.returnType ? `: ${text(item.returnType)}` : ""}`;
 }
 
-function render(model: AnyDiagramModel, stage: ModelingStage, validation: "schema" | "semantic") {
+function render(model: AnyDiagramModel, stage: ModelingStage, validation: "schema" | "semantic", scope: "professional" | "standard") {
   // Generated candidates have already passed Schema and complete provenance. Rendering
   // must not add semantic acceptance rules or synthesize additional graph elements.
-  if (validation === "semantic") assertValidModel(model, stage);
-  else getStageModelSchema(stage, model.diagramKind)!.parse(model);
+  if (validation === "semantic") assertValidModel(model, stage, scope);
+  else (scope === "standard" && model.diagramKind === "sequence" ? sequenceDiagramSpecSchema : getStageModelSchema(stage, model.diagramKind)!).parse(model);
   if (model.diagramKind === "table") model = deriveTableModel(model);
   const lines: string[] = ["@startuml", "skinparam shadowing false"];
   const emitted = new Map<string, ModelRenderMapping["elements"][number]>();
@@ -233,12 +233,12 @@ function renderSequence(
 export function generatePlantUmlArtifacts(models: DiagramModelSpec[], stage: "requirements" | "feasibility" = "requirements", validation: "schema" | "semantic" = "semantic"): PlantUmlArtifact[] {
   return models.map((model) => ({ modelId: "modelId" in model ? model.modelId : undefined, diagramKind: model.diagramKind, ...compile(model, stage, validation) }));
 }
-export function generateDesignPlantUmlArtifacts(models: DesignDiagramModelSpec[], validation: "schema" | "semantic" = "semantic"): DesignPlantUmlArtifact[] {
-  return models.map((model) => ({ modelId: model.modelId, diagramKind: model.diagramKind, ...compile(model, "design", validation) }));
+export function generateDesignPlantUmlArtifacts(models: (DesignDiagramModelSpec | SequenceDiagramSpec)[], validation: "schema" | "semantic" = "semantic", scope: "professional" | "standard" = "professional"): DesignPlantUmlArtifact[] {
+  return models.map((model) => ({ modelId: model.modelId, diagramKind: model.diagramKind, ...compile(model, "design", validation, scope) }));
 }
 
-function compile(model: AnyDiagramModel, stage: ModelingStage, validation: "schema" | "semantic") {
-  try { return render(model, stage, validation); }
+function compile(model: AnyDiagramModel, stage: ModelingStage, validation: "schema" | "semantic", scope: "professional" | "standard" = "professional") {
+  try { return render(model, stage, validation, scope); }
   catch (error) {
     if (error instanceof ModelCompilationError) throw error;
     const message = error instanceof Error ? error.message : String(error);

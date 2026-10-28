@@ -13,6 +13,7 @@ import { prepareStandardAgentTurn } from "./standard-agent-turn.js";
 import { Type } from "typebox";
 import { join } from "node:path";
 import { readStandardModelingResource, standardModelingResourceRoot } from "./standard-modeling-knowledge.js";
+import { standardPrompt } from "../../../prompt-runtime/standard-runtime.js";
 
 const settings = { modelCapability: compatibleTestModelCapability("deepseek-v4.1-flash"), apiBaseUrl: "https://example.test", apiKey: "test-only", model: "deepseek-v4.1-flash" };
 const usage = { input: 20, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 30, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -25,7 +26,7 @@ function reply(content: AssistantMessage["content"], tokens = 30): AssistantMess
 function stream(responder: (context: Context, call: number) => AssistantMessage): StreamFn {
   let calls = 0;
   return (_, context) => { const output = createAssistantMessageEventStream(); const systemPrompt = getCurrentSystemPrompt(context.messages);
-    const message = systemPrompt.startsWith("Suggest exactly")
+    const message = systemPrompt.startsWith(standardPrompt("standard.suggestions"))
     ? reply([{ type: "text", text: "检查借阅规则的异常分支\n完善图书类的字段类型\n为借阅业务生成边界测试" }])
     : responder({ systemPrompt, tools: getCurrentTools(context.messages), messages: context.messages }, calls++);
     output.push({ type: "done", reason: message.stopReason as "stop" | "toolUse", message }); return output; };
@@ -108,10 +109,17 @@ test("Pi discovers native skills and reads their bodies and references through t
   const store = memory();
   const skillPath = "skills/uml-graduation-modeling/SKILL.md";
   const referencePath = "skills/uml-graduation-modeling/references/class.md";
-  const [skill, reference, agents] = await Promise.all([skillPath, referencePath, "AGENTS.md"].map(async path => (await readStandardModelingResource(path)).toString("utf8")));
+  const promptVersions = {
+    "standard.agent": { id: "agent-v1", content: "已发布的快速建模会话指令" },
+    "standard.rules": { id: "rules-v1", content: "已发布的快速建模运行规则" },
+    "standard.skill.modeling": { id: "skill-v1", content: "已发布的 UML 建模技能正文" },
+    "standard.reference.class": { id: "reference-v1", content: "已发布的类图参考正文" },
+  };
+  const [skill, reference, agents] = await Promise.all([skillPath, referencePath, "AGENTS.md"].map(async path => (await readStandardModelingResource(path, standardModelingResourceRoot, promptVersions)).toString("utf8")));
   await runStandardAgent("p", { operation: "chat", message: "解释图书类关系" }, store.get(), {
-    settings, save: store.save, render, transport, signal: new AbortController().signal,
+    settings, save: store.save, render, transport, promptVersions, signal: new AbortController().signal,
     stream: stream((context, turn) => {
+      assert.ok(context.systemPrompt!.startsWith("已发布的快速建模会话指令"));
       assert.ok(context.systemPrompt!.includes(agents), "runtime AGENTS is always provided");
       assert.match(context.systemPrompt!, /<name>uml-graduation-modeling<\/name>/);
       assert.match(context.systemPrompt!, /<name>graduation-deliverables<\/name>/);
@@ -409,7 +417,7 @@ test("a scoped single-diagram edit rejects sibling writes and preserves the othe
 test("records real stream timing, chunks and provider output tokens, and keeps successful replies if suggestions fail", async () => {
   const store = memory();
   const timed: StreamFn = (_, context) => {
-    if (getCurrentSystemPrompt(context.messages).startsWith("Suggest exactly")) throw new Error("optional provider unavailable");
+    if (getCurrentSystemPrompt(context.messages).startsWith(standardPrompt("standard.suggestions"))) throw new Error("optional provider unavailable");
     const output = createAssistantMessageEventStream(); const message = reply([{ type: "text", text: "完整回复" }]);
     void (async () => {
       output.push({ type: "start", partial: { ...message, content: [] } });

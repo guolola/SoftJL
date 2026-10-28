@@ -344,7 +344,7 @@ export function startFeasibilityRecordPipeline({
     record.executionActive = true;
     try {
       const demo = offlineFeasibilityAdapters(record);
-      const promptVersions = await getPromptRuntimeStore().publishedSnapshot();
+      const promptVersions = await getPromptRuntimeStore().publishedSnapshot("professional");
       const conversation = createContextualLlmTransport(
         demo?.llmTransport ?? withPinnedPrompts(withEngineeringContextBudget(scheduledTransport, record.snapshot.modelCapacity), promptVersions),
         { systemName: record.metadata?.systemName },
@@ -412,7 +412,7 @@ export async function runRunRecordPipeline({
   record.executionActive = true;
   try {
     const demo = taskType === "feasibility_analysis" ? offlineFeasibilityAdapters(record) : null;
-    const promptVersions = await getPromptRuntimeStore().publishedSnapshot();
+    const promptVersions = await getPromptRuntimeStore().publishedSnapshot("professional");
     const promptTransport = withPinnedPrompts(withEngineeringContextBudget(scheduledTransport, record.snapshot.modelCapacity), promptVersions);
     const conversation = createContextualLlmTransport(demo?.llmTransport ?? promptTransport, {
       systemName: record.metadata?.systemName,

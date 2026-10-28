@@ -26,6 +26,7 @@ export type ModelOption = {
   id: string;
   name: string;
   description?: string;
+  capabilities?: { vision?: boolean | null; reasoning?: boolean | null };
   icon?: ReactNode;
   disabled?: boolean;
   /** Extra terms matched by ModelSelector.Search, in addition to id and name. */

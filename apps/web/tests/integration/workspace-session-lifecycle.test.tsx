@@ -33,7 +33,7 @@ afterEach(() => {
 import { createRule, storeManagedUserSettings } from "../helpers/workspace-session-fixtures";
 
 describe("WorkspaceSessionProvider", () => {
-it("does not apply failed requirement snapshots as generated models", async () => {
+it("records failed requirement tasks without fabricating generated models", async () => {
     const rule = createRule({
       id: "r1",
       type: "functional" as const,
@@ -107,7 +107,7 @@ it("does not apply failed requirement snapshots as generated models", async () =
 
     expect(result.current.generatedDiagrams).not.toContain("prototype");
     expect(result.current.models.prototype).toBeUndefined();
-    expect(saveRunHistory).not.toHaveBeenCalled();
+    expect(saveRunHistory).toHaveBeenCalledExactlyOnceWith(failedSnapshot, expect.objectContaining({ providerModel: expect.any(String) }));
     expect(
       await screen.findByRole("dialog", { name: "任务遇到内部错误" }),
     ).toBeInTheDocument();
@@ -207,9 +207,12 @@ it("labels completed requirement snapshots with diagram errors as partially gene
     });
 
     const dialog = await screen.findByRole("dialog", {
-      name: "需求模型部分生成",
+      name: "部分生成成功",
     });
-    expect(dialog).toHaveTextContent("有 1 个模型生成失败");
+    expect(dialog).toHaveTextContent("生成成功：部署需求模型。");
+    expect(dialog).toHaveTextContent("生成失败：总体业务流程。");
+    expect(result.current.models.deployment).toBeDefined();
+    expect(result.current.models.activity).toBeUndefined();
     expect(
       screen.queryByRole("dialog", { name: "需求模型已生成" }),
     ).not.toBeInTheDocument();

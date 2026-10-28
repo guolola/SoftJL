@@ -396,12 +396,6 @@ reload_pm2_for_release() {
     local version_json
     version_json="$(curl -fsS http://127.0.0.1:4001/api/version)"
     echo "API version: $version_json"
-    if [[ "$version_json" != *'"supportsDesignTableDiagram":true'* ]]; then
-      echo "API version check failed: design table diagram support is not enabled" >&2
-      pm2 status || true
-      pm2 logs uml-api --nostream --lines 80 || true
-      return 1
-    fi
     if [[ "$version_json" != *"\"releaseSha\":\"$release_sha\""* ]]; then
       echo "API version check failed: expected release SHA $release_sha" >&2
       pm2 status || true

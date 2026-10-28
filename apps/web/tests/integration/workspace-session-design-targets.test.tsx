@@ -348,6 +348,7 @@ it("summarizes preserved requirement models by model kind before supplement gene
       } as DiagramModelSpec,
       "analysis:uc_claim": {
         diagramKind: "analysis",
+        sourceUseCaseId: "uc_claim",
         title: "需求分析模型",
         summary: "认领失物交互。",
         notes: [],

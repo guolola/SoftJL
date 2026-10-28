@@ -5,14 +5,14 @@ import { getRequirementModelId } from "../../entities/diagram/model";
 import type { WorkspaceRecord } from "../../entities/workspace/model";
 import type { RequirementRule } from "../../entities/requirement-rule/model";
 import { ApiClientError, requestJson } from "../api-client/index";
-import { createRunHistoryTitle, runHistorySnapshotRequirementText, type RunHistorySnapshot } from "../../entities/run-history/index";
+import { createRunHistoryTitle, runHistorySnapshotRequirementText } from "../../entities/run-history/index";
 import type { StartDesignRunInput, StartDocumentRunInput, StartFeasibilityRunInput, StartRunInput } from "./start-inputs";
 import { PROJECT_REQUIRED_MESSAGE, normalizeProjectId, requireProjectScope, withProjectHeaders } from "./project-scope";
 import { normalizeProjectHistoryResponse } from "./project-history";
 import { readProjectRuns as readSharedProjectRuns, invalidateProjectRunReads } from "./project-run-reads";
 import { readDesignRunSnapshot, readDocumentRunSnapshot, readRunSnapshot, subscribeToDesignRunEvents, subscribeToDocumentRunEvents, subscribeToFeasibilityRunEvents, subscribeToRequirementRunEvents } from "./run-subscriptions";
 import { downloadDocumentFile, listDocumentLibraryItems } from "./document-api";
-import { applySnapshotToWorkspace, cloneWorkspace, createEmptyWorkspace, mergeWorkspaceState, stableWorkspaceState } from "./workspace-state";
+import { cloneWorkspace, createEmptyWorkspace, mergeWorkspaceState, stableWorkspaceState } from "./workspace-state";
 import { exportDiagramRequest, renderStructuredModelRequest, startDesignRunRequest, startDocumentRunRequest, startRequirementRunRequest, cancelRequirementRunRequest } from "./run-actions-api";
 import type { RequirementRulesUpdateMetadata, WorkspaceRepository, RunSubscriptionOptions } from "./types";
 
@@ -160,26 +160,6 @@ export function createHttpWorkspaceRepository(
 async function readProjectRuns(options?: { maxAgeMs?: number }) {
     const scopedProjectId = requireProjectScope(projectId);
     return readSharedProjectRuns(scopedProjectId, options);
-  }
-
-  async function persistSnapshotAsProjectWorkspace(
-    snapshot: RunHistorySnapshot,
-  ) {
-    const current = await ensureProjectWorkspace();
-    const next = applySnapshotToWorkspace(current, snapshot);
-    try {
-      return await saveProjectWorkspace(next, snapshot.runId);
-    } catch (error) {
-      if (!(error instanceof ApiClientError) || error.status !== 409) {
-        throw error;
-      }
-      await loadProjectWorkspace();
-      const latest = projectWorkspace ?? createEmptyWorkspace();
-      return saveProjectWorkspace(
-        applySnapshotToWorkspace(latest, snapshot),
-        snapshot.runId,
-      );
-    }
   }
 
   return {
@@ -492,10 +472,12 @@ async saveRunHistory(snapshot, meta) {
           !('designModelTraceability' in snapshot) &&
           snapshot.selectedDiagrams.length === 0 &&
           ('models' in snapshot && snapshot.models.length === 0);
-        if (rulesOnly) {
-          if (snapshot.status === "completed") await awaitRulesOnlyProjectSync(snapshot);
+        if (rulesOnly && snapshot.status === "completed") {
+          await awaitRulesOnlyProjectSync(snapshot);
         } else {
-          await persistSnapshotAsProjectWorkspace(snapshot);
+          // The server publishes run results. Later manual edits must read that
+          // saved state instead of replaying a snapshot over the whole workspace.
+          projectWorkspace = null;
         }
         return {
           id: snapshot.runId,

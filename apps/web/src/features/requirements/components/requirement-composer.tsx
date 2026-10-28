@@ -12,7 +12,7 @@ import { floatingAlert } from "../../../shared/ui/floating-alert";
 import { patchUserSettings } from "../../../shared/lib/user-settings";
 import { useModelingReasoning } from "../../../shared/lib/modeling-reasoning";
 import { getProviderModelLabel, inferProviderModelGroup } from "../../../shared/lib/provider-model-display";
-import { createConversationAttachments, toProjectAttachment } from "../../../shared/lib/modeling-attachments";
+import { createConversationAttachments, modelingSubmissionError, toProjectAttachment } from "../../../shared/lib/modeling-attachments";
 import { useModelingModelContext } from "../../../services/workspace-repository/use-modeling-model-context";
 import { useRequirementTextHistory } from "../hooks/use-requirement-text-history";
 import { clearRequirementComposerDraft, readRequirementComposerDraft, saveRequirementComposerDraft } from "../lib/requirement-composer-draft";
@@ -38,7 +38,7 @@ const EMPTY_MESSAGES: ThreadMessageLike[] = [];
 export function RequirementComposer(props: Props) {
   const { t, i18n } = useTranslation();
   const projectId = useWorkspaceProjectId();
-  const { settings, modelContext } = useModelingModelContext(projectId);
+  const { settings, modelContext, modelContexts } = useModelingModelContext(projectId);
   const [reasoning, setReasoning] = useModelingReasoning();
   const [speech, setSpeech] = useState<object>({});
   const [draftReady, setDraftReady] = useState(false);
@@ -57,9 +57,10 @@ export function RequirementComposer(props: Props) {
     id,
     name: id === modelContext?.model ? modelContext.capacity.name ?? getProviderModelLabel(id) : getProviderModelLabel(id),
     icon: <ProviderIcon providerId={inferProviderModelGroup(id, settings.providerLabel).id} className="size-3.5" />,
-  })), [modelContext, settings.providerLabel, settings.providerModelOptions]);
+    capabilities: (id === modelContext?.model ? modelContext : modelContexts[id])?.capacity.capabilities,
+  })), [modelContext, modelContexts, settings.providerLabel, settings.providerModelOptions]);
   const translateModelControl = (value: string) => {
-    const labels: Record<string, string> = { "Select model": "standardProject.chat.selectModel", "Search models...": "standardProject.chat.searchModels", "No models found.": "standardProject.chat.noModels", Reasoning: "requirements.composer.reasoning", Model: "standardProject.chat.selectModel" };
+    const labels: Record<string, string> = { "Select model": "standardProject.chat.selectModel", "Search models...": "standardProject.chat.searchModels", "No models found.": "standardProject.chat.noModels", Reasoning: "requirements.composer.reasoning", Vision: "standardProject.chat.visionBadge", Model: "standardProject.chat.selectModel" };
     return labels[value] ? t(labels[value]) : value;
   };
 
@@ -72,8 +73,10 @@ export function RequirementComposer(props: Props) {
     if (latest.current.disabled || latest.current.submitDisabled || latest.current.running || sending.current) throw new MessageNotSentError();
     const text = message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
     const files = message.attachments?.map(toProjectAttachment) ?? [];
-    if ((!text.trim() && files.length === 0) || files.length > 4 || text.length + files.reduce((sum, file) => sum + (file.type === "document" ? file.text.length : 0), 0) > 60000) {
-      floatingAlert.error(t("standardProject.chat.attachmentSize"));
+    if (!text.trim() && files.length === 0) throw new MessageNotSentError();
+    const error = modelingSubmissionError(text, files);
+    if (error) {
+      floatingAlert.error(error);
       throw new MessageNotSentError();
     }
     if (files.some((file) => file.type === "image") && !supportsVision) {

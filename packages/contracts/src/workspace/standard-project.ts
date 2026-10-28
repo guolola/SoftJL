@@ -192,7 +192,7 @@ function normalizeStandardModel(model: StandardModel): StandardModel {
     // Reuse pure model semantics, without pipeline reviews, baselines or traceability gates.
     if (!getModelGraphElements(model).length) throw new Error("模型至少需要一个元素");
     if (model.diagramKind === "usecase" && (!model.actors.length || !model.useCases.length)) throw new Error("用例图缺少参与者或用例");
-    assertValidModel(model, standardModelStage(model.diagramKind));
+    assertValidModel(model, standardModelStage(model.diagramKind), "standard");
     return model.diagramKind === "table" ? deriveTableModel(model) : model;
   }
   const ids = new Set(model.entities.map(item => item.id));

@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { createStandardResourceReadTool, readStandardModelingResource, standardTaskGuidance } from "./standard-modeling-knowledge.js";
+import { getModelReviewProfile, standardModelStage } from "@uml-platform/contracts";
 
 test("native read permits paginated Markdown resources and denies traversal, non-resources and junction escapes", async t => {
   const dir = await mkdtemp(join(tmpdir(), "uml-skill-read-"));
@@ -35,4 +36,12 @@ test("generation guidance uses the authored skill and only the task's reference"
   const skill = (await readStandardModelingResource("skills/uml-graduation-modeling/SKILL.md")).toString("utf8");
   const guidance = await standardTaskGuidance("class");
   assert.ok(guidance.includes(skill)); assert.ok(guidance.includes(classReference)); assert.ok(!guidance.includes(sequenceReference));
+});
+
+test("ordinary generation receives current relationship rules without professional source requirements", async () => {
+  for (const kind of ["function", "usecase", "activity", "architecture", "class", "sequence", "table"] as const) {
+    const guidance = await standardTaskGuidance(kind);
+    for (const rule of getModelReviewProfile(standardModelStage(kind), kind).structure) assert.ok(guidance.includes(rule), `${kind}: ${rule}`);
+  }
+  assert.doesNotMatch(await standardTaskGuidance("sequence"), /sourceUseCaseId.*必须/);
 });

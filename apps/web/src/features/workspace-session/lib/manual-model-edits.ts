@@ -1,5 +1,5 @@
 // Provides manual model save and rerender actions for workspace session state.
-import { assertValidModel, deriveTableModel } from "@uml-platform/contracts";
+import { validateModelStructure, ModelSemanticError, deriveTableModel, type ModelingStage } from "@uml-platform/contracts";
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
@@ -22,6 +22,12 @@ import {
   pruneTraceabilityForDesignModels,
   pruneTraceabilityForRequirementModels,
 } from "./traceability-pruning";
+
+// Manual writes use generation's field contract; they do not add another graph acceptance gate.
+function assertModelStructure(model: unknown, stage: ModelingStage) {
+  const diagnostics = validateModelStructure(model, stage);
+  if (diagnostics.length) throw new ModelSemanticError(diagnostics);
+}
 
 interface ManualModelEditActionsInput {
   designModelTraceability: WorkspaceRecord["designModelTraceability"];
@@ -95,7 +101,7 @@ export function useManualModelEditActions({
 
   const saveRequirementModelEdit = useCallback(
     async (diagramKind: DiagramType, model: DiagramModelSpec) => {
-      assertValidModel(model, "requirements");
+      assertModelStructure(model, "requirements");
       const status = createManualEditStatus("dirty");
       const modelKey = getRequirementModelId(model);
       const nextModels = { ...models, [modelKey]: model };
@@ -137,7 +143,7 @@ export function useManualModelEditActions({
 
   const saveDesignModelEdit = useCallback(
     async (modelId: string, model: DesignDiagramModelSpec) => {
-      assertValidModel(model, "design");
+      assertModelStructure(model, "design");
       if (model.diagramKind === "table") model = deriveTableModel(model);
       const status = createManualEditStatus("dirty");
       const nextDesignModels = { ...designModels, [modelId]: model };

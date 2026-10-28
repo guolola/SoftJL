@@ -384,6 +384,30 @@ test("temporary provider model discovery stream emits progress without leaking s
   }
 });
 
+for (const suffix of ["", "/stream"]) {
+  test(`incremental provider discovery${suffix} skips existing models before probing`, async t => {
+    const { app, ownerCookie } = await createProviderRouteTestApp();
+    t.after(() => app.close());
+    const probed: string[] = [];
+    t.mock.method(globalThis, "fetch", async (_url, init) => {
+      if (String(_url).endsWith("/chat/completions")) {
+        probed.push(JSON.parse(String(init?.body)).model);
+        return createChatProbeStream('{"probe":"strict-json-ok","n":1}');
+      }
+      return Response.json({ data: [{ id: "chat-saved" }, { id: "chat-new" }] });
+    });
+    const response = await app.inject({
+      method: "POST", url: `/api/provider-configs/discover-models${suffix}`,
+      headers: { cookie: ownerCookie },
+      payload: { baseUrl: "https://api.nonelinear.com/v1", apiKey: "test-key", existingModelIds: ["chat-saved"] },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(probed, ["chat-new"]);
+    if (!suffix) assert.deepEqual(response.json().models.map((model: { id: string }) => model.id), ["chat-new"]);
+    else assert.match(response.body, /event: completed/u);
+  });
+}
+
 test("removed temporary provider endpoint cannot call providers or save secrets", async () => {
   const originalFetch = globalThis.fetch;
   const calls: string[] = [];

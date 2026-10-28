@@ -1,5 +1,5 @@
 // Renders the diagram detail workspace, including diagram selection, trace highlights, export actions, and model/SVG views.
-import { validateModelInput, deriveTableModel } from "@uml-platform/contracts";
+import { validateModelStructure, deriveTableModel } from "@uml-platform/contracts";
 import { Card } from "../../../shared/ui/card";
 import { PageHeader } from "../../../shared/template/layout/page";
 import { SpotlightCard } from "../../../shared/ui/interactive-card";
@@ -194,7 +194,7 @@ function DiagramDetailView({
     generationTasks,
     visualReviews,
     canUpdateWorkspace,
-    rulesForDiagram,
+    rules,
     staleDiagrams,
     saveRequirementModelEdit,
     saveDesignModelEdit,
@@ -341,7 +341,7 @@ function DiagramDetailView({
   const commitDraftAndRerender = useCallback(async (nextDraft: Record<string, unknown>, explicit = false): Promise<boolean> => {
     if (readOnly || !canUpdateWorkspace) return false;
     if (!explicit) setDraft(nextDraft);
-    if (validateModelInput(nextDraft, isFeasibility ? "feasibility" : isDesign ? "design" : "requirements").length) { setSaveStatus("error"); return false; }
+    if (validateModelStructure(nextDraft, isFeasibility ? "feasibility" : isDesign ? "design" : "requirements").length) { setSaveStatus("error"); return false; }
     setSaving(true);
     setSaveStatus("saving");
     try {
@@ -402,7 +402,7 @@ function DiagramDetailView({
   useEffect(() => {
     if (readOnly || !canUpdateWorkspace || !draft || saving) return;
     const fingerprint = draftFingerprint(draft);
-    if (fingerprint === persistedDraftFingerprintRef.current || validateModelInput(draft, isFeasibility ? "feasibility" : isDesign ? "design" : "requirements").length) return;
+    if (fingerprint === persistedDraftFingerprintRef.current || validateModelStructure(draft, isFeasibility ? "feasibility" : isDesign ? "design" : "requirements").length) return;
     const timer = window.setTimeout(() => {
       void commitDraftAndRerender(draft);
     }, 600);
@@ -423,8 +423,8 @@ function DiagramDetailView({
         ? contextData?.rules ?? []
         : isDesign || requirementType === "analysis"
           ? []
-          : rulesForDiagram(requirementType),
-    [contextData?.rules, isFeasibility, isDesign, requirementType, rulesForDiagram],
+          : rules,
+    [contextData?.rules, isFeasibility, isDesign, requirementType, rules],
   );
   const detailModel = useMemo(() => buildDiagramDetailModel(draft ?? model), [draft, model]);
   const { items, groups, relationships } = detailModel;

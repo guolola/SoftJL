@@ -1,5 +1,4 @@
 // Assembles the Fastify API server, infrastructure adapters, and local startup compatibility.
-import { designDiagramKindSchema } from "@uml-platform/contracts";
 import { registerMcpModule } from "./mcp/server/register-mcp-module.js";
 import type { LlmTransport } from "./adapters/llm/llm-transport.js";
 import type { LlmScheduler } from "./adapters/llm/llm-scheduler.js";
@@ -93,10 +92,6 @@ export async function createApiServer(options?: {
         startedAt: RELEASE_STARTED_AT,
         nodeEnv: process.env.NODE_ENV ?? null,
         renderServiceBaseUrl,
-        features: {
-            supportsDesignTableDiagram: designDiagramKindSchema.safeParse("table").success,
-            supportsDocumentPreview: true,
-        },
     });
     registerApiRoutes({
         app,

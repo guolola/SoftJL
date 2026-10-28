@@ -3,7 +3,6 @@ import {
   artifactReadyRunEventSchema,
   reuseRequirementBaseline,
   snapshotInputFingerprint,
-  candidateRulesForDiagram,
   completedRunEventSchema,
   designTraceabilityTouchesDiagramKinds,
   designRunSnapshotSchema,
@@ -267,7 +266,7 @@ export async function completeOfflineDemoRequirementRun(
     snapshot.currentStage = "extract_rules";
   } else {
     // Frozen demos need real source rules; rule classification does not gate model availability.
-    const missingKinds = selectedKinds.filter(diagram => candidateRulesForDiagram(snapshot.rules, diagram).length === 0);
+    const missingKinds = snapshot.rules.length === 0 ? selectedKinds : [];
     const selected = new Set(selectedKinds.filter(diagram => !missingKinds.includes(diagram)));
     snapshot.models = snapshot.models.filter((model) =>
       selected.has(model.diagramKind),

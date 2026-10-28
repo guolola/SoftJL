@@ -252,7 +252,7 @@ test("analysis sections do not repeat unrelated global rules as direct mappings"
       },
       {
         diagramKind: "analysis",
-        modelId: "analysis:uc_login",
+        modelId: "custom-login-analysis",
         sourceUseCaseId: "uc_login",
         sourceUseCaseName: "登录",
         title: "登录分析",
@@ -272,7 +272,7 @@ test("analysis sections do not repeat unrelated global rules as direct mappings"
       section.table?.rows.some((row) => row.includes("无直接规则映射")),
   );
   assert.deepEqual(analysisTrace?.table?.rows, [
-    ["1", "无直接规则映射", "由 uc_login 的已确认用例事件流派生"],
+    ["1", "无直接规则映射", "由 uc_login 的用例事件流派生"],
   ]);
   assert.equal(
     analysisTrace?.table?.rows.flat().includes("R2"),

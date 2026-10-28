@@ -260,6 +260,7 @@ export const providerModelDiscoveryRequestSchema = z
   .object({
     baseUrl: z.string().trim().min(1),
     apiKey: z.string().trim().min(1),
+    existingModelIds: z.array(z.string().trim().min(1)).optional(),
   })
   .strict();
 export type ProviderModelDiscoveryRequest = z.infer<

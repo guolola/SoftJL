@@ -573,6 +573,7 @@ describe("TraceabilityMatrixPage", () => {
         designModels: {
           sequence: {
             diagramKind: "sequence",
+            sourceUseCaseId: "uc_submit_order",
             title: "用例实现设计",
             summary: "登录时序",
             notes: [],

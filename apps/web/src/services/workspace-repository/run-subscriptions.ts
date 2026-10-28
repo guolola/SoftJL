@@ -16,6 +16,7 @@ import { projectHeaders, requireProjectScope } from "./project-scope";
 import { snapshotErrorMessage } from "./run-payload";
 import { localizeRunFailure } from "../../shared/i18n/api-errors";
 import type { RunSubscriptionOptions } from "./types";
+import { notifyProjectRunsChanged } from "../../shared/lib/project-run-events";
 
 type RunSubscriptionInput<TSnapshot extends RestorableRunSnapshot> = RunSubscriptionOptions<TSnapshot> & {
   runId: string;
@@ -193,12 +194,19 @@ async function subscribeToProjectRun<TSnapshot extends RestorableRunSnapshot>(
   let cursor = 0;
   let pending: RunEventInput[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let terminalNotified = false;
   const flush = () => {
     clearTimeout(timer);
     timer = undefined;
     const batch = pending;
     pending = [];
-    if (!input.signal?.aborted) for (const event of batch) input.onEvent(event);
+    if (!input.signal?.aborted) for (const event of batch) {
+      if (!terminalNotified && ["completed", "failed", "cancelled"].includes(event.type)) {
+        terminalNotified = true;
+        notifyProjectRunsChanged(projectId, input.runId);
+      }
+      input.onEvent(event);
+    }
   };
   const onEvent = (event: RunEventInput) => {
     // The server replays persisted events on every connection; deliver each once.

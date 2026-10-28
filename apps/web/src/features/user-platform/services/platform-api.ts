@@ -2,7 +2,7 @@
 import type { ProjectRunSummary as PlatformRunSummary } from "../../../entities/run-history/project-run";
 import { readProjectRuns, invalidateProjectRunReads } from "../../../services/workspace-repository/project-run-reads";
 import { ApiClientError, buildApiUrl } from "../../../services/api-client/index";
-import { authMfaChallengeResponseSchema, authSessionResponseSchema, projectInvitationResponseSchema } from "@uml-platform/contracts";
+import { authMfaChallengeResponseSchema, authSessionResponseSchema, projectInvitationResponseSchema, providerCapacityResponseSchema } from "@uml-platform/contracts";
 import type {
   AuthMfaChallengeResponse,
   AuthSessionResponse,
@@ -13,7 +13,9 @@ import type {
   OnboardingTour,
   OnboardingTourOutcome,
   ProviderModelCapabilityMap,
+  ModelCapacityInput,
   ProviderModelDiscoveryResponse,
+  ProviderModelDiscoveryRequest,
   ProviderModelDiscoveryProgressEvent,
   ProjectInviteeSearchResponse,
   ProjectInvitationDto,
@@ -346,7 +348,7 @@ function flushProviderDiscoverySseChunk(
 }
 
 async function requestProviderModelDiscoveryStream(
-  input: { baseUrl: string; apiKey: string },
+  input: ProviderModelDiscoveryRequest,
   onEvent: (event: ProviderModelDiscoveryProgressEvent) => void,
 ) {
   const response = await fetchPlatformResponse(buildApiUrl("/api/provider-configs/discover-models/stream"), {
@@ -720,7 +722,7 @@ export const platformApi = {
       providerConfigs: PlatformProviderConfig[];
     }>(`/api/projects/${projectId}/provider-configs`);
   },
-  discoverProviderModels(input: { baseUrl: string; apiKey: string }) {
+  discoverProviderModels(input: ProviderModelDiscoveryRequest) {
     return requestJson<ProviderModelDiscoveryResponse>(
       "/api/provider-configs/discover-models",
       {
@@ -729,8 +731,19 @@ export const platformApi = {
       },
     );
   },
+  async getProviderCapacities(providerConfigId: string) {
+    return providerCapacityResponseSchema.parse(await requestJson<unknown>(
+      `/api/provider-configs/${encodeURIComponent(providerConfigId)}/capacities`,
+    ));
+  },
+  async setProviderCapacity(providerConfigId: string, modelId: string, capacity: ModelCapacityInput) {
+    return providerCapacityResponseSchema.shape.models.element.parse(await requestJson<unknown>(
+      `/api/provider-configs/${encodeURIComponent(providerConfigId)}/capacities`,
+      { method: "PUT", body: JSON.stringify({ modelId, capacity }) },
+    ));
+  },
   discoverProviderModelsStream(
-    input: { baseUrl: string; apiKey: string },
+    input: ProviderModelDiscoveryRequest,
     onEvent: (event: ProviderModelDiscoveryProgressEvent) => void,
   ) {
     return requestProviderModelDiscoveryStream(input, onEvent);

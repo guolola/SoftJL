@@ -126,7 +126,6 @@ export const traceabilityZh = {
           selectRow: "选择一行查看完整映射链路。",
         },
         rows: {
-          unnamedEventFlow: "未命名事件流",
           step: "步骤",
           stepWithOrder: "步骤 {{order}}",
           systemResponse: "系统响应：{{response}}",
@@ -269,7 +268,6 @@ export const traceabilityEn = {
           selectRow: "Select a row to view the full mapping chain.",
         },
         rows: {
-          unnamedEventFlow: "Unnamed event flow",
           step: "Step",
           stepWithOrder: "Step {{order}}",
           systemResponse: "System response: {{response}}",

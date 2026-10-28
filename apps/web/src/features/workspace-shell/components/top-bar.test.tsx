@@ -1780,7 +1780,10 @@ describe("TopBar", () => {
     expect(within(screen.getByRole("region", { name: "排队进度" })).getByText("界面关系")).toBeInTheDocument();
 
     completeRun();
-    await user.click(await screen.findByRole("button", { name: "我知道了" }));
+    const resultDialog = await screen.findByRole("dialog", { name: "部分生成成功" });
+    expect(resultDialog).toHaveTextContent("生成成功：用例模型、领域概念模型。");
+    expect(resultDialog).toHaveTextContent("生成失败：总体业务流程。");
+    await user.click(within(resultDialog).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(screen.getByRole("region", { name: "输出总结" })).toHaveTextContent("生成结果格式错误，请重试。"));
     const updatedStageSection = document.querySelector('[data-slot="ai-conversation"]');
     expect(updatedStageSection).toBeTruthy();

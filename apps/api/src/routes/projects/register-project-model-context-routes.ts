@@ -1,6 +1,7 @@
 // Exposes authorized model capabilities to both engineering and quick modeling composers.
 import { createHttpErrorResponse } from "../../server/http-error-response.js";
 import { z } from "zod";
+import { providerModelContextsSchema } from "@uml-platform/contracts";
 import type { FastifyInstance } from "fastify";
 import type { AuthStore } from "../../auth/in-memory-auth-store.js";
 import { requireProjectPermission, isProjectPermissionError } from "../../auth/guards.js";
@@ -11,6 +12,21 @@ import { standardContextBudget } from "../../adapters/llm/pi-provider.js";
 export function registerProjectModelContextRoutes(deps: {
   app: FastifyInstance; authStore: AuthStore; providerConfigs: ProviderConfigStore; modelCatalog?: ModelCatalog;
 }) {
+  deps.app.get("/api/projects/:projectId/model-contexts", async (request, reply) => {
+    const { projectId } = request.params as { projectId: string };
+    const context = await requireProjectPermission(request, reply, deps.authStore, projectId, "view_project");
+    if (isProjectPermissionError(context)) return context;
+    const query = z.object({ providerConfigId: z.string().min(1) }).safeParse(request.query);
+    if (!query.success) return reply.code(400).send(createHttpErrorResponse(reply));
+    const provider = await deps.providerConfigs.get(query.data.providerConfigId);
+    const visible = provider && (provider.scopeType === "system" || (provider.scopeType === "user" && provider.scopeId === context.user.id) || (provider.scopeType === "project" && provider.scopeId === projectId));
+    if (!visible || provider.status !== "active") return reply.code(404).send(createHttpErrorResponse(reply));
+    // Return only this authorized provider's configured choices; reading the cache never probes a model.
+    return providerModelContextsSchema.parse({ models: [...new Set([provider.defaultModel, ...provider.allowedModels])].filter(Boolean).map(model => {
+      const capacity = deps.modelCatalog?.resolve(provider.id, model, provider.baseUrl) ?? { context: null, output: null, source: "unknown" as const, matchedId: null, updatedAt: null };
+      return { model, capacity, contextBudget: standardContextBudget(capacity) };
+    }) });
+  });
   deps.app.get("/api/projects/:projectId/model-context", async (request, reply) => {
       const { projectId } = request.params as { projectId: string };
       const context = await requireProjectPermission(request, reply, deps.authStore, projectId, "view_project");

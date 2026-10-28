@@ -1,11 +1,22 @@
 // Checks cascading staleness without automatically regenerating unrelated models.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { invalidateDesignDependents, requirementOutputFingerprints } from "./design-freshness.js";
+import { designRequirementModelIds, invalidateDesignDependents, requirementOutputFingerprints } from "./design-freshness.js";
 import { designInputFingerprint, snapshotInputFingerprint } from "../fingerprints.js";
 import { modelFixture } from "../testing/model-fixtures.js";
 const kinds = ["sequence", "class", "component", "table", "deployment", "architecture", "navigation"];
 const state = { designModels: Object.fromEntries(kinds.map(kind => [kind, { diagramKind: kind, title: kind }])), designInputFingerprints: Object.fromEntries(kinds.map(kind => [kind, "fresh"])) };
+
+test("sequence dependency scope follows explicit use-case provenance instead of model ID text", () => {
+  const input = {
+    models: {
+      "analysis:target": { diagramKind: "analysis", modelId: "analysis:target", sourceUseCaseId: "other" },
+      "analysis:current": { diagramKind: "analysis", modelId: "analysis:current", sourceUseCaseId: "target" },
+    },
+    designModels: { sequence: { diagramKind: "sequence", sourceUseCaseId: "target" } },
+  };
+  assert.deepEqual(designRequirementModelIds(input, "sequence"), ["analysis:current"]);
+});
 
 test("sequence edits do not invalidate the independent class/navigation/database branches", () => {
   const next = invalidateDesignDependents(state, { ...state, designModels: { ...state.designModels, sequence: { diagramKind: "sequence", title: "edited" } } });

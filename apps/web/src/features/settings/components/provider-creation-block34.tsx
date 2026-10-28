@@ -71,6 +71,7 @@ export function ProviderCreationBlock34(props: Props) {
           {t('providerSettings.fetchModels')}
         </Button>
       </div>
+      <p className="text-muted-foreground text-xs">{t('providerSettings.incrementalDiscoveryHint')}</p>
       {props.discovering && <div className="space-y-1 text-xs text-muted-foreground" aria-live="polite"><Progress value={props.progress} aria-label={t('providerSettings.discoveryProgress')} /><p>{props.progressText}</p></div>}
     </div>
     <DialogFooter className="bg-muted/30 m-0 flex-col items-stretch justify-between gap-3 border-t px-4 py-4 sm:flex-row sm:items-center sm:px-6">

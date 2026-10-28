@@ -3,7 +3,6 @@ import {
   documentLibraryItemSchema,
   documentLibraryVersionItemSchema,
   type DocumentLibraryItem,
-  type DocumentLibraryVersionItem,
 } from "@uml-platform/contracts";
 import type { Queryable } from "../../db/transactions.js";
 import type {
@@ -58,18 +57,14 @@ function storageKeyForDocument(item: DocumentLibraryItem) {
 }
 
 function rowToDocumentItem(row: DocumentRecordRow) {
-  const workspaceId = row.workspace_id;
-  const fileName = row.file_name;
-  if (!workspaceId || !fileName) return null;
-
   return documentLibraryItemSchema.parse({
     id: row.id,
-    workspaceId,
+    workspaceId: row.workspace_id,
     projectId: row.project_id,
     createdByUserId: row.created_by_user_id,
     documentKind: row.document_kind,
     title: row.title,
-    fileName,
+    fileName: row.file_name,
     mimeType: row.mime_type,
     byteLength: row.byte_length,
     version: row.version,
@@ -81,17 +76,13 @@ function rowToDocumentItem(row: DocumentRecordRow) {
 }
 
 function rowToVersionItem(row: DocumentVersionRow) {
-  const workspaceId = row.workspace_id;
-  const fileName = row.file_name;
-  if (!workspaceId || !fileName) return null;
-
   return documentLibraryVersionItemSchema.parse({
     documentId: row.document_id,
-    workspaceId,
+    workspaceId: row.workspace_id,
     projectId: row.project_id,
     createdByUserId: row.created_by_user_id,
     version: row.version,
-    fileName,
+    fileName: row.file_name,
     mimeType: row.mime_type,
     byteLength: row.byte_length,
     sourceRunId: row.source_run_id,
@@ -221,9 +212,7 @@ async function listRows(
     ],
   );
 
-  return result.rows
-    .map(rowToDocumentItem)
-    .filter((item): item is DocumentLibraryItem => Boolean(item));
+  return result.rows.map(rowToDocumentItem);
 }
 
 export function createPostgresDocumentLibrary({
@@ -396,10 +385,7 @@ async function listAllDocuments(options?: {
       `,
       [documentId],
     );
-    const versions = result.rows
-      .map(rowToVersionItem)
-      .filter((item): item is DocumentLibraryVersionItem => Boolean(item));
-    return versions;
+    return result.rows.map(rowToVersionItem);
   }
 
   return {

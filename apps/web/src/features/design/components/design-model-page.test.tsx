@@ -513,6 +513,7 @@ describe("DesignModelPage", () => {
       models: [
         {
           diagramKind: "sequence",
+          sourceUseCaseId: "uc",
           title: "用例实现设计",
           summary: "动态行为",
           notes: [],

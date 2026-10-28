@@ -21,6 +21,7 @@ import { readStandardState, updateStandardState, recoverInterruptedStandardRun }
 import { interruptStandardRunMessages } from "../../runs/records/standard-run-messages.js";
 import { runStandardProject, renderStandardDiagram } from "../../runs/pipelines/standard/standard-project-pipeline.js";
 import { runStandardAgent } from "../../runs/pipelines/standard/standard-agent-pipeline.js";
+import { getPromptRuntimeStore } from "../../prompt-runtime/store.js";
 import type { StandardAgentExtensionOptions } from "../../runs/pipelines/standard/standard-agent-resources.js";
 import { prepareStandardAgentTurn } from "../../runs/pipelines/standard/standard-agent-turn.js";
 import { resolveStandardScopeAnswers } from "../../runs/pipelines/standard/standard-generation-scope.js";
@@ -238,7 +239,8 @@ export function registerStandardProjectRoutes(deps: {
     // Persist running before returning. Each completed diagram is saved independently; failures never erase its siblings.
     void (async () => {
       try {
-        const pipeline = { settings: resolution.providerSettings, transport, render: (artifact: Parameters<RenderClient>[0]) => deps.renderClient(artifact, controller.signal), save,
+        const promptVersions = await getPromptRuntimeStore().publishedSnapshot("standard");
+        const pipeline = { settings: resolution.providerSettings, transport, promptVersions, render: (artifact: Parameters<RenderClient>[0]) => deps.renderClient(artifact, controller.signal), save,
           publishDocument: deps.documentLibrary ? (state: StandardProjectState, kind: "requirementsSpec" | "softwareDesignSpec") => publishStandardDocument({ state, kind, projectId, userId: context.user.id, library: deps.documentLibrary!, render: deps.pngRenderClient, signal: controller.signal }) : undefined };
         const effectiveCommand = command.operation !== "resume" ? command
           : current.run!.work ? { operation: "resume" as const, targetIds: current.run!.work.ids, instruction: current.run!.work.instruction }

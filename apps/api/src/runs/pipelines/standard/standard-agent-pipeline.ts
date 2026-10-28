@@ -14,6 +14,7 @@ import { prepareStandardAgentTurn, standardUserMessageId } from "./standard-agen
 import { generateConversationSuggestions } from "./standard-conversation-suggestions.js";
 import { resolveStandardGenerationSelection } from "./standard-generation-scope.js";
 import { appendStandardGenerationResult } from "../../records/standard-run-messages.js";
+import { standardPrompt } from "../../../prompt-runtime/standard-runtime.js";
 
 export async function runStandardAgent(projectId: string, command: StandardCommand, initial: StandardProjectState,
   deps: StandardPipelineDependencies & StandardAgentExtensionOptions & { stream: StreamFn; signal: AbortSignal; capacity?: ModelCapacity }) {
@@ -44,7 +45,7 @@ export async function runStandardAgent(projectId: string, command: StandardComma
   modelRuntime.registerProvider(model.provider, { api: "openai-completions", baseUrl: model.baseUrl, apiKey: deps.settings.apiKey, models: [model] });
   await modelRuntime.setRuntimeApiKey(model.provider, deps.settings.apiKey);
   const settings = SettingsManager.inMemory({ compaction: { enabled: true, reserveTokens: Math.min(10000, Math.floor(model.contextWindow / 3)), keepRecentTokens: Math.min(12000, Math.floor(model.contextWindow / 4)) }, retry: { enabled: false }, enableSkillCommands: false });
-  const prompt = "你是本项目的快速建模助手。遵守随会话加载的专用 AGENTS.md；专业方法使用所列技能，当前项目事实由本轮上下文提供。";
+  const prompt = standardPrompt("standard.agent", deps.promptVersions);
   let calls = 0; let writes = Promise.resolve(); let writeFailure: unknown; let assistantId = ""; let partial = ""; let reasoning = ""; let lastSave = 0; let messageStartedAt = 0;
   const beforeToolCall = async () => {
     await writes; deps.signal.throwIfAborted(); if (writeFailure) throw writeFailure;
@@ -56,7 +57,7 @@ export async function runStandardAgent(projectId: string, command: StandardComma
       createStandardManagedSummaryExtension({ ...deps, save }, () => current),
       ...(deps.extensionFactories ?? []),
     ],
-  });
+  }, deps.promptVersions);
   const { session } = await createAgentSession({ cwd: manager.getCwd(), model, modelRuntime,
     noTools: "builtin", resourceLoader: loader, sessionManager: manager, settingsManager: settings, thinkingLevel: command.reasoning && model.reasoning ? "medium" : "off" });
   let firstTokenAt: number | undefined; let totalChunks = 0;
@@ -135,7 +136,7 @@ export async function runStandardAgent(projectId: string, command: StandardComma
     if (writeFailure) throw writeFailure;
     // Follow-ups are optional: an unavailable auxiliary call must never turn a successful reply into a failed run.
     const replyId = current.conversation?.at(-1)?.id;
-    const suggestions = await generateConversationSuggestions(current, model, deps.stream, deps.signal, command.language).catch(() => []);
+    const suggestions = await generateConversationSuggestions(current, model, deps.stream, deps.signal, command.language, deps.promptVersions).catch(() => []);
     deps.signal.throwIfAborted();
     if (suggestions.length) await save(state => {
       const latest = state.conversation?.at(-1);

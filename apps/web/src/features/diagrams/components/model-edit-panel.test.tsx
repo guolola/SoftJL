@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ModelEditPanel } from "./model-edit-panel";
+import { modelFixture } from "@uml-platform/contracts/testing";
 
 const contextModel = {
   diagramKind: "context",
@@ -49,6 +50,22 @@ function ContextEditor({
 }
 
 describe("ModelEditPanel context mode", () => {
+  it("does not label a generated model as an invalid draft for relationship guidance", () => {
+    const model = modelFixture("requirements", "usecase");
+    if (model.diagramKind !== "usecase") throw new Error("fixture");
+    model.useCases[0]!.primaryActorId = "actor";
+    model.relationships = [];
+    render(<ContextEditor section="elements" initialModel={model as unknown as Record<string, unknown>} onCommit={async () => undefined} />);
+    expect(screen.queryByText(/草稿尚未通过校验|保留上次有效结果|没有对应的参与关系/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("still reports malformed model fields without claiming there is a previous result", () => {
+    render(<ContextEditor section="elements" initialModel={{ ...contextModel, title: "" }} onCommit={async () => undefined} />);
+    expect(screen.getByRole("status")).toHaveTextContent("模型字段不符合当前格式");
+    expect(screen.queryByText(/上次有效结果/)).not.toBeInTheDocument();
+  });
+
   it("keeps the fixed system singleton and requires a valid source rule for new people", async () => {
     const user = userEvent.setup();
     const onCommit = vi.fn<(draft: Record<string, unknown>) => Promise<void>>(async () => undefined);

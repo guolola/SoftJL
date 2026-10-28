@@ -58,15 +58,15 @@ test("design fingerprint changes when an activity relationship endpoint changes"
   );
 });
 
-test("26 sources canonicalize to 15 across generation, retry and replay, while real changes still stale", () => {
+test("analysis sources from removed use cases do not affect current design fingerprints", () => {
   const usecase = { diagramKind: "usecase", title: "当前用例", actors: [], useCases: Array.from({ length: 9 }, (_, index) => ({ id: `uc-${index}` })), relationships: [] };
   const active = [usecase, ...Array.from({ length: 9 }, (_, index) => ({ diagramKind: "analysis", modelId: `analysis:uc-${index}`, sourceUseCaseId: `uc-${index}` })), ...Array.from({ length: 5 }, (_, index) => ({ ...activityModel(), modelId: `activity-${index}` }))];
-  const legacy = [...active, ...Array.from({ length: 11 }, (_, index) => ({ diagramKind: "analysis", modelId: `analysis:UC-${index}` }))];
-  assert.equal(legacy.length, 26);
-  assert.equal(activeRequirementModels(legacy).length, 15);
-  assert.deepEqual(activeRequirementModels(legacy), active);
-  assert.equal(designInputFingerprint(legacy, []), designInputFingerprint(active, []));
+  const withRetiredSources = [...active, ...Array.from({ length: 11 }, (_, index) => ({ diagramKind: "analysis", modelId: `analysis:UC-${index}`, sourceUseCaseId: `UC-${index}` }))];
+  assert.equal(withRetiredSources.length, 26);
+  assert.equal(activeRequirementModels(withRetiredSources).length, 15);
+  assert.deepEqual(activeRequirementModels(withRetiredSources), active);
+  assert.equal(designInputFingerprint(withRetiredSources, []), designInputFingerprint(active, []));
   const changed = structuredClone(active); changed[1] = { ...changed[1], title: "人工改变分析" };
   assert.notEqual(designInputFingerprint(changed, []), designInputFingerprint(active, []));
-  assert.equal(legacy.length, 26);
+  assert.equal(withRetiredSources.length, 26);
 });

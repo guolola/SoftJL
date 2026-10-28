@@ -5,6 +5,25 @@ import { i18n } from "../../../shared/i18n/i18n";
 import { createAuthSessionResponse, createProjectInvitationResponse } from "@test/fixtures/contract-fixtures";
 
 describe("platformApi", () => {
+  it("reads and persists personal model settings through the owner API with current response validation", async () => {
+    const capacity = { context: 64000, output: 4096, source: "user", matchedId: null, updatedAt: null,
+      capabilities: { reasoning: false, vision: true, toolCall: null } };
+    const model = { ...capacity, modelId: "model", reference: { ...capacity, source: "models.dev" }, overrides: { context: 64000, output: 4096 } };
+    let response: unknown = { syncedAt: null, stale: false, error: null, models: [model] };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json(response));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(platformApi.getProviderCapacities("personal/1")).resolves.toMatchObject({ models: [model] });
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/api/provider-configs/personal%2F1/capacities");
+    response = model;
+    const update = { context: 64000, output: null, capabilities: { reasoning: false, vision: true } };
+    await expect(platformApi.setProviderCapacity("personal/1", "model", update)).resolves.toMatchObject(model);
+    const init = fetchMock.mock.calls[1][1]!;
+    expect(init.method).toBe("PUT"); expect(init.credentials).toBe("include");
+    expect(JSON.parse(String(init.body))).toEqual({ modelId: "model", capacity: update });
+    response = { ...model, source: "modelpedia" };
+    await expect(platformApi.setProviderCapacity("personal/1", "model", update)).rejects.toThrow();
+  });
+
   it("requires current invitation responses without alternate member or empty success payloads", async () => {
     const response = createProjectInvitationResponse();
     const fetchMock = vi.fn(async () => Response.json(response));

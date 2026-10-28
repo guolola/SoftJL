@@ -7,13 +7,23 @@ const image = new SimpleImageAttachmentAdapter();
 const text = new SimpleTextAttachmentAdapter();
 const isImage = (file: File) => ["image/png", "image/jpeg", "image/webp"].includes(file.type);
 const isText = (file: File) => ["text/plain", "text/markdown"].includes(file.type) || /\.(txt|md|markdown)$/i.test(file.name);
+export function modelingSubmissionError(text: string, attachments: StandardAttachment[], quoteText = ""): string | undefined {
+  if (attachments.length > 4) return i18n.t("standardProject.chat.attachmentCount");
+  if (text.length + quoteText.length + attachments.reduce((sum, file) => sum + (file.type === "document" ? file.text.length : 0), 0) > 60000) {
+    return i18n.t("standardProject.chat.attachmentTextLength");
+  }
+}
+function fileError(file: File, vision: boolean): string | undefined {
+  if (!isText(file) && !isImage(file)) return i18n.t("standardProject.chat.attachmentTypes");
+  if (isImage(file) && !vision) return i18n.t("standardProject.chat.visionRequired");
+  if (file.size > (isImage(file) ? 1_000_000 : 240_000)) return i18n.t(isImage(file) ? "standardProject.chat.attachmentImageSize" : "standardProject.chat.attachmentTextSize");
+  if (isText(file) && file.size === 0) return i18n.t("standardProject.chat.attachmentEmpty");
+}
 export function createConversationAttachments(vision: boolean): AttachmentAdapter {
   return {
     accept: ".txt,.md,.markdown,text/plain,text/markdown,image/png,image/jpeg,image/webp",
     async add({ file }) {
-      const error = !isText(file) && !isImage(file) ? i18n.t("standardProject.chat.attachmentTypes")
-        : isImage(file) && !vision ? i18n.t("standardProject.chat.visionRequired")
-        : file.size > (isImage(file) ? 1_000_000 : 240_000) ? i18n.t("standardProject.chat.attachmentSize") : "";
+      const error = fileError(file, vision);
       if (error) return { id: crypto.randomUUID(), type: isImage(file) ? "image" : "document", name: file.name, file, contentType: file.type,
         status: { type: "incomplete", reason: "error", message: error } };
       return (isImage(file) ? image : text).add({ file });
@@ -21,8 +31,8 @@ export function createConversationAttachments(vision: boolean): AttachmentAdapte
     remove: async () => {},
     async send(attachment, options) {
       const picture = isImage(attachment.file);
-      if (picture && !vision) throw new Error(i18n.t("standardProject.chat.visionRequired"));
-      if (picture && attachment.file.size > 1_000_000) throw new Error(i18n.t("standardProject.chat.attachmentSize"));
+      const error = fileError(attachment.file, vision);
+      if (error) throw new Error(error);
       // An image rejected while metadata was loading may be retried after selecting a visual model.
       // Revalidate its size here as capability errors take precedence during the initial add.
       const retryVision = attachment.status.type === "incomplete" && picture && vision
@@ -45,6 +55,8 @@ export function toProjectAttachment(attachment: CompleteAttachment): StandardAtt
   }
   const value = content.filter(part => part.type === "text").map(part => part.text).join("\n");
   const body = value.replace(/^<attachment[^>]*>\n/, "").replace(/\n<\/attachment>$/, "");
+  if (!body.trim()) throw new Error(i18n.t("standardProject.chat.attachmentEmpty"));
+  if (body.length > 60000) throw new Error(i18n.t("standardProject.chat.attachmentTextLength"));
   return standardAttachmentSchema.parse({ id: attachment.id, name: attachment.name, type: "document", contentType: /\.(md|markdown)$/i.test(attachment.name) ? "text/markdown" : "text/plain", text: body });
 }
 export function toAssistantAttachment(attachment: StandardAttachment): CompleteAttachment {

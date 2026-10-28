@@ -2,13 +2,14 @@
 import { DefaultResourceLoader, type SettingsManager } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { readStandardModelingResource, standardModelingResourceRoot, standardModelingSkillPaths } from "./standard-modeling-knowledge.js";
+import type { PublishedSnapshot } from "../../../prompt-runtime/store.js";
 
 // Reuse Pi's options directly: installed packages can export a factory or supply a local extension/package path.
 export type StandardAgentExtensionOptions = Pick<ConstructorParameters<typeof DefaultResourceLoader>[0], "extensionFactories" | "additionalExtensionPaths">;
 
 export async function loadStandardAgentResources(cwd: string, settingsManager: SettingsManager, systemPrompt: string,
-  options: StandardAgentExtensionOptions) {
-  const agents = (await readStandardModelingResource("AGENTS.md")).toString("utf8");
+  options: StandardAgentExtensionOptions, snapshot: PublishedSnapshot = {}) {
+  const agents = (await readStandardModelingResource("AGENTS.md", standardModelingResourceRoot, snapshot)).toString("utf8");
   const loader = new DefaultResourceLoader({
     cwd, agentDir: cwd, settingsManager, systemPrompt, appendSystemPrompt: [],
     noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,

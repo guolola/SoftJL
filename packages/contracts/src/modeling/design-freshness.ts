@@ -55,7 +55,7 @@ export function designRequirementModelIds(input: object, id: string, visited = n
   const sourceCase = object(model).sourceUseCaseId;
   const direct = Object.entries(models).filter(([key, item]) => {
     if (!(designRequirementSources[kind] ?? []).includes(kindOf(key, item) as DiagramKind)) return false;
-    return kindOf(key, item) !== "analysis" || !sourceCase || object(item).sourceUseCaseId === sourceCase || modelId(key, item) === `analysis:${sourceCase}`;
+    return kindOf(key, item) !== "analysis" || !sourceCase || object(item).sourceUseCaseId === sourceCase;
   }).map(([key]) => key);
   const inherited = Object.entries(designs).filter(([key, item]) =>
     (designDependencies[kind] ?? []).includes(kindOf(key, item)))
@@ -126,7 +126,7 @@ export function invalidateDesignDependents(previousState: object, nextState: obj
   for (const [id, value] of Object.entries(afterModels)) {
     const model = object(value);
     if (model.diagramKind !== "analysis" || !(id in beforeModels) || !equal(beforeModels[id], value)) continue;
-    const useCaseId = String(model.sourceUseCaseId ?? modelId(id, value).replace(/^analysis:/u, ""));
+    const useCaseId = String(model.sourceUseCaseId);
     if (!equal(analysisSourceContext(beforeModels, useCaseId), analysisSourceContext(afterModels, useCaseId))) affected.add(id);
   }
   const changedRequirements = new Set(affected);

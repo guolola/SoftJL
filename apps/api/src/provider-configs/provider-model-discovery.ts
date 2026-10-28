@@ -358,6 +358,7 @@ async function mapLimit<T, R>(
 export async function discoverOpenAiCompatibleModelCapabilities({
   apiBaseUrl,
   apiKey,
+  existingModelIds = [],
   clientFactory,
   probeConcurrency = 4,
   probeTimeoutMs = 30_000,
@@ -367,6 +368,7 @@ export async function discoverOpenAiCompatibleModelCapabilities({
 }: {
   apiBaseUrl: string;
   apiKey: string;
+  existingModelIds?: readonly string[];
   clientFactory?: OpenAiCompatibleClientFactory;
   probeConcurrency?: number;
   probeTimeoutMs?: number;
@@ -392,7 +394,10 @@ export async function discoverOpenAiCompatibleModelCapabilities({
     compatibleCount: 0,
     unknownStrictCount: 0,
   };
+  // Saved models keep their original capability records; only new IDs may incur probe calls.
+  const existingIds = new Set(existingModelIds);
   const candidates = rawModels.flatMap((model) => {
+    if (existingIds.has(model.id)) return [];
     const classification = classifyProviderModelName(model.id);
     if (classification.kind === "exclude") {
       summary.excludedByNameCount += 1;

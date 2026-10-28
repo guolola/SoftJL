@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getHistoryOperation, hasHistoryRetryFailure, historyDiagramLabel, historyRetryTargets } from "./project-history-details";
 import { createDesignRunSnapshot, createRunSnapshot } from "../../../../tests/fixtures/contract-fixtures";
 import type { DiagramModelSpec } from "@uml-platform/contracts";
+import { feasibilityRunSnapshotSchema } from "@uml-platform/contracts";
 import { i18n } from "../../../shared/i18n/i18n";
 import type { PlatformRunSummary } from "../services/platform-api";
 
@@ -18,6 +19,17 @@ describe("getHistoryOperation", () => {
   ] as const)("classifies %j as %s", (fields, operation) => {
     expect(getHistoryOperation({ operationType: "unknown", runId: "run", status: "failed", ...fields } as PlatformRunSummary)).toBe(operation);
   });
+});
+
+it("omits completed feasibility artifacts from the retry confirmation", () => {
+  const snapshot = feasibilityRunSnapshotSchema.parse({
+    operationType: "feasibility_analysis", outputManifest: [{ kind: "context", id: "context" }],
+    runId: "partial", projectId: "project", selectedArtifacts: ["context", "implementation"],
+    providerSettings: { providerConfigId: "provider", model: "model" }, rules: [], requirementBaseline: null,
+    inputs: {}, contextModel: null, contextPlantUml: null, contextSvg: null, implementationPlan: null,
+    contextFingerprint: null, implementationFingerprint: null, currentStage: null, status: "failed", error: null,
+  });
+  expect(historyRetryTargets({ runId: "partial", status: "failed", operationType: "feasibility_analysis" }, snapshot, i18n.t)).toEqual(["实现方案"]);
 });
 
 it.each([false, true])("lists only failed use-case instances for retry (design=%s)", (design) => {

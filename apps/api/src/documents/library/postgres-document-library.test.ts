@@ -313,7 +313,20 @@ test("postgres document library uses current columns and never reconstructs miss
     db.versions.length = 0;
     assert.deepEqual(await library.listDocumentVersions(saved.workspaceId, saved.id), []);
     db.records.get(saved.id)!.file_name = null;
-    assert.equal(await library.getDocument(saved.workspaceId, saved.id), null);
-    assert.deepEqual(await library.listAllDocuments(), []);
+    await assert.rejects(library.getDocument(saved.workspaceId, saved.id), /fileName/);
+    await assert.rejects(library.listAllDocuments(), /fileName/);
+  } finally { await rm(rootDir, { recursive: true, force: true }); }
+});
+
+test("postgres document versions reject obsolete metadata instead of hiding the row", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "uml-postgres-documents-"));
+  try {
+    const { db, library } = await createLibrary(rootDir);
+    const saved = await library.saveGeneratedDocument({ workspaceId: "workspace-current", documentKind: "requirementsSpec",
+      sourceRunId: "run-current", fileName: "document.docx", buffer: Buffer.from("docx") });
+    db.versions[0]!.workspace_id = null;
+    const before = structuredClone(db.versions);
+    await assert.rejects(library.listDocumentVersions(saved.workspaceId, saved.id), /workspaceId/);
+    assert.deepEqual(db.versions, before);
   } finally { await rm(rootDir, { recursive: true, force: true }); }
 });

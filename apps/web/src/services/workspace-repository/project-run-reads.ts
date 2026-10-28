@@ -2,6 +2,7 @@
 import type { ProjectRunSummary } from "../../entities/run-history/project-run";
 import { requestJson } from "../api-client/index";
 import { withProjectHeaders } from "./project-scope";
+import { PROJECT_RUNS_CHANGED_EVENT } from "../../shared/lib/project-run-events";
 
 type ProjectRunsResponse = { projectId: string; generatedAt?: string; runs: ProjectRunSummary[] };
 type Entry = { response?: ProjectRunsResponse; loadedAt: number; pending?: Promise<ProjectRunsResponse> };
@@ -17,6 +18,9 @@ export function invalidateProjectRunReads(projectId?: string) {
 if (typeof window !== "undefined") {
   window.addEventListener("uml-auth-session-changed", () => invalidateProjectRunReads());
   window.addEventListener("uml-generation-completed", () => invalidateProjectRunReads());
+  window.addEventListener(PROJECT_RUNS_CHANGED_EVENT, (event) => {
+    invalidateProjectRunReads((event as CustomEvent<{ projectId: string }>).detail.projectId);
+  });
 }
 
 export function readProjectRuns(projectId: string, options: { maxAgeMs?: number } = {}): Promise<ProjectRunsResponse> {

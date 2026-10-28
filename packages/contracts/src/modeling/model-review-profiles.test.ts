@@ -1,7 +1,7 @@
 // Exercises a distinct supported structural rule for every stage/model review profile.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getStageModelSchemas, validateModelInput, type ModelingStage } from "./model-semantics.js";
+import { getStageModelSchemas, validateModelInput, validateModelStructure, type ModelingStage } from "./model-semantics.js";
 import { getModelReviewProfile } from "./model-review-profiles.js";
 import { modelFixture } from "../testing/model-fixtures.js";
 
@@ -49,4 +49,12 @@ test("class multiplicities reject reversed intervals while recursive type compos
   assert.ok(validateModelInput(model, "design").some((issue) => issue.code === "multiplicity"));
   model.relationships[0].targetMultiplicity = "0..*"; model.relationships[0].targetId = "order";
   assert.deepEqual(validateModelInput(model, "design"), []);
+});
+
+test("schema-only editing respects ordinary sequence contracts without weakening professional sources", () => {
+  const model = modelFixture("design", "sequence");
+  if (model.diagramKind !== "sequence") throw new Error("fixture");
+  const { sourceUseCaseId: _source, ...ordinary } = model;
+  assert.deepEqual(validateModelStructure(ordinary, "design", "standard"), []);
+  assert.ok(validateModelStructure(ordinary, "design").some(issue => issue.path === "sourceUseCaseId"));
 });

@@ -10,6 +10,7 @@ import { registerAuthRoutes } from "../routes/auth/register-auth-routes.js";
 import { registerCaseRoutes } from "../routes/cases/register-case-routes.js";
 import { registerDocumentRoutes } from "../routes/documents/register-document-routes.js";
 import { registerStandardProjectRoutes } from "../routes/standard/register-standard-project-routes.js";
+import { registerProviderModelCapacityRoutes } from "../routes/provider-configs/register-provider-model-capacity-routes.js";
 import { createModelCatalog } from "./model-catalog.js";
 import { registerProjectRoutes } from "../routes/projects/register-project-routes.js";
 import { registerDashboardRoutes } from "../routes/dashboard/register-dashboard-routes.js";
@@ -79,6 +80,7 @@ export function registerApiRoutes({ app, healthPayload, versionPayload, authStor
         return Boolean(member && hasProjectPermission(member.role, permission));
     };
     const modelCatalog = createModelCatalog(app, nodeEnv);
+    registerProviderModelCapacityRoutes({ app, authStore, providerConfigs, catalog: modelCatalog });
     registerStandardProjectRoutes({ app, runs, authStore, llmTransport, llmScheduler, renderClient, pngRenderClient, modelCatalog, providerConfigs, providerUsageTracker, generationUsage, analyticsStore, documentLibrary });
     registerHealthRoutes({ app, healthPayload, versionPayload });
     registerInboxRoutes({ app, authStore });

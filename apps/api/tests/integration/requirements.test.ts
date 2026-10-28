@@ -367,7 +367,7 @@ test("api sends json_schema for Claude models and completes", async () => {
           return;
         }
 
-        if (prompt.includes("生成需求阶段 UML 结构化模型")) {
+        if (runContext?.stage === "generate_models") {
           sawGenerateModels = true;
           assert.equal(responseFormat?.type, expectedResponseFormat(runContext));
         }

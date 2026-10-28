@@ -12,6 +12,7 @@ afterEach(() => {
   );
   for (const key of presetKeys) {
     document.documentElement.style.removeProperty(`--${key}`);
+    document.documentElement.style.removeProperty(`--inverse-${key}`);
   }
   document.documentElement.classList.remove('dark');
 });
@@ -74,6 +75,10 @@ it('applies and restores the Classic Indigo preset in light and dark modes', asy
     .toBe(themePresets['classic-indigo'].styles.light.primary));
   expect(document.documentElement.style.getPropertyValue('--input-background'))
     .toBe(themePresets['classic-indigo'].styles.light['input-background']);
+  for (const key of ['primary', 'primary-foreground', 'background', 'foreground'] as const) {
+    expect(document.documentElement.style.getPropertyValue(`--inverse-${key}`))
+      .toBe(themePresets['classic-indigo'].styles.dark[key]);
+  }
   expect(document.documentElement.style.getPropertyValue('--destructive')).toBe('');
   expect(localStorage.getItem('admincn-ui-theme-preset')).toBe('classic-indigo');
 
@@ -96,11 +101,16 @@ it('applies and restores the Classic Indigo preset in light and dark modes', asy
     .toBe(themePresets['classic-indigo'].styles.dark['primary-foreground']);
   expect(document.documentElement.style.getPropertyValue('--input-background'))
     .toBe(themePresets['classic-indigo'].styles.dark['input-background']);
+  for (const key of ['primary', 'primary-foreground', 'background', 'foreground'] as const) {
+    expect(document.documentElement.style.getPropertyValue(`--inverse-${key}`))
+      .toBe(themePresets['classic-indigo'].styles.light[key]);
+  }
   expect(document.documentElement.style.getPropertyValue('--destructive')).toBe('');
 
   await userEvent.click(screen.getByRole('button', { name: 'default' }));
   await waitFor(() => expect(document.documentElement.style.getPropertyValue('--primary')).toBe(''));
   expect(document.documentElement.style.getPropertyValue('--input-background')).toBe('');
+  expect(document.documentElement.style.getPropertyValue('--inverse-primary')).toBe('');
   expect(localStorage.getItem('admincn-ui-theme-preset')).toBeNull();
 });
 

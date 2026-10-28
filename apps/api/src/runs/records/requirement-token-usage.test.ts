@@ -10,7 +10,7 @@ import { createQueuedRunFromSource } from "./run-actions.js";
 import { createRunRecordStore, type RunRecord } from "./run-record-store.js";
 import { emptyRequirementTokenUsage, withRequirementTokenUsage } from "./requirement-token-usage.js";
 
-const capacity: ModelCapacity = { context: 1000000, output: 8192, source: "modelpedia", matchedId: "model", updatedAt: null };
+const capacity: ModelCapacity = { context: 1000000, output: 8192, source: "models.dev", matchedId: "model", updatedAt: null };
 
 test("engineering usage persists the latest actual frame once per scheduled call without adding cache tokens twice", async () => {
   const record: RunRecord = { snapshot: createEmptySnapshot("usage", "需求", [], [], { tokenUsage: emptyRequirementTokenUsage("model", capacity) }), events: [], listeners: new Set(), terminal: false };

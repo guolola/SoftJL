@@ -3,12 +3,12 @@ import { validateSequenceLifecycle } from "./sequence-lifecycle.js";
 import { contractFieldSchema, unknownContractFields } from "./model-json-schema.js";
 import { useCaseParticipationGaps } from "./usecase-participation.js";
 import {
-  diagramModelSpecSchema, designDiagramModelSpecSchema, activityDiagramSpecSchema, contextDiagramSpecSchema,
-  type DiagramModelSpec, type DesignDiagramModelSpec, type TableDiagramSpec,
+  diagramModelSpecSchema, designDiagramModelSpecSchema, activityDiagramSpecSchema, contextDiagramSpecSchema, sequenceDiagramSpecSchema,
+  type DiagramModelSpec, type DesignDiagramModelSpec, type SequenceDiagramSpec, type TableDiagramSpec,
 } from "./models.js";
 
 export type ModelingStage = "feasibility" | "requirements" | "design";
-export type AnyDiagramModel = DiagramModelSpec | DesignDiagramModelSpec;
+export type AnyDiagramModel = DiagramModelSpec | DesignDiagramModelSpec | SequenceDiagramSpec;
 export interface ModelDiagnostic {
   modelId: string;
   diagramKind: string;
@@ -124,10 +124,12 @@ function identifierReferencePaths(model: AnyDiagramModel, declaration: string, i
   return paths;
 }
 
-export function validateModelSemantics(model: AnyDiagramModel, stage: ModelingStage): ModelDiagnostic[] {
+export function validateModelSemantics(model: AnyDiagramModel, stage: ModelingStage, scope: "professional" | "standard" = "professional"): ModelDiagnostic[] {
   const issues: ModelDiagnostic[] = [];
   const report = (code: string, path: string, message: string, elementId?: string) => issues.push({ modelId: "modelId" in model ? model.modelId ?? model.diagramKind : model.diagramKind, diagramKind: model.diagramKind, code, path, message, elementId, severity: "error" });
-  const schema = getStageModelSchema(stage, model.diagramKind);
+  // Quick-modeling sequences describe business interactions without a professional use-case baseline.
+  const schema = scope === "standard" && stage === "design" && model.diagramKind === "sequence"
+    ? sequenceDiagramSpecSchema : getStageModelSchema(stage, model.diagramKind);
   if (!schema) { report("stage-model", "diagramKind", "当前阶段不允许此模型类型"); return issues; }
   for (const path of unknownContractFields(schema, model)) report("unsupported-field", path, "此阶段模型不支持该字段，请明确修复，不会静默删除");
   const parsed = schema.safeParse(model);
@@ -394,13 +396,13 @@ export class ModelSemanticError extends Error {
   constructor(public readonly diagnostics: ModelDiagnostic[]) { super(diagnostics.map((issue) => `[${issue.code}] ${issue.responsePath ?? issue.path}: ${issue.message}`).join("\n")); this.name = "ModelSemanticError"; }
 }
 
-export function assertValidModel(model: AnyDiagramModel, stage: ModelingStage): void {
-  const diagnostics = validateModelSemantics(model, stage);
+export function assertValidModel(model: AnyDiagramModel, stage: ModelingStage, scope: "professional" | "standard" = "professional"): void {
+  const diagnostics = validateModelSemantics(model, stage, scope);
   if (diagnostics.some((issue) => issue.severity === "error")) throw new ModelSemanticError(diagnostics);
 }
 
 /** Schema-only boundary for generation and its saved upstream inputs. */
-export function validateModelStructure(value: unknown, stage: ModelingStage): ModelDiagnostic[] {
+export function validateModelStructure(value: unknown, stage: ModelingStage, scope: "professional" | "standard" = "professional"): ModelDiagnostic[] {
   const kind = value && typeof value === "object" && "diagramKind" in value ? String(value.diagramKind) : "unknown";
   const modelId = value && typeof value === "object" && "modelId" in value && typeof value.modelId === "string" ? value.modelId : kind;
   const ownerId = (path: string) => {
@@ -412,7 +414,8 @@ export function validateModelStructure(value: unknown, stage: ModelingStage): Mo
     }
     return id;
   };
-  const schema = getStageModelSchema(stage, kind);
+  const schema = scope === "standard" && stage === "design" && kind === "sequence"
+    ? sequenceDiagramSpecSchema : getStageModelSchema(stage, kind);
   const parsed = schema?.safeParse(value);
   if (!parsed?.success) return (parsed?.error.issues ?? [{ path: ["diagramKind"], message: "当前阶段不支持此模型" }]).map((issue) => ({ modelId, diagramKind: kind, code: "contract", path: issue.path.join("."), elementId: ownerId(issue.path.join(".")), message: issue.message, severity: "error", expectedSchema: schema ? contractFieldSchema(schema, value, issue.path.join(".")) : { type: "string", enum: getStageModelSchemas(stage).map(item => item.shape.diagramKind.value) } }));
   const unknown = schema ? unknownContractFields(schema, value).map((path): ModelDiagnostic => ({ modelId, diagramKind: kind, code: "unsupported-field", path, elementId: ownerId(path), message: "此阶段模型不支持该字段", severity: "error" })) : [];

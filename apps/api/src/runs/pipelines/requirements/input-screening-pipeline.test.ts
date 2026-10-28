@@ -3,7 +3,7 @@ import { strictTestModelCapability } from "../../../../tests/fixtures/providers/
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProviderSettings, RunSnapshot } from "@uml-platform/contracts";
-import type { LlmTransport } from "../../../adapters/llm/llm-transport.js";
+import { ProviderHttpError, type LlmTransport } from "../../../adapters/llm/llm-transport.js";
 import type { RenderClient } from "../../../adapters/render/render-client.js";
 import { createEmptySnapshot } from "../../records/snapshots.js";
 import { buildRequirementBaseline } from "../../baselines/requirement-baseline.js";
@@ -198,6 +198,28 @@ test("ignored labels cannot restore rules and model rules need an accepted sourc
   }), renderClient), /sourceFragment/);
   assert.deepEqual(record.snapshot.rules, []);
   assert.equal(record.snapshot.inputScreening?.ignoredSpans.length, 1);
+});
+
+test("screening preserves provider failures before extraction", async () => {
+  for (const [status, code] of [
+    [402, "PLATFORM_PROVIDER_BALANCE_INSUFFICIENT"],
+    [401, "PLATFORM_PROVIDER_AUTH_FAILED"],
+    [429, "PLATFORM_PROVIDER_RATE_LIMITED"],
+    [503, "PLATFORM_PROVIDER_UNAVAILABLE"],
+  ] as const) {
+    let calls = 0;
+    const transport: LlmTransport = {
+      async *streamChatCompletion() {
+        calls += 1;
+        throw new ProviderHttpError({ status, detail: null, message: `LLM request failed with HTTP ${status}` });
+      },
+    };
+    await assert.rejects(
+      runStagePipeline(recordFor("学生可以预约座位。"), providerSettings, transport, renderClient),
+      (error) => getRunError(error)?.code === code && getRunError(error)?.category === "platform_provider",
+    );
+    assert.equal(calls, 1);
+  }
 });
 
 test("screening timeout fails closed before extraction", async () => {

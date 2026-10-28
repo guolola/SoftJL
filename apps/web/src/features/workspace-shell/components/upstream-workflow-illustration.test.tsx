@@ -98,7 +98,7 @@ describe("UpstreamWorkflowIllustration", () => {
   });
 
   it("shows real sources without requiring absent rule types", () => {
-    const { container } = renderIllustration({ stage: "requirement", target: "usecase", targetLabel: "用例模型", rules: [createRule({ id: "r2", type: "functional" as const })], ruleMode: "mapped", resolveState: () => "ready" });
+    const { container } = renderIllustration({ stage: "requirement", target: "usecase", targetLabel: "用例模型", rules: [createRule({ id: "r2", type: "functional" as const })], resolveState: () => "ready" });
     const items = within(screen.getByRole("list", { name: "直接上游输入" })).getAllByRole("listitem");
     expect(items).toHaveLength(1);
     expect(items[0]).toHaveTextContent("功能需求 1已关联");
@@ -108,13 +108,13 @@ describe("UpstreamWorkflowIllustration", () => {
   });
 
   it("preserves stale input status while a model needs regeneration", () => {
-    renderIllustration({ stage: "requirement", target: "function", targetLabel: "功能结构图", rules: [createRule({ type: "functional" as const })], ruleMode: "mapped", resolveState: () => "stale" });
+    renderIllustration({ stage: "requirement", target: "function", targetLabel: "功能结构图", rules: [createRule({ type: "functional" as const })], resolveState: () => "stale" });
     expect(screen.getByText("功能需求 1").closest("li")).toHaveAttribute("data-state", "stale");
     expect(screen.queryByText("暂无业务规则")).not.toBeInTheDocument();
   });
 
   it("shows missing mapped inputs without mapping review counts", () => {
-    renderIllustration({ stage: "requirement", target: "function", targetLabel: "功能结构图", rules: [], ruleMode: "mapped", resolveState: () => "missing" });
+    renderIllustration({ stage: "requirement", target: "function", targetLabel: "功能结构图", rules: [], resolveState: () => "missing" });
     expect(within(screen.getByRole("list", { name: "直接上游输入" })).getAllByRole("listitem")[0]).toHaveAttribute("data-state", "missing");
     expect(screen.queryByText("暂无该模型对应类型的需求")).not.toBeInTheDocument();
     expect(screen.queryByText(/元素关联待审核/)).not.toBeInTheDocument();

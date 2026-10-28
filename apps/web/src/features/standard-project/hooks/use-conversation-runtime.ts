@@ -4,10 +4,11 @@ import { useTranslation } from "react-i18next";
 import { ExportedMessageRepository, MessageNotSentError, useExternalStoreRuntime, WebSpeechDictationAdapter, WebSpeechSynthesisAdapter, type ThreadMessage, type ThreadMessageLike, type AppendMessage } from "@assistant-ui/react";
 import { standardQuoteSchema, type StandardProjectState, type StandardConversationMessage, type ModelContextSettings } from "@uml-platform/contracts";
 import type { StandardCommand } from "../services/standard-api";
-import { createConversationAttachments, toAssistantAttachment, toProjectAttachment } from "../lib/conversation-attachments";
+import { createConversationAttachments, toAssistantAttachment, toProjectAttachment } from "../../../shared/lib/modeling-attachments";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
 import { clearConversationDraft } from "./use-conversation-draft";
 import { conversationDate } from "../lib/conversation-presentation";
+import { modelingSubmissionError } from "../../../shared/lib/modeling-attachments";
 
 export type SendConversationCommand = (command: StandardCommand) => Promise<boolean | undefined> | undefined;
 const convert = (message: StandardConversationMessage): ThreadMessageLike => ({ id: message.id, role: message.role,
@@ -48,8 +49,9 @@ export function useConversationRuntime({ state, projectId, disabled, canCancel, 
       const text = message.content.filter(part => part.type === "text").map(part => part.text).join("\n");
       if (disabled || (!text.trim() && !message.attachments?.length)) throw new MessageNotSentError();
       const files = message.attachments?.map(toProjectAttachment); const quote = standardQuoteSchema.safeParse(message.metadata.custom.quote);
-      if ((files?.length ?? 0) > 4 || text.length + (quote.success ? quote.data.text.length : 0) + (files ?? []).reduce((sum, file) => sum + (file.type === "document" ? file.text.length : 0), 0) > 60000) {
-        floatingAlert.error(t("standardProject.chat.attachmentSize")); throw new MessageNotSentError();
+      const error = modelingSubmissionError(text, files ?? [], quote.success ? quote.data.text : "");
+      if (error) {
+        floatingAlert.error(error); throw new MessageNotSentError();
       }
       if (files?.some(file => file.type === "image") && modelContext?.capacity.capabilities?.vision !== true) {
         floatingAlert.error(t("standardProject.chat.visionRequired")); throw new MessageNotSentError();

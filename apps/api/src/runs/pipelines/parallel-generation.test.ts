@@ -1100,6 +1100,10 @@ test("requirement pipeline retries analysis with a compact prompt after provider
       assert.match(prompt, /精简重试/);
       assert.match(prompt, /diagramKind="analysis"/);
       assert.match(prompt, /sourceUseCaseId="uc_borrow"/);
+      assert.match(prompt, /完整用例模型是唯一直接上游/);
+      assert.match(prompt, /包括 participants、messages、fragments、branches、activations/);
+      assert.match(prompt, /步骤没有独立 id 时引用所属事件流 id/);
+      assert.doesNotMatch(prompt, /或步骤编号|messages 建议 4-10 条|首次来源默认采信/);
       yield JSON.stringify({
         models: [
           {

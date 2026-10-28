@@ -1,8 +1,9 @@
-// Shares the platform's selected provider/model with the homepage composer and Modelpedia context data.
+// Shares the platform's selected provider/model with the homepage composer and Models.dev context data.
 import { useEffect, useState } from "react";
 import { loadUserSettings, USER_SETTINGS_CHANGED_EVENT } from "../../../shared/lib/user-settings";
 import type { ModelContextSettings } from "@uml-platform/contracts";
 import { standardApi } from "../services/standard-api";
+import { useProviderModelContexts } from "../../../services/workspace-repository/use-provider-model-contexts";
 
 export function useConversationSettings(projectId: string) {
   const [settings, setSettings] = useState(loadUserSettings);
@@ -23,5 +24,6 @@ export function useConversationSettings(projectId: string) {
     })();
     return () => { active = false; };
   }, [identity, projectId, settings.providerConfigId, settings.defaultModel]);
-  return { settings, modelContext: resolved.identity === identity ? resolved.context : undefined };
+  const modelContexts = useProviderModelContexts(projectId, settings.providerConfigId);
+  return { settings, modelContext: resolved.identity === identity ? resolved.context : undefined, modelContexts };
 }

@@ -280,13 +280,9 @@ export function coerceSequenceModelForUseCase(
     (model): model is SequenceDesignModel => model.diagramKind === "sequence",
   );
   const expectedModelId = sequenceModelIdForUseCase(useCase);
-  const selected =
-    sequenceModels.find(
-      (model) =>
-        model.sourceUseCaseId === useCase.id || model.modelId === expectedModelId,
-    ) ?? sequenceModels[0];
+  const selected = sequenceModels.find((model) => model.sourceUseCaseId === useCase.id);
   if (!selected) {
-    throw new Error(`${useCase.name}用例实现设计生成结果为空`);
+    throw new Error(`${useCase.name}用例实现设计生成结果缺少对应的用例来源`);
   }
 
   const model: SequenceDesignModel = {
@@ -339,7 +335,7 @@ export async function generateDesignModelsWithRepair(
   const designKinds = new Set(selectedDiagrams.flatMap(kind => [...designDependencies[kind] ?? [], ...(kind === "class" ? ["sequence"] : [])]));
   const boundRequirements = structuredClone(requirementModels.filter(model => requirementKinds.has(model.diagramKind)))
     .filter(model => !options.sourceUseCaseId || model.diagramKind !== "analysis" ||
-      model.sourceUseCaseId === options.sourceUseCaseId || model.modelId === `analysis:${options.sourceUseCaseId}`)
+      model.sourceUseCaseId === options.sourceUseCaseId)
     .map(model => options.sourceUseCaseId && model.diagramKind === "usecase" ? scopeUseCaseModelForPrompt(model, options.sourceUseCaseId) : model);
   const boundDesigns = structuredClone((options.upstreamDesignModels ?? []).filter(model => designKinds.has(model.diagramKind)));
   const upstream = [...boundRequirements, ...boundDesigns];
@@ -422,22 +418,6 @@ function replaceDesignSvgArtifact(
   return [...artifacts.filter((artifact) => designArtifactKey(artifact) !== key), patch];
 }
 
-function existingSequenceModelsForUseCases(
-  models: DesignDiagramModelSpec[],
-  useCaseModel: DiagramModelSpec,
-) {
-  const sequences = models.filter(
-    (model): model is Extract<DesignDiagramModelSpec, { diagramKind: "sequence" }> =>
-      model.diagramKind === "sequence",
-  );
-  try {
-    validateUseCaseSequenceCoverage(sequences, useCaseModel);
-    return sequences;
-  } catch {
-    return [];
-  }
-}
-
 function sourceRequirementKindsForDesign(
   diagramKind: Exclude<DesignDiagramKind, "sequence">,
 ): DiagramKind[] {
@@ -460,8 +440,7 @@ function findRequirementModelsForDesign(
 function analysisModelsForUseCase(models: DiagramModelSpec[], useCaseId: string) {
   return models.filter((model) => {
     if (model.diagramKind !== "analysis") return false;
-    const modelId = model.modelId ?? "";
-    return model.sourceUseCaseId === useCaseId || modelId === `analysis:${useCaseId}`;
+    return model.sourceUseCaseId === useCaseId;
   });
 }
 
@@ -569,7 +548,7 @@ export async function runDesignStagePipeline(
   }
 
   let sequenceModels = useCaseModel
-    ? existingSequenceModelsForUseCases(models, useCaseModel)
+    ? models.filter((model): model is SequenceDesignModel => model.diagramKind === "sequence")
     : [];
   const shouldGenerateSequence = selectedDesignDiagrams.has("sequence");
   const sequenceTargets = new Set(snapshot.sequenceTargetUseCaseIds ?? []);
@@ -737,9 +716,12 @@ export async function runDesignStagePipeline(
       });
     }
     models = mergeDesignModels(models, sequenceModels);
+    const targetedSequenceIds = new Set(models
+      .filter((model) => model.diagramKind === "sequence" && sequenceTargets.has(model.sourceUseCaseId))
+      .map((model) => model.modelId ?? model.diagramKind));
     designModelTraceability = [
       ...designModelTraceability.filter(
-        (entry) => entry.source.diagramKind !== "sequence" || (sequenceTargets.size > 0 && !sequenceTargets.has((entry.source.modelId ?? "").replace(/^sequence:/, ""))),
+        (entry) => entry.source.diagramKind !== "sequence" || (sequenceTargets.size > 0 && !targetedSequenceIds.has(entry.source.modelId ?? "")),
       ),
       ...sequenceResults.flatMap((result) => result?.designModelTraceability ?? []),
     ];

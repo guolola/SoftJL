@@ -16,7 +16,7 @@ test("api rejects plaintext provider connection tests by default", async () => {
   let fetchCalls = 0;
   globalThis.fetch = (async (input) => {
     // Public catalog refreshes are independent of the provider access guard.
-    if (new URL(input instanceof Request ? input.url : String(input)).hostname === "api.modelpedia.dev") {
+    if (new URL(input instanceof Request ? input.url : String(input)).hostname === "models.dev") {
       return new Response("catalog unavailable", { status: 503 });
     }
     fetchCalls += 1;
@@ -65,7 +65,7 @@ test("api rejects plaintext provider connection tests in production", async () =
   let fetchCalls = 0;
   globalThis.fetch = (async (input) => {
     // Production startup may refresh public metadata without calling the provider.
-    if (new URL(input instanceof Request ? input.url : String(input)).hostname === "api.modelpedia.dev") {
+    if (new URL(input instanceof Request ? input.url : String(input)).hostname === "models.dev") {
       return new Response("catalog unavailable", { status: 503 });
     }
     fetchCalls += 1;

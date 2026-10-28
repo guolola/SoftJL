@@ -7,6 +7,7 @@ import { useContext, useMemo, type ComponentPropsWithoutRef, type ReactNode } fr
 import { cva, type VariantProps } from "class-variance-authority";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { cn } from "./utils";
+import { Badge } from "./badge";
 import {
   Popover,
   PopoverContent,
@@ -429,6 +430,7 @@ function ModelSelectorItem({
 }: ModelSelectorItemProps) {
   const { value, setValue, setOpen } = useModelSelectorContext();
   const isSelected = value === model.id;
+  const text = useModelSelectorText();
 
   return (
     <CommandItem
@@ -457,6 +459,12 @@ function ModelSelectorItem({
             {model.description && (
               <span className="text-muted-foreground truncate text-xs">
                 {model.description}
+              </span>
+            )}
+            {(model.capabilities?.vision === true || model.capabilities?.reasoning === true) && (
+              <span className="mt-1 flex flex-wrap gap-1">
+                {model.capabilities?.vision === true && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{text("Vision")}</Badge>}
+                {model.capabilities?.reasoning === true && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{text("Reasoning")}</Badge>}
               </span>
             )}
           </span>

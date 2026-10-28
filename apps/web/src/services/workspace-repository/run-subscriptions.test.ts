@@ -15,6 +15,7 @@ import {
   readRunSnapshot,
 } from "./run-subscriptions";
 import { feasibilityInputsSchema, feasibilityRunSnapshotSchema } from "@uml-platform/contracts";
+import { PROJECT_RUNS_CHANGED_EVENT } from "../../shared/lib/project-run-events";
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -129,6 +130,26 @@ function documentSnapshot(
 }
 
 describe("run subscriptions", () => {
+  it.each(["completed", "failed", "cancelled"] as const)("announces history changes once when SSE finishes as %s", async (status) => {
+    const listener = vi.fn();
+    window.addEventListener(PROJECT_RUNS_CHANGED_EVENT, listener);
+    const snapshot = requirementSnapshot({ status });
+    const error = { code: "RUN_RENDER_FAILED" as const, message: "render failed", category: "render" as const, retryable: true };
+    const terminal: RunEventInput = status === "completed" ? { type: "completed", snapshot }
+      : status === "failed" ? { type: "failed", stage: "render_svg", error }
+        : { type: "cancelled", stage: "render_svg", message: "任务已取消" };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("/events")
+      ? eventStreamResponse([terminal]) : jsonResponse(snapshot)));
+    try {
+      const subscription = subscribeToRequirementRunEvents({ runId: snapshot.runId, projectId: "project-a", onEvent: vi.fn() });
+      if (status === "failed") await expect(subscription).rejects.toThrow();
+      else await subscription;
+      expect(listener).toHaveBeenCalledOnce();
+      expect((listener.mock.calls[0]![0] as CustomEvent).detail).toEqual({ projectId: "project-a", runId: snapshot.runId });
+    } finally {
+      window.removeEventListener(PROJECT_RUNS_CHANGED_EVENT, listener);
+    }
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();

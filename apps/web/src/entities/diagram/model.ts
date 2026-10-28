@@ -190,7 +190,8 @@ export function getModelTaskLabel(id: string, options: {
       : options.t?.("generation.taskKinds.unknown") ?? "项目生成任务";
   if (kind !== "sequence" && kind !== "analysis") return label;
   const scopedModel = model?.diagramKind === "sequence" || model?.diagramKind === "analysis" ? model : undefined;
-  const useCaseId = scopedModel?.sourceUseCaseId ?? id.slice(kind.length + 1);
+  // Pending tasks have scoped IDs before a model exists; saved models must carry their own source.
+  const useCaseId = model ? scopedModel?.sourceUseCaseId : id.slice(kind.length + 1);
   const sources = options.design ? options.requirementModels : options.models;
   const useCase = sources?.flatMap((source) => source.diagramKind === "usecase" ? source.useCases : [])
     .find((candidate) => candidate.id === useCaseId);

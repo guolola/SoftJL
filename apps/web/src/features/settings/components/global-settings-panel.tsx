@@ -8,11 +8,12 @@ import type {
   ProviderModelCapabilityMap,
   ProviderModelDiscoveryProgressEvent,
 } from "@uml-platform/contracts";
-import { providerModelCapabilitySchema } from "@uml-platform/contracts";
+import { providerModelCapabilityMapSchema, providerModelCapabilitySchema } from "@uml-platform/contracts";
 import { Button } from "../../../shared/ui/button";
 import { floatingAlert } from "../../../shared/ui/floating-alert";
 import { Dialog } from "../../../shared/ui/dialog";
 import { ProviderConfigTable } from "./provider-config-table";
+import { ProviderModelSettingsDialog } from "./provider-model-settings-dialog";
 import { SettingRow } from './block37-preferences';
 import { ProviderCreationBlock34, type ProviderCreationForm } from './provider-creation-block34';
 import {
@@ -155,6 +156,7 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [providerDialogMode, setProviderDialogMode] = useState<"create" | "edit">("create");
   const [editingProviderId, setEditingProviderId] = useState("");
+  const [modelSettingsProvider, setModelSettingsProvider] = useState<PlatformProviderConfig>();
   const [providerForm, setProviderForm] = useState<ProviderCreationForm>({
     ...EMPTY_PROVIDER_CREATION_FORM,
   });
@@ -281,7 +283,7 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
     [discoveredModels],
   );
   const canDiscoverModels = Boolean(providerForm.baseUrl.trim() && providerForm.apiKey.trim());
-  // Discovery already verifies every returned model; reuse that result for any selected catalog entry.
+  // Discovery validates new models; saved models retain their existing capability records.
   const canSaveProvider = Boolean(
     providerForm.name.trim() && canDiscoverModels && modelCatalogSource === "discovered" &&
       discoveredModelIds.includes(providerForm.defaultModel.trim()),
@@ -356,9 +358,14 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
       floatingAlert.error(t("providerSettings.invalidBaseUrl"));
       return;
     }
+    // Keep saved and already discovered models even when the upstream directory drops them.
+    const existingModels = Array.from(new Map([
+      ...discoveredModels,
+      ...(editingProvider ? providerConfigToDiscoveredModels(editingProvider) : []),
+    ].map(model => [model.id, model])).values());
+    const existingIds = new Set(existingModels.map(model => model.id));
     providerBusyRef.current = true;
     setDiscoveringModels(true);
-    setDiscoveredModels([]);
     setModelCatalogSource("");
     setDiscoveryProgressText(t("providerSettings.connectingCatalog"));
     setDiscoveryProgressValue(4);
@@ -376,13 +383,14 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
         {
           baseUrl: providerForm.baseUrl.trim(),
           apiKey: providerForm.apiKey.trim(),
+          existingModelIds: Array.from(existingIds),
         },
         (event) => {
           setDiscoveryProgressText(providerDiscoveryProgressText(event, t));
           setDiscoveryProgressValue(providerDiscoveryProgressValue(event));
           if (event.type === "completed") {
             streamState.completed = true;
-            models = event.result.models.filter((model) => model.id.trim());
+            models = event.result.models.filter((model) => model.id.trim() && !existingIds.has(model.id));
           }
           if (event.type === "error") {
             streamState.failure = {
@@ -416,10 +424,11 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
       if (!streamState.completed) throw new Error("Provider discovery stream ended without a result");
       // A completed response must contain actual capability records before it can enable saving.
       discoveredModelsToCapabilities(models);
-      setDiscoveredModels(models);
+      const allModels = [...existingModels, ...models];
+      setDiscoveredModels(allModels);
       setModelCatalogSource("discovered");
       setProviderForm((current) => {
-        const modelIds = models.map((model) => model.id.trim()).filter(Boolean);
+        const modelIds = allModels.map((model) => model.id.trim()).filter(Boolean);
         const currentDefault = current.defaultModel.trim();
         return {
           ...current,
@@ -428,13 +437,13 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
             : modelIds[0] ?? "",
         };
       });
-      if (models.length === 0) {
+      if (allModels.length === 0) {
         floatingAlert.error(t("providerSettings.noModels"));
         return;
       }
       floatingAlert.success(t("providerSettings.discoveredModels", { count: models.length }));
     } catch (error) {
-      setDiscoveredModels([]);
+      setDiscoveredModels(existingModels);
       setModelCatalogSource("");
       setDiscoveryProgressValue(100);
       const message = localizeCaughtFailure(error, t("providerSettings.discoveryFailed"));
@@ -471,7 +480,12 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
         baseUrl: providerForm.baseUrl.trim(),
         defaultModel: providerForm.defaultModel.trim(),
         allowedModels: discoveredModelIds,
-        modelCapabilities: discoveredModelsToCapabilities(discoveredModels),
+        // Do not normalize or replace saved capability records while adding new models.
+        modelCapabilities: {
+          ...discoveredModelsToCapabilities(discoveredModels.filter(model =>
+            !editingProvider || !getProviderAllowedModels(editingProvider).includes(model.id))),
+          ...providerModelCapabilityMapSchema.parse(editingProvider?.modelCapabilities ?? {}),
+        },
       };
       const saved =
         providerDialogMode === "edit" && editingProvider
@@ -582,7 +596,9 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
     <>
       <section aria-label={t("providerSettings.title")} className="space-y-4">
         <SettingRow label={t("providerSettings.title")} hint={t("providerSettings.description")}><Button type="button" size="sm" variant="outline" onClick={openCreateProviderDialog}><Plus className="size-4" />{t("providerSettings.addProvider")}</Button></SettingRow>
-        <ProviderConfigTable configs={providerConfigs} currentUserId={currentUserId} selectedId={settings.providerConfigId} selectedModel={resolvedDefaultModel} loading={providerLoading} busy={deletingProvider} onEnable={enableProvider} onEdit={openEditProviderDialog} onDelete={config => void deleteProvider(config)} />
+        <ProviderConfigTable configs={providerConfigs} currentUserId={currentUserId} selectedId={settings.providerConfigId} selectedModel={resolvedDefaultModel} loading={providerLoading} busy={deletingProvider} onEnable={enableProvider} onEdit={openEditProviderDialog} onEditModels={config => {
+          if (config.scopeType === "user" && config.scopeId === currentUserId && config.status === "active" && !deletingProvider) setModelSettingsProvider(config);
+        }} onDelete={config => void deleteProvider(config)} />
         <p className="text-xs text-muted-foreground">{t("providerSettings.singleEnabledHint")}</p>
         {providerStatus && <p role="status" className="text-xs text-muted-foreground">{providerStatus}</p>}
       </section>
@@ -601,6 +617,7 @@ export const GlobalSettingsPanel = forwardRef<GlobalSettingsActions, GlobalSetti
       <Dialog open={providerDialogOpen} onOpenChange={handleProviderDialogOpenChange}>
         <ProviderCreationBlock34 mode={providerDialogMode} canSave={canSaveProvider} form={providerForm} models={discoveredModels} busy={discoveringModels || savingProvider} discovering={discoveringModels} saving={savingProvider} progressText={discoveryProgressText} progress={discoveryProgressValue} onField={updateProviderCreationField} onDiscover={() => void discoverModels()} onSave={() => void saveProviderConfig()} onCancel={() => handleProviderDialogOpenChange(false)} />
       </Dialog>
+      {modelSettingsProvider && <ProviderModelSettingsDialog key={modelSettingsProvider.id} provider={modelSettingsProvider} currentUserId={currentUserId} onClose={() => setModelSettingsProvider(undefined)} />}
     </>
   );
 });

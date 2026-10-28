@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import {
   systemNoticeDtoSchema,
+  systemNoticeContentBlockSchema,
   type SystemNoticeContentBlock,
   type SystemNoticeCreateRequest,
   type SystemNoticeStatus,
@@ -19,7 +20,7 @@ type SystemNoticeRow = {
   title: string;
   notice_type: string;
   icon: string | null;
-  content_blocks: SystemNoticeContentBlock[] | string | null;
+  content_blocks: SystemNoticeContentBlock[];
   status: SystemNoticeStatus;
   published_at: string | Date | null;
   created_at: string | Date;
@@ -30,23 +31,16 @@ function toIsoString(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function parseContentBlocks(
-  value: SystemNoticeRow["content_blocks"],
-): SystemNoticeContentBlock[] {
-  if (!value) return [];
-  if (typeof value === "string") {
-    return JSON.parse(value) as SystemNoticeContentBlock[];
-  }
-  return value;
-}
-
 function mapNoticeRow(row: SystemNoticeRow): SystemNoticeRecord {
-  return systemNoticeDtoSchema.omit({ unread: true }).parse({
+  // Persisted JSONB must already contain the current block array; read paths do not fill old rows.
+  return systemNoticeDtoSchema.omit({ unread: true }).extend({
+    contentBlocks: systemNoticeContentBlockSchema.array(),
+  }).parse({
     id: row.id,
     title: row.title,
     type: row.notice_type,
     icon: row.icon,
-    contentBlocks: parseContentBlocks(row.content_blocks),
+    contentBlocks: row.content_blocks,
     status: row.status,
     publishedAt: row.published_at ? toIsoString(row.published_at) : null,
     createdAt: toIsoString(row.created_at),

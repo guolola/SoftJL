@@ -209,24 +209,16 @@ function sourceUseCaseIdsFromModel(useCaseModel: WorkspaceRecord["models"]["usec
   return new Set(useCaseModel.useCases.map((useCase) => useCase.id));
 }
 
-function sourceUseCaseIdFromScopedModel(model: unknown, prefix: "analysis" | "sequence") {
-  if (!model || typeof model !== "object") return "";
-  const record = model as Record<string, unknown>;
-  const explicit =
-    typeof record.sourceUseCaseId === "string" ? record.sourceUseCaseId.trim() : "";
-  if (explicit) return explicit;
-  const modelId = typeof record.modelId === "string" ? record.modelId.trim() : "";
-  return modelId.startsWith(`${prefix}:`) ? modelId.slice(prefix.length + 1) : "";
-}
-
 function scopedModelMatchesCurrentUseCases(
   model: unknown,
-  prefix: "analysis" | "sequence",
   currentUseCaseIds: Set<string>,
 ) {
+  if (!model || typeof model !== "object") return false;
+  const record = model as Record<string, unknown>;
+  const sourceUseCaseId = typeof record.sourceUseCaseId === "string" ? record.sourceUseCaseId.trim() : "";
+  if (!sourceUseCaseId) return false;
   if (currentUseCaseIds.size === 0) return true;
-  const sourceUseCaseId = sourceUseCaseIdFromScopedModel(model, prefix);
-  return Boolean(sourceUseCaseId && currentUseCaseIds.has(sourceUseCaseId));
+  return currentUseCaseIds.has(sourceUseCaseId);
 }
 
 export function deriveSidebarDiagramState(input: SidebarDiagramStateInput) {
@@ -246,7 +238,7 @@ export function deriveSidebarDiagramState(input: SidebarDiagramStateInput) {
           Boolean(model) &&
           model.diagramKind === diagram &&
           (diagram !== "analysis" ||
-            scopedModelMatchesCurrentUseCases(model, "analysis", currentUseCaseIds)),
+            scopedModelMatchesCurrentUseCases(model, currentUseCaseIds)),
       );
       return acc;
     },
@@ -258,7 +250,7 @@ export function deriveSidebarDiagramState(input: SidebarDiagramStateInput) {
         (model) =>
           model.diagramKind === diagram &&
           (diagram !== "sequence" ||
-            scopedModelMatchesCurrentUseCases(model, "sequence", currentUseCaseIds)),
+            scopedModelMatchesCurrentUseCases(model, currentUseCaseIds)),
       );
       return acc;
     },

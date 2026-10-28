@@ -14,6 +14,20 @@ function codes(action: () => unknown) {
   }
 }
 
+test("visual evidence requires a complete bound image marker, while textual evidence stays strict", () => {
+  const marker = '【图片附件 1："流程.png"】';
+  const imageUnits = [{ id: "u1", text: marker, startOffset: 0, endOffset: marker.length, imageAttachmentIndex: 0 }];
+  assert.doesNotThrow(() => validate(marker, [rule("用户最多预约3次。", marker)], imageUnits));
+  assert.ok(codes(() => validate(marker, [rule("用户预约。", "流程.png")], imageUnits)).includes("source-image-reference-invalid"));
+  assert.ok(codes(() => validate(marker, [], imageUnits)).includes("source-unit-missing"));
+  // Typing a lookalike marker never grants the privileges of a real image source.
+  assert.ok(codes(() => validate(marker, [rule("用户最多预约3次。", marker)])).includes("source-fact-changed"));
+  const source = marker + "\n用户最多预约2次。";
+  const units = [...imageUnits, ...splitRequirementInput(source).slice(1)];
+  assert.ok(codes(() => validate(source, [rule("用户最多预约3次。", source)], units)).includes("source-image-reference-invalid"));
+  assert.ok(codes(() => validate(source, [rule("用户预约。", marker), rule("用户最多预约3次。", "用户最多预约2次。", "r2")], units)).includes("source-fact-changed"));
+});
+
 test("requires canonical fields, unique IDs and a nonempty complete collection", () => {
   const source = "用户提交预约。";
   for (const raw of [[rule(source)], { rules: [] }, { rules: [{ ...rule(source), sourceFragment: undefined }] },

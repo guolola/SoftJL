@@ -162,7 +162,7 @@ for (const reasoning of [true, false]) for (const supported of [true, false]) te
   const app = Fastify();
   t.after(() => app.close());
   const catalog = new ModelCatalog("unused-model-catalog.json");
-  catalog.resolve = () => ({ context: 128000, output: 8192, source: "modelpedia", matchedId: "test-model", updatedAt: null,
+  catalog.resolve = () => ({ context: 128000, output: 8192, source: "models.dev", matchedId: "test-model", updatedAt: null,
     capabilities: { vision: false, reasoning: supported, toolCall: true } });
   const calls: (boolean | undefined)[] = [];
   registerTestRoutes({ app, modelCatalog: catalog, onReasoning: value => calls.push(value), outputs: [contextOutput] });

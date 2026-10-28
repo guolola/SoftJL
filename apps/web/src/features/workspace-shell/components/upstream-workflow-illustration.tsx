@@ -47,9 +47,8 @@ type UpstreamWorkflowIllustrationProps<S extends UpstreamStage> = {
   targetColorIndex: number;
   /** Tooltip on the target node, e.g. the localized source summary. */
   targetHint?: string;
-  /** Candidate rules before generation or evidenced references from the current model. */
+  /** Current rules supplied to requirement model generation. */
   rules?: readonly RequirementRule[];
-  ruleMode?: "mapped";
   resolveState: (input: UpstreamInput) => UpstreamInputState;
   className?: string;
 };
@@ -64,12 +63,12 @@ export function UpstreamWorkflowIllustration<S extends UpstreamStage>({
   targetColorIndex,
   targetHint,
   rules,
-  ruleMode,
   resolveState,
   className,
 }: UpstreamWorkflowIllustrationProps<S>) {
   const { t } = useTranslation();
   const reduceMotion = useReducedMotion();
+  const hasRuleInputs = stage === "requirement" && target !== "analysis";
   const separator = t("workflowIllustration.separator");
   // Baselines remain generation dependencies, but the illustration only shows concrete source inputs.
   const nodes = directUpstreamInputs(stage, target).filter(input => input.kind !== "baseline").flatMap((input) => {
@@ -94,9 +93,9 @@ export function UpstreamWorkflowIllustration<S extends UpstreamStage>({
         Icon: upstreamInputIcon(input, kind),
         colorIndex: upstreamInputColorIndex(input, kind),
         state: nodeState,
-        stateLabel: input.kind === "rules" && ruleMode && nodeState === "ready" ? t(`requirementSemantics.${ruleMode}Badge`) : t(`workflowIllustration.states.${nodeState}`),
+        stateLabel: input.kind === "rules" && hasRuleInputs && nodeState === "ready" ? t("requirementSemantics.mappedBadge") : t(`workflowIllustration.states.${nodeState}`),
         optional,
-        tone: optional && nodeState === "missing" ? OPTIONAL_MISSING_TONE : input.kind === "rules" && ruleMode === "mapped" && nodeState === "ready" ? STATE_TONE.planned : STATE_TONE[nodeState],
+        tone: optional && nodeState === "missing" ? OPTIONAL_MISSING_TONE : input.kind === "rules" && hasRuleInputs && nodeState === "ready" ? STATE_TONE.planned : STATE_TONE[nodeState],
       };
     });
   });
@@ -136,7 +135,7 @@ export function UpstreamWorkflowIllustration<S extends UpstreamStage>({
     >
       {/* Keyboard and screen-reader users hear the dependency summary when the inspected card changes. */}
       <p className="sr-only" aria-live="polite">{summary}</p>
-      {ruleMode && <figcaption className="mb-3 text-center text-xs text-muted-foreground">{t("requirementSemantics.mappedHint")}</figcaption>}
+      {hasRuleInputs && <figcaption className="mb-3 text-center text-xs text-muted-foreground">{t("requirementSemantics.mappedHint")}</figcaption>}
       <div
         className="flex min-w-0 flex-col items-center md:flex-row md:justify-center"
         style={{ "--upstream-flow-height": `${height}px` } as CSSProperties}

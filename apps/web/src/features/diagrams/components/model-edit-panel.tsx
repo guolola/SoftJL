@@ -1,5 +1,5 @@
 // Renders the editable diagram model panel, including element, relation, and delete workflows.
-import { validateModelInput, type ModelingStage } from "@uml-platform/contracts";
+import { validateModelStructure, type ModelingStage } from "@uml-platform/contracts";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { StudioPagination } from "../../../shared/ui/studio-data-table";
@@ -83,6 +83,7 @@ export function ModelEditPanel({
   sourceRuleOptions = [],
   readOnly = false,
   stage = "requirements",
+  modelingScope = "professional",
   showSourceReferences = true,
   retainEditorsOnFailure = false,
   commitError,
@@ -98,6 +99,7 @@ export function ModelEditPanel({
   retainEditorsOnFailure?: boolean;
   commitError?: string;
   stage?: ModelingStage;
+  modelingScope?: "professional" | "standard";
   visibleSection?: "all" | "elements" | "relationships";
   focusSection?: "elements" | "relationships" | null;
   sourceRuleOptions?: Array<{ id: string; label: string }>;
@@ -148,6 +150,8 @@ export function ModelEditPanel({
   }, [focusSection, visibleSection]);
 
   if (!draft) return null;
+
+  const structureIssues = validateModelStructure(draft, stage, modelingScope);
 
   const editorDraft = elementEditor?.draft ?? relationEditor?.draft ?? draft;
   const setEditorDraft = (
@@ -494,7 +498,7 @@ export function ModelEditPanel({
     <>
       <div className="space-y-8">
         {commitError && !elementDialogOpen && !relationDialogOpen && !deleteDialogOpen && <p role="alert" className="text-sm text-destructive">{commitError}</p>}
-        {!readOnly && validateModelInput(draft, stage).length > 0 ? <div role="status" className="rounded border border-amber-500 p-3 text-sm"><p>草稿尚未通过校验，请补齐后保存。当前图保留上次有效结果。</p><ul>{validateModelInput(draft, stage).map((issue, index) => <li key={index}>{issue.elementId ?? issue.path}：{issue.message}</li>)}</ul></div> : null}
+        {!readOnly && structureIssues.length > 0 ? <div role="status" className="rounded border border-amber-500 p-3 text-sm"><p>模型字段不符合当前格式，请检查以下内容后保存。</p><ul>{structureIssues.map((issue, index) => <li key={index}>{issue.elementId ?? issue.path}：{issue.message}</li>)}</ul></div> : null}
         {draft.diagramKind === "table" ? <p className="text-sm">表间关系由表的外键约束生成，请在表编辑中维护主键、唯一约束和复合外键。</p> : null}
         {visibleSection !== "relationships" ? <div ref={elementsSectionRef} tabIndex={-1} aria-label={t("diagramLists.elements.section")} className="scroll-mt-4 space-y-3 outline-none"><ModelElementListSection
           elementSearch={elementSearch}

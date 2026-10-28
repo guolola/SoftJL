@@ -1,5 +1,5 @@
 // Exercises the selector shared by both composers, including the sole-model case and permission guards.
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
 import { afterEach, expect, it, vi } from "vitest";
@@ -51,4 +51,19 @@ it("locks model and reasoning changes when read-only while retaining their curre
   await user.click(reasoning);
   expect(onReasoningChange).not.toHaveBeenCalled();
   expect(onValueChange).not.toHaveBeenCalled();
+});
+
+it("shows only confirmed vision and reasoning badges for each choice inside the list", async () => {
+  const user = userEvent.setup();
+  render(<Harness models={[
+    { id: "both", name: "Both", capabilities: { vision: true, reasoning: true } },
+    { id: "vision", name: "Vision only", capabilities: { vision: true, reasoning: false } },
+    { id: "unknown", name: "Unknown", capabilities: { vision: null, reasoning: null } },
+  ]} value="unknown" />);
+  expect(screen.queryByText("Vision", { exact: true })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("combobox"));
+  const both = screen.getByRole("option", { name: /Both/ });
+  expect(within(both).getByText("Vision")).toBeVisible(); expect(within(both).getByText("Reasoning")).toBeVisible();
+  expect(within(screen.getByRole("option", { name: /Vision only/ })).queryByText("Reasoning")).not.toBeInTheDocument();
+  expect(within(screen.getByRole("option", { name: "Unknown" })).queryByText("Vision")).not.toBeInTheDocument();
 });

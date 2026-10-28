@@ -19,11 +19,11 @@ export function ProjectConversation({ projectId, state, disabled, canCancel, dis
   onSend: SendConversationCommand; onCancel: () => Promise<unknown>; onFeedback: (id: string, type: "positive" | "negative") => Promise<unknown>;
 }) {
   const { i18n } = useTranslation();
-  const { settings, modelContext } = useConversationSettings(projectId);
+  const { settings, modelContext, modelContexts } = useConversationSettings(projectId);
   const reasoning = usePersistedPreference(homeEffortPreference) === "medium";
   const configured = !!settings.providerConfigId && settings.providerModelOptions.includes(settings.defaultModel);
   const runtime = useConversationRuntime({ state, projectId, disabled: disabled || !configured, canCancel, onSend, onCancel, onFeedback, modelContext, reasoning });
-  const modelRevision = configureHomeModels(settings, modelContext, disabled || !configured, state.tokenUsage);
+  const modelRevision = configureHomeModels(settings, modelContext, disabled || !configured, state.tokenUsage, modelContexts);
   return <AssistantRuntimeProvider runtime={runtime}>
     <HomeDemoEnvironment value={{ projectId, displayName, model: settings.defaultModel, modelRevision, modelContext, state, disabled: disabled || !configured,
       onAnswer: command => onSend({ ...command, language: i18n.language.startsWith("zh") ? "zh-CN" : "en", ...(modelContext?.capacity.capabilities?.reasoning ? { reasoning } : {}) }) }}>

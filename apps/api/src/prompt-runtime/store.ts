@@ -5,6 +5,7 @@ import { createPostgresPoolFromEnv, getDatabaseUrl } from "../db/postgres.js";
 import { withTransaction } from "../db/transactions.js";
 import { catalog, catalogById, findPromptForMessage, type CatalogEntry } from "./catalog.js";
 import type { LlmTransport, ChatMessage } from "../adapters/llm/llm-transport.js";
+import type { PromptRuntimeMode } from "@uml-platform/contracts";
 
 
 type Status = "draft" | "pending" | "published" | "superseded";
@@ -32,14 +33,23 @@ export class PromptRuntimeError extends Error {
 function editable(id: string): CatalogEntry {
   const item = catalogById.get(id);
   if (!item) throw new PromptRuntimeError("提示词不存在", 404);
-  if (item.kind === "locked" || item.kind === "skill") throw new PromptRuntimeError("该项目只读", 403);
+  if (item.kind === "locked") throw new PromptRuntimeError("该项目只读", 403);
   return item;
 }
-function validateContent(content: unknown): string {
-  if (typeof content !== "string" || !content.trim() || content.length > 4000) {
-    throw new PromptRuntimeError("指令内容长度必须在 1 到 4000 字符之间", 400);
+function validateContent(content: unknown, item: CatalogEntry): string {
+  const limit = item.maxContentLength ?? 4000;
+  if (typeof content !== "string" || !content.trim() || content.length > limit) {
+    throw new PromptRuntimeError(`内容长度必须在 1 到 ${limit} 字符之间`, 400);
   }
   return content.trim();
+}
+
+function itemView(item: CatalogEntry, active: PublishedSnapshot) {
+  return { id: item.id, name: item.path.at(-1) ?? item.id, path: item.path, mode: item.mode,
+    kind: item.kind ?? "prompt", editable: item.kind !== "locked", source: item.source,
+    description: item.description, maxContentLength: item.maxContentLength ?? 4000,
+    activeVersionId: active[item.id]?.id ?? null,
+    activeStatus: active[item.id] ? "published" as const : item.kind === "locked" ? "read-only" as const : "default" as const };
 }
 function versionFromRow(row: VersionRow): PromptVersion {
   return { id: row.id, promptId: row.prompt_id, content: row.content, status: row.status,
@@ -63,10 +73,11 @@ export class PromptRuntimeStore {
     return rows.rows.map(versionFromRow);
   }
 
-  async publishedSnapshot(): Promise<PublishedSnapshot> {
+  async publishedSnapshot(mode?: PromptRuntimeMode): Promise<PublishedSnapshot> {
     if (!this.pool) {
       const snapshot: PublishedSnapshot = {};
       for (const [id, versionId] of this.activeMemory) {
+        if (mode && catalogById.get(id)?.mode !== mode) continue;
         const version = (this.memory.get(id) ?? []).find((row) => row.id === versionId);
         if (version) snapshot[id] = { id: version.id, content: version.content };
       }
@@ -77,15 +88,13 @@ export class PromptRuntimeStore {
     if (rows.rows.some((row) => !catalogById.has(row.prompt_id))) {
       throw new PromptRuntimeError("已发布提示词不属于当前目录，请按当前目录重新配置。", 409);
     }
-    return Object.fromEntries(rows.rows.map((row) => [row.prompt_id, { id: row.id, content: row.content }]));
+    return Object.fromEntries(rows.rows.filter(row => !mode || catalogById.get(row.prompt_id)?.mode === mode)
+      .map((row) => [row.prompt_id, { id: row.id, content: row.content }]));
   }
 
   async list() {
     const active = await this.publishedSnapshot();
-    return catalog.map((item) => ({ id: item.id, name: item.path.at(-1) ?? item.id,
-      path: item.path, kind: item.kind ?? "prompt", editable: !item.kind,
-      source: item.source, activeVersionId: active[item.id]?.id ?? null,
-      activeStatus: active[item.id] ? "published" : item.kind ? "read-only" : "default" }));
+    return catalog.map((item) => itemView(item, active));
   }
 
   async detail(id: string) {
@@ -93,13 +102,16 @@ export class PromptRuntimeStore {
     if (!item) throw new PromptRuntimeError("运行时项目不存在", 404);
     const [versions, active] = await Promise.all([this.versions(id), this.publishedSnapshot()]);
     let defaultInstruction = item.instruction;
-    const variables = item.path[0] === "需求建模" ? ["已确认需求文本或规则", "需求基线及上游模型", "目标图类型或校验错误"]
-      : item.path[0] === "可行性分析" ? ["需求规则与基线", "系统环境图和业务流程图", "候选方案或修复错误"]
+    const variables = item.mode === "standard" ? ["本轮用户请求与已确认项目约定", "已保存图表、业务问答与共享方案", "本次授权的生成范围或修订要求"]
+      : item.path[0] === "需求建模" ? ["本次绑定的需求文本或规则", "本次绑定的用例模型与事件流", "目标图类型或校验错误"]
+      : item.path[0] === "可行性分析" ? ["本次绑定的需求规则与补充资料", "系统环境图和业务流程图", "候选方案或修复错误"]
       : item.path[0] === "设计建模" ? ["需求模型及用例事件流", "已生成的设计模型", "目标图类型或校验错误"]
       : ["当前产物及文档类型", "原始内容和校验错误", "结构化模型及图源码"];
-    const readOnlyConstraints = ["系统消息与 JSON 输出要求", "响应 Schema 和字段契约", "图类型、追踪关系及安全规则"];
+    const readOnlyConstraints = item.mode === "standard"
+      ? ["工具权限、生成范围确认与项目隔离由服务端执行", "响应字段、结构校验、取消与保存规则由代码维护", "技能名称、描述和允许读取的资源路径不可编辑"]
+      : ["系统消息与 JSON 输出要求", "响应 Schema 和字段契约", "图类型、追踪关系及安全规则"];
     const instruction = active[id]?.content ?? defaultInstruction;
-    return { ...item, kind: item.kind ?? "prompt", editable: !item.kind,
+    return { ...itemView(item, active), instruction: item.instruction, match: item.match,
       defaultInstruction, activeInstruction: instruction,
       activeVersionId: active[id]?.id ?? null, versions, variables, readOnlyConstraints,
       preview: "任务指令：\n" + instruction +
@@ -110,8 +122,8 @@ export class PromptRuntimeStore {
   }
 
   async createDraft(id: string, content: unknown, actor: string) {
-    editable(id);
-    const next: PromptVersion = { id: randomUUID(), promptId: id, content: validateContent(content),
+    const item = editable(id);
+    const next: PromptVersion = { id: randomUUID(), promptId: id, content: validateContent(content, item),
       status: "draft", revision: 1, author: actor, approver: null,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     if (!this.pool) { this.memory.set(id, [...(this.memory.get(id) ?? []), next]); return next; }
@@ -121,8 +133,8 @@ export class PromptRuntimeStore {
   }
 
   async updateDraft(id: string, versionId: string, content: unknown, revision: number, actor: string) {
-    editable(id);
-    const value = validateContent(content);
+    const item = editable(id);
+    const value = validateContent(content, item);
     if (!Number.isInteger(revision) || revision < 1) throw new PromptRuntimeError("版本号无效", 400);
     if (!this.pool) {
       const row = (this.memory.get(id) ?? []).find((item) => item.id === versionId);
@@ -220,10 +232,14 @@ export function applyPublishedInstructions(content: string, snapshot: PublishedS
 export function withPinnedPrompts(transport: LlmTransport, snapshot: PublishedSnapshot): LlmTransport {
   return {
     async *streamChatCompletion(input) {
-      const messages: ChatMessage[] = input.messages.map((message) =>
-        (message.role === "user" || message.role === "system") && typeof message.content === "string"
-          ? { ...message, content: applyPublishedInstructions(message.content, snapshot) }
-          : message);
+      // Image-backed rule extraction uses text parts; pin the same instruction without touching images.
+      const messages: ChatMessage[] = input.messages.map((message) => {
+        if (message.role !== "user" && message.role !== "system") return message;
+        return { ...message, content: typeof message.content === "string"
+          ? applyPublishedInstructions(message.content, snapshot)
+          : message.content.map(part => part.type === "text"
+            ? { ...part, text: applyPublishedInstructions(part.text, snapshot) } : part) };
+      });
       yield* transport.streamChatCompletion({ ...input, messages });
     },
   };

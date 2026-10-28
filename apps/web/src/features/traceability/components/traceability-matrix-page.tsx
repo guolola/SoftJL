@@ -114,7 +114,6 @@ function createTraceabilityCopy(t: TFunction): TraceabilityRowCopy {
       getDiagramLabel(diagramKind as DiagramType, t),
     designGroupLabel: (diagramKind) =>
       getDesignDiagramLabel(diagramKind as DesignDiagramType, t),
-    unnamedEventFlow: t("traceability.rows.unnamedEventFlow"),
     step: (order) => t(order ? "traceability.rows.stepWithOrder" : "traceability.rows.step", { order }),
     systemResponse: (response) => t("traceability.rows.systemResponse", { response }),
     eventFlow: (flowType, flowLabel) =>

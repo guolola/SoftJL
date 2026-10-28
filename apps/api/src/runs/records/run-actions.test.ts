@@ -53,6 +53,23 @@ function createSourceRecord(snapshot: RunRecord["snapshot"]): RunRecord {
   };
 }
 
+test("feasibility retries keep successful receipts out of the generation scope", () => {
+  const snapshot = createEmptyFeasibilitySnapshot("partial-feasibility", {
+    projectId: "project-a", selectedArtifacts: ["context", "business-flow", "implementation"],
+    providerSettings: { providerConfigId: "provider", model: "model" }, rules: [rule],
+    inputs: feasibilityInputsSchema.parse({}),
+    requirementBaseline: buildRequirementBaseline({ runId: "baseline", requirementText: rule.text, rules: [rule] }),
+  });
+  snapshot.status = "failed";
+  snapshot.outputManifest = [{ kind: "context", id: "context" }, { kind: "businessFlow", id: "business-flow" }];
+  for (const action of ["retry", "rerun"] as const) {
+    const runs: RunRecordStore = new Map();
+    createQueuedRunFromSource({ runs, source: createSourceRecord(snapshot), action, sourceRunId: snapshot.runId, runId: "next" });
+    assert.deepEqual((runs.get("next")!.snapshot as FeasibilityRunSnapshot).selectedArtifacts,
+      action === "retry" ? ["implementation"] : snapshot.selectedArtifacts);
+  }
+});
+
 for (const field of ["operationType", "outputManifest"]) test(`retries reject source snapshots without ${field} before queuing a new run`, () => {
   const snapshot = createEmptySnapshot("obsolete", rule.text, ["usecase"], [rule]);
   Reflect.deleteProperty(snapshot, field);

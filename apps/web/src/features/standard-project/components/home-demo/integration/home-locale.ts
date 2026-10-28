@@ -9,6 +9,8 @@ export function homeText<T>(value: T): T;
 export function homeText(value: unknown): unknown {
   if (typeof value !== "string") return value;
   const zh = i18n.resolvedLanguage?.startsWith("zh");
+  if (value === "Vision") return zh ? "视觉" : "Vision";
+  if (value === "Reasoning") return zh ? "推理" : "Reasoning";
   // Keep the source selector and persisted choice IDs; the platform exposes a boolean reasoning choice.
   if (value === "Low") return "No";
   if (value === "Med" || value === "Medium") return "Yes";

@@ -114,18 +114,11 @@ function extractUseCasesFromRequirementModel(
 
 function analysisSourceUseCaseId(model: DiagramModelSpec) {
   if (model.diagramKind !== "analysis") return null;
-  const explicit =
+  return (
     "sourceUseCaseId" in model && typeof model.sourceUseCaseId === "string"
       ? model.sourceUseCaseId.trim()
-      : "";
-  if (explicit) return explicit;
-  const modelId =
-    "modelId" in model && typeof model.modelId === "string"
-      ? model.modelId.trim()
-      : "";
-  return modelId.startsWith("analysis:")
-    ? modelId.slice("analysis:".length)
-    : null;
+      : null
+  );
 }
 
 function missingAnalysisUseCaseIds(models: WorkspaceRecord["models"]) {

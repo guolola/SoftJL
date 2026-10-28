@@ -1,5 +1,5 @@
 // Derives the project generation lineage graph from the workspace session state.
-import { requirementModelSources, type RequirementRuleType } from "@uml-platform/contracts";
+import type { RequirementRuleType } from "@uml-platform/contracts";
 import { getRuleDisplayLabel } from "../../../entities/requirement-rule/model";
 import {
   designDiagramKindFromRecordKey,
@@ -1047,8 +1047,7 @@ function buildEdges(nodes: LineageNode[], input: LineageGraphInput) {
   const requirementDiagrams = requirementDiagramsFor(input);
 
   for (const { id, rule } of ruleNodes) {
-    const related = requirementDiagrams.filter(diagram => !rule || requirementModelSources({ diagram, rules: input.rules, models: input.models, traceability: input.requirementModelTraceability, stale: input.staleDiagrams.includes(diagram) }).rules.some(source => source.id === rule.id));
-    for (const diagram of related) {
+    for (const diagram of requirementDiagrams) {
       addEdge(
         edges,
         nodesById,

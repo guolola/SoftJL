@@ -552,8 +552,14 @@ export const sequenceDiagramSpecSchema = z.object({
 });
 export type SequenceDiagramSpec = z.infer<typeof sequenceDiagramSpecSchema>;
 
+// Professional sequences retain their explicit use-case source; quick modeling has no such baseline.
+export const designSequenceDiagramSpecSchema = sequenceDiagramSpecSchema.extend({
+  sourceUseCaseId: z.string().min(1),
+});
+
 export const analysisSequenceDiagramSpecSchema = sequenceDiagramSpecSchema.extend({
   diagramKind: z.literal("analysis"),
+  sourceUseCaseId: z.string().min(1),
   // Every identified analysis element declares its upstream IDs, including branches and activations.
   participants: z.array(sequenceParticipantSchema.extend({ participantType: z.enum(["actor", "boundary", "control", "entity"]), sourceElementIds: z.array(z.string().min(1)).min(1).optional() })),
   messages: z.array(sequenceMessageSchema.extend({ sourceElementIds: z.array(z.string().min(1)).min(1).optional() })),
@@ -918,7 +924,7 @@ export type DiagramModelsResult = z.infer<typeof diagramModelsResultSchema>;
 
 export const designDiagramModelSpecSchema = z.discriminatedUnion("diagramKind", [
   architectureDiagramSpecSchema,
-  sequenceDiagramSpecSchema,
+  designSequenceDiagramSpecSchema,
   classDiagramSpecSchema,
   navigationDiagramSpecSchema,
   componentRelationshipDiagramSpecSchema,

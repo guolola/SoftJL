@@ -26,7 +26,7 @@ export function buildStandardDiagram(kind: StandardDiagramKind, input: unknown) 
 
 function renderSource(model: StandardModel): string {
   if (model.diagramKind === "function" || model.diagramKind === "usecase" || model.diagramKind === "activity") return generatePlantUmlArtifacts([model])[0]!.source;
-  if (model.diagramKind !== "er") return generateDesignPlantUmlArtifacts([model])[0]!.source;
+  if (model.diagramKind !== "er") return generateDesignPlantUmlArtifacts([model], "semantic", "standard")[0]!.source;
   const lines = ["@startuml", "skinparam shadowing false", "left to right direction", "allowmixing"];
   for (const [i, entity] of model.entities.entries()) {
     lines.push(`rectangle ${umlLabel(entity.name)} as ${umlAlias(entity.id)}`);

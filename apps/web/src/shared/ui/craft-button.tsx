@@ -9,6 +9,7 @@ import { cn } from '@/shared/ui/utils'
 interface CraftButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'render'> {
   children?: React.ReactNode
   render?: React.ReactElement
+  tone?: 'default' | 'inverse'
 }
 
 interface CraftButtonLabelProps {
@@ -32,7 +33,6 @@ function CraftButtonLabel({ children, className }: CraftButtonLabelProps) {
 function CraftButtonIcon({ children, className }: CraftButtonIconProps) {
   return (
     <span aria-hidden='true' className={cn('relative z-1 size-5', className)}>
-      <span className='bg-background absolute inset-0 -z-1 size-full rounded-full transition-transform duration-500 group-hover/button:scale-[15]' />
       <span className='bg-background text-primary group-hover/button:bg-primary group-hover/button:text-background relative z-2 flex size-full items-center justify-center rounded-full transition-all duration-500'>
         {children}
       </span>
@@ -40,17 +40,21 @@ function CraftButtonIcon({ children, className }: CraftButtonIconProps) {
   )
 }
 
-function CraftButton({ children, render, className, ...rest }: CraftButtonProps) {
+function CraftButton({ children, render, className, tone = 'default', ...rest }: CraftButtonProps) {
   return (
     <Button
       render={render}
       nativeButton={!render}
       className={cn(
-        'hover:bg-background dark:hover:border-primary/30 h-9 cursor-pointer gap-2 overflow-hidden rounded-full border-0 px-4! duration-500 hover:shadow-md active:translate-y-0 dark:border dark:border-transparent',
+        // Match the revealed surface at the rounded edge so the original fill cannot leave a dark seam.
+        'relative hover:bg-background h-9 cursor-pointer gap-2 overflow-hidden rounded-full border-0 px-4! duration-500 hover:shadow-md active:translate-y-0',
+        tone === 'inverse' && '[--primary:var(--inverse-primary)] [--primary-foreground:var(--inverse-primary-foreground)] [--background:var(--inverse-background)] [--foreground:var(--inverse-foreground)]',
         className,
       )}
       {...rest}
     >
+      {/* Size the reveal against the entire button so long labels and small icons still fill completely. */}
+      <span aria-hidden='true' className='pointer-events-none absolute inset-0 bg-background [clip-path:circle(0%_at_100%_50%)] transition-[clip-path] duration-500 group-hover/button:[clip-path:circle(150%_at_100%_50%)]' />
       {children}
     </Button>
   )

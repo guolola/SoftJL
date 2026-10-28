@@ -1,7 +1,7 @@
 // Verifies every graphical model receives business checks in its original generation prompt.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getStageModelSchemas, getModelReviewProfile, type DesignDiagramKind, type DiagramKind } from "@uml-platform/contracts";
+import { feasibilityInputsSchema, getStageModelSchemas, getModelReviewProfile, type DesignDiagramKind, type DiagramKind } from "@uml-platform/contracts";
 import { modelFixture } from "@uml-platform/contracts/testing";
 import { buildGenerateModelsPrompt, buildGenerateRequirementAnalysisPrompt, buildGenerateDesignModelsPrompt, buildGenerateDesignSequencePrompt } from "./model-prompts.js";
 import { buildGenerateFeasibilityContextPrompt, buildGenerateFeasibilityImplementationPrompt } from "./feasibility-prompts.js";
@@ -35,6 +35,7 @@ for (const stage of ["requirements", "design"] as const) for (const schema of ge
     assert.match(prompt, /生成阶段业务自检/);
     assert.match(prompt, /只输出最终产物，不输出自检过程/);
     for (const focus of getModelReviewProfile(stage, kind).content) assert.ok(prompt.includes(focus));
+    for (const rule of getModelReviewProfile(stage, kind).structure) assert.ok(prompt.includes(rule), `${stage}/${kind}: ${rule}`);
     assert.equal(prompt.split("生成阶段业务自检").length - 1, 1);
   });
 }
@@ -60,6 +61,37 @@ test("context sources retain all bound rule types without a baseline payload", (
   assert.deepEqual(payload.rules.map((rule: any) => rule.id), rules.map(rule => rule.id));
   assert.equal("requirementBaseline" in payload, false);
   assert.match(prompt, /EXCLUDED-DATA-SOURCE/); assert.match(prompt, /EXCLUDED-QUALITY-SOURCE/);
+});
+
+test("feasibility prompts keep rule citations separate from model and supplemental inputs", () => {
+  const rules = [{ id: "booking-limit", type: "business-rule" as const, text: "同一学生同一时段最多预约一个座位。" }];
+  const inputs = feasibilityInputsSchema.parse({ projectName: "座位预约系统", expectedUsers: "BOUND_SUPPLEMENT" });
+  const contextModel = modelFixture("feasibility", "context");
+  if (contextModel.diagramKind !== "context") throw new Error("fixture");
+  const businessFlow = { model: modelFixture("feasibility", "activity"), traceability: [] } as Parameters<typeof buildGenerateFeasibilityImplementationPrompt>[0]["businessFlow"];
+  const context = buildGenerateFeasibilityContextPrompt({ rules, inputs });
+  const flow = buildGenerateFeasibilityBusinessFlowPrompt({ rules, inputs });
+  const implementation = buildGenerateFeasibilityImplementationPrompt({ rules, inputs, contextModel, businessFlow });
+  for (const prompt of [context, flow, implementation]) {
+    assert.match(prompt, /直接上游与映射依据/);
+    assert.match(prompt, /JSON Schema、结构规则和示例只规定表达方式/);
+    assert.match(prompt, /不.*轮流分配/);
+    assert.doesNotMatch(prompt, /designModelTraceability|requirementModelTraceability/);
+    const payload = JSON.parse(prompt.split("输入：\n")[1]!);
+    assert.deepEqual(payload.rules, rules);
+    assert.deepEqual(payload.inputs, inputs);
+  }
+  assert.match(context, /sourceRequirementIds 只能引用本次 rules/);
+  assert.match(context, /不读取未提供的需求模型或设计模型/);
+  assert.match(flow, /traceability.requirementId 只能引用本次 rules/);
+  assert.match(flow, /targetId 引用本次输出流程模型中的真实元素 ID/);
+  assert.match(implementation, /rules、inputs、contextModel 和 businessFlow.*全部上游资料/);
+  assert.match(implementation, /contextExternalSystemId 只能引用本次 contextModel.externalSystems/);
+  assert.match(implementation, /两类引用各自匹配其上游/);
+  assert.match(implementation, /标记为 ai-estimate/);
+  const payload = JSON.parse(implementation.split("输入：\n")[1]!);
+  assert.deepEqual(payload.contextModel, contextModel);
+  assert.deepEqual(payload.businessFlow.model, businessFlow.model);
 });
 
 test("first generation declares analysis sources and direct design dependencies", () => {

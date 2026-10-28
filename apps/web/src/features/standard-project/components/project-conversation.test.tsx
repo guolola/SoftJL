@@ -21,7 +21,7 @@ beforeEach(async () => {
   patchUserSettings({ providerConfigId: "provider", defaultModel: "strict", providerModelOptions: ["strict", "json", "compatible"],
     providerModelCapabilities: { strict: { structuredOutputMode: "strict_json" }, json: { structuredOutputMode: "json_object" }, compatible: { structuredOutputMode: "compatible" } } });
   vi.mocked(standardApi.modelContext).mockImplementation(async (_, __, model) => ({ model, contextBudget: 64000,
-    capacity: { context: 64000, output: 8000, source: "modelpedia", matchedId: `origin/${model}`, updatedAt: null, capabilities: { vision: false, reasoning: false, toolCall: true } } }));
+    capacity: { context: 64000, output: 8000, source: "models.dev", matchedId: `origin/${model}`, updatedAt: null, capabilities: { vision: false, reasoning: false, toolCall: true } } }));
 });
 afterEach(() => { cleanup(); localStorage.clear(); sessionStorage.clear(); URL.createObjectURL = originalObjectURL; URL.revokeObjectURL = originalRevokeURL; });
 const defaults = () => ({ projectId: "p", state: createStandardProjectState(), disabled: false, canCancel: true,
@@ -120,7 +120,9 @@ it("uses the upstream error tile and tooltip for unsupported images", async () =
   fireEvent.drop(screen.getByPlaceholderText("发送消息…"), { dataTransfer: { types: ["Files"], files: [new File(["image"], "photo.png", { type: "image/png" })] } });
   const tile = await screen.findByRole("button", { name: /photo.png，读取失败/ });
   await userEvent.hover(tile);
-  expect(await screen.findByText(/请切换到支持视觉的模型/)).toBeInTheDocument();
+  const reason = await screen.findByText(/请切换到支持视觉的模型/);
+  expect(reason).toBeInTheDocument();
+  expect(reason.closest('[data-slot="tooltip-content"]')).not.toHaveTextContent("photo.png");
   await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
   expect(await screen.findByRole("button", { name: /photo.png，读取失败/ })).toBeInTheDocument();
   expect(props.onSend).not.toHaveBeenCalled();
@@ -136,18 +138,64 @@ it("uses the original model selector while retaining all three configured output
   expect(loadUserSettings().providerModelCapabilities).toMatchObject({ strict: { structuredOutputMode: "strict_json" }, json: { structuredOutputMode: "json_object" }, compatible: { structuredOutputMode: "compatible" } });
   expect(props.onSend).not.toHaveBeenCalled();
 });
+
+it("shows independent vision and reasoning badges on unselected quick-modeling choices", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ models: [
+    { model: "json", contextBudget: 64000, capacity: { context: 64000, output: 8000, source: "admin", matchedId: null, updatedAt: null,
+      capabilities: { vision: true, reasoning: true, toolCall: null } } },
+    { model: "compatible", contextBudget: 48000, capacity: { context: null, output: null, source: "unknown", matchedId: null, updatedAt: null,
+      capabilities: { vision: null, reasoning: false, toolCall: null } } },
+  ] }), { status: 200 })));
+  try {
+    const props = defaults(); render(view(props));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/projects/p/model-contexts?"), expect.anything()));
+    await userEvent.click(screen.getByRole("combobox"));
+    const option = screen.getByRole("option", { name: /json/ });
+    expect(await within(option).findByText("视觉")).toBeVisible();
+    expect(within(option).getByText("推理")).toBeVisible();
+    expect(within(screen.getByRole("option", { name: "compatible" })).queryByText("视觉")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("option", { name: "strict" })).queryByText("推理")).not.toBeInTheDocument();
+    expect(loadUserSettings().defaultModel).toBe("strict");
+    expect(props.onSend).not.toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it("shows matching brand logos for every configured vendor in the quick-modeling menu", async () => {
+  const brands = [
+    ["deepseek-v4.1-flash", "deepseek"], ["kimi-k3", "kimi"],
+    ["qwen3.8-max", "qwen"], ["glm-5.3", "zhipu"],
+    ["MiniMax-M3", "minimax"], ["mimo-v2.6-pro", "mimo"],
+    ["doubao-seed-evolving", "doubao"], ["ernie-5.1", "ernie"],
+    ["step-3.7-flash", "step"], ["xunfei-spark-x1-0725", "xunfei"],
+    ["unknown-model", "fallback"],
+  ];
+  patchUserSettings({ providerLabel: "系统默认", defaultModel: brands[0][0], providerModelOptions: brands.map(([id]) => id) });
+  render(view());
+  const user = userEvent.setup();
+  const trigger = screen.getByRole("combobox");
+  expect(within(trigger).getByTestId("provider-icon-deepseek")).toBeInTheDocument();
+  await user.click(trigger);
+  for (const [modelId, brand] of brands) {
+    const option = await screen.findByRole("option", { name: modelId });
+    expect(within(option).getByTestId(`provider-icon-${brand}`)).toBeInTheDocument();
+  }
+  expect(document.querySelector('img[src*="github.svg"]')).toBeNull();
+  await user.click(screen.getByRole("option", { name: "qwen3.8-max" }));
+  expect(loadUserSettings().defaultModel).toBe("qwen3.8-max");
+  expect(within(screen.getByRole("combobox")).getByTestId("provider-icon-qwen")).toBeInTheDocument();
+});
 it("disables composing for read-only projects while preserving saved messages", () => {
   const props = defaults(); props.state.conversation = [{ id: "u", role: "user", text: "已保存需求", status: "completed", createdAt: "now" }];
   render(view({ ...props, disabled: true, canCancel: false }));
   expect(screen.getByText("已保存需求")).toBeInTheDocument(); expect(screen.getByPlaceholderText("发送消息…")).toBeDisabled();
 });
-it("updates Modelpedia options without replacing or blurring an in-progress draft", async () => {
+it("updates Models.dev options without replacing or blurring an in-progress draft", async () => {
   let finish!: (value: Awaited<ReturnType<typeof standardApi.modelContext>>) => void;
   vi.mocked(standardApi.modelContext).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
   render(view()); const user = userEvent.setup();
   const input = screen.getByPlaceholderText("发送消息…");
   await user.type(input, "正在填写的需求");
-  await act(async () => finish({ model: "strict", contextBudget: 64000, capacity: { source: "modelpedia", context: 64000, output: 8000, name: "Catalog model", matchedId: "origin/strict", updatedAt: null, capabilities: { reasoning: true, vision: false, toolCall: true } } }));
+  await act(async () => finish({ model: "strict", contextBudget: 64000, capacity: { source: "models.dev", context: 64000, output: 8000, name: "Catalog model", matchedId: "origin/strict", updatedAt: null, capabilities: { reasoning: true, vision: false, toolCall: true } } }));
   expect(screen.getByPlaceholderText("发送消息…")).toBe(input);
   expect(input).toHaveValue("正在填写的需求"); expect(input).toHaveFocus();
   expect(screen.getByRole("combobox")).toHaveTextContent("Catalog model");
@@ -156,7 +204,7 @@ it("updates Modelpedia options without replacing or blurring an in-progress draf
 it.each(["zh-CN", "en"])("uses the project's reasoning Switch and sends the matching boolean in %s", async language => {
   await i18n.changeLanguage(language);
   vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 64000,
-    capacity: { context: 64000, output: 8000, source: "modelpedia", matchedId: "origin/strict", updatedAt: null,
+    capacity: { context: 64000, output: 8000, source: "models.dev", matchedId: "origin/strict", updatedAt: null,
       capabilities: { reasoning: true, vision: false, toolCall: true } } });
   const props = defaults(); render(view(props)); const user = userEvent.setup();
   const selector = screen.getByRole("combobox");
@@ -188,7 +236,7 @@ it.each(["zh-CN", "en"])("uses the project's reasoning Switch and sends the matc
 it("retains the enabled meaning of an existing saved reasoning preference", async () => {
   localStorage.setItem("aui-home-effort", "medium"); homeEffortPreference.resync();
   vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 64000,
-    capacity: { context: 64000, output: 8000, source: "modelpedia", matchedId: "origin/strict", updatedAt: null,
+    capacity: { context: 64000, output: 8000, source: "models.dev", matchedId: "origin/strict", updatedAt: null,
       capabilities: { reasoning: true, vision: false, toolCall: true } } });
   render(view());
   expect(await screen.findByRole("switch", { name: "推理" })).toBeChecked();
@@ -198,7 +246,7 @@ it("retains the enabled meaning of an existing saved reasoning preference", asyn
 it("locks the reasoning Switch in a read-only project without changing its saved value", async () => {
   localStorage.setItem("aui-home-effort", "medium"); homeEffortPreference.resync();
   vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 64000,
-    capacity: { context: 64000, output: 8000, source: "modelpedia", matchedId: "origin/strict", updatedAt: null,
+    capacity: { context: 64000, output: 8000, source: "models.dev", matchedId: "origin/strict", updatedAt: null,
       capabilities: { reasoning: true, vision: false, toolCall: true } } });
   render(view({ ...defaults(), disabled: true, canCancel: false }));
   const control = await screen.findByRole("switch", { name: "推理" });
@@ -791,7 +839,7 @@ it("bounds merged reasoning by user turns and calendar days without inventing da
   expect(screen.getAllByRole("separator")).toHaveLength(2);
   expect(screen.getAllByRole("button", { name: "推理过程" })).toHaveLength(2);
 });
-it("labels a real runtime budget when Modelpedia capacity is unknown", async () => {
+it("labels a real runtime budget when Models.dev capacity is unknown", async () => {
   vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 48000,
     capacity: { context: null, output: null, source: "unknown", matchedId: null, updatedAt: null } });
   const props = defaults(); props.state.tokenUsage = { model: "strict", contextBudget: 48000, contextTokens: 1400,
@@ -803,7 +851,7 @@ it("labels a real runtime budget when Modelpedia capacity is unknown", async () 
 
 it("uses the model table's context capacity even when output is unknown and saved usage has the old 48k budget", async () => {
   vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 1000000,
-    capacity: { context: 1000000, output: null, source: "modelpedia", matchedId: "origin/strict", updatedAt: null } });
+    capacity: { context: 1000000, output: null, source: "models.dev", matchedId: "origin/strict", updatedAt: null } });
   const props = defaults(); props.state.tokenUsage = { model: "strict", contextBudget: 48000, contextTokens: 11000,
     lastCall: { input: 10000, output: 1000, cacheRead: null, cacheWrite: null, total: 11000 }, cumulative: { total: 11000, calls: 1, unreportedCalls: 0 } };
   render(view(props));
@@ -892,7 +940,7 @@ it("preserves an edit across a pending request that is rejected", async () => {
 
 it("invalidates the old context during and after compaction and accepts the smaller fresh measurement", async () => {
   vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 1000000,
-    capacity: { context: 1000000, output: 8000, source: "modelpedia", matchedId: "origin/strict", updatedAt: null } });
+    capacity: { context: 1000000, output: 8000, source: "models.dev", matchedId: "origin/strict", updatedAt: null } });
   const props = defaults();
   const usage = { model: "strict", contextBudget: 1000000, contextTokens: 990500,
     lastCall: { input: 990000, output: 500, cacheRead: 980000, cacheWrite: null, total: 990500 },
@@ -926,7 +974,7 @@ it.each([[0, "0"], [2300, "2.3k"]] as const)("shows live context %s without requ
 
 it("uses the live runtime context budget when the operator caps a larger model", async () => {
   vi.mocked(standardApi.modelContext).mockResolvedValue({ model: "strict", contextBudget: 48000,
-    capacity: { context: 1000000, output: 8000, source: "modelpedia", matchedId: "origin/strict", updatedAt: null } });
+    capacity: { context: 1000000, output: 8000, source: "models.dev", matchedId: "origin/strict", updatedAt: null } });
   const props = defaults(); props.state.tokenUsage = { model: "strict", contextBudget: 64000, contextTokens: 11000,
     lastCall: null, cumulative: { total: 5000000, calls: 20, unreportedCalls: 0 } };
   render(view(props));

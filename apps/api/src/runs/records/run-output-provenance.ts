@@ -163,7 +163,7 @@ export function runOutputView(snapshot: RunRecord["snapshot"]) {
           !list(source.models).some(
             (model) =>
               model.diagramKind === kind &&
-              (model.sourceUseCaseId === id || modelOutputId(model) === kind + ":" + id),
+              model.sourceUseCaseId === id,
           ),
       ),
   );

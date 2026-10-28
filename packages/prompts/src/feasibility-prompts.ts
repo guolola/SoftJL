@@ -7,6 +7,9 @@ import { GENERATION_BUSINESS_SELF_CHECK, modelGenerationSelfCheck } from "./gene
 
 const JSON_ONLY = "只返回一个 JSON 对象，不要 Markdown、代码围栏或解释文字。";
 
+export const FEASIBILITY_CONTEXT_INSTRUCTION = "请根据下方需求规则和补充资料，识别目标系统、外部参与者及其信息交互，生成可行性分析阶段的系统环境图。使用 JSON 描述系统边界、人员、外部系统及交互关系。";
+export const FEASIBILITY_IMPLEMENTATION_INSTRUCTION = "请根据下方需求规则、补充资料、系统环境图和业务流程图，生成恰好 2 个可执行的可行性分析候选方案，并给出推荐方案。使用 JSON 描述各候选的实现方案、成本收益估算、风险和可行性结论。";
+
 function sourcePayload(
   rules: RequirementRule[],
   inputs: FeasibilityInputs,
@@ -19,7 +22,10 @@ export function buildGenerateFeasibilityContextPrompt(input: {
   inputs: FeasibilityInputs;
 }) {
   return `${JSON_ONLY}
-根据已确认需求生成系统上下文结构。禁止推测未提供的人员、外部系统、协议、数据库或技术栈；不确定信息应省略。
+${FEASIBILITY_CONTEXT_INSTRUCTION}
+直接上游与映射依据：下方输入中的 rules 和 inputs 是本次生成的全部上游资料；rules 提供已确认需求，inputs 提供补充背景与约束。sourceRequirementIds 只能引用本次 rules 中真实存在且支撑对应元素的 id，不能引用补充资料字段名、数组位置或未提供的规则。
+仅依据本次输入识别系统边界与外部交互，不读取未提供的需求模型或设计模型。JSON Schema、结构规则和示例只规定表达方式，不是新增业务事实或来源引用的依据；示例中的 R1 必须替换为实际规则 ID。
+禁止推测未提供的人员、外部系统、协议、数据库或技术栈；不确定信息应省略。不得按名称相似或轮流分配规则来凑来源覆盖。
 title 必须使用“<目标系统名称>系统环境图”格式。
 system、所有 people、externalSystems 和 relationships 都必须至少引用一个真实输入 rules.id。
 元素 id 和关系 id 必须唯一；关系端点只能引用 system、people 或 externalSystems 中存在的 id。
@@ -39,7 +45,11 @@ export function buildGenerateFeasibilityImplementationPrompt(input: {
   businessFlow: FeasibilityBusinessFlow;
 }) {
   return `${JSON_ONLY}
-根据本次绑定的系统环境图、业务流程图、需求规则和补充资料生成恰好 2 个可执行候选方案，两个候选都必须包含完整 implementation；recommendedCandidateId 必须引用其中一个候选方案。
+${FEASIBILITY_IMPLEMENTATION_INSTRUCTION}
+直接上游与映射依据：下方实际提供的 rules、inputs、contextModel 和 businessFlow 构成本次生成的全部上游资料；不补入其他需求模型、设计模型或未提供的规则。
+sourceRequirementIds 只能引用本次 rules 中真实存在且支撑对应条目的 id；contextExternalSystemId 只能引用本次 contextModel.externalSystems 中真实存在的 id。两类引用各自匹配其上游，不得将流程节点 ID、模型 ID、资料字段名或数组位置当成规则 ID，也不得把规则 ID 当成外部系统 ID。
+JSON Schema、结构规则和示例只规定表达方式，不是业务事实或映射目标；方案假设与估算不得冒充输入已确认事实，来源关联不得按名称相似、数组位置或轮流分配来猜测。
+两个候选都必须包含完整 implementation；recommendedCandidateId 必须引用其中一个候选方案。
 ${GENERATION_BUSINESS_SELF_CHECK}
 contextModel 确定系统边界、参与者和外部集成；businessFlow.model 的泳道、活动、条件分支和关系确定业务顺序、人员职责与系统处理，businessFlow.traceability 说明需求来源。两份候选均须围绕该流程推导模块职责、业务异常风险和里程碑验收条件。
 人员泳道中的人工动作不得无依据改为系统自动执行；系统泳道中的处理和已确认的分支条件不得遗漏或改变。沿用流程追踪中的需求规则编号，禁止把流程节点编号当成 sourceRequirementIds。需求规则是事实依据；发现图与规则不一致时，在方案假设、风险和 preconditions 中明确需要确认的问题。

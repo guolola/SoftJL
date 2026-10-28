@@ -75,9 +75,8 @@ function AttachmentTile({ translate }: { translate: Translate }) {
             </button>
           </AttachmentPrimitive.Remove>
         </AttachmentPrimitive.Root>
-        <TooltipContent side="top">
-          <AttachmentPrimitive.Name />
-          {errorMessage && <p className="aui-attachment-error-message">{errorMessage}</p>}
+        <TooltipContent side="top" className="block max-w-xs break-words">
+          {errorMessage ? <p className="aui-attachment-error-message">{errorMessage}</p> : <AttachmentPrimitive.Name />}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

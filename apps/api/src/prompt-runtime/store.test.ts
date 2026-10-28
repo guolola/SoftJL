@@ -2,17 +2,21 @@
 import { strictTestModelCapability } from "../../tests/fixtures/providers/model-capability.js";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import type { Pool } from "pg";
 import { catalog, findPromptForMessage } from "./catalog.js";
 import { PromptRuntimeStore, applyPublishedInstructions, withPinnedPrompts } from "./store.js";
 import type { LlmTransport } from "../adapters/llm/llm-transport.js";
-import { createRequirementBaselineSnapshot } from "@uml-platform/contracts";
-import { buildFocusedRepairPrompt, buildGenerateDesignModelsPrompt, buildModelRepairPrompt } from "@uml-platform/prompts";
+import { feasibilityInputsSchema, type DiagramModelSpec, type ContextDiagramSpec, type ActivityDiagramSpec } from "@uml-platform/contracts";
+import { modelFixture } from "@uml-platform/contracts/testing";
+import { buildExtractRulesPrompt, buildGenerateModelsPrompt, buildGenerateRequirementAnalysisPrompt,
+  buildGenerateDesignSequencePrompt, buildGenerateFeasibilityContextPrompt, buildGenerateFeasibilityBusinessFlowPrompt,
+  buildGenerateFeasibilityImplementationPrompt, buildGenerateDocumentContentPrompt,
+  buildFocusedRepairPrompt, buildGenerateDesignModelsPrompt, buildModelRepairPrompt } from "@uml-platform/prompts";
 
 for (const kind of ["architecture", "class", "navigation", "component", "deployment", "table"] as const) {
   test(`published instructions reach the actual ${kind} generation prompt`, async () => {
     const store = new PromptRuntimeStore(null);
-    const baseline = createRequirementBaselineSnapshot({ runId: "catalog", requirementText: "", rules: [] });
     const prompt = buildGenerateDesignModelsPrompt([], [], [kind]);
     const id = `design.model.${kind}`;
     assert.equal(findPromptForMessage(prompt)?.id, id);
@@ -80,13 +84,13 @@ test("published versions affect new snapshots only and can be rolled back or dis
 });
 
 test("diagram-specific prompts select the matching leaf", () => {
-  const prompt = "请根据已确认的需求规则和 RequirementBaseline 生成需求阶段 UML 结构化模型。\n只生成以下图类型：\nclass\n";
+  const prompt = buildGenerateModelsPrompt([], ["class"]);
   assert.equal(findPromptForMessage(prompt)?.id, "requirements.model.class");
 });
 
 test("only current repair workflows are configurable and published instructions reach their prompts", async () => {
   const store = new PromptRuntimeStore(null);
-  for (const id of ["requirements.repair", "requirements.trace", "requirements.trace-repair", "design.repair", "design.trace", "design.trace-repair", "feasibility.json-repair", "feasibility.plan-repair", "feasibility.section-repair", "documents.repair"]) {
+  for (const id of ["requirements.extract-repair", "requirements.repair", "requirements.trace", "requirements.trace-repair", "design.repair", "design.trace", "design.trace-repair", "feasibility.json-repair", "feasibility.plan-repair", "feasibility.section-repair", "documents.repair"]) {
     await assert.rejects(() => store.detail(id), { statusCode: 404 });
     await assert.rejects(() => store.createDraft(id, "obsolete instruction", "operator"), { statusCode: 404 });
   }
@@ -110,4 +114,75 @@ test("only current repair workflows are configurable and published instructions 
 test("persisted published instructions reject removed catalog entries without adapting them", async () => {
   const pool = { query: async () => ({ rows: [{ prompt_id: "requirements.trace" }] }) } as unknown as Pool;
   await assert.rejects(() => new PromptRuntimeStore(pool).publishedSnapshot(), { statusCode: 409 });
+});
+
+test("catalog instructions match real requirement, feasibility, design and document builders", async () => {
+  const usecase = modelFixture("requirements", "usecase") as DiagramModelSpec;
+  const inputs = feasibilityInputsSchema.parse({});
+  const prompts: Array<[string, string]> = [
+    ["requirements.extract", buildExtractRulesPrompt("本次真实需求")],
+    ...(["context", "function", "usecase", "class", "activity", "deployment", "prototype"] as const)
+      .map(kind => [`requirements.model.${kind}`, buildGenerateModelsPrompt([], [kind])] as [string, string]),
+    ["requirements.analysis", buildGenerateRequirementAnalysisPrompt(usecase)],
+    ["design.sequence", buildGenerateDesignSequencePrompt(usecase)],
+    ["feasibility.context", buildGenerateFeasibilityContextPrompt({ rules: [], inputs })],
+    ["feasibility.business-flow", buildGenerateFeasibilityBusinessFlowPrompt({ rules: [], inputs })],
+    ["feasibility.implementation", buildGenerateFeasibilityImplementationPrompt({ rules: [], inputs,
+      contextModel: modelFixture("feasibility", "context") as ContextDiagramSpec,
+      businessFlow: { model: modelFixture("feasibility", "activity") as ActivityDiagramSpec, traceability: [] } })],
+    ...(["requirementsSpec", "softwareDesignSpec", "feasibilityStudy"] as const)
+      .map(kind => ["documents.generate", buildGenerateDocumentContentPrompt(kind, { title: "绑定的产物" })] as [string, string]),
+  ];
+  for (const [id, prompt] of prompts) {
+    const store = new PromptRuntimeStore(null);
+    const item = catalog.find(item => item.id === id)!;
+    assert.equal(findPromptForMessage(prompt)?.id, id);
+    assert.ok(prompt.includes(item.instruction), `${id} default instruction must occur in its real prompt`);
+    const draft = await store.createDraft(id, "发布后的任务指令", "operator");
+    await store.submit(id, draft.id);
+    await store.approve(id, draft.id, "reviewer");
+    const applied = applyPublishedInstructions(prompt, await store.publishedSnapshot());
+    assert.equal(applied, prompt.replace(item.match, "发布后的任务指令"), `${id} preserves fixed contracts and bound facts`);
+    assert.deepEqual((await store.detail(id)).path, (await store.list()).find(item => item.id === id)?.path);
+  }
+});
+
+test("timeout retry catalog instructions occur in the running pipeline", async () => {
+  const source = await readFile(new URL("../runs/pipelines/requirements-pipeline.ts", import.meta.url), "utf8");
+  for (const id of ["requirements.activity-compact", "requirements.analysis-compact"]) {
+    const item = catalog.find(item => item.id === id)!;
+    assert.ok(source.includes(JSON.stringify(item.instruction)), id);
+    const prompt = item.instruction + "\n固定字段及当前业务资料";
+    assert.equal(findPromptForMessage(prompt)?.id, id);
+    assert.equal(applyPublishedInstructions(prompt, { [id]: { id: "published", content: "重试指令" } }), "重试指令\n固定字段及当前业务资料");
+  }
+});
+
+test("model paths use stage-specific Chinese terms and project facts cannot select instructions", () => {
+  assert.equal(catalog.find(item => item.id === "requirements.model.class")?.path.at(-1), "领域概念模型");
+  assert.equal(catalog.find(item => item.id === "design.model.class")?.path.at(-1), "设计类图");
+  for (const item of catalog) {
+    assert.match(item.path.at(-1)!, /[\u4e00-\u9fff]/u);
+    if (item.match) assert.equal(findPromptForMessage("项目资料：\n" + item.match), null);
+  }
+});
+
+test("pinned instructions reach multimodal extraction while preserving images and assistant output", async () => {
+  const prompt = buildExtractRulesPrompt("图片中的需求");
+  const image = { type: "image_url" as const, image_url: { url: "data:image/png;base64,test" } };
+  const messages = [
+    { role: "user" as const, content: [{ type: "text" as const, text: prompt }, image] },
+    { role: "assistant" as const, content: prompt },
+  ];
+  const transport: LlmTransport = { async *streamChatCompletion(input) {
+    assert.deepEqual(input.messages, [
+      { role: "user", content: [{ type: "text", text: prompt.replace(catalog.find(item => item.id === "requirements.extract")!.match, "图片抽取指令") }, image] },
+      messages[1],
+    ]);
+    yield "ok";
+  } };
+  for await (const part of withPinnedPrompts(transport, { "requirements.extract": { id: "pinned", content: "图片抽取指令" } }).streamChatCompletion({
+    providerSettings: { modelCapability: strictTestModelCapability("test"), model: "test", apiBaseUrl: "https://example.com", apiKey: "test" }, messages,
+  })) assert.equal(part, "ok");
+  assert.equal((messages[0].content as Array<{ text?: string }>)[0].text, prompt);
 });

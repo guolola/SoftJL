@@ -1,6 +1,6 @@
 // Covers engineering behavior through the same composer runtime used by quick modeling.
 import { StrictMode, useState } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { I18nextProvider } from "react-i18next";
@@ -10,6 +10,8 @@ import { WorkspaceRepositoryProvider, createMockWorkspaceRepository } from "../.
 import { RequirementComposer } from "./requirement-composer";
 
 const repository = createMockWorkspaceRepository();
+const originalObjectURL = URL.createObjectURL;
+const originalRevokeURL = URL.revokeObjectURL;
 const context = (model = "vision-model") => ({ model, contextBudget: 1000000, capacity: { context: 1000000, output: 8000, source: "admin", matchedId: model, updatedAt: null, capabilities: { vision: model === "vision-model", reasoning: true, toolCall: true } }, ...(model === "vision-model" ? { tokenUsage: { model, contextBudget: 1000000, contextTokens: 5700, lastCall: { input: 5500, output: 200, cacheRead: 1000, cacheWrite: null, total: 5700 }, cumulative: { total: 5700, calls: 1, unreportedCalls: 0 } } } : {}) });
 beforeEach(async () => {
   localStorage.clear(); sessionStorage.clear();
@@ -17,7 +19,7 @@ beforeEach(async () => {
   patchUserSettings({ providerConfigId: "provider-1", defaultModel: "vision-model", providerModelOptions: ["vision-model", "text-model"] });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(context(new URL(String(input), "http://localhost").searchParams.get("model") ?? undefined)), { status: 200, headers: { "Content-Type": "application/json" } })));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); URL.createObjectURL = originalObjectURL; URL.revokeObjectURL = originalRevokeURL; });
 
 function Harness({ onSubmit = vi.fn(async () => true), projectId = "engineering-a", running = false, canCancel = false, disabled = false, onCancel = vi.fn(async () => {}), baseText = "" }: {
   onSubmit?: (options: { attachments?: unknown[]; reasoning?: boolean }) => Promise<boolean>;
@@ -88,6 +90,23 @@ it("sends a Markdown attachment-only analysis and the selected reasoning setting
   await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ reasoning: true, attachments: [expect.objectContaining({ name: "requirements.md", type: "document", text: "# 需求\n学生预约会议室" })] }));
 });
 
+it("shows only the specific image error without squeezing it alongside a long filename", async () => {
+  URL.createObjectURL = vi.fn(() => "blob:requirements-preview");
+  URL.revokeObjectURL = vi.fn();
+  const user = userEvent.setup(); const onSubmit = vi.fn(async () => true);
+  render(<Harness onSubmit={onSubmit} />);
+  await screen.findByRole("switch", { name: "推理" });
+  const name = "22ef3cd463257a6188cbc46a22ef3726.jpg";
+  fireEvent.drop(screen.getByRole("textbox"), { dataTransfer: { types: ["Files"], files: [new File([new Uint8Array(1_000_001)], name, { type: "image/jpeg" })] } });
+  await user.hover(await screen.findByRole("button", { name: new RegExp(`${name}.*读取失败`) }));
+  const reason = await screen.findByText("这张图片超过 1 MB，请压缩后重试。");
+  const tooltip = reason.closest('[data-slot="tooltip-content"]');
+  expect(tooltip).toHaveTextContent("这张图片超过 1 MB，请压缩后重试。");
+  expect(tooltip).not.toHaveTextContent(name);
+  expect(tooltip).not.toHaveTextContent("240 KB");
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
 it("keeps the sole model visible without showing a project context counter", async () => {
   patchUserSettings({ providerModelOptions: ["vision-model"] });
   render(<Harness />);
@@ -97,6 +116,28 @@ it("keeps the sole model visible without showing a project context counter", asy
   await screen.findByRole("switch", { name: "推理" });
   expect(screen.queryByRole("button", { name: "Token 用量" })).not.toBeInTheDocument();
   expect(screen.queryByText("5.7k / 1M")).not.toBeInTheDocument();
+});
+
+it.each(["zh-CN", "en"])("shows each engineering requirement choice's capabilities in %s without submitting the draft", async language => {
+  await i18n.changeLanguage(language);
+  patchUserSettings({ providerModelOptions: ["vision-model", "text-model", "unknown"] });
+  vi.mocked(fetch).mockImplementation(async input => new Response(JSON.stringify(String(input).includes("/model-contexts?")
+    ? { models: [context(), context("text-model")] } : context()), { status: 200 }));
+  const onSubmit = vi.fn(async () => true);
+  render(<Harness baseText="尚未提交的需求" onSubmit={onSubmit} />);
+  const reasoning = language === "zh-CN" ? "推理" : "Reasoning";
+  const vision = language === "zh-CN" ? "视觉" : "Vision";
+  await screen.findByRole("switch", { name: reasoning });
+  await userEvent.click(screen.getByRole("combobox"));
+  const visual = screen.getByRole("option", { name: /vision-model/ });
+  expect(await within(visual).findByText(vision)).toBeVisible();
+  expect(within(visual).getByText(reasoning)).toBeVisible();
+  const text = screen.getByRole("option", { name: /text-model/ });
+  expect(await within(text).findByText(reasoning)).toBeVisible();
+  expect(within(text).queryByText(vision)).not.toBeInTheDocument();
+  expect(within(screen.getByRole("option", { name: "unknown" })).queryByText(reasoning)).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox")).toHaveValue("尚未提交的需求");
+  expect(onSubmit).not.toHaveBeenCalled();
 });
 
 it("keeps text and attachments when replacement is declined or analysis fails", async () => {

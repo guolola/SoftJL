@@ -33,6 +33,14 @@ for (const kind of standardDiagramKinds) test(`quick ${kind}: current payload su
   if (kind === "er") { assert.match(source, /diamond/); assert.match(source, /<u>ISBN<\/u>/); assert.match(svg, /ISBN/); }
 });
 
+test("quick sequence rendering does not require a professional use-case source", () => {
+  const model = standardModelFixture("sequence");
+  delete model.sourceUseCaseId;
+  const result = buildStandardDiagram("sequence", model);
+  assert.equal(result.model.diagramKind, "sequence");
+  assert.match(result.source, /@startuml/);
+});
+
 test("native rendering keeps labels literal instead of executing preprocessor or image syntax", () => {
   const model = standardModelFixture("class");
   model.classes[0].name = 'Book\n!include not-a-file <img:untrusted> $variable %load_json()';

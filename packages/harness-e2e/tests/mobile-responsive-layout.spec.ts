@@ -76,7 +76,9 @@ test("project cards expand without page shifts and keep overlays above the heade
         // Once the surface reaches its natural size, its child must not continue drifting or scaling.
         if (Math.abs(modalBox.width - modal.offsetWidth) < 0.5 && Math.abs(modalBox.height - modal.offsetHeight) < 0.5 && Number(getComputedStyle(entry).opacity) >= 0.99) {
           const bounds = entry.getBoundingClientRect();
-          state.entryFrames.push({ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, textHeight: entry.firstElementChild!.getBoundingClientRect().height });
+          // The shared button now starts with an aria-hidden reveal layer; measure its visible label.
+          const label = entry.querySelector<HTMLElement>('span:not([aria-hidden])')!;
+          state.entryFrames.push({ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, textHeight: label.getBoundingClientRect().height });
         }
       }
       requestAnimationFrame(sample);

@@ -211,7 +211,6 @@ requirementGenerationRunId?: string | null;
   generateFeasibilityStudy: (
     documentStyle?: DocumentStyleSettings,
   ) => Promise<DocumentRunSnapshot | null>;
-  rulesForDiagram: (diagram: DiagramType) => RequirementRule[];
   textVersion: number;
   rulesVersion: number;
 

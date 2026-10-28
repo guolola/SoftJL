@@ -1,9 +1,18 @@
 // Verifies diagram-specific provider vocabularies against the same structural contracts used at save time.
 import { standardModelFixture } from "../testing/standard-model-fixtures.js";
 import { unknownContractFields } from "../modeling/model-json-schema.js";
+import { designDiagramModelSpecSchema } from "../modeling/models.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { standardAnswerSchema, standardScopeChoiceSchema, standardDiagramKinds, standardDiagramSchema, standardModelSchemaForKind, validateStandardModel, standardModelSchema, standardProjectStateSchema, createStandardProjectState, standardConversationMessageSchema } from "./standard-project.js";
+
+test("quick-modeling sequences remain independent of professional use-case provenance", () => {
+  const model = standardModelFixture("sequence");
+  assert.equal(model.sourceUseCaseId, undefined);
+  assert.doesNotThrow(() => validateStandardModel("sequence", model));
+  assert.equal(designDiagramModelSpecSchema.safeParse(model).success, false);
+  assert.equal(designDiagramModelSpecSchema.safeParse({ ...model, sourceUseCaseId: "case" }).success, true);
+});
 
 test("conversation timing uses only the current recorded timing contract", () => {
   const message = { id: "reply", role: "assistant", text: "完成", createdAt: "2026-10-23T01:00:00.000Z", status: "completed",

@@ -1,7 +1,6 @@
 // Adapts PostgreSQL auth/project rows to the existing auth store record shape.
 import { createHash, randomUUID } from "node:crypto";
 import { randomDefaultAvatar } from "./default-avatar.js";
-import { DEFAULT_AVATARS } from "@uml-platform/contracts";
 import type {
   AdminRole,
   AuditLogDto,
@@ -516,19 +515,6 @@ export function createPostgresAuthRepository(db: Queryable) {
       );
 
       return result.rows.map(mapUserRow);
-    },
-
-    async assignMissingDefaultAvatars() {
-      // Recheck emptiness in the UPDATE so concurrent profile edits are never overwritten.
-      // PostgreSQL evaluates random() per row; subsequent startups leave assigned avatars intact.
-      const result = await db.query(
-        `update users
-         set avatar_url = ($1::text[])[1 + floor(random() * cardinality($1::text[]))::int],
-             updated_at = now()
-         where avatar_url is null or btrim(avatar_url) = ''`,
-        [DEFAULT_AVATARS],
-      );
-      return result.rowCount ?? 0;
     },
 
     async getUser(userId: string) {

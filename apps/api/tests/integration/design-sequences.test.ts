@@ -537,8 +537,8 @@ test("api preserves successful sequences when one use-case sequence keeps failin
           {
             ...DESIGN_SEQUENCE_MODEL,
             modelId: `sequence:${useCaseId}`,
-            sourceUseCaseId: "wrong-use-case",
-            sourceUseCaseName: "错误用例",
+            sourceUseCaseId: useCaseId,
+            sourceUseCaseName: useCaseName,
             title: `${useCaseName}顺序图`,
           },
         ],

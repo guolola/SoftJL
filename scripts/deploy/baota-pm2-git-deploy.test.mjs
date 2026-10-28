@@ -30,7 +30,7 @@ for (const { migrationStatus, rollback } of [
           sleep() { :; }
           wait_for_http_health() { :; }
           check_pm2_cwd() { :; }
-          curl() { echo '{"supportsDesignTableDiagram":true,"releaseSha":"test-release"}'; }
+          curl() { echo '{"releaseSha":"test-release"}'; }
           ${reload}
           if ! reload_pm2_for_release "$TEST_RELEASE_DIR" test-release now ${!rollback}; then exit 1; fi
         `,

@@ -33,11 +33,9 @@ export * from "./workspace/standard-project.js";
 export * from "./modeling/modeling-attachments.js";
 export * from "./requirements/requirements.js";
 export * from "./requirements/requirement-rule-types.js";
-export * from "./requirements/requirement-model-sources.js";
 export * from "./requirements/requirement-baseline-identity.js";
 export * from "./requirements/requirement-baseline-snapshot.js";
 export * from "./requirements/requirement-semantics.js";
-export * from "./requirements/requirement-model-inputs.js";
 export * from "./runs/runs.js";
 export * from "./runs/run-outputs.js";
 export * from "./modeling/render.js";
@@ -56,5 +54,6 @@ export * from "./runs/generation-policy.js";
 export * from "./workspace/current-workspace.js";
 
 export * from "./inbox.js";
+export * from "./prompt-runtime.js";
 
 export { collectModelRefs } from "./modeling/model-element-refs.js";

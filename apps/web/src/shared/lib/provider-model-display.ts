@@ -6,6 +6,29 @@ export type ProviderModelGroup = {
   label: string;
 };
 
+// Both modeling menus identify brands from model names, including gateway-prefixed IDs.
+const modelBrands = [
+  { id: "deepseek", label: "DeepSeek", keywords: ["deepseek"] },
+  { id: "kimi", label: "Kimi", keywords: ["kimi", "moonshot"] },
+  { id: "qwen", label: "Qwen", keywords: ["qwen", "aliyun", "dashscope"] },
+  { id: "zhipu", label: "智谱", keywords: ["glm", "zai", "zhipu", "thudm"] },
+  { id: "minimax", label: "Minimax", keywords: ["minimax"] },
+  { id: "mimo", label: "MiMo", keywords: ["mimo", "xiaomi"] },
+  { id: "doubao", label: "豆包", keywords: ["doubao", "seed"] },
+  { id: "ernie", label: "文心", keywords: ["ernie", "wenxin"] },
+  { id: "hunyuan", label: "混元", keywords: ["hunyuan"] },
+  { id: "step", label: "阶跃星辰", keywords: ["step"] },
+  { id: "xunfei", label: "讯飞星火", keywords: ["spark", "xunfei", "iflytek"] },
+  { id: "claude", label: "Claude", keywords: ["claude", "anthropic"] },
+  { id: "google", label: "Google", keywords: ["gemini", "gemma", "google"] },
+  { id: "openai", label: "OpenAI", keywords: ["gpt", "openai"] },
+  { id: "groq", label: "Groq", keywords: ["groq"] },
+  { id: "meta", label: "Meta", keywords: ["meta"] },
+  { id: "mistral", label: "Mistral", keywords: ["mistral"] },
+  { id: "openrouter", label: "OpenRouter", keywords: ["openrouter"] },
+  { id: "xai", label: "xAI", keywords: ["xai", "grok"] },
+];
+
 export type ModelCapability = {
   id?: string;
   supportsJsonSchema: boolean;
@@ -30,44 +53,13 @@ export function inferProviderModelGroup(
   modelId: string,
   fallbackLabel: string,
 ): ProviderModelGroup {
-  const normalized = modelId.toLowerCase();
-  if (/(^|[/_.-])(deepseek|deepseek-ai)([/_.-]|$)/u.test(normalized)) {
-    return { id: "deepseek", label: "DeepSeek" };
+  // Prefer the model name over gateway namespaces such as openrouter/qwen3.8-max.
+  for (const name of [getProviderModelLabel(modelId), modelId]) {
+    const normalized = name.toLowerCase();
+    const brand = modelBrands.find(group => group.keywords.some(keyword => normalized.includes(keyword)));
+    if (brand) return { id: brand.id, label: brand.label };
   }
-  if (/(^|[/_.-])(kimi|moonshot|moonshotai)([/_.-]|$)/u.test(normalized)) {
-    return { id: "kimi", label: "Kimi" };
-  }
-  if (/(^|[/_.-])(qwen|qwen\d|aliyun|dashscope)([/_.-]|$)/u.test(normalized)) {
-    return { id: "qwen", label: "Qwen" };
-  }
-  if (/(^|[/_.-])(glm|zai-org|zhipu|thudm)([/_.-]|$)/u.test(normalized)) {
-    return { id: "zhipu", label: "智谱" };
-  }
-  if (/(^|[/_.-])(minimax|minimaxai)([/_.-]|$)/u.test(normalized)) {
-    return { id: "minimax", label: "Minimax" };
-  }
-  if (/(^|[/_.-])(doubao|seed)([/_.-]|$)/u.test(normalized)) {
-    return { id: "doubao", label: "豆包" };
-  }
-  if (/(^|[/_.-])(ernie|wenxin)([/_.-]|$)/u.test(normalized)) {
-    return { id: "ernie", label: "文心" };
-  }
-  if (/(^|[/_.-])(hunyuan)([/_.-]|$)/u.test(normalized)) {
-    return { id: "hunyuan", label: "混元" };
-  }
-  if (/(^|[/_.-])(step|stepfun)([/_.-]|$)/u.test(normalized)) {
-    return { id: "step", label: "阶跃星辰" };
-  }
-  if (/(^|[/_.-])(spark|xunfei|iflytek)([/_.-]|$)/u.test(normalized)) {
-    return { id: "xunfei", label: "讯飞星火" };
-  }
-  if (/(^|[/_.-])(claude|anthropic)([/_.-]|$)/u.test(normalized)) {
-    return { id: "claude", label: "Claude" };
-  }
-  if (/(^|[/_.-])(gemini|gemma|google)([/_.-]|$)/u.test(normalized)) {
-    return { id: "google", label: "Google" };
-  }
-  if (/(^|[/_.-])(gpt|openai|o3|o4)([/_.-]|$)/u.test(normalized)) {
+  if (/(^|[/_.-])o[134]([/_.-]|$)/u.test(modelId.toLowerCase())) {
     return { id: "openai", label: "OpenAI" };
   }
 

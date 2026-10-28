@@ -4,7 +4,7 @@ import test from "node:test";
 import type { ModelCapacity, ModelingAttachment } from "@uml-platform/contracts";
 import { modelingInputError, validModelingImage } from "./modeling-input-validation.js";
 
-const capacity: ModelCapacity = { context: 128000, output: 8192, source: "modelpedia", matchedId: "vision", updatedAt: null, capabilities: { vision: true, reasoning: true, toolCall: true } };
+const capacity: ModelCapacity = { context: 128000, output: 8192, source: "models.dev", matchedId: "vision", updatedAt: null, capabilities: { vision: true, reasoning: true, toolCall: true } };
 const image: ModelingAttachment = { id: "i", name: "flow.png", type: "image", contentType: "image/png", data: "iVBORw0KGgo=" };
 
 test("requires explicitly confirmed reasoning and image capabilities", () => {
@@ -18,6 +18,7 @@ test("checks decoded MIME signatures and the one megabyte per image limit", () =
   assert.equal(validModelingImage("image/jpeg", image.data), false);
   const oversized = Buffer.alloc(1_000_001); Buffer.from(image.data, "base64").copy(oversized);
   assert.equal(validModelingImage("image/png", oversized.toString("base64")), false);
+  assert.equal(modelingInputError({ text: "需求", attachments: [{ ...image, data: oversized.toString("base64") }] }, capacity), "这张图片超过 1 MB，请压缩后重试");
   assert.match(modelingInputError({ text: "需求", attachments: [{ ...image, data: "YWJj" }] }, capacity)!, /格式/);
 });
 

@@ -185,17 +185,6 @@ export function createInMemoryAuthStore() {
     return [...users.values()];
   }
 
-  function assignMissingDefaultAvatars() {
-    let updatedCount = 0;
-    for (const user of users.values()) {
-      if (user.avatarUrl?.trim()) continue;
-      user.avatarUrl = randomDefaultAvatar();
-      user.updatedAt = now();
-      updatedCount += 1;
-    }
-    return updatedCount;
-  }
-
   function getUser(userId: string) {
     return users.get(userId) ?? null;
   }
@@ -745,7 +734,6 @@ function listMemberInvitations(userId?: string) {
     createUser,
     findUserByUsername,
     listUsers,
-    assignMissingDefaultAvatars,
     getUser,
     updateUser,
     createSession,

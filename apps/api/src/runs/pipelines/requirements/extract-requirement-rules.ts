@@ -10,12 +10,14 @@ import type { ModelTaskActivity } from "../shared/model-task-timeout.js";
 import { generateWithModelConversation } from "../shared/model-generation-session.js";
 import { repairDiagnostics } from "../../../normalizers/structured-output/repair-diagnostics.js";
 import { createRunError, throwRunError } from "../shared/errors.js";
+import { requirementMultimodalContent, type RequirementInputImage } from "./prepare-requirement-input.js";
 
 export async function extractRequirementRulesWithRepair(input: {
   record: RunRecord;
   requirementText: string;
   sourceText?: string;
   sourceUnits?: RequirementSourceUnit[];
+  images?: RequirementInputImage[];
   providerSettings: ProviderSettings;
   llmTransport: LlmTransport;
   onActivity?: ModelTaskActivity;
@@ -35,7 +37,8 @@ export async function extractRequirementRulesWithRepair(input: {
   try { return await generateWithModelConversation({
     record: input.record, providerSettings: input.providerSettings, transport: input.llmTransport,
     stage: "extract_rules", targetId: "requirement-rules", label: "需求规则抽取", artifactKind: "requirement-rules",
-    prompt: buildExtractRulesPrompt(input.requirementText), schema: EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT,
+    // Assemble text and image evidence rules together so their citation requirements cannot conflict.
+    prompt: requirementMultimodalContent(buildExtractRulesPrompt(input.requirementText, { hasImages: Boolean(input.images?.length) }), input.images ?? []), schema: EXTRACT_REQUIREMENT_RULES_RESPONSE_FORMAT,
     validate: raw => validateRequirementRules(JSON.parse(raw), { sourceText, units }),
     assertSourceCurrent: () => { if (snapshotSource() !== initialSource) throw new Error("需求来源已变化，请重新发起抽取"); },
     onActivity: input.onActivity, onBlankActivity: input.onBlankActivity, abortSignal: input.abortSignal,

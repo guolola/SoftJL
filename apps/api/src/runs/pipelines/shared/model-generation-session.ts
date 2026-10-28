@@ -16,7 +16,7 @@ import { createCallActivity } from "./call-activity.js";
 export async function generateWithModelConversation<T>(input: {
   record: RunRecord; providerSettings: ProviderSettings; transport: LlmTransport;
   stage: RunStage; targetId: string; diagramKind?: string; label?: string;
-  prompt: string; schema: JsonSchemaResponseFormat;
+  prompt: ChatMessage["content"]; schema: JsonSchemaResponseFormat;
   validate: (raw: string) => T;
   compile?: (candidate: NoInfer<T>) => void;
   onCandidate?: (raw: string, attempt: number, error?: unknown, parsed?: T) => void;

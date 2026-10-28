@@ -62,8 +62,6 @@ export async function createApiPersistence({ nodeEnv, overrides = {}, }: {
         (pool
             ? (createPostgresAuthRepository(pool) as unknown as AuthStore)
             : createInMemoryAuthStore());
-    // Persist default avatars before exposing account records.
-    await authStore.assignMissingDefaultAvatars();
     const providerConfigs = overrides.providerConfigStore ??
         (pool
             ? (createPostgresProviderConfigRepository({

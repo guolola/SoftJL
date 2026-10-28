@@ -821,6 +821,7 @@ describe("SidebarMenu", () => {
           designModels: {
             sequence: {
               diagramKind: "sequence",
+              sourceUseCaseId: "uc",
               title: "用例实现设计",
               summary: "动态行为",
               notes: [],
@@ -867,6 +868,7 @@ describe("SidebarMenu", () => {
           designModels: {
             sequence: {
               diagramKind: "sequence",
+              sourceUseCaseId: "uc",
               title: "用例实现设计",
               summary: "动态行为",
               notes: [],
@@ -1770,6 +1772,7 @@ describe("SidebarMenu", () => {
           designModels: {
             sequence: {
               diagramKind: "sequence",
+              sourceUseCaseId: "uc",
               title: "用例实现设计",
               summary: "动态行为",
               notes: [],
@@ -1836,6 +1839,7 @@ describe("SidebarMenu", () => {
             },
             sequence: {
               diagramKind: "sequence",
+              sourceUseCaseId: "uc",
               title: "用例实现设计",
               summary: "动态行为",
               notes: [],
@@ -1967,6 +1971,7 @@ describe("SidebarMenu", () => {
           designModels: {
             sequence: {
               diagramKind: "sequence",
+              sourceUseCaseId: "uc",
               title: "用例实现设计",
               summary: "动态行为",
               notes: [],
@@ -2126,6 +2131,7 @@ describe("SidebarMenu", () => {
           designModels: {
             sequence: {
               diagramKind: "sequence",
+              sourceUseCaseId: "uc",
               title: "用例实现设计",
               summary: "动态行为",
               notes: [],

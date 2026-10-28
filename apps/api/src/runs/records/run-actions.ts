@@ -38,10 +38,15 @@ function createQueuedSnapshotFromSource(
       .map(([key]) => key.slice(kind.length + 1))
     : [];
   if ("selectedArtifacts" in source) {
+    // Retry only missing receipts; successful siblings remain available as saved dependencies.
+    const completedKinds = new Set(source.outputManifest.map((output) => output.kind));
+    const selectedArtifacts = action === "retry" ? source.selectedArtifacts.filter((kind) =>
+      !completedKinds.has(kind === "context" ? "context" : kind === "business-flow" ? "businessFlow" : "implementationPlan"))
+      : source.selectedArtifacts;
     return createEmptyFeasibilitySnapshot(newRunId, {
       reasoning: source.reasoning,
       projectId: source.projectId,
-      selectedArtifacts: source.selectedArtifacts,
+      selectedArtifacts,
       providerSettings: source.providerSettings,
       rules: source.rules,
       requirementBaseline: source.requirementBaseline,

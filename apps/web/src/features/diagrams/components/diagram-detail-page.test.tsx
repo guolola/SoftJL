@@ -712,6 +712,7 @@ describe("DiagramView", () => {
         designModels: {
           sequence: {
             diagramKind: "sequence",
+            sourceUseCaseId: "unavailable",
             title: "用例实现设计",
             summary: "缺少用例信息",
             notes: [],
@@ -1553,7 +1554,7 @@ describe("DiagramView", () => {
     expect(toastMessage).toHaveBeenCalledWith("修改已保存，当前图已更新");
   });
 
-  it("preserves dangling relationships and blocks persistence until explicitly resolved", async () => {
+  it("preserves schema-valid edits without a later relationship acceptance gate", async () => {
     const repository = createRepository(
       createWorkspaceRecord({
         generatedDiagramTypes: ["class"],
@@ -1620,9 +1621,12 @@ describe("DiagramView", () => {
     const deleteDialog = await screen.findByRole("dialog", { name: /删除类/u });
     await userEvent.click(within(deleteDialog).getByRole("button", { name: "确认删除" }));
 
-    expect(saveRequirementModelEdit).not.toHaveBeenCalled();
-    expect(renderStructuredModel).not.toHaveBeenCalled();
-    expect(await screen.findByText(/关系端点不存在/)).toBeInTheDocument();
+    await waitFor(() => expect(saveRequirementModelEdit).toHaveBeenCalled());
+    await waitFor(() => expect(renderStructuredModel).toHaveBeenCalledWith(expect.objectContaining({
+      classes: [expect.objectContaining({ id: "cls_reminder" })],
+      relationships: [expect.objectContaining({ sourceId: "cls_event", targetId: "cls_reminder" })],
+    }), "requirements"));
+    expect(screen.queryByText(/关系端点不存在/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /删除关系：/ })).toBeInTheDocument();
   });
 
@@ -2088,6 +2092,7 @@ describe("DiagramView", () => {
         designModels: {
           "sequence:login": {
             diagramKind: "sequence",
+            sourceUseCaseId: "login",
             modelId: "sequence:login",
             title: "登录用例实现设计",
             summary: "登录流程",

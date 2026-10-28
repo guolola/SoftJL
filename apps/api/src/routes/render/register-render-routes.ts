@@ -1,6 +1,6 @@
 // Registers render/provider endpoints and delegates external calls to adapters.
 import { createHttpErrorResponse } from "../../server/http-error-response.js";
-import { validateModelInput, ModelSemanticError } from "@uml-platform/contracts";
+import { validateModelStructure, ModelSemanticError } from "@uml-platform/contracts";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   designDiagramModelSpecSchema,
@@ -111,11 +111,12 @@ export function registerRenderRoutes({
 
     const input = renderStructuredModelRequestSchema.parse(request.body);
     try {
-      const diagnostics = validateModelInput(input.model, input.stage);
+      // Redraw follows generation's contract boundary; model relationship guidance belongs in its prompt.
+      const diagnostics = validateModelStructure(input.model, input.stage);
       if (diagnostics.length) throw new ModelSemanticError(diagnostics);
       const [artifact] = input.stage === "design"
-        ? generateDesignPlantUmlArtifacts([designDiagramModelSpecSchema.parse(input.model)])
-        : generatePlantUmlArtifacts([diagramModelSpecSchema.parse(input.model)]);
+        ? generateDesignPlantUmlArtifacts([designDiagramModelSpecSchema.parse(input.model)], "schema")
+        : generatePlantUmlArtifacts([diagramModelSpecSchema.parse(input.model)], input.stage === "feasibility" ? "feasibility" : "requirements", "schema");
       if (!artifact) {
         reply.code(400);
         return createHttpErrorResponse(reply);

@@ -4,7 +4,7 @@ import { assertGeneratedModelCandidate, assertAnalysisMappings } from "../../nor
 import { assertRequirementMappings } from "../../normalizers/traceability/model-mapping-validation.js";
 import { generatePlantUmlArtifacts } from "../../adapters/plantuml/model-renderer.js";
 import { missingRequestedModelOutputs } from "../records/run-output-provenance.js";
-import { getStageModelSchema, generationResponseSchema } from "@uml-platform/contracts";
+import { getStageModelSchema, getModelReviewProfile, generationResponseSchema } from "@uml-platform/contracts";
 
 import { createStageLifecycle } from "./shared/stage-lifecycle.js";
 import { screenRequirementInput } from "./requirements/input-screening.js";
@@ -20,6 +20,7 @@ import {
   diagramErrorSchema,
   stageProgressRunEventSchema,
   stageStartedRunEventSchema,
+  snapshotInputFingerprint,
   type DiagramError,
   type DiagramKind,
   type DiagramModelSpec,
@@ -195,13 +196,6 @@ function analysisModelIdForUseCase(useCase: UseCaseForAnalysis) {
   return `analysis:${useCase.id}`;
 }
 
-function analysisSourceUseCaseId(model: AnalysisRequirementModel) {
-  const sourceUseCaseId = compactText(model.sourceUseCaseId);
-  if (sourceUseCaseId) return sourceUseCaseId;
-  const modelId = compactText(model.modelId);
-  return modelId.startsWith("analysis:") ? modelId.slice("analysis:".length) : modelId;
-}
-
 function mergeRequirementModels(
   current: DiagramModelSpec[],
   patch: DiagramModelSpec[],
@@ -221,13 +215,9 @@ function coerceAnalysisModelForUseCase(
     (model): model is AnalysisRequirementModel => model.diagramKind === "analysis",
   );
   const expectedModelId = analysisModelIdForUseCase(useCase);
-  const selected =
-    analysisModels.find(
-      (model) =>
-        model.sourceUseCaseId === useCase.id || model.modelId === expectedModelId,
-    ) ?? analysisModels[0];
+  const selected = analysisModels.find((model) => model.sourceUseCaseId === useCase.id);
   if (!selected) {
-    throw new Error(`${useCase.name}需求分析模型生成结果为空`);
+    throw new Error(`${useCase.name}需求分析模型生成结果缺少对应的用例来源`);
   }
 
   const model: AnalysisRequirementModel = {
@@ -292,7 +282,7 @@ function missingUseCasesForAnalysis(
   useCaseModel: DiagramModelSpec,
   targetUseCaseIds = new Set<string>(),
 ) {
-  const covered = new Set(analysisModels.map(analysisSourceUseCaseId));
+  const covered = new Set(analysisModels.map((model) => model.sourceUseCaseId));
   return useCasesFromModel(useCaseModel).filter(
     (useCase) =>
       (targetUseCaseIds.size === 0 || targetUseCaseIds.has(useCase.id)) &&
@@ -312,7 +302,7 @@ function analysisModelMatchesTarget(
   model: AnalysisRequirementModel,
   targetUseCaseIds: Set<string>,
 ) {
-  return targetUseCaseIds.has(analysisSourceUseCaseId(model));
+  return targetUseCaseIds.has(model.sourceUseCaseId);
 }
 
 function validateUseCaseAnalysisCoverage(
@@ -351,7 +341,9 @@ function buildCompactActivityModelPrompt(
     "这是 activity 子任务超时后的精简重试：优先返回完整、合法、较小的 JSON，不要输出解释、Markdown 或代码块。",
     "返回 JSON 对象，格式必须是 {\"models\":[...],\"requirementModelTraceability\":[...]}。",
     "models 必须且只能包含一个 diagramKind=\"activity\" 的模型。",
+    "直接上游与映射依据：下方需求规则是本次生成的唯一业务依据，也是 requirementModelTraceability.ruleId 的唯一引用范围；结构规则不是业务事实。",
     `当前阶段的字段与枚举：${JSON.stringify(generationResponseSchema(getStageModelSchema("requirements", "activity")!))}`,
+    ...getModelReviewProfile("requirements", "activity").structure,
     "只使用控制流，端点必须引用真实节点。同名动作、循环、并发和业务条件不能合并或替换。",
     "requirementModelTraceability 必须与模型同时返回，每个业务元素和业务关系至少有一条真实规则来源；没有来源的业务元素不得生成，禁止按类别或位置猜测关联。",
     "",
@@ -374,11 +366,14 @@ function buildCompactAnalysisModelPrompt(useCase: UseCaseForAnalysis, scopedUseC
     "这是 analysis 子任务超时后的精简重试：优先返回完整、合法、较小的 JSON，不要输出解释、Markdown 或代码块。",
     "返回 JSON 对象，格式必须是 {\"models\":[...],\"requirementModelTraceability\":[]}。",
     "models 必须且只能包含一个 diagramKind=\"analysis\" 的模型。",
+    "直接上游与映射依据：下方完整用例模型是唯一直接上游，也是所有 sourceElementIds 的唯一引用范围；目标用例摘要不是另一份上游。结合目标、参与者、前后置条件和事件流理解业务，禁止引用原始需求规则或未提供的模型。",
     `analysis 模型必须使用 modelId=\"${analysisModelIdForUseCase(useCase)}\"、sourceUseCaseId=\"${useCase.id}\"、sourceUseCaseName=\"${useCase.name}\"。`,
     "analysis 模型字段必须包含 diagramKind, modelId, sourceUseCaseId, sourceUseCaseName, title, summary, notes, participants, messages, fragments。",
     `字段与枚举：${JSON.stringify(generationResponseSchema(getStageModelSchema("requirements", "analysis")!))}`,
-    "messages 建议 4-10 条，必须覆盖主成功场景、关键权限/异常分支和系统响应；sourceId/targetId 必须引用 participants 中存在的 id。每个 participants/messages/fragments 必须填写非空 sourceElementIds，引用本次用例模型真实角色、用例、事件流或步骤编号；首次来源默认采信。",
-    "fragments 可以为空数组；如使用 alt/loop/opt，必须保持 messageIds 引用 messages 中存在的 id。",
+    ...getModelReviewProfile("requirements", "analysis").structure,
+    "消息数量以完整表达目标用例为准，不为缩短输出删除主成功场景、明确的业务条件、备选、异常或系统响应；sourceId/targetId 必须引用真实参与对象。使用 actor/boundary/control/entity 业务职责和业务语义消息，不引入 Service、Repository、数据库或具体方法调用。",
+    "每个带 id 的元素，包括 participants、messages、fragments、branches、activations，必须填写非空 sourceElementIds 并引用输入用例模型中的真实元素 id；步骤没有独立 id 时引用所属事件流 id，不得使用 order 顺序号、名称或数组位置代替。",
+    "存在不同执行路径时使用相应条件片段，不能为缩短输出省略分支；无分支业务的 fragments 可以为空数组。片段 messageIds 引用真实消息。",
     "requirementModelTraceability 固定返回 []。",
     "",
     "单个用例上下文：",
@@ -524,17 +519,18 @@ export async function runStagePipeline(
     updateStage("extract_rules", "正在抽取需求规则");
     const timeoutConfig = readRequirementModelTaskTimeoutConfig();
     // Build an isolated source candidate; publish text and rules together only after validation succeeds.
-    const sourceText = await withModelTaskTimeout(
-      (markActivity, markBlankActivity, abortSignal) => prepareRequirementInput({ record, snapshot, providerSettings, llmTransport, abortSignal, onActivity: markActivity, onBlankActivity: markBlankActivity }),
-      { ...timeoutConfig, label: "需求附件读取", isCancelled: () => isRunCancelled(record), createCancelError: () => new RunCancelledError(snapshot.runId) },
-    );
+    const sourceFingerprint = () => snapshotInputFingerprint({ requirementText: snapshot.requirementText,
+      submittedRequirementText: snapshot.submittedRequirementText, attachments: snapshot.attachments });
+    const pinnedSource = sourceFingerprint();
+    const preparedInput = prepareRequirementInput(snapshot);
+    const { sourceText } = preparedInput;
     throwIfRunCancelled(record);
     let screenedText: string;
     let sourceUnits: RequirementSourceUnit[];
     try {
       const screening = await withModelTaskTimeout(
         (markActivity, _markBlankActivity, abortSignal) =>
-          screenRequirementInput(sourceText, providerSettings, llmTransport, abortSignal, markActivity),
+          screenRequirementInput(sourceText, providerSettings, llmTransport, abortSignal, markActivity, preparedInput),
         {
           ...timeoutConfig,
           label: "需求输入预检",
@@ -560,8 +556,13 @@ export async function runStagePipeline(
     } catch (error) {
       if (isRunCancelled(record) || error instanceof RunCancelledError) throw error;
       if (error instanceof Error && "runError" in error) throw error;
+      // Preserve actionable provider failures instead of masking them as invalid screening output.
+      const normalized = normalizeRunError(error);
+      if (normalized.category === "platform_provider") throwRunError(normalized);
       throwRunError(createRunError("RUN_REQUIREMENT_SCREENING_FAILED"));
     }
+    // Screening and extraction must bind the same originals, including image bytes.
+    if (sourceFingerprint() !== pinnedSource) throw new Error("需求来源已变化，请重新发起抽取");
     const ruleResult = await withModelTaskTimeout(
       (markActivity, markBlankActivity, abortSignal) =>
         extractRequirementRulesWithRepair({
@@ -569,6 +570,7 @@ export async function runStagePipeline(
           requirementText: screenedText,
           sourceText,
           sourceUnits,
+          images: preparedInput.images.filter(image => sourceUnits.some(unit => unit.id === image.unitId)),
           providerSettings,
           llmTransport,
           onActivity: markActivity,

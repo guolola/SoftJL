@@ -1,7 +1,7 @@
 // Verifies that generated and manually edited models retain semantics across storage and downstream outputs.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { designInputFingerprint, snapshotInputFingerprint, startDocumentRunRequestSchema, createRequirementBaselineSnapshot, requirementBaselineSchema, type DesignDiagramModelSpec } from "@uml-platform/contracts";
+import { designInputFingerprint, snapshotInputFingerprint, startDocumentRunRequestSchema, createRequirementBaselineSnapshot, requirementBaselineSchema, validateModelInput, type DesignDiagramModelSpec } from "@uml-platform/contracts";
 import { modelFixture, parallelActivityFixture, objectActivityFixture } from "@uml-platform/contracts/testing";
 
 import { parseRequirementDiagramModelsOnly } from "../requirements/requirement-model-normalizer.js";
@@ -93,7 +93,7 @@ test("workspace writes enforce feasibility profiles and reject malformed model c
   assert.deepEqual(normalizeWorkspaceModelState({ feasibilityBusinessFlow: flow }).feasibilityBusinessFlow, flow);
 });
 
-test("workspace saves reject invalid models even when their content is unchanged", () => {
+test("workspace saves reject obsolete model contracts even when their content is unchanged", () => {
   const legacyModel = { diagramKind: "usecase", title: "旧模型" };
   const previousState = { models: { usecase: legacyModel } };
   assert.throws(() => normalizeWorkspaceModelState(
@@ -104,4 +104,31 @@ test("workspace saves reject invalid models even when their content is unchanged
     { models: { usecase: { ...legacyModel, title: "已编辑" } } },
     previousState,
   ));
+});
+
+test("saving unrelated workspace changes does not reopen generated model relationship checks", () => {
+  const model = modelFixture("requirements", "usecase");
+  if (model.diagramKind !== "usecase") throw new Error("fixture");
+  model.useCases[0]!.primaryActorId = "actor";
+  model.relationships = [];
+  assert.ok(validateModelInput(model, "requirements").some(issue => issue.code === "actor-participation"));
+  const previous = { models: { usecase: model } };
+  const saved = normalizeWorkspaceModelState({ ...previous, requirementText: "补充项目说明" }, previous);
+  assert.deepEqual(saved.models, previous.models);
+  assert.deepEqual(previous.models.usecase.relationships, []);
+});
+
+test("workspace writes retain schema-valid graph decisions in requirement, design and feasibility models", () => {
+  const activity = modelFixture("requirements", "activity");
+  const design = modelFixture("design", "class");
+  const context = modelFixture("feasibility", "context");
+  if (activity.diagramKind !== "activity" || design.diagramKind !== "class" || context.diagramKind !== "context") throw new Error("fixture");
+  activity.nodes.push({ id: "unreachable", type: "activity", name: "人工补充", actorOrLane: "system", input: [], output: [] });
+  design.relationships[0]!.targetMultiplicity = "5..2";
+  context.relationships[0]!.targetId = "not-present";
+  const state = { models: { activity }, designModels: { class: design }, feasibilityContextModel: context };
+  const saved = normalizeWorkspaceModelState(state);
+  assert.deepEqual(saved.models, state.models);
+  assert.deepEqual(saved.designModels, state.designModels);
+  assert.deepEqual(saved.feasibilityContextModel, context);
 });

@@ -6,7 +6,6 @@ import {
   requirementOutputFingerprints,
   reuseRequirementBaseline,
   workspaceGuardConflicts,
-  useCaseScopedSourceId as resolveUseCaseScopedSourceId,
   currentUseCaseSourceIds,
   designDiagramKindFromRecordKey,
   designRecordBelongsToDiagramKinds,
@@ -191,14 +190,6 @@ function currentUseCaseIds(models: WorkspaceRecord["models"]): Set<string> | nul
   return currentUseCaseSourceIds(Object.values(models));
 }
 
-function scopedSourceUseCaseId(
-  recordKey: string,
-  model: unknown,
-  prefix: UseCaseScopedDiagram,
-) {
-  return resolveUseCaseScopedSourceId(model, prefix, recordKey);
-}
-
 function isOrphanUseCaseScopedRecord(
   recordKey: string,
   model: unknown,
@@ -211,7 +202,7 @@ function isOrphanUseCaseScopedRecord(
     stringProperty(model, "modelId").startsWith(`${prefix}:`) ||
     diagramKind === prefix;
   if (!scoped) return false;
-  const sourceUseCaseId = scopedSourceUseCaseId(recordKey, model, prefix);
+  const sourceUseCaseId = stringProperty(model, "sourceUseCaseId");
   return Boolean(sourceUseCaseId && !validUseCaseIds.has(sourceUseCaseId));
 }
 

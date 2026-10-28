@@ -35,7 +35,10 @@ export function hasHistoryRetryFailure(run: PlatformRunSummary) {
 export function historyRetryTargets(run: PlatformRunSummary, snapshot: RunHistorySnapshot | FeasibilityRunSnapshot, t: TFunction): string[] {
   const operation = getHistoryOperation(run);
   if ("selectedArtifacts" in snapshot) {
-    return snapshot.selectedArtifacts.map((kind) => t(`projectShell.historyUi.artifacts.${kind}`));
+    const accepted = new Set(snapshot.outputManifest.map((output) => output.kind));
+    return snapshot.selectedArtifacts.filter((kind) => !accepted.has(
+      kind === "context" ? "context" : kind === "business-flow" ? "businessFlow" : "implementationPlan",
+    )).map((kind) => t(`projectShell.historyUi.artifacts.${kind}`));
   }
   if ("documentKind" in snapshot) return [t(`projectShell.historyUi.documentKinds.${snapshot.documentKind}`)];
   if (operation === "rules") return [t("projectShell.historyUi.operations.rules")];

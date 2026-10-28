@@ -63,7 +63,7 @@ const plaintextProviderSettings: ProviderSettings = {
 
 for (const reasoning of [true, false]) test(`model and document commands persist supported reasoning=${reasoning}`, async t => {
   const catalog = new ModelCatalog("unused-model-catalog.json");
-  const supported = { context: 128000, output: 8192, source: "modelpedia" as const, matchedId: "gpt-5.5", updatedAt: null, capabilities: { vision: true, reasoning: true, toolCall: true } };
+  const supported = { context: 128000, output: 8192, source: "models.dev" as const, matchedId: "gpt-5.5", updatedAt: null, capabilities: { vision: true, reasoning: true, toolCall: true } };
   catalog.resolve = () => supported;
   const { app, runs } = await createRunRouteTestContext({
     modelCatalog: catalog,
@@ -92,7 +92,7 @@ for (const reasoning of [true, false]) test(`model and document commands persist
 
 test("engineering run routes preserve attachments and reasoning, and reject unsupported capabilities before queuing", async t => {
   const catalog = new ModelCatalog("unused-model-catalog.json");
-  catalog.resolve = () => ({ context: 128000, output: 8192, source: "modelpedia", matchedId: "gpt-5.5", updatedAt: null, capabilities: { vision: true, reasoning: true, toolCall: true } });
+  catalog.resolve = () => ({ context: 128000, output: 8192, source: "models.dev", matchedId: "gpt-5.5", updatedAt: null, capabilities: { vision: true, reasoning: true, toolCall: true } });
   const { app, runs } = await createRunRouteTestContext({
     modelCatalog: catalog,
     runAccessGuard: createTestRunAccessGuard({ owner: { start_runs: ["project-a"] } }),
@@ -258,6 +258,7 @@ const workspaceRequirementTraceability: RequirementModelTraceabilityEntry[] = [
 const minimalSequenceDesignModel: DesignDiagramModelSpec = {
   diagramKind: "sequence",
   modelId: "design-sequence-view",
+  sourceUseCaseId: "usecase-view",
   title: "查看活动时序",
   summary: "用户查询公开活动列表。",
   notes: [],

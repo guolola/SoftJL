@@ -12,7 +12,7 @@ import { useFeedbackDialog, type FeedbackDialogState } from "../../../shared/ui/
 import { acceptedFeasibilityRules, feasibilityArtifactState } from "../../feasibility/lib/feasibility-freshness";
 import { completedFeasibilityArtifacts, feasibilityArtifactFromEvent, mergeFeasibilityRunSnapshot } from "../../feasibility/lib/feasibility-run-progress";
 import { generationResultFeedback } from "../components/generation-dialogs";
-import { failedRunResultDialog } from "./generation-dialog-actions";
+import { failedRunResultDialog, partialRunResultDialog } from "./generation-dialog-actions";
 import type { WorkspaceSessionState } from "../model/session-state";
 
 type ArtifactKind = FeasibilityArtifactKind;
@@ -28,6 +28,7 @@ type Input = Pick<WorkspaceSessionState, "requirementText" | "rules" | "requirem
     attachFeasibilityGenerationRun: (clientTaskId: string, runId: string, providerModel: string) => void;
     updateFeasibilityGenerationTask: (clientTaskId: string, event: RunEventInput) => void;
     failFeasibilityGenerationTask: (clientTaskId: string, message: string) => void;
+    retryFailedRun?: (runId: string) => Promise<void>;
   };
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -35,7 +36,7 @@ export function useFeasibilityGeneration({ requirementText, rules, requirementBa
   requirementModelTraceability, designModelTraceability, generationTasks,
   canUpdateWorkspace, canStartRuns, generationExecutionMode, workspacePermissionReason,
   syncFeasibilityArtifacts, beginFeasibilityGenerationTask, attachFeasibilityGenerationRun,
-  updateFeasibilityGenerationTask, failFeasibilityGenerationTask }: Input) {
+  updateFeasibilityGenerationTask, failFeasibilityGenerationTask, retryFailedRun }: Input) {
   const repository = useWorkspaceRepository();
   const { t } = useTranslation();
   const { openFeedback } = useFeedbackDialog();
@@ -271,13 +272,26 @@ export function useFeasibilityGeneration({ requirementText, rules, requirementBa
         ?? (cause instanceof ApiClientError ? cause.message : t("feasibility.errors.generate"));
       if (clientTaskId) failFeasibilityGenerationTask(clientTaskId, message);
       setFailedArtifacts((current) => Array.from(new Set([...current, currentArtifact])));
+      if (runId) {
+        try {
+          applySnapshot(await repository.getFeasibilityRunSnapshot(runId));
+        } catch { /* Keep already received successful artifacts if the final read fails. */ }
+      }
       await snapshotApplications;
       await reload(latestSnapshot).catch(() => undefined);
       if (controller.signal.aborted) return;
       setGenerationMessage(null);
       setError(message);
+      const completed = latestSnapshot ? completedFeasibilityArtifacts(latestSnapshot) : [];
+      const failed = selectedArtifacts.filter((kind) => !completed.includes(kind));
+      setFailedArtifacts(failed);
       const feedback = generationResultFeedback(
-        failedRunResultDialog({
+        (runId && latestSnapshot?.status === "failed" ? partialRunResultDialog({
+          runId, stageLabel: t("feasibility.title"),
+          succeeded: completed.map((kind) => t(`projectShell.historyUi.artifacts.${kind}`)),
+          failed: failed.map((kind) => t(`projectShell.historyUi.artifacts.${kind}`)),
+          onRetry: retryFailedRun ? () => retryFailedRun(runId!) : undefined,
+        }) : null) ?? failedRunResultDialog({
           clientTaskId,
           message,
           runId,

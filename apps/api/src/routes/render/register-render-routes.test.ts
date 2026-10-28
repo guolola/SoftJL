@@ -1,11 +1,11 @@
-// Exercises the shared semantic validation boundary before manual models reach the renderer.
+// Verifies redraw shares generation's schema boundary without reopening relationship acceptance.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { modelFixture } from "@uml-platform/contracts/testing";
 import { registerRenderRoutes } from "./register-render-routes.js";
 
-test("manual render reports model, field and element diagnostics before any external render call", async () => {
+test("manual render reports contract diagnostics before any external render call", async () => {
   const app = Fastify();
   let rendered = 0;
   registerRenderRoutes({ app, resolveUserId: async () => "user", projectMembershipGuard: async () => true,
@@ -23,6 +23,29 @@ test("manual render reports model, field and element diagnostics before any exte
     const valid = await app.inject({ method: "POST", url: "/api/render/model", headers: { "x-uml-project-id": "project" }, payload: { stage: "design", model: modelFixture("design", "navigation") } });
     assert.equal(valid.statusCode, 200);
     assert.equal(rendered, 1);
+  } finally { await app.close(); }
+});
+
+test("manual redraw preserves generated use-case relations instead of adding a semantic gate", async () => {
+  const app = Fastify();
+  let source = "";
+  registerRenderRoutes({ app, resolveUserId: async () => "user", projectMembershipGuard: async () => true,
+    pngRenderClient: async () => { throw new Error("unexpected PNG"); },
+    renderClient: async artifact => {
+      source = artifact.source;
+      return { svg: "<svg/>", renderMeta: { engine: "plantuml", generatedAt: new Date().toISOString(), sourceLength: source.length, durationMs: 1 } };
+    },
+  });
+  try {
+    const model = modelFixture("requirements", "usecase");
+    if (model.diagramKind !== "usecase") throw new Error("fixture");
+    model.useCases[0]!.primaryActorId = "actor";
+    model.relationships = [];
+    const response = await app.inject({ method: "POST", url: "/api/render/model", headers: { "x-uml-project-id": "project" }, payload: { stage: "requirements", model } });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.match(source, /actor /);
+    assert.match(source, /usecase /);
+    assert.equal(model.relationships.length, 0);
   } finally { await app.close(); }
 });
 

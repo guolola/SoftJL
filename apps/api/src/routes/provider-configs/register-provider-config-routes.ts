@@ -391,12 +391,14 @@ function isAbortError(error: unknown) {
 async function runProviderModelDiscoveryStream({
   apiBaseUrl,
   apiKey,
+  existingModelIds,
   reply,
   request,
   resolveHostname,
 }: {
   apiBaseUrl: string;
   apiKey: string;
+  existingModelIds?: readonly string[];
   reply: FastifyReply;
   request: FastifyRequest;
   resolveHostname?: ProviderHostnameResolver;
@@ -407,6 +409,7 @@ async function runProviderModelDiscoveryStream({
     const discovery = await discoverOpenAiCompatibleModelCapabilities({
       apiBaseUrl,
       apiKey,
+      existingModelIds,
       abortSignal: stream.abortSignal,
       onProgress: stream.send,
       resolveHostname,
@@ -644,6 +647,7 @@ export function registerProviderConfigRoutes({
       const discovery = await discoverOpenAiCompatibleModelCapabilities({
         apiBaseUrl: sourceBaseUrl,
         apiKey: input.apiKey,
+        existingModelIds: input.existingModelIds,
         resolveHostname: resolveProviderHostname,
       });
       return providerModelDiscoveryResponseSchema.parse({
@@ -688,6 +692,7 @@ export function registerProviderConfigRoutes({
     return runProviderModelDiscoveryStream({
       apiBaseUrl: sourceBaseUrl,
       apiKey: input.apiKey,
+      existingModelIds: input.existingModelIds,
       reply,
       request,
       resolveHostname: resolveProviderHostname,

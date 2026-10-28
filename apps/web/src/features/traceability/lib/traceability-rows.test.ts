@@ -1,9 +1,35 @@
 // Verifies traceability row builders surface pending review metadata for the matrix UI.
 import { describe, expect, it } from "vitest";
 import { buildContextRows, buildDesignRows, buildRequirementRows } from "./traceability-rows";
-import type { RequirementModelTraceabilityEntry } from "@uml-platform/contracts";
+import type { DiagramModelSpec, RequirementModelTraceabilityEntry } from "@uml-platform/contracts";
+import { modelFixture } from "@uml-platform/contracts/testing";
 
 describe("traceability row builders", () => {
+  it("does not infer a missing analysis source from its model identifier", () => {
+    const usecase = modelFixture("requirements", "usecase") as Extract<DiagramModelSpec, { diagramKind: "usecase" }>;
+    const analysis = { ...modelFixture("requirements", "analysis"), modelId: "analysis:case", sourceUseCaseId: undefined } as unknown as DiagramModelSpec;
+    const rows = buildRequirementRows([], { usecase, [analysis.modelId!]: analysis }, [], { diagramKind: "analysis", modelId: analysis.modelId });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every(row => row.status === "unmapped" && row.requirementElements.length === 0)).toBe(true);
+    expect(rows.every(row => row.detailLines.includes("来源用例：未找到"))).toBe(true);
+  });
+
+  it("reads current event-flow fields without accepting retired aliases", () => {
+    const usecase = modelFixture("requirements", "usecase");
+    if (usecase.diagramKind !== "usecase") throw new Error("Expected a use-case fixture");
+    usecase.useCases[0]!.eventFlows = [{ id: "main", name: "提交订单", flowType: "main", steps: [
+      { order: 1, actor: "actor", actorAction: "提交", systemAction: "保存", expectedResult: "完成" },
+      { order: 2, actor: "actor", action: "旧动作", description: "旧说明", systemResponse: "旧响应" } as never,
+    ] }];
+    const analysis = { ...modelFixture("requirements", "analysis"), modelId: "analysis:case", sourceUseCaseId: usecase.useCases[0]!.id } as DiagramModelSpec;
+    const rows = buildRequirementRows([], { usecase, [analysis.modelId]: analysis }, [], { diagramKind: "analysis", modelId: analysis.modelId });
+    const lines = rows.flatMap(row => row.detailLines).join("\n");
+    expect(lines).toContain("提交订单");
+    expect(lines).toContain("提交");
+    expect(lines).toContain("保存");
+    expect(lines).not.toMatch(/旧动作|旧说明|旧响应/);
+  });
+
   it("uses analysis element sources in the overview exactly as in the single-model matrix", () => {
     const usecase = { diagramKind: "usecase" as const, modelId: "usecase", title: "用例", summary: "下单", notes: [], actors: [], systemBoundaries: [], relationships: [],
       useCases: [{ id: "case", name: "下单", goal: "完成订单", preconditions: [], postconditions: [], supportingActorIds: [], eventFlows: [] }] };

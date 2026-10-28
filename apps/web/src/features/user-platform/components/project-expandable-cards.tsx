@@ -8,6 +8,7 @@ import { useOutsideClick } from "../../../shared/hooks/use-outside-click";
 import { useTranslation } from "react-i18next";
 import { Archive, ArrowUpRight, Clock3, UserRound, Users } from "lucide-react";
 import { Badge } from "../../../shared/ui/badge";
+import { HoverEffect } from "../../../shared/ui/aceternity/card-hover-effect";
 import { CraftButton, CraftButtonIcon, CraftButtonLabel } from "../../../shared/ui/craft-button";
 import { AnimatedTooltip } from "../../../shared/ui/motion-tooltip";
 import type { StaticProject } from "../lib/project-presentation";
@@ -20,6 +21,7 @@ export function ProjectExpandableCards({ projects, onNavigate }: {
   const { t } = useTranslation();
   const cards = projects.map((project) => ({
     id: project.id,
+    link: `/projects/${project.id}`,
     backgroundKey: project.background?.key,
     title: project.name,
     description: project.description,
@@ -202,8 +204,13 @@ export function ProjectExpandableCards({ projects, onNavigate }: {
         ) : null}
       </AnimatePresence>
       </>, document.body)}
-      <ul data-testid="projects-card-grid" data-mobile-card-density="single-column" className="mx-auto w-full grid grid-cols-1 md:grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] items-start gap-4">
-        {cards.map((card) => (
+      <HoverEffect
+        key={cards.map((card) => card.id).join(",")}
+        items={cards}
+        data-testid="projects-card-grid"
+        data-mobile-card-density="single-column"
+        className="mx-auto w-full grid-cols-1 md:grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] items-start gap-4 py-0"
+        renderItem={(card) => (
           <motion.div
             layoutId={`card-${card.id}-${id}`}
             key={card.id}
@@ -220,7 +227,7 @@ export function ProjectExpandableCards({ projects, onNavigate }: {
                 setActive(card);
               }
             }}
-            className="p-4 flex flex-col  hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+            className="relative z-20 h-full p-4 flex flex-col rounded-xl cursor-pointer focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
           >
             <div className="flex gap-4 flex-col  w-full">
               <motion.div layoutId={`image-${card.id}-${id}`}>
@@ -249,8 +256,8 @@ export function ProjectExpandableCards({ projects, onNavigate }: {
               </div>
             </div>
           </motion.div>
-        ))}
-      </ul>
+        )}
+      />
     </>
   );
 }

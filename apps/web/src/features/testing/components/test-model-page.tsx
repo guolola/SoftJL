@@ -38,13 +38,7 @@ const SCENARIO_TYPES: Array<TestScenarioType | "all"> = [
   "all", "normal", "alternative", "exception", "boundary", "decision-table",
 ];
 
-type SequenceDesignModel = DesignDiagramModelSpec & {
-  diagramKind: "sequence";
-  modelId?: string;
-  sourceUseCaseId?: string;
-  participants: Array<{ id: string; name: string }>;
-  messages: Array<{ id: string; name: string }>;
-};
+type SequenceDesignModel = Extract<DesignDiagramModelSpec, { diagramKind: "sequence" }>;
 
 function isSequenceDesignModel(
   model: DesignDiagramModelSpec,

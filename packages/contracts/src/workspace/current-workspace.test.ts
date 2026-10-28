@@ -80,6 +80,20 @@ test("current workspace validation never rebuilds facts, model fields or fingerp
   assert.deepEqual(state, before);
 });
 
+test("scoped models require explicit use-case provenance even when their IDs encode a source", () => {
+  for (const kind of ["analysis", "sequence"] as const) {
+    const stage = kind === "analysis" ? "requirements" : "design";
+    const model = { ...modelFixture(stage, kind), modelId: `${kind}:case` } as Record<string, unknown>;
+    const field = kind === "analysis" ? "models" : "designModels";
+    assert.doesNotThrow(() => assertCurrentWorkspaceState({ [field]: { [String(model.modelId)]: model } }));
+    delete model.sourceUseCaseId;
+    const state = { [field]: { [String(model.modelId)]: model } };
+    const before = structuredClone(state);
+    assert.throws(() => assertCurrentWorkspaceState(state), /sourceUseCaseId/);
+    assert.deepEqual(state, before);
+  }
+});
+
 test("read boundaries reject mismatched rule facts without rewriting the baseline", () => {
   const rule = { id: "r1", text: "用户提交订单", type: "functional" as const };
   const requirementBaseline = createRequirementBaselineSnapshot({ runId: "source", requirementText: rule.text, rules: [rule] });

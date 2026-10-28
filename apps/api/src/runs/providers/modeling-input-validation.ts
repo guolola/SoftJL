@@ -12,6 +12,7 @@ export function validModelingImage(mime: string, data: string) {
 export function modelingInputError(input: { text: string; attachments?: ModelingAttachment[]; reasoning?: boolean }, capacity?: ModelCapacity) {
   if (input.reasoning && capacity?.capabilities?.reasoning !== true) return "当前模型未确认支持推理，请关闭推理或切换模型";
   if (input.attachments?.some(item => item.type === "image") && capacity?.capabilities?.vision !== true) return "当前模型未确认支持图片，请移除图片或切换视觉模型";
+  if (input.attachments?.some(item => item.type === "image" && Buffer.from(item.data, "base64").length > 1_000_000)) return "这张图片超过 1 MB，请压缩后重试";
   if (input.attachments?.some(item => item.type === "image" && !validModelingImage(item.contentType, item.data))) return "图片格式与内容不匹配";
   if (input.text.length + (input.attachments ?? []).reduce((sum, item) => sum + (item.type === "document" ? item.text.length : 0), 0) > 60000) return "消息和文本附件合计不能超过 60,000 字符";
   return null;

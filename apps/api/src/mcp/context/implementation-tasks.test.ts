@@ -159,7 +159,7 @@ test("design trace sources must exist in their owning model even when a sibling 
 test("sequence messages, fragments and activations are legal design trace sources", () => {
   const design = modelArtifact("sequence", "design");
   design.payload.model = {
-    diagramKind: "sequence", modelId: "sequence", title: "借阅", summary: "借阅调用", notes: [],
+    diagramKind: "sequence", modelId: "sequence", sourceUseCaseId: "borrow-case", title: "借阅", summary: "借阅调用", notes: [],
     participants: [{ id: "user", name: "User", participantType: "actor" }, { id: "service", name: "Service", participantType: "service" }],
     messages: [{ id: "request", type: "sync", sourceId: "user", targetId: "service", name: "borrow", parameters: [] }, { id: "result", type: "return", sourceId: "service", targetId: "user", name: "result", parameters: [] }],
     fragments: [{ id: "optional", type: "opt", label: "borrow", messageIds: ["request"] }],

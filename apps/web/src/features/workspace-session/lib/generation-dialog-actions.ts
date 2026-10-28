@@ -1,5 +1,5 @@
 // Owns generation result and confirmation dialog state for the session provider.
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { RequirementBaseline } from "@uml-platform/contracts";
 import {
   completedRunResultMessage,
@@ -16,7 +16,32 @@ import {
   requestOpenRequirementRule,
   requestOpenProjectWorkspaceTarget,
 } from "../../../shared/lib/app-navigation";
-import type { OperationFailurePresentation } from "./operation-failure";
+import { operationFailurePresentation, type OperationFailurePresentation } from "./operation-failure";
+import { useWorkspaceProjectId } from "../../../services/workspace-repository/index";
+import { platformApi } from "../../user-platform/services/platform-api";
+import { notifyProjectRunsChanged } from "../../../shared/lib/project-run-events";
+
+export function partialRunResultDialog(input: {
+  runId: string;
+  stageLabel: string;
+  succeeded: string[];
+  failed: string[];
+  onRetry?: () => void | Promise<void>;
+}): GenerationResultDialogState | null {
+  if (!input.succeeded.length || !input.failed.length) return null;
+  return {
+    title: i18n.t("generation.dialog.partialTitle"),
+    tone: "warning",
+    message: [
+      i18n.t("generation.dialog.succeededModels", { models: input.succeeded.join(i18n.t("generation.dialog.listSeparator")) }),
+      i18n.t("generation.dialog.failedModels", { models: input.failed.join(i18n.t("generation.dialog.listSeparator")) }),
+    ].join("\n"),
+    runId: input.runId,
+    stageLabel: input.stageLabel,
+    primaryAction: input.onRetry ? { label: i18n.t("generation.dialog.retryFailedModels"), onSelect: input.onRetry } : undefined,
+    dismissLabel: i18n.t("common.confirm"),
+  };
+}
 
 type CancelledRunDialogSnapshot = {
   error?: { message?: string } | null;
@@ -193,8 +218,10 @@ export function documentRunCompletionDialog(input: {
   };
 }
 
-export function useGenerationDialogActions() {
+export function useGenerationDialogActions(canStartRuns: boolean) {
   const { openFeedback } = useFeedbackDialog();
+  const projectId = useWorkspaceProjectId();
+  const pendingRetries = useRef(new Set<string>());
   const [generationConfirmationDialog, setGenerationConfirmationDialog] =
     useState<GenerationConfirmationDialogState | null>(null);
 
@@ -204,6 +231,27 @@ export function useGenerationDialogActions() {
     },
     [openFeedback],
   );
+
+  const retryFailedRun = useCallback(async (runId: string) => {
+    if (!canStartRuns || !projectId || pendingRetries.current.has(runId)) return;
+    pendingRetries.current.add(runId);
+    try {
+      // The retry endpoint owns the saved failure scope, including individual use cases.
+      const response = await platformApi.retryProjectRun(projectId, runId);
+      const nextRunId = response.runId ?? response.run?.runId;
+      if (nextRunId) {
+        notifyProjectRunsChanged(projectId, nextRunId);
+        requestOpenGenerationTask({ runId: nextRunId });
+      }
+    } catch (error) {
+      openGenerationResultDialog(failedRunResultDialog({
+        runId, stageLabel: i18n.t("generation.dialog.retryFailedModels"),
+        failure: operationFailurePresentation(error, { hasTaskDetails: true }),
+      }));
+    } finally {
+      pendingRetries.current.delete(runId);
+    }
+  }, [canStartRuns, projectId, openGenerationResultDialog]);
 
   const confirmGeneration = useCallback(
     (summary: GenerationConfirmationSummary) =>
@@ -231,5 +279,6 @@ export function useGenerationDialogActions() {
     confirmGeneration,
     generationConfirmationDialog,
     openGenerationResultDialog,
+    retryFailedRun: canStartRuns && projectId ? retryFailedRun : undefined,
   };
 }

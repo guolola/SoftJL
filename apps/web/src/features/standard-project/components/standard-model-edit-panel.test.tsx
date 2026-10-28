@@ -14,6 +14,15 @@ function mount(model: StandardModel, onSave = vi.fn(async () => true as boolean 
   return onSave;
 }
 
+it("does not require a professional use-case source when opening an ordinary sequence", () => {
+  const model = standardModelFixture("sequence");
+  if (model.diagramKind !== "sequence") throw new Error("fixture");
+  delete model.sourceUseCaseId;
+  mount(model);
+  expect(screen.queryByText(/sourceUseCaseId|草稿尚未通过校验|保留上次有效结果/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
 it("edits ER identifying attributes and retains failed drafts and all relationships", async () => {
   const user = userEvent.setup();
   const model = standardModelFixture("er");

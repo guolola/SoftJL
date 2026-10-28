@@ -1,6 +1,6 @@
-// Applies shared model semantics to manual workspace writes before they reach persistent storage.
+// Checks current model contracts on workspace writes without reopening generation's graph decisions.
 import { assertCurrentWorkspaceState, invalidateDesignDependents, createRequirementBaselineSnapshot, requirementBaselineSchema, requirementRulesSchema } from "@uml-platform/contracts";
-import { deriveTableModel, getStageModelSchema, ModelSemanticError, validateModelInput, type ModelingStage, type TableDiagramSpec } from "@uml-platform/contracts";
+import { deriveTableModel, getStageModelSchema, ModelSemanticError, validateModelStructure, type ModelingStage, type TableDiagramSpec } from "@uml-platform/contracts";
 
 export function normalizeWorkspaceModelState(state: Record<string, unknown>, previousState: Record<string, unknown> = {}) {
   const next: Record<string, unknown> = {
@@ -23,7 +23,7 @@ export function normalizeWorkspaceModelState(state: Record<string, unknown>, pre
   }
   assertCurrentWorkspaceState(next);
   const normalize = (model: unknown, stage: ModelingStage, expectedKind?: string) => {
-    const diagnostics = validateModelInput(model, stage);
+    const diagnostics = validateModelStructure(model, stage);
     if (diagnostics.length) throw new ModelSemanticError(diagnostics);
     const kind = (model as { diagramKind: string }).diagramKind;
     if (expectedKind && kind !== expectedKind) throw new ModelSemanticError([{ modelId: kind, diagramKind: kind, code: "stage-model", path: "diagramKind", severity: "error", message: `此位置仅接受 ${expectedKind} 模型` }]);

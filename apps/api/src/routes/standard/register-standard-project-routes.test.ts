@@ -92,17 +92,17 @@ test("model context reads canonical catalog capacity without requiring output me
     await app.close(); assert.ok(resolve(dir).startsWith(resolve(tmpdir()) + sep)); await rm(dir, { recursive: true, force: true });
     if (previous === undefined) delete process.env.UML_STANDARD_CONTEXT_TOKENS; else process.env.UML_STANDARD_CONTEXT_TOKENS = previous;
   });
-  const modelCatalog = new ModelCatalog(join(dir, "catalog.json"), async () => ({ providers: [{ id: "empty" }, { id: "complete" }], models: [
-    { provider: "empty", id: model, created_by: "deepseek" },
-    { provider: "complete", id: `deepseek/${model}`, created_by: "deepseek", context_window: 1000000 },
-  ] }));
+  const modelCatalog = new ModelCatalog(join(dir, "catalog.json"), async () => ({
+    empty: { id: "empty", models: { [model]: { id: model, canonical_model_id: `deepseek/${model}` } } },
+    complete: { id: "complete", models: { [`deepseek/${model}`]: { id: `deepseek/${model}`, canonical_model_id: `deepseek/${model}`, limit: { context: 1000000 } } } },
+  }));
   await modelCatalog.load(); await modelCatalog.refresh(); let calls = 0;
   registerStandardProjectRoutes({ app, authStore, providerConfigs, modelCatalog, llmScheduler: createInMemoryLlmScheduler(),
     llmTransport: { async *streamChatCompletion() { calls++; yield "unused"; } }, renderClient: async () => { throw new Error("unused"); }, pngRenderClient: async () => { throw new Error("unused"); } });
   const response = await app.inject({ url: `/api/projects/${project.id}/model-context?${new URLSearchParams({ providerConfigId: config.id, model })}`, headers: { cookie } });
   assert.equal(response.statusCode, 200, response.body);
   assert.equal(response.json().capacity.context, 1000000); assert.equal(response.json().capacity.output, null);
-  assert.equal(response.json().capacity.source, "modelpedia"); assert.equal(response.json().contextBudget, 1000000); assert.equal(calls, 0);
+  assert.equal(response.json().capacity.source, "models.dev"); assert.equal(response.json().contextBudget, 1000000); assert.equal(calls, 0);
   const engineering = authStore.createProject({ ownerUserId: owner.id, name: "Engineering", description: null,  projectMode: "professional" }).project;
   const sharedUrl = `/api/projects/${engineering.id}/model-context?${new URLSearchParams({ providerConfigId: config.id, model })}`;
   const shared = await app.inject({ url: sharedUrl, headers: { cookie } });

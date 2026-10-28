@@ -48,6 +48,7 @@ it("keeps concurrent document runs as separate tasks without auto-downloading fi
     };
     const designModel: DesignDiagramModelSpec = {
       diagramKind: "sequence",
+      sourceUseCaseId: "uc",
       title: "顺序图",
       summary: "动态行为",
       notes: [],

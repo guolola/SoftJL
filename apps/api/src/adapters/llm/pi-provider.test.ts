@@ -18,7 +18,7 @@ test("DeepSeek reasoning is an enabled/disabled switch without an unverified eff
   for (const [id, enabled] of [["deepseek-v4.1-flash", false], ["deepseek-v4.1-flash", true], ["gpt-reasoning", true]] as const) {
     // Public literal address passes the managed URL policy without DNS; the fetch stub prevents networking.
     const settings = { model: id, apiBaseUrl: "https://8.8.8.8/v1", apiKey: "test-only" };
-    const model = standardPiModel(settings, { context: 64000, output: 8192, source: "modelpedia", matchedId: id, updatedAt: null,
+    const model = standardPiModel(settings, { context: 64000, output: 8192, source: "models.dev", matchedId: id, updatedAt: null,
       capabilities: { reasoning: true, vision: false, toolCall: true } });
     const stream = createStandardPiStream({ settings, scheduler: createInMemoryLlmScheduler(), signal: new AbortController().signal,
       beforeRequest: async () => {}, context: { runId: "test", model: id, taskType: "requirements_to_uml" } });

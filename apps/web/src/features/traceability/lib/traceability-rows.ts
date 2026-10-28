@@ -7,6 +7,7 @@ import type {
   ContextTraceRow,
   ModelElementRef,
   RequirementRule,
+  UseCaseSpec,
 } from "@uml-platform/contracts";
 import {
   DESIGN_DIAGRAM_META,
@@ -161,7 +162,6 @@ export type TraceabilityRowCopy = {
   semanticKindLabel: (kind: keyof typeof SEMANTIC_KIND_META) => string;
   requirementGroupLabel: (diagramKind: DiagramKind | DesignDiagramKind) => string;
   designGroupLabel: (diagramKind: DiagramKind | DesignDiagramKind) => string;
-  unnamedEventFlow: string;
   step: (order?: string) => string;
   systemResponse: (response: string) => string;
   eventFlow: (flowType: string, flowLabel: string) => string;
@@ -197,7 +197,6 @@ export const DEFAULT_TRACEABILITY_ROW_COPY: TraceabilityRowCopy = {
     DIAGRAM_META[diagramKind as DiagramType]?.label ?? String(diagramKind),
   designGroupLabel: (diagramKind) =>
     DESIGN_DIAGRAM_META[diagramKind as DesignDiagramType]?.label ?? String(diagramKind),
-  unnamedEventFlow: "未命名事件流",
   step: (order) => (order ? `步骤 ${order}` : "步骤"),
   systemResponse: (response) => `系统响应：${response}`,
   eventFlow: (flowType, flowLabel) => `事件流：${flowType ? `${flowType} · ` : ""}${flowLabel}`,
@@ -236,10 +235,6 @@ function compactString(value: unknown) {
   return typeof value === "string" || typeof value === "number"
     ? String(value).trim()
     : "";
-}
-
-function ensureArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
 }
 
 function isBusinessTraceabilityKind(kind: string) {
@@ -379,10 +374,7 @@ export function designGroupLabel(
 
 function sourceUseCaseIdFromAnalysisModel(model: NonNullable<ReturnType<typeof useWorkspaceSession>["models"][string]>) {
   if (model.diagramKind !== "analysis") return "";
-  const explicit = compactString((model as unknown as { sourceUseCaseId?: unknown }).sourceUseCaseId);
-  if (explicit) return explicit;
-  const modelId = getRequirementModelId(model);
-  return modelId.startsWith("analysis:") ? modelId.slice("analysis:".length) : "";
+  return compactString(model.sourceUseCaseId);
 }
 
 function sourceUseCaseForAnalysis(
@@ -402,31 +394,18 @@ function sourceUseCaseForAnalysis(
   return useCase ? { useCaseModel, useCase } : null;
 }
 
-function eventFlowLines(useCase: unknown, copy = DEFAULT_TRACEABILITY_ROW_COPY) {
-  const flows = ensureArray((useCase as { eventFlows?: unknown }).eventFlows);
-  return flows.flatMap((flow) => {
-    const record = flow as Record<string, unknown>;
-    const flowLabel = compactString(record.name) || compactString(record.id) || copy.unnamedEventFlow;
-    const flowType = compactString(record.flowType) || compactString(record.type);
-    const steps = ensureArray(record.steps).slice(0, 4).map((step) => {
-      const stepRecord = step as Record<string, unknown>;
-      const action =
-        compactString(stepRecord.actorAction) ||
-        compactString(stepRecord.action) ||
-        compactString(stepRecord.description);
-      const response =
-        compactString(stepRecord.systemResponse) ||
-        compactString(stepRecord.systemAction) ||
-        compactString(stepRecord.expectedResult);
-      const order = compactString(stepRecord.order);
+function eventFlowLines(useCase: UseCaseSpec, copy = DEFAULT_TRACEABILITY_ROW_COPY) {
+  return useCase.eventFlows.flatMap((flow) => {
+    const steps = flow.steps.slice(0, 4).map((step) => {
+      const response = step.systemAction || step.expectedResult;
       return [
-        copy.step(order),
-        action,
+        copy.step(String(step.order)),
+        step.actorAction,
         response ? copy.systemResponse(response) : "",
       ].filter(Boolean).join("：");
     });
     return [
-      copy.eventFlow(flowType, flowLabel),
+      copy.eventFlow(flow.flowType, flow.name),
       ...steps,
     ];
   });
@@ -450,7 +429,9 @@ function buildAnalysisRequirementRows(
     const flowLines = source ? eventFlowLines(source.useCase, copy) : [];
     const analysis = Object.values(models).find(model => model?.diagramKind === "analysis" && getRequirementModelId(model) === ref.modelId);
     const element = analysis?.diagramKind === "analysis" ? [...analysis.participants, ...analysis.messages, ...analysis.fragments].find(item => item.id === ref.elementId) : undefined;
-    const sourceRefs: ModelElementRef[] = (element?.sourceElementIds ?? []).map(elementId => ({ modelId: source?.useCaseModel.modelId, diagramKind: "usecase", elementId, elementKind: "element", label: elementId }));
+    const sourceRefs: ModelElementRef[] = source
+      ? (element?.sourceElementIds ?? []).map(elementId => ({ modelId: source.useCaseModel.modelId, diagramKind: "usecase", elementId, elementKind: "element", label: elementId }))
+      : [];
     const mapped = sourceRefs.length > 0;
     return {
       id: refKey(ref),

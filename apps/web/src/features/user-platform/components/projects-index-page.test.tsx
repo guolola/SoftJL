@@ -1,5 +1,5 @@
 // Covers project index pagination, sorting, card presentation, and accessible navigation.
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthenticatedRouteSessionProvider } from "./authenticated-route-session";
@@ -34,6 +34,53 @@ function projectCards() {
 describe("ProjectsIndexPage", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("moves the Aceternity hover background between cards without opening a project", async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    mockProjectList(3);
+    render(<ProjectsIndexPage onNavigate={onNavigate} />);
+    const grid = await screen.findByTestId("projects-card-grid");
+    const [first, second] = projectCards();
+    const background = () => grid.querySelector<HTMLSpanElement>('[data-slot="card-hover-background"]');
+
+    expect(background()).not.toBeInTheDocument();
+    await user.hover(first);
+    expect(first.parentElement).toContainElement(background());
+    expect(background()).toHaveAttribute("aria-hidden", "true");
+    // Moving through the grid gap must not unmount the shared background before the next card enters.
+    const firstBackground = background();
+    fireEvent.mouseOut(first, { relatedTarget: grid });
+    expect(background()).toBe(firstBackground);
+    await user.hover(second);
+    expect(second.parentElement).toContainElement(background());
+    expect(first.parentElement).not.toContainElement(background());
+    expect(grid.querySelectorAll('[data-slot="card-hover-background"]')).toHaveLength(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+    await user.unhover(second);
+    expect(background()).not.toBeInTheDocument();
+
+    first.focus();
+    await waitFor(() => expect(first.parentElement).toContainElement(background()));
+    await user.tab();
+    expect(second).toHaveFocus();
+    expect(second.parentElement).toContainElement(background());
+  });
+
+  it("clears the hover background when pagination replaces the cards", async () => {
+    const user = userEvent.setup();
+    mockProjectList(13);
+    render(<ProjectsIndexPage onNavigate={() => {}} />);
+    const grid = await screen.findByTestId("projects-card-grid");
+    await user.hover(projectCards()[0]);
+    expect(grid.querySelector('[data-slot="card-hover-background"]')).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    const nextGrid = screen.getByTestId("projects-card-grid");
+    expect(projectCards()).toHaveLength(1);
+    expect(nextGrid.querySelector('[data-slot="card-hover-background"]')).not.toBeInTheDocument();
   });
 
   it.each([0, 15])("reserves only an existing scrollbar and restores page styles on close and unmount (%spx)", async (scrollbarWidth) => {

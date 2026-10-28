@@ -12,6 +12,5 @@ export function registerHealthRoutes({
 }) {
   app.get("/health", async () => healthPayload());
   app.get("/api/health", async () => healthPayload());
-  app.get("/version", async () => versionPayload());
   app.get("/api/version", async () => versionPayload());
 }

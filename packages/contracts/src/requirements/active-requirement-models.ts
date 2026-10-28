@@ -5,13 +5,6 @@ function stringField(value: unknown, key: string): string {
   return typeof field === "string" ? field.trim() : "";
 }
 
-export function useCaseScopedSourceId(model: unknown, prefix: "analysis" | "sequence", recordKey = "") {
-  const explicit = stringField(model, "sourceUseCaseId");
-  if (explicit) return explicit;
-  const id = stringField(model, "modelId") || recordKey;
-  return id.startsWith(`${prefix}:`) ? id.slice(prefix.length + 1) : "";
-}
-
 export function currentUseCaseSourceIds(models: readonly unknown[]): Set<string> | null {
   const useCaseModels = models.filter((model) => stringField(model, "diagramKind") === "usecase");
   const validIds = new Set<string>();
@@ -33,7 +26,7 @@ export function activeRequirementModels<T>(models: readonly T[]): T[] {
   // Unknown provenance stays visible; only an explicit current use-case set can retire a source.
   return models.filter((model) => {
     if (!validIds || stringField(model, "diagramKind") !== "analysis") return true;
-    const id = useCaseScopedSourceId(model, "analysis");
+    const id = stringField(model, "sourceUseCaseId");
     return !id || validIds.has(id);
   });
 }

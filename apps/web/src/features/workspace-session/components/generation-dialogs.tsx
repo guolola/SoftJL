@@ -44,7 +44,7 @@ function sanitizeResultDialogCopy(text: string) {
   const cleaned = text
     .replace(/\.docx\b/giu, "")
     .replace(/\bAI\b/giu, i18n.t("generation.dialog.smartRepair"))
-    .replace(/\s+/g, " ")
+    .replace(/[^\S\n]+/g, " ")
     .replace(/\s+([，。；：！？])/g, "$1")
     .replace(/[:：]\s*$/g, "")
     .trim();

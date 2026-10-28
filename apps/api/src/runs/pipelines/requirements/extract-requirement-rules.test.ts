@@ -19,8 +19,12 @@ test("successful extraction stores semantic metadata without LLM model associati
   const source = "用户提交预约。";
   let calls = 0;
   const result = await extractRequirementRulesWithRepair({ record: record(source), requirementText: source, providerSettings,
-    llmTransport: { async *streamChatCompletion() {
+    llmTransport: { async *streamChatCompletion(input) {
       calls++;
+      const prompt = String(input.messages[1]!.content);
+      assert.match(prompt, /下方原始需求文本是本次抽取的全部资料/);
+      assert.match(prompt, /规则抽取自检/);
+      assert.doesNotMatch(prompt, /图片规则的 text/);
       yield JSON.stringify({ rules: [{ id: "r1", type: "functional" as const, text: "用户提交预约", sourceFragment: source }] });
     } },
   });

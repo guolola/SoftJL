@@ -116,7 +116,6 @@ export function ProjectRunDetailDialog({ projectId, run, onClose }: {
                 <dd className="font-mono tabular-nums">{value ?? t("projectShell.historyUi.tokens.unknown")}</dd>
               </div>)}
             </dl>
-            <p className="text-xs text-muted-foreground">{t("projectShell.historyUi.tokens.unit")}</p>
             {tokenUsage.calls > 0 && <p className="text-xs text-muted-foreground">{t("projectShell.historyUi.tokens.calls", { count: tokenUsage.calls })}</p>}
             {tokenUsage.unreportedCalls > 0 && <p className="text-xs text-warning">{t(tokenUsage.partial ? "projectShell.historyUi.tokens.partialNotice" : "projectShell.historyUi.tokens.unreportedNotice", { count: tokenUsage.unreportedCalls })}</p>}
           </section>

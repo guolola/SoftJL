@@ -1,18 +1,19 @@
 // Tests catalog identity, stale fallback, durable supplements and the effective Pi budget.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ModelCatalog, matchCatalog, parseCatalog } from "./model-catalog.js";
+import { CATALOG_INTERVAL, ModelCatalog, matchCatalog, parseCatalog } from "./model-catalog.js";
 import { standardPiModel } from "../adapters/llm/pi-provider.js";
 import type { ProviderSettings } from "@uml-platform/contracts";
 const data = {
-  providers: [{ id: "origin", api_url: "https://origin.example/v1" }, { id: "relay", api_url: "https://relay.example/v1" }],
-  models: [
-    { provider: "origin", id: "flash-v1", name: "Flash", created_by: "origin", context_window: 1000000, max_output_tokens: 32000 },
-    { provider: "relay", id: "flash-v1", name: "Flash Relay", created_by: "origin", context_window: 64000, max_output_tokens: 8000 },
-  ],
+  origin: { id: "origin", api: "https://origin.example/v1", models: {
+    "flash-v1": { id: "flash-v1", name: "Flash", canonical_model_id: "origin/flash-v1", limit: { context: 1000000, output: 32000 } },
+  } },
+  relay: { id: "relay", api: "https://relay.example/v1", models: {
+    "flash-v1": { id: "flash-v1", name: "Flash Relay", canonical_model_id: "origin/flash-v1", limit: { context: 64000, output: 8000 } },
+  } },
 };
 
 test("prefers endpoint limits then canonical publisher records, without fuzzy matching", () => {
@@ -32,21 +33,78 @@ test("deduplicates sync, persists supplements and retains cached limits when off
     const catalog = new ModelCatalog(file, async () => { calls++; if (fail) throw new Error("offline"); return data; });
     await catalog.load();
     await Promise.all([catalog.refresh(), catalog.refresh()]); assert.equal(calls, 1);
-    await assert.rejects(catalog.supplement("p", "flash-v1", "https://custom.example", { context: 24000, output: 4000 }));
+    await catalog.supplement("p", "flash-v1", "https://custom.example", { context: 24000, output: 4000 });
     await catalog.supplement("p", "unknown", "https://custom.example", { context: 24000, output: 4000 });
     assert.equal(catalog.resolve("other", "unknown", "https://custom.example").source, "unknown");
     assert.equal(catalog.resolve("p", "unknown", "https://changed.example").source, "unknown");
     fail = true; await catalog.refresh(); assert.ok(catalog.status().error);
-    assert.equal(catalog.resolve("p", "flash-v1", "https://custom.example").context, 1000000);
+    assert.equal(catalog.resolve("p", "flash-v1", "https://custom.example").context, 24000);
     const restored = new ModelCatalog(file); await restored.load();
     assert.equal(restored.resolve("p", "unknown", "https://custom.example").context, 24000);
-    assert.equal(restored.resolve("p", "flash-v1", "https://custom.example").context, 1000000);
+    assert.equal(restored.resolve("p", "flash-v1", "https://custom.example").context, 24000);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("administrator fields override complete references, survive synchronization and can be cleared independently", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "uml-model-overrides-"));
+  try {
+    const file = join(dir, "catalog.json");
+    const download = async () => ({ origin: { ...data.origin, models: {
+      "flash-v1": { ...data.origin.models["flash-v1"], reasoning: true, modalities: { input: ["text", "image"] } },
+    } } });
+    const catalog = new ModelCatalog(file, download); await catalog.refresh();
+    const base = data.origin.api;
+    await catalog.supplement("p", "flash-v1", base, { context: 64000, output: 8000, capabilities: { reasoning: false, vision: false } });
+    const effective = catalog.resolve("p", "flash-v1", base);
+    assert.equal(effective.source, "admin"); assert.equal(effective.context, 64000);
+    assert.equal(effective.capabilities?.reasoning, false); assert.equal(effective.capabilities?.vision, false);
+    assert.equal(catalog.describe("p", "flash-v1", base).reference.context, 1000000);
+    assert.equal(catalog.describe("p", "flash-v1", base).reference.capabilities?.vision, true);
+    await catalog.refresh(); assert.deepEqual(catalog.resolve("p", "flash-v1", base), effective);
+    const restarted = new ModelCatalog(file); await restarted.load();
+    assert.equal(restarted.resolve("p", "flash-v1", base).capabilities?.reasoning, false);
+    assert.equal(restarted.resolve("other", "flash-v1", base).context, 1000000);
+    assert.equal(restarted.resolve("p", "flash-v1", "https://changed.example").source, "models.dev");
+    await catalog.supplement("p", "flash-v1", base, { capabilities: { reasoning: null } });
+    assert.equal(catalog.resolve("p", "flash-v1", base).capabilities?.reasoning, true);
+    assert.equal(catalog.resolve("p", "flash-v1", base).capabilities?.vision, false);
+    await catalog.supplement("p", "flash-v1", base, { context: null, output: null, capabilities: { vision: null } });
+    assert.equal(catalog.resolve("p", "flash-v1", base).source, "models.dev");
+    assert.deepEqual(catalog.describe("p", "flash-v1", base).overrides, {});
+    await catalog.supplement("p", "unknown", base, { capabilities: { reasoning: true, vision: true } });
+    const unknown = catalog.resolve("p", "unknown", base);
+    assert.equal(unknown.matchedId, null);
+    assert.equal(unknown.context, null); assert.equal(unknown.capabilities?.reasoning, true);
+    assert.equal(unknown.capabilities?.vision, true);
+    await assert.rejects(catalog.supplement("p", "flash-v1", base, { context: 1024 }), /输出容量/);
+    assert.equal(catalog.resolve("p", "flash-v1", base).context, 1000000);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+test("personal overrides are isolated from administrator records and clear back to inherited settings", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "uml-personal-overrides-"));
+  try {
+    const catalog = new ModelCatalog(join(dir, "catalog.json"), async () => data);
+    await catalog.load(); await catalog.refresh();
+    const base = data.origin.api;
+    await catalog.supplement("p", "flash-v1", base, { context: 128000, output: 8192, capabilities: { vision: true } });
+    await catalog.supplement("p", "flash-v1", base, { context: 64000, output: 4096, capabilities: { vision: false } }, "user");
+    const personal = catalog.describe("p", "flash-v1", base, "user");
+    assert.equal(personal.source, "user"); assert.equal(personal.capabilities?.vision, false);
+    assert.equal(personal.reference.source, "admin"); assert.equal(personal.reference.context, 128000);
+    assert.equal(catalog.describe("p", "flash-v1", base).overrides.context, 128000);
+    const restarted = new ModelCatalog(join(dir, "catalog.json")); await restarted.load();
+    assert.deepEqual(restarted.resolve("p", "flash-v1", base), catalog.resolve("p", "flash-v1", base));
+    assert.equal(catalog.resolve("p", "flash-v1", "https://other.example").source, "models.dev");
+    await catalog.supplement("p", "flash-v1", base, { context: null, output: null, capabilities: { vision: null } }, "user");
+    assert.equal(catalog.resolve("p", "flash-v1", base).source, "admin");
+    assert.equal(catalog.resolve("p", "flash-v1", base).context, 128000);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("Pi uses catalog capacity automatically and operator limits only reduce it", () => {
   const old = process.env.UML_STANDARD_CONTEXT_TOKENS;
   const settings = { model: "flash-v1", apiBaseUrl: "https://api.deepseek.com/v1" } as ProviderSettings;
-  const capacity = { context: 1000000, output: 32000, source: "modelpedia" as const, matchedId: "origin/flash", updatedAt: null };
+  const capacity = { context: 1000000, output: 32000, source: "models.dev" as const, matchedId: "origin/flash", updatedAt: null };
   try {
     delete process.env.UML_STANDARD_CONTEXT_TOKENS;
     assert.equal(standardPiModel(settings, capacity).contextWindow, 1000000);
@@ -58,29 +116,30 @@ test("Pi uses catalog capacity automatically and operator limits only reduce it"
 });
 
 test("retains unknown capabilities and rejects old cache versions and malformed replacements", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "uml-modelpedia-"));
+  const dir = await mkdtemp(join(tmpdir(), "uml-models.dev-"));
   try {
     const file = join(dir, "cache.json");
-    await writeFile(file, JSON.stringify({ version: 2, syncedAt: new Date().toISOString(), rows: parseCatalog(data) }));
+    await writeFile(file, JSON.stringify({ version: 3, source: "modelpedia", syncedAt: new Date().toISOString(), rows: parseCatalog(data) }));
     const catalog = new ModelCatalog(file, async () => data); await catalog.load();
     assert.equal(catalog.status().syncedAt, null);
     await catalog.refresh();
     const result = catalog.resolve("p", "flash-v1", "https://origin.example/v1");
-    assert.equal(result.source, "modelpedia"); assert.equal(result.name, "Flash");
+    assert.equal(result.source, "models.dev"); assert.equal(result.name, "Flash");
     assert.equal(result.capabilities?.vision, null);
-    const rows = parseCatalog({ providers: data.providers, models: [{ provider: "origin", id: "metadata-only", capabilities: { vision: true } }] });
+    const rows = parseCatalog({ origin: { id: "origin", models: { "metadata-only": { id: "metadata-only", modalities: { input: ["text", "image"] } } } } });
     assert.equal(rows[0].context, null);
-    assert.throws(() => parseCatalog({ ...data, models: [...data.models, { id: "invalid", provider: "missing" }] }));
+    assert.throws(() => parseCatalog({ ...data, invalid: { id: "invalid", models: { invalid: { id: "different" } } } }));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("Modelpedia reasoning capability, vision and output limits survive publisher and relay resolution", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "uml-modelpedia-capabilities-"));
+test("Models.dev reasoning capability, vision and output limits survive publisher and relay resolution", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "uml-models.dev-capabilities-"));
   try {
-    const catalog = new ModelCatalog(join(dir, "catalog.json"), async () => ({ providers: data.providers, models: [
-      { ...data.models[0], capabilities: { reasoning: true, vision: false, tool_call: true } },
-      { ...data.models[1], capabilities: { reasoning: true, vision: false, tool_call: true } },
-    ] }));
+    const catalog = new ModelCatalog(join(dir, "catalog.json"), async () => Object.fromEntries(
+      Object.entries(data).map(([id, provider]) => [id, { ...provider, models: {
+        "flash-v1": { ...provider.models["flash-v1"], reasoning: true, tool_call: true, modalities: { input: ["text"] } },
+      } }]),
+    ));
     await catalog.load(); await catalog.refresh();
     const relay = catalog.resolve("p", "flash-v1", "https://relay.example/v1");
     assert.equal(relay.context, 64000); assert.equal(relay.output, 8000); assert.equal(relay.capabilities?.reasoning, true);
@@ -95,13 +154,13 @@ test("Modelpedia reasoning capability, vision and output limits survive publishe
 });
 
 test("missing reseller metadata does not veto confirmed canonical capabilities, but explicit conflicts remain unknown", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "uml-modelpedia-consensus-"));
+  const dir = await mkdtemp(join(tmpdir(), "uml-models.dev-consensus-"));
   try {
     let conflict = false;
-    const catalog = new ModelCatalog(join(dir, "catalog.json"), async () => ({ providers: data.providers, models: [
-      { provider: "origin", id: "origin/flash-v1", created_by: "origin", context_window: 1000000, max_output_tokens: 32000, capabilities: { reasoning: true, tool_call: true } },
-      { provider: "relay", id: "flash-v1", created_by: "origin", ...(conflict ? { capabilities: { reasoning: false } } : {}) },
-    ] }));
+    const catalog = new ModelCatalog(join(dir, "catalog.json"), async () => ({
+      origin: { ...data.origin, models: { "origin/flash-v1": { id: "origin/flash-v1", canonical_model_id: "origin/flash-v1", limit: { context: 1000000, output: 32000 }, reasoning: true, tool_call: true } } },
+      relay: { ...data.relay, models: { "flash-v1": { id: "flash-v1", canonical_model_id: "origin/flash-v1", ...(conflict ? { reasoning: false } : {}) } } },
+    }));
     await catalog.load(); await catalog.refresh();
     assert.equal(catalog.resolve("p", "flash-v1", "https://unlisted.example").capabilities?.reasoning, true);
     // The selected endpoint's own absent field stays unknown; another endpoint's capability cannot override it.
@@ -114,13 +173,14 @@ test("missing reseller metadata does not veto confirmed canonical capabilities, 
 
 test("empty short IDs cannot mask the DeepSeek canonical model's published capacity", () => {
   const model = "deepseek-v4.1-flash";
-  const rows = parseCatalog({ providers: ["baseten", "novita", "openrouter", "vercel", "opencode"].map(id => ({ id, api_url: `https://${id}.example/v1` })), models: [
-    { provider: "baseten", id: model, created_by: "deepseek" },
-    { provider: "opencode", id: model, created_by: "unknown" },
-    { provider: "novita", id: `deepseek/${model}`, created_by: "deepseek", context_window: 1048576, max_output_tokens: 393216 },
-    { provider: "openrouter", id: `deepseek/${model}`, created_by: "deepseek", context_window: 1048576, max_output_tokens: 943718 },
-    { provider: "vercel", id: `deepseek/${model}`, created_by: "deepseek", context_window: 1000000 },
-  ] });
+  const models = [
+    ["baseten", { id: model, canonical_model_id: `deepseek/${model}` }],
+    ["opencode", { id: model }],
+    ["novita", { id: `deepseek/${model}`, canonical_model_id: `deepseek/${model}`, limit: { context: 1048576, output: 393216 } }],
+    ["openrouter", { id: `deepseek/${model}`, canonical_model_id: `deepseek/${model}`, limit: { context: 1048576, output: 943718 } }],
+    ["vercel", { id: `deepseek/${model}`, canonical_model_id: `deepseek/${model}`, limit: { context: 1000000 } }],
+  ] as const;
+  const rows = parseCatalog(Object.fromEntries(models.map(([id, entry]) => [id, { id, api: `https://${id}.example/v1`, models: { [entry.id]: entry } }])));
   for (const id of [model, `deepseek/${model}`]) {
     const result = matchCatalog(rows, id, "https://unlisted.example/v1");
     assert.equal(result?.context, 1000000); assert.equal(result?.output, 393216);
@@ -135,22 +195,103 @@ test("empty short IDs cannot mask the DeepSeek canonical model's published capac
 });
 
 test("context is independent of missing or differing output limits and unidentified models keep real conflicts unknown", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "uml-modelpedia-fields-"));
+  const dir = await mkdtemp(join(tmpdir(), "uml-models.dev-fields-"));
   try {
-    const catalog = new ModelCatalog(join(dir, "catalog.json"), async () => ({ providers: data.providers, models: [
-      { provider: "relay", id: "flash-v1", created_by: "origin" },
-      { provider: "origin", id: "origin/flash-v1", created_by: "origin", context_window: 1000000 },
-    ] }));
+    const catalog = new ModelCatalog(join(dir, "catalog.json"), async () => ({
+      relay: { ...data.relay, models: { "flash-v1": { id: "flash-v1", canonical_model_id: "origin/flash-v1" } } },
+      origin: { ...data.origin, models: { "origin/flash-v1": { id: "origin/flash-v1", canonical_model_id: "origin/flash-v1", limit: { context: 1000000 } } } },
+    }));
     await catalog.load(); await catalog.refresh();
     const capacity = catalog.resolve("p", "flash-v1", "https://unlisted.example");
-    assert.equal(capacity.context, 1000000); assert.equal(capacity.output, null); assert.equal(capacity.source, "modelpedia");
+    assert.equal(capacity.context, 1000000); assert.equal(capacity.output, null); assert.equal(capacity.source, "models.dev");
     const pi = standardPiModel({ model: "flash-v1", apiBaseUrl: "https://unlisted.example" } as ProviderSettings, capacity);
     assert.equal(pi.contextWindow, 1000000, "missing output capacity must not force the 48k context fallback");
-    const rows = parseCatalog({ providers: data.providers, models: [
-      { provider: "origin", id: "ambiguous", context_window: 32000, max_output_tokens: 4000 },
-      { provider: "relay", id: "ambiguous", context_window: 64000, max_output_tokens: 4000 },
-    ] });
+    const rows = parseCatalog({
+      origin: { ...data.origin, models: { ambiguous: { id: "ambiguous", limit: { context: 32000, output: 4000 } } } },
+      relay: { ...data.relay, models: { ambiguous: { id: "ambiguous", limit: { context: 64000, output: 4000 } } } },
+    });
     const unknown = matchCatalog(rows, "ambiguous", "https://unlisted.example");
     assert.equal(unknown?.context, null); assert.equal(unknown?.output, 4000);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("maps Models.dev lifecycle, modalities and zero limits without guessing missing metadata", () => {
+  const rows = parseCatalog({ origin: { id: "origin", api: "https://{endpoint}/v1", models: {
+    alpha: { id: "alpha", status: "alpha", reasoning: false, tool_call: true, modalities: { input: ["text", "image"] }, limit: { context: 0, output: 0 } },
+    beta: { id: "beta", status: "beta" },
+    retired: { id: "retired", status: "deprecated" },
+    current: { id: "current" },
+  } } });
+  assert.deepEqual(rows.map(row => row.status), ["preview", "preview", "deprecated", "active"]);
+  assert.equal(rows[0].context, null); assert.equal(rows[0].output, null);
+  assert.equal(rows[0].reasoning, false); assert.equal(rows[0].toolCall, true);
+  assert.deepEqual(rows[0].input, ["text", "image"]);
+  assert.equal(rows[3].canonical, undefined); assert.equal(rows[3].reasoning, undefined);
+  assert.equal(rows[3].input, undefined);
+  assert.equal(rows[3].api, "https://{endpoint}/v1", "provider URL templates must not reject the entire public catalog");
+});
+
+test("does not publish new capacities when atomic cache persistence fails", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "uml-catalog-write-"));
+  try {
+    const file = join(dir, "catalog.json");
+    let download: unknown = data;
+    const catalog = new ModelCatalog(file, async () => download);
+    await catalog.refresh();
+    const saved = await readFile(file, "utf8");
+    download = { origin: { ...data.origin, models: {
+      "flash-v1": { ...data.origin.models["flash-v1"], limit: { context: 2000000, output: 64000 } },
+    } } };
+    // Occupying the temporary file path makes persistence fail without damaging the last snapshot.
+    await mkdir(`${file}.tmp`);
+    await catalog.refresh();
+    assert.ok(catalog.status().error);
+    assert.equal(await readFile(file, "utf8"), saved);
+    assert.equal(catalog.resolve("p", "flash-v1", data.origin.api).context, 1000000);
+    await rm(`${file}.tmp`, { recursive: true });
+    await catalog.refresh();
+    assert.equal(catalog.status().error, null);
+    assert.equal(catalog.resolve("p", "flash-v1", data.origin.api).context, 2000000);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("rejects empty, obsolete, mismatched and oversized catalogs", () => {
+  for (const invalid of [{}, [], { origin: { id: "origin", models: {} } },
+    { providers: [], models: [] },
+    { origin: { ...data.origin, id: "different" } },
+    { origin: { ...data.origin, models: { flash: { id: "flash", limit: { context: -1 } } } } },
+  ]) assert.throws(() => parseCatalog(invalid));
+  const models = Object.fromEntries(Array.from({ length: 30001 }, (_, index) => [`m${index}`, { id: `m${index}` }]));
+  assert.throws(() => parseCatalog({ origin: { id: "origin", models } }), /数量限制/);
+});
+
+test("keeps the last durable snapshot through invalid refreshes and recovers after six hours", async context => {
+  const dir = await mkdtemp(join(tmpdir(), "uml-catalog-recovery-"));
+  try {
+    context.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-26T00:00:00Z") });
+    const file = join(dir, "catalog.json");
+    let download: unknown = data;
+    const catalog = new ModelCatalog(file, async () => download);
+    await catalog.refresh();
+    const saved = await readFile(file, "utf8");
+    assert.equal(JSON.parse(saved).version, 4); assert.equal(JSON.parse(saved).source, "models.dev");
+    assert.equal(CATALOG_INTERVAL, 6 * 60 * 60 * 1000);
+    context.mock.timers.tick(CATALOG_INTERVAL - 1);
+    assert.equal(catalog.status().stale, false);
+    context.mock.timers.tick(1);
+    assert.equal(catalog.status().stale, true);
+    download = { ...data, broken: { id: "broken", models: { invalid: { id: "different" } } } };
+    await catalog.refresh();
+    assert.ok(catalog.status().error);
+    assert.equal(await readFile(file, "utf8"), saved);
+    assert.equal(catalog.resolve("p", "flash-v1", data.origin.api).context, 1000000);
+    download = data;
+    await catalog.refresh();
+    assert.equal(catalog.status().error, null);
+    assert.equal(catalog.status().stale, false);
+    const restarted = new ModelCatalog(file, async () => { throw new Error("offline"); });
+    await restarted.load(); await restarted.refresh();
+    assert.equal(restarted.resolve("p", "flash-v1", data.origin.api).source, "models.dev");
+    assert.equal(restarted.resolve("p", "flash-v1", data.origin.api).context, 1000000);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

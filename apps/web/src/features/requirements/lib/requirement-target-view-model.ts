@@ -1,7 +1,5 @@
 // Derives target-model card state and traceability proof rows for requirement generation.
-import { candidateRulesForDiagram } from "@uml-platform/contracts";
-
-import { requirementModelSources, type DiagramModelSpec, type RequirementModelTraceabilityEntry } from "@uml-platform/contracts";
+import type { DiagramModelSpec } from "@uml-platform/contracts";
 import { DIAGRAM_META, type DiagramType } from "../../../entities/diagram/model";
 import type { RequirementRule } from "../../../entities/requirement-rule/model";
 import type { WorkspaceRecord } from "../../../entities/workspace/model";
@@ -30,7 +28,6 @@ export interface RequirementTargetCardStateInput {
   selectedDiagrams: DiagramType[];
   staleDiagrams: DiagramType[];
   models: DiagramModelSpec[] | Partial<Record<string, DiagramModelSpec>>;
-  traceability?: RequirementModelTraceabilityEntry[];
 }
 
 export function requirementTargetBlockReason(input: {
@@ -54,7 +51,7 @@ export function requirementTargetBlockReason(input: {
     return "需求规则已过期，请先更新需求规则";
   }
   const ruleDiagram = diagram === "analysis" ? "usecase" : diagram;
-  if (candidateRulesForDiagram(rules, ruleDiagram).length === 0) {
+  if (rules.length === 0) {
     return `${DIAGRAM_META[ruleDiagram].label}缺少上游需求规则，请先添加或生成需求规则。`;
   }
   // A selected target or a historical receipt cannot replace an actual saved upstream model.
@@ -84,8 +81,6 @@ export function requirementTargetCardState(input: RequirementTargetCardStateInpu
     staleDiagrams,
   } = input;
   const checked = selectedDiagrams.includes(diagram);
-  const sources = requirementModelSources({ diagram, rules, models: input.models, traceability: input.traceability ?? [], stale: isRulesStale || staleDiagrams.includes(diagram) });
-  const linkedRules = sources.rules;
   const isAnalysisDiagram = diagram === "analysis";
   const isExistingRequirementModel = generatedDiagrams.includes(diagram);
   const hasUseCaseSourceForAnalysis =
@@ -118,12 +113,11 @@ export function requirementTargetCardState(input: RequirementTargetCardStateInpu
     hasPendingAutoReview: pendingAutoReviews.length > 0,
     hasUseCaseSourceForAnalysis,
     isAnalysisDiagram,
-    linkedRules,
-    associationMode: sources.mode,
+    linkedRules: rules,
     pendingAutoReviews,
     sourceCount: isAnalysisDiagram
       ? Number(hasUseCaseSourceForAnalysis)
-      : linkedRules.length,
+      : rules.length,
   };
 }
 

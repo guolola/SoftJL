@@ -308,7 +308,7 @@ describe("ProjectHistory", () => {
     expect(tokens.getByText("部分用量")).toBeInTheDocument();
     expect(tokens.getByText("模型调用：3 次")).toBeInTheDocument();
     expect(tokens.getByText(/有 1 次模型调用未完整报告用量/)).toBeInTheDocument();
-    expect(tokens.getByText("1k = 1000 Token。")).toBeInTheDocument();
+    expect(tokens.queryByText("1k = 1000 Token。")).not.toBeInTheDocument();
   });
 
   it("keeps legacy run consumption explicitly unreported in details", async () => {

@@ -63,7 +63,7 @@ test("implementation generation retains both-candidate instructions and the comp
   const model = modelFixture("feasibility", "activity"); if (model.diagramKind !== "activity") throw new Error("fixture");
   const prompt = buildGenerateFeasibilityImplementationPrompt({ rules, inputs: {} as any,
     contextModel: modelFixture("feasibility", "context") as any, businessFlow: { model, traceability: [] } });
-  assert.match(prompt, /恰好 2 个可执行候选方案/);
+  assert.match(prompt, /恰好 2 个可执行的可行性分析候选方案/);
   assert.match(prompt, /实际必须生成两份完整候选/);
   assert.ok(prompt.includes(JSON.stringify(model)));
   assert.ok(prompt.includes(rules[0].text));

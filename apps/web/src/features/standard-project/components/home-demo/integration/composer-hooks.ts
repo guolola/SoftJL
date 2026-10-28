@@ -1,4 +1,4 @@
-// Invalidates source model-option memoization when platform settings or Modelpedia metadata change.
+// Invalidates source model-option memoization when platform settings or Models.dev metadata change.
 export type { ReactNode } from "react";
 import { useMemo as reactMemo, type DependencyList } from "react";
 import { useHomeDemo } from "./environment";
