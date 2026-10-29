@@ -239,6 +239,8 @@ Current version: **v2.2.7**. See [release notes and setup requirements](release-
 
 ## Documentation
 
+AI contributors should first confirm the applicable [project rules](AGENTS.md). Use the [task routing index](docs/README.md#任务路由) to locate relevant context and its authoritative writing destination; read the [current handoff](docs/context/now.md) when continuing work. Read only the sections needed for the task.
+
 - [Contributing](contributing.md)
 - [Security reporting](security.md)
 - [Community maintenance and verification](docs/development/community-edition.md)

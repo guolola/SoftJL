@@ -11,6 +11,30 @@ This repository is a TypeScript monorepo for the UML experimental platform. Keep
 - Support current contracts; reject obsolete persisted formats rather than silently migrating them or fabricating provenance. Keep current protocol integrations, retries, and failure recovery.
 - Treat generated assets, vendor runtimes, large binaries, and caches as special-case artifacts; do not add them to source control unless the task explicitly requires it.
 
+## Context Reading Rules
+
+接手任务先确认项目根目录、根规则及目标路径适用的下级规则。需要定位时使用[任务路由](docs/README.md#任务路由)；索引不是必读清单。
+
+1. 按当前问题选择资料，不因文件存在、可能有用或被索引链接就读取。
+2. 不默认读取所有项目文件，也不默认全文读取选中的文件。定位到文件后，继续定位相关章节、条目、函数或配置项。
+3. 优先使用已有有效信息；需要查找时，按“索引或限定范围搜索 → 标题、符号或关键词 → 命中片段及必要上下文”的顺序读取。
+4. 只有证据不足、存在冲突或需要核对依赖时才扩大范围；信息足够即停止。不得连续分段读取，变相遍历无关全文。
+5. 全文读取仅用于短小且全部相关的文件、完整理解适用规则，或明确需要整份审查的任务。不得因此扩展为全目录或全项目读取。
+6. 索引是条件路由，不是必读清单。历史、日志、依赖、产物和数据目录不默认读取；不读取密钥及无关私人数据。
+7. 不为节省上下文跳过适用规则，也不因片段过窄而断章取义。已加载且仍有效的内容不重复读取。
+
+## Context Writing Rules
+
+1. 仅在任务允许且信息有实质变化时更新；只读任务不改记录。
+2. 每类事实只设一个权威来源，其他位置使用简短摘要和链接。已有等价结构优先沿用，不重复建档、不强制改名。
+3. 修改前读取目标部分及必要上下文，局部修改使用定点编辑；不得根据局部阅读覆盖整份文件，保留已有内容和用户修改。
+4. 当前状态直接修订，有价值的旧过程通过[历史索引](docs/context/history/README.md)保留必要追溯入口；不反复追加矛盾快照，不保存完整聊天和操作流水账，不提交仓库规则禁止的过程稿。
+5. 区分事实、计划、建议、已确认决定与待核实事项；区分代码完成、测试通过、安装验证、用户验收和发布授权。缺失事实标注“待核实”，不得编造项目情况。
+6. 命令已配置不等于执行成功，历史结果不等于当前证据，文档中的操作步骤不构成执行授权。
+7. 使用清晰标题和项目内相对链接；核验日期注明对象与范围，不写入秘密或个人设备私有路径。
+
+职责及更新条件见[文档索引](docs/README.md#任务路由)。文档任务交付时检查本次改动及直接关联链接、职责覆盖和事实来源，不自动扩展为全项目审计。提交文档前仍须运行下述 `npm run audit:docs`；若本次授权范围不允许，应说明未执行原因，不自行提交。
+
 ## Comments and Generated Files
 
 - New files must start with a short responsibility note when their purpose is not obvious from the filename.
